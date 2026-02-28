@@ -30433,3 +30433,287 @@ TEST(JSEngine, WeakMapObjectAssignDestructuring_V112) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1,3,4,5|true|false|10,30|1|2,3,4,5|Alice,30,unknown|1,2,3,4,5|1,10,3");
 }
+
+// ============================================================================
+// V113 Tests
+// ============================================================================
+
+TEST(JSEngine, SymbolDescriptionAndToPrimitive_V113) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Symbol.description
+        var sym = Symbol("myTag");
+        r.push(sym.description);
+        r.push(typeof sym);
+
+        // Symbol.toPrimitive on custom object
+        var obj = {
+            [Symbol.toPrimitive](hint) {
+                if (hint === "number") return 42;
+                if (hint === "string") return "hello";
+                return true;
+            }
+        };
+        r.push(+obj);        // hint "number"
+        r.push(`${obj}`);    // hint "string"
+        r.push(obj + "");    // hint "default" -> true coerced to string
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "myTag|symbol|42|hello|true");
+}
+
+TEST(JSEngine, MapChainableOperationsAndSize_V113) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var m = new Map();
+        m.set("a", 1).set("b", 2).set("c", 3);
+        r.push(m.size);
+
+        // Iteration order is insertion order
+        var keys = [];
+        m.forEach(function(v, k) { keys.push(k + "=" + v); });
+        r.push(keys.join(","));
+
+        // delete and has
+        m.delete("b");
+        r.push(m.has("b"));
+        r.push(m.size);
+
+        // Map with non-string keys
+        var m2 = new Map();
+        var objKey = {id: 1};
+        m2.set(objKey, "found");
+        r.push(m2.get(objKey));
+        r.push(m2.has({id: 1}));  // different reference, false
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|a=1,b=2,c=3|false|2|found|false");
+}
+
+TEST(JSEngine, SetUnionIntersectionDifference_V113) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var s1 = new Set([1, 2, 3, 4, 5]);
+        var s2 = new Set([3, 4, 5, 6, 7]);
+
+        // Union via spread
+        var union_ = new Set([...s1, ...s2]);
+        r.push([...union_].sort(function(a,b){return a-b;}).join(","));
+
+        // Intersection via filter
+        var intersection = new Set([...s1].filter(function(x){return s2.has(x);}));
+        r.push([...intersection].sort(function(a,b){return a-b;}).join(","));
+
+        // Difference (s1 - s2)
+        var diff = new Set([...s1].filter(function(x){return !s2.has(x);}));
+        r.push([...diff].sort(function(a,b){return a-b;}).join(","));
+
+        // Set preserves insertion order and deduplicates
+        var s3 = new Set([5, 3, 1, 3, 5, 1]);
+        r.push([...s3].join(","));
+        r.push(s3.size);
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6,7|3,4,5|1,2|5,3,1|3");
+}
+
+TEST(JSEngine, ClosureCounterAndIIFE_V113) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Closure-based counter
+        function makeCounter(start) {
+            var count = start;
+            return {
+                inc: function() { return ++count; },
+                dec: function() { return --count; },
+                val: function() { return count; }
+            };
+        }
+        var c = makeCounter(10);
+        c.inc(); c.inc(); c.inc();
+        c.dec();
+        r.push(c.val());
+
+        // IIFE with closure capturing loop variable
+        var funcs = [];
+        for (var i = 0; i < 5; i++) {
+            funcs.push((function(n) {
+                return function() { return n * n; };
+            })(i));
+        }
+        r.push(funcs.map(function(f) { return f(); }).join(","));
+
+        // Closure over let in block scope
+        var fns = [];
+        for (let j = 0; j < 3; j++) {
+            fns.push(function() { return j; });
+        }
+        r.push(fns.map(function(f) { return f(); }).join(","));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12|0,1,4,9,16|0,1,2");
+}
+
+TEST(JSEngine, PrototypeChainAndInstanceof_V113) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Prototype chain
+        function Animal(name) { this.name = name; }
+        Animal.prototype.speak = function() { return this.name + " speaks"; };
+
+        function Dog(name, breed) {
+            Animal.call(this, name);
+            this.breed = breed;
+        }
+        Dog.prototype = Object.create(Animal.prototype);
+        Dog.prototype.constructor = Dog;
+        Dog.prototype.bark = function() { return this.name + " barks"; };
+
+        var d = new Dog("Rex", "Husky");
+        r.push(d.speak());
+        r.push(d.bark());
+        r.push(d instanceof Dog);
+        r.push(d instanceof Animal);
+        r.push(d.constructor === Dog);
+
+        // hasOwnProperty vs inherited
+        r.push(d.hasOwnProperty("name"));
+        r.push(d.hasOwnProperty("speak"));
+
+        // Object.getPrototypeOf
+        r.push(Object.getPrototypeOf(d) === Dog.prototype);
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Rex speaks|Rex barks|true|true|true|true|false|true");
+}
+
+TEST(JSEngine, PromiseConstructorAndStaticMethods_V113) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Promise constructor and static methods exist
+        r.push(typeof Promise);
+        r.push(typeof Promise.resolve);
+        r.push(typeof Promise.reject);
+        r.push(typeof Promise.all);
+        r.push(typeof Promise.race);
+        r.push(typeof Promise.allSettled);
+
+        // Promise.resolve returns a thenable
+        var p = Promise.resolve(42);
+        r.push(typeof p.then);
+        r.push(typeof p.catch);
+
+        // Promise constructor works
+        var p2 = new Promise(function(resolve, reject) { resolve("ok"); });
+        r.push(typeof p2.then);
+
+        // Promise.all returns a promise
+        var p3 = Promise.all([Promise.resolve(1)]);
+        r.push(typeof p3.then);
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "function|function|function|function|function|function|function|function|function|function");
+}
+
+TEST(JSEngine, RegExpNamedGroupsAndMethods_V113) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Named capture groups
+        var dateRe = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+        var m = dateRe.exec("2025-07-15");
+        r.push(m.groups.year);
+        r.push(m.groups.month);
+        r.push(m.groups.day);
+
+        // String.match with global flag
+        var vowels = "Hello World".match(/[aeiou]/gi);
+        r.push(vowels.join(","));
+
+        // String.replace with function
+        var result2 = "abc123def456".replace(/(\d+)/g, function(match) {
+            return "[" + match + "]";
+        });
+        r.push(result2);
+
+        // RegExp.test
+        r.push(/^\d+$/.test("12345"));
+        r.push(/^\d+$/.test("123a5"));
+
+        // String.split with RegExp
+        r.push("one::two:::three".split(/:+/).join(","));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2025|07|15|e,o,o|abc[123]def[456]|true|false|one,two,three");
+}
+
+TEST(JSEngine, WeakMapPrivateDataPattern_V113) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // WeakMap as private data store
+        var privateData = new WeakMap();
+
+        function Person(name, age) {
+            this.name = name;
+            privateData.set(this, { age: age, secret: name + "_secret" });
+        }
+        Person.prototype.getAge = function() {
+            return privateData.get(this).age;
+        };
+        Person.prototype.getSecret = function() {
+            return privateData.get(this).secret;
+        };
+
+        var p1 = new Person("Alice", 30);
+        var p2 = new Person("Bob", 25);
+        r.push(p1.getAge());
+        r.push(p1.getSecret());
+        r.push(p2.getAge());
+        r.push(p2.getSecret());
+
+        // WeakMap does not allow iteration
+        r.push(typeof privateData.forEach);
+
+        // WeakSet basics
+        var ws = new WeakSet();
+        var obj1 = {id: 1};
+        var obj2 = {id: 2};
+        ws.add(obj1);
+        r.push(ws.has(obj1));
+        r.push(ws.has(obj2));
+        ws.add(obj2);
+        ws.delete(obj1);
+        r.push(ws.has(obj1));
+        r.push(ws.has(obj2));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30|Alice_secret|25|Bob_secret|undefined|true|false|false|true");
+}

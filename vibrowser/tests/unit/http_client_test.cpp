@@ -19140,3 +19140,184 @@ TEST(HeaderMapTest, SetOverwritesAppendedValuesV112) {
     EXPECT_EQ(map.get("Cache-Control").value(), "max-age=3600");
     EXPECT_EQ(map.size(), 1u);
 }
+
+// ===========================================================================
+// V113 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize HEAD method omits body even if body is set V113
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadOmitsBodyV113) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/status";
+
+    std::string body_str = "should be ignored";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line should use HEAD
+    EXPECT_NE(result.find("HEAD /status HTTP/1.1\r\n"), std::string::npos);
+    // Host header present, port 80 omitted
+    EXPECT_NE(result.find("Host: example.com\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: example.com:80\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request parse_url extracts HTTPS with custom port V113
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpsCustomPortV113) {
+    Request req;
+    req.url = "https://secure.example.org:8443/api/v2?token=abc";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "secure.example.org");
+    EXPECT_EQ(req.port, 8443);
+    EXPECT_EQ(req.path, "/api/v2");
+    EXPECT_EQ(req.query, "token=abc");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response parse 301 with Location header V113
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse301RedirectV113) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://www.example.com/new-path\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    EXPECT_TRUE(resp->headers.has("location"));
+    EXPECT_EQ(resp->headers.get("location").value(), "https://www.example.com/new-path");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// ---------------------------------------------------------------------------
+// 4. HeaderMap remove then has returns false V113
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveThenHasReturnsFalseV113) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token123");
+    map.set("Accept", "application/json");
+    EXPECT_TRUE(map.has("Authorization"));
+    EXPECT_EQ(map.size(), 2u);
+
+    map.remove("Authorization");
+    EXPECT_FALSE(map.has("Authorization"));
+    EXPECT_FALSE(map.get("Authorization").has_value());
+    EXPECT_EQ(map.size(), 1u);
+    // Other headers unaffected
+    EXPECT_TRUE(map.has("Accept"));
+    EXPECT_EQ(map.get("Accept").value(), "application/json");
+}
+
+// ---------------------------------------------------------------------------
+// 5. Request serialize PUT with body auto-adds Content-Length V113
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutWithContentLengthV113) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/resource/42";
+    req.use_tls = true;
+
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("PUT /resource/42 HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: api.example.com:443\r\n"), std::string::npos);
+    // Content-Length auto-generated
+    std::string expected_cl = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_NE(result.find(expected_cl), std::string::npos);
+    // Custom headers lowercase
+    EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response parse 500 Internal Server Error with body V113
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse500InternalServerErrorV113) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 21\r\n"
+        "\r\n"
+        "Something went wrong!";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->body_as_string(), "Something went wrong!");
+    EXPECT_EQ(resp->body.size(), 21u);
+}
+
+// ---------------------------------------------------------------------------
+// 7. ConnectionPool clear removes all pooled connections V113
+// ---------------------------------------------------------------------------
+TEST(ConnectionPoolTest, ClearRemovesAllConnectionsV113) {
+    ConnectionPool pool(4);
+    pool.release("alpha.com", 80, 100);
+    pool.release("alpha.com", 80, 101);
+    pool.release("beta.com", 443, 200);
+
+    EXPECT_EQ(pool.count("alpha.com", 80), 2u);
+    EXPECT_EQ(pool.count("beta.com", 443), 1u);
+
+    pool.clear();
+
+    EXPECT_EQ(pool.count("alpha.com", 80), 0u);
+    EXPECT_EQ(pool.count("beta.com", 443), 0u);
+    // acquire should return -1 after clear
+    EXPECT_EQ(pool.acquire("alpha.com", 80), -1);
+    EXPECT_EQ(pool.acquire("beta.com", 443), -1);
+}
+
+// ---------------------------------------------------------------------------
+// 8. HeaderMap append then get returns first value V113
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendThenGetReturnsFirstValueV113) {
+    HeaderMap map;
+    map.append("X-Custom", "first");
+    map.append("X-Custom", "second");
+    map.append("X-Custom", "third");
+
+    // get() should return one of the values (first)
+    auto val = map.get("X-Custom");
+    ASSERT_TRUE(val.has_value());
+
+    // get_all() should return all three
+    auto all = map.get_all("X-Custom");
+    EXPECT_EQ(all.size(), 3u);
+
+    // size() counts individual entries
+    EXPECT_EQ(map.size(), 3u);
+
+    // Verify case-insensitivity
+    EXPECT_TRUE(map.has("x-custom"));
+    EXPECT_TRUE(map.has("X-CUSTOM"));
+    auto all_lower = map.get_all("x-custom");
+    EXPECT_EQ(all_lower.size(), 3u);
+}

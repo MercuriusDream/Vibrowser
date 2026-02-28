@@ -20730,3 +20730,322 @@ TEST(ComputedStyleV112, BorderEdgeWidthStyleAndDefaults) {
     EXPECT_TRUE(s.border_right.width.is_zero());
     EXPECT_EQ(s.border_right.style, BorderStyle::None);
 }
+
+// ---------------------------------------------------------------------------
+// V113 Tests
+// ---------------------------------------------------------------------------
+
+TEST(ComputedStyleTest, FlexboxPropertiesCombinedV113) {
+    ComputedStyle s;
+    // Defaults
+    EXPECT_EQ(s.flex_direction, FlexDirection::Row);
+    EXPECT_EQ(s.flex_wrap, FlexWrap::NoWrap);
+    EXPECT_FLOAT_EQ(s.flex_grow, 0.0f);
+    EXPECT_FLOAT_EQ(s.flex_shrink, 1.0f);
+    EXPECT_TRUE(s.flex_basis.is_auto());
+
+    // Set flex container properties
+    s.display = Display::Flex;
+    s.flex_direction = FlexDirection::ColumnReverse;
+    s.flex_wrap = FlexWrap::WrapReverse;
+    s.justify_content = JustifyContent::SpaceEvenly;
+    s.align_items = AlignItems::Center;
+    s.gap = Length::px(12.0f);
+
+    EXPECT_EQ(s.display, Display::Flex);
+    EXPECT_EQ(s.flex_direction, FlexDirection::ColumnReverse);
+    EXPECT_EQ(s.flex_wrap, FlexWrap::WrapReverse);
+    EXPECT_EQ(s.justify_content, JustifyContent::SpaceEvenly);
+    EXPECT_EQ(s.align_items, AlignItems::Center);
+    EXPECT_FLOAT_EQ(s.gap.to_px(), 12.0f);
+
+    // Set flex item properties
+    s.flex_grow = 2.5f;
+    s.flex_shrink = 0.0f;
+    s.flex_basis = Length::px(200.0f);
+    s.order = -1;
+    s.align_self = 2; // center
+
+    EXPECT_FLOAT_EQ(s.flex_grow, 2.5f);
+    EXPECT_FLOAT_EQ(s.flex_shrink, 0.0f);
+    EXPECT_FLOAT_EQ(s.flex_basis.to_px(), 200.0f);
+    EXPECT_EQ(s.order, -1);
+    EXPECT_EQ(s.align_self, 2);
+}
+
+TEST(ComputedStyleTest, OverflowAndVisibilityInteractionV113) {
+    ComputedStyle s;
+    // Defaults
+    EXPECT_EQ(s.overflow_x, Overflow::Visible);
+    EXPECT_EQ(s.overflow_y, Overflow::Visible);
+    EXPECT_EQ(s.visibility, Visibility::Visible);
+
+    // Set overflow hidden on x, scroll on y
+    s.overflow_x = Overflow::Hidden;
+    s.overflow_y = Overflow::Scroll;
+    EXPECT_EQ(s.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(s.overflow_y, Overflow::Scroll);
+
+    // Visibility hidden does not change overflow
+    s.visibility = Visibility::Hidden;
+    EXPECT_EQ(s.visibility, Visibility::Hidden);
+    EXPECT_EQ(s.overflow_x, Overflow::Hidden);
+
+    // Overflow::Auto
+    s.overflow_x = Overflow::Auto;
+    s.overflow_y = Overflow::Auto;
+    EXPECT_EQ(s.overflow_x, Overflow::Auto);
+    EXPECT_EQ(s.overflow_y, Overflow::Auto);
+
+    // Collapse visibility
+    s.visibility = Visibility::Collapse;
+    EXPECT_EQ(s.visibility, Visibility::Collapse);
+}
+
+TEST(ComputedStyleTest, PositionOffsetsAndZIndexV113) {
+    ComputedStyle s;
+    // Defaults: all auto, z-index 0
+    EXPECT_TRUE(s.top.is_auto());
+    EXPECT_TRUE(s.right_pos.is_auto());
+    EXPECT_TRUE(s.bottom.is_auto());
+    EXPECT_TRUE(s.left_pos.is_auto());
+    EXPECT_EQ(s.z_index, 0);
+
+    // Absolute positioning with specific offsets
+    s.position = Position::Absolute;
+    s.top = Length::px(10.0f);
+    s.right_pos = Length::px(20.0f);
+    s.bottom = Length::px(30.0f);
+    s.left_pos = Length::px(40.0f);
+    s.z_index = 999;
+
+    EXPECT_EQ(s.position, Position::Absolute);
+    EXPECT_FLOAT_EQ(s.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(s.right_pos.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(s.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(s.left_pos.to_px(), 40.0f);
+    EXPECT_EQ(s.z_index, 999);
+
+    // Fixed positioning with percent offsets
+    s.position = Position::Fixed;
+    s.top = Length::percent(5.0f);
+    s.left_pos = Length::percent(10.0f);
+    EXPECT_EQ(s.position, Position::Fixed);
+    EXPECT_FLOAT_EQ(s.top.to_px(800.0f), 40.0f); // 5% of 800
+    EXPECT_FLOAT_EQ(s.left_pos.to_px(1000.0f), 100.0f); // 10% of 1000
+
+    // Negative z-index
+    s.z_index = -5;
+    EXPECT_EQ(s.z_index, -5);
+}
+
+TEST(ComputedStyleTest, TextPropertiesComprehensiveV113) {
+    ComputedStyle s;
+    // Defaults
+    EXPECT_EQ(s.text_align, TextAlign::Left);
+    EXPECT_EQ(s.text_decoration, TextDecoration::None);
+    EXPECT_EQ(s.text_transform, TextTransform::None);
+    EXPECT_EQ(s.white_space, WhiteSpace::Normal);
+    EXPECT_TRUE(s.letter_spacing.is_zero());
+    EXPECT_TRUE(s.word_spacing.is_zero());
+
+    // Configure text properties
+    s.text_align = TextAlign::Justify;
+    s.text_decoration = TextDecoration::Underline;
+    s.text_decoration_style = TextDecorationStyle::Wavy;
+    s.text_decoration_color = Color{255, 0, 0, 255};
+    s.text_transform = TextTransform::Uppercase;
+    s.white_space = WhiteSpace::PreWrap;
+    s.letter_spacing = Length::px(2.0f);
+    s.word_spacing = Length::em(0.5f);
+    s.text_indent = Length::px(32.0f);
+
+    EXPECT_EQ(s.text_align, TextAlign::Justify);
+    EXPECT_EQ(s.text_decoration, TextDecoration::Underline);
+    EXPECT_EQ(s.text_decoration_style, TextDecorationStyle::Wavy);
+    EXPECT_EQ(s.text_decoration_color.r, 255);
+    EXPECT_EQ(s.text_decoration_color.a, 255);
+    EXPECT_EQ(s.text_transform, TextTransform::Uppercase);
+    EXPECT_EQ(s.white_space, WhiteSpace::PreWrap);
+    EXPECT_FLOAT_EQ(s.letter_spacing.to_px(16.0f), 2.0f);
+    EXPECT_FLOAT_EQ(s.word_spacing.to_px(16.0f), 8.0f); // 0.5em * 16px
+    EXPECT_FLOAT_EQ(s.text_indent.to_px(), 32.0f);
+
+    // Text stroke
+    s.text_stroke_width = 1.5f;
+    s.text_stroke_color = Color{0, 0, 255, 255};
+    EXPECT_FLOAT_EQ(s.text_stroke_width, 1.5f);
+    EXPECT_EQ(s.text_stroke_color.b, 255);
+}
+
+TEST(ComputedStyleTest, MarginPaddingEdgeSizesV113) {
+    ComputedStyle s;
+    // Defaults are all zero
+    EXPECT_TRUE(s.margin.top.is_zero());
+    EXPECT_TRUE(s.margin.right.is_zero());
+    EXPECT_TRUE(s.margin.bottom.is_zero());
+    EXPECT_TRUE(s.margin.left.is_zero());
+    EXPECT_TRUE(s.padding.top.is_zero());
+    EXPECT_TRUE(s.padding.right.is_zero());
+
+    // Set mixed margin units
+    s.margin.top = Length::px(10.0f);
+    s.margin.right = Length::em(1.0f);
+    s.margin.bottom = Length::percent(5.0f);
+    s.margin.left = Length::auto_val();
+
+    EXPECT_FLOAT_EQ(s.margin.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(s.margin.right.to_px(16.0f), 16.0f); // 1em at 16px font
+    EXPECT_FLOAT_EQ(s.margin.bottom.to_px(400.0f), 20.0f); // 5% of 400
+    EXPECT_TRUE(s.margin.left.is_auto());
+
+    // Set padding with rem and vh units
+    s.padding.top = Length::rem(2.0f);
+    s.padding.right = Length::px(15.0f);
+    s.padding.bottom = Length::vh(10.0f);
+    s.padding.left = Length::vw(5.0f);
+
+    EXPECT_FLOAT_EQ(s.padding.top.to_px(0, 16.0f), 32.0f); // 2rem * 16px root
+    EXPECT_FLOAT_EQ(s.padding.right.to_px(), 15.0f);
+    // vh/vw use static viewport dimensions
+    Length::set_viewport(1024.0f, 768.0f);
+    EXPECT_FLOAT_EQ(s.padding.bottom.to_px(), 76.8f); // 10% of 768
+    EXPECT_FLOAT_EQ(s.padding.left.to_px(), 51.2f);   // 5% of 1024
+    // Restore default viewport
+    Length::set_viewport(800.0f, 600.0f);
+}
+
+TEST(ComputedStyleTest, OutlineAndBoxShadowV113) {
+    ComputedStyle s;
+    // Outline defaults
+    EXPECT_TRUE(s.outline_width.is_zero());
+    EXPECT_EQ(s.outline_style, BorderStyle::None);
+    EXPECT_EQ(s.outline_color, Color::black());
+    EXPECT_TRUE(s.outline_offset.is_zero());
+
+    // Set outline
+    s.outline_width = Length::px(3.0f);
+    s.outline_style = BorderStyle::Dashed;
+    s.outline_color = Color{0, 128, 0, 255};
+    s.outline_offset = Length::px(2.0f);
+
+    EXPECT_FLOAT_EQ(s.outline_width.to_px(), 3.0f);
+    EXPECT_EQ(s.outline_style, BorderStyle::Dashed);
+    EXPECT_EQ(s.outline_color.g, 128);
+    EXPECT_FLOAT_EQ(s.outline_offset.to_px(), 2.0f);
+
+    // Multiple box shadows
+    EXPECT_TRUE(s.box_shadows.empty());
+    ComputedStyle::BoxShadowEntry shadow1;
+    shadow1.offset_x = 2.0f;
+    shadow1.offset_y = 4.0f;
+    shadow1.blur = 8.0f;
+    shadow1.spread = 1.0f;
+    shadow1.color = Color{0, 0, 0, 128};
+    shadow1.inset = false;
+    s.box_shadows.push_back(shadow1);
+
+    ComputedStyle::BoxShadowEntry shadow2;
+    shadow2.offset_x = 0.0f;
+    shadow2.offset_y = 0.0f;
+    shadow2.blur = 20.0f;
+    shadow2.spread = 5.0f;
+    shadow2.color = Color{255, 0, 0, 64};
+    shadow2.inset = true;
+    s.box_shadows.push_back(shadow2);
+
+    EXPECT_EQ(s.box_shadows.size(), 2u);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].blur, 8.0f);
+    EXPECT_FALSE(s.box_shadows[0].inset);
+    EXPECT_FLOAT_EQ(s.box_shadows[1].spread, 5.0f);
+    EXPECT_TRUE(s.box_shadows[1].inset);
+    EXPECT_EQ(s.box_shadows[1].color.r, 255);
+    EXPECT_EQ(s.box_shadows[1].color.a, 64);
+}
+
+TEST(ComputedStyleTest, DisplayAndBoxSizingVariantsV113) {
+    ComputedStyle s;
+    // Default display for ComputedStyle is Inline
+    EXPECT_EQ(s.display, Display::Inline);
+    EXPECT_EQ(s.box_sizing, BoxSizing::ContentBox);
+
+    // Block with border-box
+    s.display = Display::Block;
+    s.box_sizing = BoxSizing::BorderBox;
+    EXPECT_EQ(s.display, Display::Block);
+    EXPECT_EQ(s.box_sizing, BoxSizing::BorderBox);
+
+    // InlineBlock
+    s.display = Display::InlineBlock;
+    EXPECT_EQ(s.display, Display::InlineBlock);
+
+    // InlineFlex
+    s.display = Display::InlineFlex;
+    EXPECT_EQ(s.display, Display::InlineFlex);
+
+    // Grid
+    s.display = Display::Grid;
+    EXPECT_EQ(s.display, Display::Grid);
+
+    // InlineGrid
+    s.display = Display::InlineGrid;
+    EXPECT_EQ(s.display, Display::InlineGrid);
+
+    // None hides the element
+    s.display = Display::None;
+    EXPECT_EQ(s.display, Display::None);
+
+    // Table
+    s.display = Display::Table;
+    EXPECT_EQ(s.display, Display::Table);
+
+    // ListItem
+    s.display = Display::ListItem;
+    EXPECT_EQ(s.display, Display::ListItem);
+
+    // Contents
+    s.display = Display::Contents;
+    EXPECT_EQ(s.display, Display::Contents);
+}
+
+TEST(ComputedStyleTest, FontAndLineHeightV113) {
+    ComputedStyle s;
+    // Defaults
+    EXPECT_FLOAT_EQ(s.font_size.to_px(), 16.0f);
+    EXPECT_EQ(s.font_weight, 400);
+    EXPECT_EQ(s.font_style, FontStyle::Normal);
+    EXPECT_EQ(s.font_family, "sans-serif");
+    EXPECT_FLOAT_EQ(s.line_height_unitless, 1.2f);
+
+    // Set font size with em relative to parent
+    s.font_size = Length::em(1.5f);
+    EXPECT_FLOAT_EQ(s.font_size.to_px(16.0f), 24.0f); // 1.5em * 16px parent
+
+    // Bold italic
+    s.font_weight = 700;
+    s.font_style = FontStyle::Italic;
+    EXPECT_EQ(s.font_weight, 700);
+    EXPECT_EQ(s.font_style, FontStyle::Italic);
+
+    // Custom font family
+    s.font_family = "Georgia, serif";
+    EXPECT_EQ(s.font_family, "Georgia, serif");
+
+    // Line height with explicit px
+    s.line_height = Length::px(28.0f);
+    s.line_height_unitless = 0; // explicit, not unitless
+    EXPECT_FLOAT_EQ(s.line_height.to_px(), 28.0f);
+    EXPECT_FLOAT_EQ(s.line_height_unitless, 0);
+
+    // Font variant small-caps
+    s.font_variant = 1;
+    EXPECT_EQ(s.font_variant, 1);
+
+    // Font stretch expanded
+    s.font_stretch = 7; // expanded
+    EXPECT_EQ(s.font_stretch, 7);
+
+    // Oblique style
+    s.font_style = FontStyle::Oblique;
+    EXPECT_EQ(s.font_style, FontStyle::Oblique);
+}

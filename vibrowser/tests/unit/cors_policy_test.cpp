@@ -8557,3 +8557,88 @@ TEST(CorsPolicyTest, CorsAllowsResponseIPOriginV112) {
                                       "https://api.example.com/data",
                                       resp3, false));
 }
+
+TEST(CorsPolicyTest, ExplicitPort80OnHttpNotEnforceableV113) {
+    // Explicit default port on HTTP (:80) is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+    EXPECT_FALSE(has_enforceable_document_origin("http://sub.example.org:80"));
+    // But non-default port on HTTP IS enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:8080"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:3000"));
+    // HTTPS with explicit :443 also NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+}
+
+TEST(CorsPolicyTest, EmptyFragmentStillCorsEligibleV113) {
+    // A bare '#' with no fragment content is considered "no fragment" — eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/path#"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com#"));
+    // Non-empty fragments are NOT eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/path#id"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://example.com#top"));
+    // Query strings without fragments remain eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/path?q=1"));
+}
+
+TEST(CorsPolicyTest, WssSchemeNotCrossOriginV113) {
+    // wss:// is NOT considered cross-origin (WebSocket upgrade, not CORS)
+    EXPECT_FALSE(is_cross_origin("https://example.com", "wss://example.com/socket"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "wss://example.com/ws/chat"));
+    // ws:// should also not be cross-origin from http origin
+    EXPECT_FALSE(is_cross_origin("http://example.com", "ws://example.com/socket"));
+}
+
+TEST(CorsPolicyTest, NormalizeOriginDataOriginReturnsNulloptV113) {
+    // data: origin normalization should return nullopt (not "null")
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "data:text/html,<h1>hi</h1>",
+                                     "https://api.example.com/endpoint");
+    // data: origin is not enforceable, so no origin header should be set
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CorsPolicyTest, SchemeCaseInsensitiveCorsEligibilityV113) {
+    // Schemes should be case-insensitive for CORS eligibility
+    EXPECT_TRUE(is_cors_eligible_request_url("HTTPS://example.com/path"));
+    EXPECT_TRUE(is_cors_eligible_request_url("Https://example.com/path"));
+    EXPECT_TRUE(is_cors_eligible_request_url("HTTP://example.com/path"));
+    EXPECT_TRUE(is_cors_eligible_request_url("Http://example.com/path"));
+}
+
+TEST(CorsPolicyTest, CrossOriginDifferentSubdomainsSameHostV113) {
+    // Different subdomains of the same host ARE cross-origin
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/data"));
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://cdn.example.com/img"));
+    // But same full origin is NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/data"));
+    // Subdomain vs bare domain is cross-origin
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://www.example.com/path"));
+}
+
+TEST(CorsPolicyTest, CorsAllowsResponseCredentialedWildcardRejectedV113) {
+    // Wildcard (*) ACAO should be REJECTED when credentials are requested
+    clever::net::HeaderMap resp;
+    resp.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                       "https://api.example.com/data",
+                                       resp, true));
+    // Exact match with credentials IS allowed when ACAC: true is present
+    clever::net::HeaderMap resp2;
+    resp2.set("Access-Control-Allow-Origin", "https://app.example.com");
+    resp2.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      resp2, true));
+}
+
+TEST(CorsPolicyTest, IPv6OriginsEnforceableAndCrossOriginV113) {
+    // IPv6 origins ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://[::1]"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://[2001:db8::1]"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://[fe80::1]"));
+    // Same IPv6 origin is NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://[::1]", "https://[::1]/resource"));
+    // Different IPv6 addresses ARE cross-origin
+    EXPECT_TRUE(is_cross_origin("https://[::1]", "https://[::2]/resource"));
+    EXPECT_TRUE(is_cross_origin("https://[2001:db8::1]", "https://[2001:db8::2]/api"));
+}

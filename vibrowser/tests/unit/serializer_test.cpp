@@ -16913,3 +16913,126 @@ TEST(SerializerTest, LargeStringAndBytesStressV112) {
     EXPECT_EQ(d.read_u8(), 0xABu);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V113 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, RoundTripAlternatingBoolAndU8V113) {
+    Serializer s;
+    for (int i = 0; i < 32; ++i) {
+        s.write_bool(i % 2 == 0);
+        s.write_u8(static_cast<uint8_t>(i * 7));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 32; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 2 == 0)) << "bool at i=" << i;
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i * 7)) << "u8 at i=" << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU64PowersOfTwoV113) {
+    Serializer s;
+    for (int bit = 0; bit < 64; ++bit) {
+        s.write_u64(uint64_t{1} << bit);
+    }
+    Deserializer d(s.data());
+    for (int bit = 0; bit < 64; ++bit) {
+        EXPECT_EQ(d.read_u64(), uint64_t{1} << bit) << "bit=" << bit;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripStringWithAllPrintableAsciiV113) {
+    std::string printable;
+    for (char c = 32; c < 127; ++c) {
+        printable.push_back(c);
+    }
+    Serializer s;
+    s.write_string(printable);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), printable);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripF64SubnormalAndTinyV113) {
+    Serializer s;
+    double subnormal = std::numeric_limits<double>::denorm_min();
+    double tiny = std::numeric_limits<double>::min();
+    double neg_subnormal = -subnormal;
+    s.write_f64(subnormal);
+    s.write_f64(tiny);
+    s.write_f64(neg_subnormal);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), subnormal);
+    EXPECT_EQ(d.read_f64(), tiny);
+    EXPECT_EQ(d.read_f64(), neg_subnormal);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripBytesWithRepeatedPatternV113) {
+    std::vector<uint8_t> pattern(512);
+    for (size_t i = 0; i < pattern.size(); ++i) {
+        pattern[i] = static_cast<uint8_t>(i % 3 == 0 ? 0xAA : (i % 3 == 1 ? 0x55 : 0xFF));
+    }
+    Serializer s;
+    s.write_bytes(pattern.data(), pattern.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), pattern.size());
+    EXPECT_EQ(result, pattern);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DeserializerThrowsOnTruncatedStringLengthV113) {
+    // Write a string whose u32 length prefix occupies 4 bytes but truncate to 2
+    Serializer s;
+    s.write_string("hello");
+    auto buf = s.data();
+    ASSERT_GT(buf.size(), 2u);
+    std::vector<uint8_t> truncated(buf.begin(), buf.begin() + 2);
+    Deserializer d(truncated.data(), truncated.size());
+    EXPECT_THROW(d.read_string(), std::runtime_error);
+}
+
+TEST(SerializerTest, RoundTripU16DescendingSequenceV113) {
+    Serializer s;
+    for (uint16_t v = 65535; v >= 100; v -= 100) {
+        s.write_u16(v);
+    }
+    Deserializer d(s.data());
+    for (uint16_t v = 65535; v >= 100; v -= 100) {
+        EXPECT_EQ(d.read_u16(), v);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripMixedTypesStressV113) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u16(12345);
+    s.write_u32(0xDEADBEEFu);
+    s.write_u64(0x0102030405060708ULL);
+    s.write_bool(true);
+    s.write_f64(2.718281828459045);
+    s.write_string("mixed-stress-test");
+    std::vector<uint8_t> blob = {1, 2, 3, 4, 5};
+    s.write_bytes(blob.data(), blob.size());
+    s.write_bool(false);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), uint8_t{0});
+    EXPECT_EQ(d.read_u16(), uint16_t{12345});
+    EXPECT_EQ(d.read_u32(), uint32_t{0xDEADBEEFu});
+    EXPECT_EQ(d.read_u64(), uint64_t{0x0102030405060708ULL});
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828459045);
+    EXPECT_EQ(d.read_string(), "mixed-stress-test");
+    EXPECT_EQ(d.read_bytes(), blob);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_u8(), uint8_t{255});
+    EXPECT_FALSE(d.has_remaining());
+}

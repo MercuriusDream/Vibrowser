@@ -20986,3 +20986,182 @@ TEST(LayoutEngineTest, DeepNestedFlexColumnHierarchyV112) {
     EXPECT_EQ(l2->background_color, 0xFF303030u);
     EXPECT_EQ(l2->color, 0xFFEEEEEEu);
 }
+
+// ---------- V113 tests ----------
+
+// V113_001: Block child inherits parent width minus both padding and border
+TEST(LayoutEngineTest, ChildWidthReducedByPaddingAndBorderV113) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->geometry.padding.left = 25.0f;
+    root->geometry.padding.right = 15.0f;
+    root->geometry.border.left = 3.0f;
+    root->geometry.border.right = 7.0f;
+
+    auto child = make_block("p");
+    child->specified_height = 40.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // child width = parent(600) - padL(25) - padR(15) - borL(3) - borR(7) = 550
+    EXPECT_FLOAT_EQ(cp->geometry.width, 550.0f);
+}
+
+// V113_002: Multiple margins between stacked children accumulate in parent height
+TEST(LayoutEngineTest, StackedChildrenMarginsInParentHeightV113) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 60.0f;
+    c1->geometry.margin.bottom = 20.0f;
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 40.0f;
+    c2->geometry.margin.top = 10.0f;
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Margin collapse: max(20, 10) = 20 between children
+    // Total height = 60 + 20 + 40 = 120
+    // (or if no collapse: 60 + 20 + 10 + 40 = 130)
+    float h = root->geometry.height;
+    EXPECT_TRUE(h >= 120.0f && h <= 130.0f)
+        << "Parent height should account for child margins, got " << h;
+}
+
+// V113_003: Flex row with unequal flex_grow distributes space proportionally
+TEST(LayoutEngineTest, FlexRowUnequalGrowV113) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 50.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 2.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 1.0f;
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // 2:1 ratio => 400 and 200
+    EXPECT_FLOAT_EQ(p1->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.width, 200.0f);
+}
+
+// V113_004: Flex column stacks children vertically and distributes height
+TEST(LayoutEngineTest, FlexColumnStacksVerticallyV113) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 200.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 80.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.y, 80.0f);
+}
+
+// V113_005: max_width caps a block element even when parent is wider
+TEST(LayoutEngineTest, MaxWidthCapsBlockV113) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    child->max_width = 250.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 1000.0f, 600.0f);
+
+    EXPECT_LE(cp->geometry.width, 250.0f);
+}
+
+// V113_006: min_height forces parent taller than natural content height
+TEST(LayoutEngineTest, MinHeightForcesParentTallerV113) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->min_height = 300.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_GE(root->geometry.height, 300.0f);
+}
+
+// V113_007: Padding on all four sides reduces child width and increases parent height
+TEST(LayoutEngineTest, PaddingAllSidesReducesChildWidthV113) {
+    auto root = make_block("section");
+    root->specified_width = 500.0f;
+    root->geometry.padding.top = 30.0f;
+    root->geometry.padding.bottom = 20.0f;
+    root->geometry.padding.left = 40.0f;
+    root->geometry.padding.right = 10.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 60.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // child width = 500 - 40 - 10 = 450
+    EXPECT_FLOAT_EQ(cp->geometry.width, 450.0f);
+    // parent height = padding_top(30) + child(60) + padding_bottom(20) = 110
+    EXPECT_FLOAT_EQ(root->geometry.height, 110.0f);
+}
+
+// V113_008: Color and background_color properties are stored correctly on LayoutNode
+TEST(LayoutEngineTest, ColorPropertiesStoredV113) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->color = 0xFF00FF00u;
+    root->background_color = 0xFFAA5500u;
+
+    auto child = make_block("span");
+    child->specified_height = 50.0f;
+    child->color = 0xFF0000FFu;
+    child->background_color = 0x80FFFFFFu;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->color, 0xFF00FF00u);
+    EXPECT_EQ(root->background_color, 0xFFAA5500u);
+    EXPECT_EQ(cp->color, 0xFF0000FFu);
+    EXPECT_EQ(cp->background_color, 0x80FFFFFFu);
+}

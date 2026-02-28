@@ -17409,3 +17409,117 @@ TEST(DomTest, InsertBeforeNullptrAppendsV112) {
     EXPECT_EQ(raw_second->next_sibling(), nullptr);
     EXPECT_EQ(raw_second->parent(), &parent);
 }
+
+// ---------------------------------------------------------------------------
+// V113 Suite: 8 additional DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. ClassList toggle adds then removes
+TEST(DomTest, ClassListToggleAddRemoveV113) {
+    Element el("div");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    EXPECT_EQ(el.class_list().length(), 1u);
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    EXPECT_EQ(el.class_list().length(), 0u);
+}
+
+// 2. Text node set_data updates content
+TEST(DomTest, TextNodeSetDataUpdatesContentV113) {
+    Text t("initial");
+    EXPECT_EQ(t.data(), "initial");
+    EXPECT_EQ(t.text_content(), "initial");
+    t.set_data("updated");
+    EXPECT_EQ(t.data(), "updated");
+    EXPECT_EQ(t.text_content(), "updated");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+// 3. Comment set_data modifies comment data
+TEST(DomTest, CommentSetDataModifiesV113) {
+    Comment c("original comment");
+    EXPECT_EQ(c.data(), "original comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    c.set_data("revised comment");
+    EXPECT_EQ(c.data(), "revised comment");
+}
+
+// 4. Document create_element factory produces correct type
+TEST(DomTest, DocumentCreateElementFactoryV113) {
+    Document doc;
+    auto el = doc.create_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name(), "section");
+    EXPECT_EQ(el->node_type(), NodeType::Element);
+    EXPECT_EQ(el->child_count(), 0u);
+    EXPECT_EQ(el->parent(), nullptr);
+}
+
+// 5. remove_child returns ownership back to caller
+TEST(DomTest, RemoveChildReturnsOwnershipV113) {
+    Element parent("ul");
+    auto item = std::make_unique<Element>("li");
+    Node* raw = item.get();
+    parent.append_child(std::move(item));
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(raw->parent(), &parent);
+
+    auto recovered = parent.remove_child(*raw);
+    EXPECT_EQ(parent.child_count(), 0u);
+    ASSERT_NE(recovered, nullptr);
+    auto* elem = dynamic_cast<Element*>(recovered.get());
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "li");
+    EXPECT_EQ(elem->parent(), nullptr);
+}
+
+// 6. Element text_content concatenates child text nodes recursively
+TEST(DomTest, ElementTextContentRecursiveV113) {
+    Element div("div");
+    auto t1 = std::make_unique<Text>("Hello ");
+    auto span = std::make_unique<Element>("span");
+    auto t2 = std::make_unique<Text>("World");
+    span->append_child(std::move(t2));
+    div.append_child(std::move(t1));
+    div.append_child(std::move(span));
+
+    EXPECT_EQ(div.text_content(), "Hello World");
+}
+
+// 7. last_child and previous_sibling traversal
+TEST(DomTest, LastChildAndPrevSiblingTraversalV113) {
+    Element parent("nav");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("a");
+    auto c = std::make_unique<Element>("a");
+    Node* raw_a = a.get();
+    Node* raw_b = b.get();
+    Node* raw_c = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    EXPECT_EQ(parent.last_child(), raw_c);
+    EXPECT_EQ(raw_c->previous_sibling(), raw_b);
+    EXPECT_EQ(raw_b->previous_sibling(), raw_a);
+    EXPECT_EQ(raw_a->previous_sibling(), nullptr);
+}
+
+// 8. DirtyFlags mark and clear
+TEST(DomTest, DirtyFlagsMarkAndClearV113) {
+    Element el("div");
+    EXPECT_EQ(el.dirty_flags(), DirtyFlags::None);
+
+    el.mark_dirty(DirtyFlags::Style);
+    EXPECT_EQ(static_cast<uint8_t>(el.dirty_flags() & DirtyFlags::Style),
+              static_cast<uint8_t>(DirtyFlags::Style));
+
+    el.mark_dirty(DirtyFlags::Layout);
+    EXPECT_NE(static_cast<uint8_t>(el.dirty_flags() & DirtyFlags::Layout), 0u);
+    EXPECT_NE(static_cast<uint8_t>(el.dirty_flags() & DirtyFlags::Style), 0u);
+
+    el.clear_dirty();
+    EXPECT_EQ(el.dirty_flags(), DirtyFlags::None);
+}

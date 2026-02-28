@@ -12418,3 +12418,83 @@ TEST(UrlParserTest, MultipleQueryParamsAndFragmentV112) {
     EXPECT_TRUE(result->username.empty());
     EXPECT_TRUE(result->password.empty());
 }
+
+// =============================================================================
+// V113 Tests
+// =============================================================================
+
+TEST(UrlParserTest, TrailingSlashNormalizedOnBareHostV113) {
+    auto result = parse("https://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, PasswordWithAtSignEncodedV113) {
+    auto result = parse("http://admin:p%40ss@host.com/secret");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host.com");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "p%2540ss");
+    EXPECT_EQ(result->path, "/secret");
+}
+
+TEST(UrlParserTest, FtpDefaultPort21NormalizedToNulloptV113) {
+    auto result = parse("ftp://files.example.com:21/pub/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/readme.txt");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInPathSegmentV113) {
+    auto result = parse("https://example.com/dir%2Ffile");
+    ASSERT_TRUE(result.has_value());
+    // Double-encodes: %2F becomes %252F
+    EXPECT_EQ(result->path, "/dir%252Ffile");
+}
+
+TEST(UrlParserTest, SerializeUrlWithUsernameOnlyV113) {
+    auto result = parse("http://user@example.com:9090/dashboard");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+    EXPECT_TRUE(result->password.empty());
+    EXPECT_EQ(result->port, 9090);
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "http://user@example.com:9090/dashboard");
+}
+
+TEST(UrlParserTest, NonDefaultPortPreservedAfterSerializeV113) {
+    auto result = parse("https://api.example.com:8443/v1/data?format=json");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->port, 8443);
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find(":8443"), std::string::npos);
+    EXPECT_NE(serialized.find("format=json"), std::string::npos);
+}
+
+TEST(UrlParserTest, EmptyQueryStringPreservedV113) {
+    auto result = parse("https://example.com/search?");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    // Empty query after '?' should be empty string
+    EXPECT_TRUE(result->query.empty());
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInFragmentV113) {
+    auto result = parse("https://example.com/page#section%20two");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    // Double-encodes: %20 becomes %2520 in fragment
+    EXPECT_EQ(result->fragment, "section%2520two");
+}

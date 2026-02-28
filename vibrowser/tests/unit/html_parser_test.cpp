@@ -18265,3 +18265,172 @@ TEST(HtmlParser, FieldsetLegendMixedControlsV112) {
     EXPECT_EQ(get_attr_v63(options[1], "value"), "uk");
     EXPECT_EQ(options[1]->text_content(), "UK");
 }
+
+// ============================================================================
+// V113 Tests
+// ============================================================================
+
+// 1. Nested ordered lists preserve depth and structure
+TEST(HtmlParser, NestedOrderedListDepthV113) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ol><li>A<ol><li>A1</li><li>A2</li></ol></li><li>B</li></ol>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto ols = doc->find_all_elements("ol");
+    ASSERT_EQ(ols.size(), 2u);
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 4u);
+    EXPECT_EQ(lis[1]->text_content(), "A1");
+    EXPECT_EQ(lis[2]->text_content(), "A2");
+    EXPECT_EQ(lis[3]->text_content(), "B");
+}
+
+// 2. Table with caption, thead, tbody, tfoot
+TEST(HtmlParser, TableFullSectionsWithCaptionV113) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<caption>Sales Report</caption>"
+        "<thead><tr><th>Quarter</th><th>Revenue</th></tr></thead>"
+        "<tbody><tr><td>Q1</td><td>$100</td></tr></tbody>"
+        "<tfoot><tr><td>Total</td><td>$100</td></tr></tfoot>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Sales Report");
+    auto* thead = doc->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Quarter");
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    auto tds = doc->find_all_elements("td");
+    ASSERT_GE(tds.size(), 4u);
+    EXPECT_EQ(tds[0]->text_content(), "Q1");
+}
+
+// 3. Multiple sibling sections with headings and paragraphs
+TEST(HtmlParser, MultipleSectionsWithHeadingsV113) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<section><h2>Intro</h2><p>Hello</p></section>"
+        "<section><h2>Details</h2><p>World</p></section>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto sections = doc->find_all_elements("section");
+    ASSERT_EQ(sections.size(), 2u);
+    auto h2s = doc->find_all_elements("h2");
+    ASSERT_EQ(h2s.size(), 2u);
+    EXPECT_EQ(h2s[0]->text_content(), "Intro");
+    EXPECT_EQ(h2s[1]->text_content(), "Details");
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 2u);
+    EXPECT_EQ(ps[0]->text_content(), "Hello");
+    EXPECT_EQ(ps[1]->text_content(), "World");
+}
+
+// 4. Deeply nested spans with attributes at each level
+TEST(HtmlParser, DeeplyNestedSpansAttributesV113) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<span class=\"a\"><span class=\"b\"><span class=\"c\">deep</span></span></span>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto spans = doc->find_all_elements("span");
+    ASSERT_EQ(spans.size(), 3u);
+    EXPECT_EQ(get_attr_v63(spans[0], "class"), "a");
+    EXPECT_EQ(get_attr_v63(spans[1], "class"), "b");
+    EXPECT_EQ(get_attr_v63(spans[2], "class"), "c");
+    EXPECT_EQ(spans[2]->text_content(), "deep");
+    // Innermost span is child of middle span
+    EXPECT_EQ(spans[1]->children.size(), 1u);
+}
+
+// 5. Multiple void elements mixed with text siblings
+TEST(HtmlParser, VoidElementsMixedWithTextSiblingsV113) {
+    auto doc = clever::html::parse(
+        "<html><body><p>before<br/>middle<hr/>after<img src=\"x.png\"/></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_TRUE(br->children.empty());
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "x.png");
+    EXPECT_TRUE(img->children.empty());
+}
+
+// 6. Description list with multiple dt-dd pairs
+TEST(HtmlParser, DescriptionListMultiplePairsV113) {
+    auto doc = clever::html::parse(
+        "<html><body><dl>"
+        "<dt>Color</dt><dd>Red</dd>"
+        "<dt>Size</dt><dd>Large</dd>"
+        "<dt>Weight</dt><dd>Heavy</dd>"
+        "</dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto dts = doc->find_all_elements("dt");
+    ASSERT_EQ(dts.size(), 3u);
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dds.size(), 3u);
+    EXPECT_EQ(dts[0]->text_content(), "Color");
+    EXPECT_EQ(dds[0]->text_content(), "Red");
+    EXPECT_EQ(dts[1]->text_content(), "Size");
+    EXPECT_EQ(dds[1]->text_content(), "Large");
+    EXPECT_EQ(dts[2]->text_content(), "Weight");
+    EXPECT_EQ(dds[2]->text_content(), "Heavy");
+}
+
+// 7. Nav element with anchor links containing data attributes
+TEST(HtmlParser, NavAnchorsWithDataAttributesV113) {
+    auto doc = clever::html::parse(
+        "<html><body><nav>"
+        "<a href=\"/home\" data-section=\"main\">Home</a>"
+        "<a href=\"/about\" data-section=\"info\">About</a>"
+        "<a href=\"/contact\" data-section=\"form\">Contact</a>"
+        "</nav></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    auto anchors = doc->find_all_elements("a");
+    ASSERT_EQ(anchors.size(), 3u);
+    EXPECT_EQ(get_attr_v63(anchors[0], "href"), "/home");
+    EXPECT_EQ(get_attr_v63(anchors[0], "data-section"), "main");
+    EXPECT_EQ(anchors[0]->text_content(), "Home");
+    EXPECT_EQ(get_attr_v63(anchors[1], "href"), "/about");
+    EXPECT_EQ(get_attr_v63(anchors[1], "data-section"), "info");
+    EXPECT_EQ(anchors[2]->text_content(), "Contact");
+    EXPECT_EQ(get_attr_v63(anchors[2], "data-section"), "form");
+}
+
+// 8. Article with header, time, and footer structure
+TEST(HtmlParser, ArticleWithHeaderTimeFooterV113) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<article>"
+        "<header><h1>Blog Post</h1></header>"
+        "<time datetime=\"2026-02-28\">Feb 28</time>"
+        "<p>Content here.</p>"
+        "<footer><small>By Author</small></footer>"
+        "</article>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Blog Post");
+    auto* time_el = doc->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(get_attr_v63(time_el, "datetime"), "2026-02-28");
+    EXPECT_EQ(time_el->text_content(), "Feb 28");
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    auto* small_el = doc->find_element("small");
+    ASSERT_NE(small_el, nullptr);
+    EXPECT_EQ(small_el->text_content(), "By Author");
+}
