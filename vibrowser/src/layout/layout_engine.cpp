@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <limits>
 #include <sstream>
 
 namespace clever::layout {
@@ -334,8 +335,8 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
     } else {
         float horiz_margins = 0;
         // Only subtract non-auto margins
-        if (node.geometry.margin.left >= 0) horiz_margins += node.geometry.margin.left;
-        if (node.geometry.margin.right >= 0) horiz_margins += node.geometry.margin.right;
+        if (!is_margin_auto(node.geometry.margin.left)) horiz_margins += node.geometry.margin.left;
+        if (!is_margin_auto(node.geometry.margin.right)) horiz_margins += node.geometry.margin.right;
         w = containing_width - horiz_margins;
     }
     w = std::max(w, node.min_width);
@@ -2185,8 +2186,12 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             child->specified_width = child->css_width->to_px(containing_width);
         }
         if (child->css_height.has_value()) {
-            float cb_height = has_definite_main_size ? main_size : viewport_height_;
-            child->specified_height = child->css_height->to_px(cb_height);
+            // Percentage heights on flex items resolve only when the flex container
+            // has a definite height.
+            float cb_height = node.specified_height;
+            if (cb_height >= 0) {
+                child->specified_height = child->css_height->to_px(cb_height);
+            }
         }
         if (child->css_min_width.has_value()) {
             child->min_width = child->css_min_width->to_px(containing_width);
@@ -2195,12 +2200,16 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             child->max_width = child->css_max_width->to_px(containing_width);
         }
         if (child->css_min_height.has_value()) {
-            float cb_height = has_definite_main_size ? main_size : viewport_height_;
-            child->min_height = child->css_min_height->to_px(cb_height);
+            float cb_height = node.specified_height;
+            if (cb_height >= 0) {
+                child->min_height = child->css_min_height->to_px(cb_height);
+            }
         }
         if (child->css_max_height.has_value()) {
-            float cb_height = has_definite_main_size ? main_size : viewport_height_;
-            child->max_height = child->css_max_height->to_px(cb_height);
+            float cb_height = node.specified_height;
+            if (cb_height >= 0) {
+                child->max_height = child->css_max_height->to_px(cb_height);
+            }
         }
         // Resolve deferred percentage margins/padding for flex items
         if (child->css_margin_top.has_value())
@@ -2362,11 +2371,11 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                 items[i].basis = std::max(items[i].basis, items[i].child->min_width);
                 items[i].basis = std::min(items[i].basis, items[i].child->max_width);
             } else {
-                float cb_height = has_definite_main_size ? main_size : viewport_height_;
-                if (items[i].child->css_min_height.has_value()) {
+                float cb_height = node.specified_height;
+                if (cb_height >= 0 && items[i].child->css_min_height.has_value()) {
                     items[i].child->min_height = items[i].child->css_min_height->to_px(cb_height);
                 }
-                if (items[i].child->css_max_height.has_value()) {
+                if (cb_height >= 0 && items[i].child->css_max_height.has_value()) {
                     items[i].child->max_height = items[i].child->css_max_height->to_px(cb_height);
                 }
                 items[i].basis = std::max(items[i].basis, items[i].child->min_height);
@@ -2420,11 +2429,11 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
         for (size_t i = line.start; i < line.end; i++) {
             auto* child = items[i].child;
             if (is_row) {
-                if (child->geometry.margin.left < 0) child->geometry.margin.left = 0;
-                if (child->geometry.margin.right < 0) child->geometry.margin.right = 0;
+                if (is_margin_auto(child->geometry.margin.left)) child->geometry.margin.left = 0;
+                if (is_margin_auto(child->geometry.margin.right)) child->geometry.margin.right = 0;
             } else {
-                if (child->geometry.margin.top < 0) child->geometry.margin.top = 0;
-                if (child->geometry.margin.bottom < 0) child->geometry.margin.bottom = 0;
+                if (is_margin_auto(child->geometry.margin.top)) child->geometry.margin.top = 0;
+                if (is_margin_auto(child->geometry.margin.bottom)) child->geometry.margin.bottom = 0;
             }
         }
 
@@ -2467,6 +2476,10 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
 
             if (is_row) {
                 child->geometry.width = item.basis;
+                if (child->max_width < std::numeric_limits<float>::max()) {
+                    child->geometry.width = std::min(child->geometry.width, child->max_width);
+                }
+                child->geometry.width = std::max(child->geometry.width, child->min_width);
                 if (child->specified_height >= 0) {
                     child->geometry.height = child->specified_height;
                 } else {
@@ -2484,16 +2497,37 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                         + child->geometry.padding.top + child->geometry.padding.bottom
                         + child->geometry.border.top + child->geometry.border.bottom;
                 }
+                if (child->max_height < std::numeric_limits<float>::max()) {
+                    child->geometry.height = std::min(child->geometry.height, child->max_height);
+                }
+                child->geometry.height = std::max(child->geometry.height, child->min_height);
                 child->geometry.x = cursor_main;
                 child->geometry.y = cross_cursor;
                 line.max_cross = std::max(line.max_cross, child->geometry.margin_box_height());
             } else {
                 child->geometry.height = item.basis;
+                if (child->max_height < std::numeric_limits<float>::max()) {
+                    child->geometry.height = std::min(child->geometry.height, child->max_height);
+                }
+                child->geometry.height = std::max(child->geometry.height, child->min_height);
                 if (child->specified_width >= 0) {
                     child->geometry.width = child->specified_width;
                 } else {
-                    child->geometry.width = containing_width;
+                    int eff_align = (child->align_self >= 0) ? child->align_self : node.align_items;
+                    if (eff_align == 4) {
+                        child->geometry.width = containing_width;
+                    } else {
+                        const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
+                        float intrinsic_w = measure_intrinsic_width(*child, true, mp);
+                        intrinsic_w += child->geometry.padding.left + child->geometry.padding.right
+                                    + child->geometry.border.left + child->geometry.border.right;
+                        child->geometry.width = std::min(intrinsic_w, containing_width);
+                    }
                 }
+                if (child->max_width < std::numeric_limits<float>::max()) {
+                    child->geometry.width = std::min(child->geometry.width, child->max_width);
+                }
+                child->geometry.width = std::max(child->geometry.width, child->min_width);
                 child->geometry.y = cursor_main;
                 child->geometry.x = cross_cursor;
                 line.max_cross = std::max(line.max_cross, child->geometry.margin_box_width());
@@ -2522,10 +2556,10 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             // In flexbox, auto margins on the cross-axis take priority over
             // align-items/align-self. Distribute remaining cross-axis space
             // to auto margins before falling through to alignment.
-            bool auto_margin_top = (is_row && child->geometry.margin.top < 0);
-            bool auto_margin_bottom = (is_row && child->geometry.margin.bottom < 0);
-            bool auto_margin_left = (!is_row && child->geometry.margin.left < 0);
-            bool auto_margin_right = (!is_row && child->geometry.margin.right < 0);
+            bool auto_margin_top = (is_row && is_margin_auto(child->geometry.margin.top));
+            bool auto_margin_bottom = (is_row && is_margin_auto(child->geometry.margin.bottom));
+            bool auto_margin_left = (!is_row && is_margin_auto(child->geometry.margin.left));
+            bool auto_margin_right = (!is_row && is_margin_auto(child->geometry.margin.right));
             bool has_cross_auto_margin = (is_row ? (auto_margin_top || auto_margin_bottom)
                                                   : (auto_margin_left || auto_margin_right));
 
@@ -2812,8 +2846,8 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         node.geometry.padding.bottom = node.css_padding_bottom->to_px(containing_width);
     if (node.css_padding_left.has_value())
         node.geometry.padding.left = node.css_padding_left->to_px(containing_width);
-    if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
-    if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
+    if (is_margin_auto(node.geometry.margin.left)) node.geometry.margin.left = 0;
+    if (is_margin_auto(node.geometry.margin.right)) node.geometry.margin.right = 0;
 
     // Compute width (non-root)
     if (node.parent != nullptr) {
@@ -3662,8 +3696,8 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         node.geometry.padding.bottom = node.css_padding_bottom->to_px(containing_width);
     if (node.css_padding_left.has_value())
         node.geometry.padding.left = node.css_padding_left->to_px(containing_width);
-    if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
-    if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
+    if (is_margin_auto(node.geometry.margin.left)) node.geometry.margin.left = 0;
+    if (is_margin_auto(node.geometry.margin.right)) node.geometry.margin.right = 0;
 
     // Compute table width
     if (node.parent != nullptr) {

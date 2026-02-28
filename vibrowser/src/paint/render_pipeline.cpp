@@ -1444,11 +1444,16 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (p == "vertical-align") { style.vertical_align = parent.vertical_align; continue; }
             if (p == "flex-direction") { style.flex_direction = parent.flex_direction; continue; }
             if (p == "flex-wrap") { style.flex_wrap = parent.flex_wrap; continue; }
+            if (p == "flex-flow") { style.flex_direction = parent.flex_direction; style.flex_wrap = parent.flex_wrap; continue; }
             if (p == "justify-content") { style.justify_content = parent.justify_content; continue; }
             if (p == "align-items") { style.align_items = parent.align_items; continue; }
+            if (p == "place-items") { style.align_items = parent.align_items; style.justify_items = parent.justify_items; continue; }
+            if (p == "place-content") { style.align_content = parent.align_content; style.justify_content = parent.justify_content; continue; }
             if (p == "flex-grow") { style.flex_grow = parent.flex_grow; continue; }
             if (p == "flex-shrink") { style.flex_shrink = parent.flex_shrink; continue; }
-            if (p == "gap") { style.gap = parent.gap; continue; }
+            if (p == "gap" || p == "grid-gap") { style.gap = parent.gap; style.column_gap_val = parent.column_gap_val; continue; }
+            if (p == "row-gap" || p == "grid-row-gap") { style.gap = parent.gap; continue; }
+            if (p == "column-gap" || p == "grid-column-gap") { style.column_gap_val = parent.column_gap_val; continue; }
             if (p == "order") { style.order = parent.order; continue; }
             if (p == "user-select") { style.user_select = parent.user_select; continue; }
             if (p == "pointer-events") { style.pointer_events = parent.pointer_events; continue; }
@@ -1842,9 +1847,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             else style.flex_wrap = clever::css::FlexWrap::NoWrap;
         } else if (d.property == "flex-flow") {
             // Shorthand: flex-flow: <direction> <wrap>
-            auto space = val_lower.find(' ');
-            std::string p1 = (space != std::string::npos) ? val_lower.substr(0, space) : val_lower;
-            std::string p2 = (space != std::string::npos) ? val_lower.substr(space + 1) : "";
+            auto parts = split_whitespace(val_lower);
             auto apply_part = [&](const std::string& part) {
                 if (part == "row") style.flex_direction = clever::css::FlexDirection::Row;
                 else if (part == "column") style.flex_direction = clever::css::FlexDirection::Column;
@@ -1854,8 +1857,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                 else if (part == "wrap-reverse") style.flex_wrap = clever::css::FlexWrap::WrapReverse;
                 else if (part == "nowrap") style.flex_wrap = clever::css::FlexWrap::NoWrap;
             };
-            apply_part(p1);
-            if (!p2.empty()) apply_part(p2);
+            for (const auto& part : parts) apply_part(part);
         } else if (d.property == "place-items") {
             // Shorthand: place-items: <align-items> [<justify-items>]
             auto parts = split_whitespace(val_lower);
@@ -6638,6 +6640,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     } else {
         style = clever::css::default_style_for_tag(node.tag_name);
     }
+    // CSS custom properties are inherited by default. Seed this element's map
+    // from the parent style, while preserving any properties resolved on self.
+    for (const auto& [name, custom_value] : parent_style.custom_properties) {
+        style.custom_properties.try_emplace(name, custom_value);
+    }
 
     // Apply inline style (highest priority, overrides cascade)
     std::string style_attr = get_attr(node, "style");
@@ -7168,7 +7175,13 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (style.height.unit == clever::css::Length::Unit::Calc ||
             style.height.unit == clever::css::Length::Unit::Percent) {
             layout_node->css_height = style.height;
-            layout_node->specified_height = style.height.to_px(fs);
+            if (tag_lower == "html" || tag_lower == "body") {
+                // Root-level percentage heights must resolve against the viewport.
+                layout_node->specified_height = style.height.to_px(clever::css::Length::s_viewport_h);
+            } else {
+                // Defer percent/calc height resolution until containing block height is definite.
+                layout_node->specified_height = -1.0f;
+            }
         } else if (style.height.unit == clever::css::Length::Unit::Em ||
                    style.height.unit == clever::css::Length::Unit::Ch ||
                    style.height.unit == clever::css::Length::Unit::Lh) {
@@ -11136,11 +11149,38 @@ static bool evaluate_media_feature(const std::string& expr, int vw, int vh) {
 // "(min-height: Npx)", "(max-height: Npx)", "(prefers-color-scheme: dark/light)",
 // and combinations with "and", "not", "only".
 bool evaluate_media_query(const std::string& condition, int vw, int vh) {
-    if (condition.empty() || condition == "all" || condition == "screen") {
-        return true;
-    }
-
     std::string lower_cond = to_lower(condition);
+    while (!lower_cond.empty() && std::isspace(static_cast<unsigned char>(lower_cond.front()))) {
+        lower_cond.erase(lower_cond.begin());
+    }
+    while (!lower_cond.empty() && std::isspace(static_cast<unsigned char>(lower_cond.back()))) {
+        lower_cond.pop_back();
+    }
+    if (lower_cond.empty() || lower_cond == "all" || lower_cond == "screen") return true;
+
+    // Comma-separated media query list uses OR semantics.
+    // Example: "@media (max-width: 600px), (min-width: 1000px)"
+    {
+        int depth = 0;
+        size_t start = 0;
+        bool has_comma = false;
+        for (size_t i = 0; i < lower_cond.size(); ++i) {
+            if (lower_cond[i] == '(') {
+                ++depth;
+            } else if (lower_cond[i] == ')') {
+                if (depth > 0) --depth;
+            } else if (lower_cond[i] == ',' && depth == 0) {
+                has_comma = true;
+                if (evaluate_media_query(lower_cond.substr(start, i - start), vw, vh)) {
+                    return true;
+                }
+                start = i + 1;
+            }
+        }
+        if (has_comma) {
+            return evaluate_media_query(lower_cond.substr(start), vw, vh);
+        }
+    }
 
     // Reject "print" media type
     if (lower_cond == "print") {
@@ -12184,7 +12224,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             "nav, aside, section, article, main, header, footer, search, menu, "
             "address, hr, noscript, center, dialog, hgroup "
             "{ display: block; }"
-            "body { margin: 8px; }"
+            "html { display: block; }"
+            "body { display: block; margin: 8px; }"
             "h1 { margin-top: 21px; margin-bottom: 21px; }"
             "h2 { margin-top: 19px; margin-bottom: 19px; }"
             "h3 { margin-top: 18px; margin-bottom: 18px; }"

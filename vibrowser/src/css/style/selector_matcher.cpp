@@ -239,57 +239,78 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             return element.id == simple.value;
 
         case SimpleSelectorType::Attribute: {
-            // Find the attribute in the element
             const std::string& attr_name = simple.attr_name.empty() ? simple.value : simple.attr_name;
+            if (attr_name.empty()) return false;
 
+            const std::string* attr_value = nullptr;
             for (const auto& [name, val] : element.attributes) {
-                if (name != attr_name) continue;
+                if (name.size() != attr_name.size()) continue;
+                bool same_name = true;
+                for (size_t i = 0; i < name.size(); ++i) {
+                    const unsigned char lhs = static_cast<unsigned char>(name[i]);
+                    const unsigned char rhs = static_cast<unsigned char>(attr_name[i]);
+                    if (std::tolower(lhs) != std::tolower(rhs)) {
+                        same_name = false;
+                        break;
+                    }
+                }
+                if (!same_name) continue;
+                attr_value = &val;
+                break;
+            }
+            if (!attr_value) return false;
 
-                switch (simple.attr_match) {
-                    case AttributeMatch::Exists:
-                        return true;
-                    case AttributeMatch::Exact:
-                        return val == simple.attr_value;
-                    case AttributeMatch::Includes: {
-                        // Space-separated list contains the value
-                        std::string token;
-                        for (size_t j = 0; j <= val.size(); ++j) {
-                            if (j == val.size() || val[j] == ' ') {
-                                if (token == simple.attr_value) return true;
-                                token.clear();
-                            } else {
-                                token += val[j];
-                            }
+            const std::string& val = *attr_value;
+            switch (simple.attr_match) {
+                case AttributeMatch::Exists:
+                    return true;
+                case AttributeMatch::Exact:
+                    return val == simple.attr_value;
+                case AttributeMatch::Includes: {
+                    // Whitespace-separated token list contains the value.
+                    if (simple.attr_value.empty()) return false;
+                    size_t i = 0;
+                    while (i < val.size()) {
+                        while (i < val.size() &&
+                               std::isspace(static_cast<unsigned char>(val[i]))) {
+                            ++i;
                         }
+                        const size_t start = i;
+                        while (i < val.size() &&
+                               !std::isspace(static_cast<unsigned char>(val[i]))) {
+                            ++i;
+                        }
+                        const size_t len = i - start;
+                        if (len == simple.attr_value.size() &&
+                            val.compare(start, len, simple.attr_value) == 0) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                case AttributeMatch::DashMatch:
+                    if (simple.attr_value.empty()) return false;
+                    return val == simple.attr_value ||
+                           (val.length() > simple.attr_value.length() &&
+                            val.compare(0, simple.attr_value.length(), simple.attr_value) == 0 &&
+                            val[simple.attr_value.length()] == '-');
+                case AttributeMatch::Prefix:
+                    if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
                         return false;
                     }
-                    case AttributeMatch::DashMatch:
-                        return val == simple.attr_value ||
-                               (val.length() > simple.attr_value.length() &&
-                                val.substr(0, simple.attr_value.length()) == simple.attr_value &&
-                                val[simple.attr_value.length()] == '-');
-                    case AttributeMatch::Prefix:
-                        if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
-                            return false;
-                        }
-                        return val.compare(0, simple.attr_value.length(), simple.attr_value) == 0;
-                    case AttributeMatch::Suffix:
-                        if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
-                            return false;
-                        }
-                        return val.compare(
-                                   val.length() - simple.attr_value.length(),
-                                   simple.attr_value.length(),
-                                   simple.attr_value) == 0;
-                    case AttributeMatch::Substring:
-                        if (simple.attr_value.empty()) {
-                            return false;
-                        }
-                        return val.find(simple.attr_value) != std::string::npos;
-                }
+                    return val.compare(0, simple.attr_value.length(), simple.attr_value) == 0;
+                case AttributeMatch::Suffix:
+                    if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
+                        return false;
+                    }
+                    return val.compare(
+                               val.length() - simple.attr_value.length(),
+                               simple.attr_value.length(),
+                               simple.attr_value) == 0;
+                case AttributeMatch::Substring:
+                    if (simple.attr_value.empty()) return false;
+                    return val.find(simple.attr_value) != std::string::npos;
             }
-            // Attribute not found
-            return false;
         }
 
         case SimpleSelectorType::PseudoClass: {
