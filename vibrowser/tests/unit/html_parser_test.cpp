@@ -22497,3 +22497,115 @@ TEST(HtmlParserTest, HtmlV138_8) {
     ASSERT_NE(hr_el, nullptr);
     EXPECT_EQ(hr_el->tag_name, "hr");
 }
+
+// === V139 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV139_1) {
+    // canvas element
+    auto doc = clever::html::parse("<html><body><canvas width=\"300\" height=\"150\"></canvas></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* canvas_el = doc->find_element("canvas");
+    ASSERT_NE(canvas_el, nullptr);
+    EXPECT_EQ(canvas_el->tag_name, "canvas");
+    bool has_width = false;
+    for (const auto& attr : canvas_el->attributes) {
+        if (attr.name == "width" && attr.value == "300") has_width = true;
+    }
+    EXPECT_TRUE(has_width);
+}
+
+TEST(HtmlParserTest, HtmlV139_2) {
+    // audio element
+    auto doc = clever::html::parse("<html><body><audio controls src=\"song.mp3\"></audio></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* audio_el = doc->find_element("audio");
+    ASSERT_NE(audio_el, nullptr);
+    EXPECT_EQ(audio_el->tag_name, "audio");
+    bool has_controls = false;
+    for (const auto& attr : audio_el->attributes) {
+        if (attr.name == "controls") has_controls = true;
+    }
+    EXPECT_TRUE(has_controls);
+}
+
+TEST(HtmlParserTest, HtmlV139_3) {
+    // video element
+    auto doc = clever::html::parse("<html><body><video width=\"640\" height=\"480\"></video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* video_el = doc->find_element("video");
+    ASSERT_NE(video_el, nullptr);
+    EXPECT_EQ(video_el->tag_name, "video");
+    bool has_height = false;
+    for (const auto& attr : video_el->attributes) {
+        if (attr.name == "height" && attr.value == "480") has_height = true;
+    }
+    EXPECT_TRUE(has_height);
+}
+
+TEST(HtmlParserTest, HtmlV139_4) {
+    // source element inside audio
+    auto doc = clever::html::parse("<html><body><audio><source src=\"track.ogg\" type=\"audio/ogg\"></audio></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* source_el = doc->find_element("source");
+    ASSERT_NE(source_el, nullptr);
+    EXPECT_EQ(source_el->tag_name, "source");
+    bool has_type = false;
+    for (const auto& attr : source_el->attributes) {
+        if (attr.name == "type" && attr.value == "audio/ogg") has_type = true;
+    }
+    EXPECT_TRUE(has_type);
+}
+
+TEST(HtmlParserTest, HtmlV139_5) {
+    // thead with tr/th
+    auto doc = clever::html::parse("<html><body><table><thead><tr><th>Header1</th><th>Header2</th></tr></thead></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* thead_el = doc->find_element("thead");
+    ASSERT_NE(thead_el, nullptr);
+    EXPECT_EQ(thead_el->tag_name, "thead");
+
+    auto ths = doc->find_all_elements("th");
+    EXPECT_GE(ths.size(), 2u);
+}
+
+TEST(HtmlParserTest, HtmlV139_6) {
+    // tfoot with tr/td
+    auto doc = clever::html::parse("<html><body><table><tfoot><tr><td>Foot1</td><td>Foot2</td></tr></tfoot></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tfoot_el = doc->find_element("tfoot");
+    ASSERT_NE(tfoot_el, nullptr);
+    EXPECT_EQ(tfoot_el->tag_name, "tfoot");
+
+    auto tds = doc->find_all_elements("td");
+    EXPECT_GE(tds.size(), 2u);
+}
+
+TEST(HtmlParserTest, HtmlV139_7) {
+    // tbody with tr/td
+    auto doc = clever::html::parse("<html><body><table><tbody><tr><td>Row1</td><td>Row2</td></tr></tbody></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tbody_el = doc->find_element("tbody");
+    ASSERT_NE(tbody_el, nullptr);
+    EXPECT_EQ(tbody_el->tag_name, "tbody");
+
+    auto tds = doc->find_all_elements("td");
+    EXPECT_GE(tds.size(), 2u);
+}
+
+TEST(HtmlParserTest, HtmlV139_8) {
+    // caption in table
+    auto doc = clever::html::parse("<html><body><table><caption>My Table</caption><tr><td>Data</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* caption_el = doc->find_element("caption");
+    ASSERT_NE(caption_el, nullptr);
+    EXPECT_EQ(caption_el->tag_name, "caption");
+    EXPECT_NE(caption_el->text_content().find("My Table"), std::string::npos);
+}

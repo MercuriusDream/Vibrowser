@@ -21346,3 +21346,113 @@ TEST(DomElement, ClassListLengthAfterMultipleOpsV138) {
     EXPECT_EQ(elem.class_list().length(), 2u);
     EXPECT_TRUE(elem.class_list().contains("delta"));
 }
+
+// ---------------------------------------------------------------------------
+// V139 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, RemoveMiddleChildPreservesSiblingsV139) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+
+    // Verify initial sibling chain
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+
+    // Remove middle child b
+    auto removed = parent->remove_child(*b_ptr);
+    EXPECT_EQ(removed.get(), b_ptr);
+
+    // Verify a->next==c and c->prev==a
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(parent->last_child(), c_ptr);
+}
+
+TEST(DomElement, SetAttributeEmptyValueV139) {
+    Element elem("input");
+    elem.set_attribute("disabled", "");
+    EXPECT_TRUE(elem.has_attribute("disabled"));
+    auto val = elem.get_attribute("disabled");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "");
+}
+
+TEST(DomDocument, GetElementByIdReturnsNullForUnregisteredV139) {
+    Document doc;
+    // Never register any element with an id
+    Element* result = doc.get_element_by_id("nonexistent-id");
+    EXPECT_EQ(result, nullptr);
+}
+
+TEST(DomEvent, EventTypeStringPreservedV139) {
+    Event ev("custom-event-xyz");
+    EXPECT_EQ(ev.type(), "custom-event-xyz");
+}
+
+TEST(DomNode, AppendToSelfNoInfiniteLoopV139) {
+    // Attempting to append a node to itself should not crash or infinite-loop.
+    // The implementation may silently reject or throw, but must not hang.
+    auto elem = std::make_unique<Element>("div");
+    Element* raw = elem.get();
+
+    // This should not cause an infinite loop
+    raw->append_child(std::move(elem));
+
+    // If we reach here, the test passes (no infinite loop/crash)
+    SUCCEED();
+}
+
+TEST(DomElement, ClassListAddMultipleClassesV139) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    elem.class_list().add("delta");
+    elem.class_list().add("epsilon");
+
+    EXPECT_EQ(elem.class_list().length(), 5u);
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+    EXPECT_TRUE(elem.class_list().contains("delta"));
+    EXPECT_TRUE(elem.class_list().contains("epsilon"));
+}
+
+TEST(DomNode, TextContentOnElementWithNoTextChildrenV139) {
+    auto parent = std::make_unique<Element>("div");
+    auto child1 = std::make_unique<Element>("span");
+    auto child2 = std::make_unique<Element>("p");
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+
+    // Element with only element children (no Text nodes) should have empty text_content
+    EXPECT_EQ(parent->text_content(), "");
+}
+
+TEST(DomElement, GetAttributeAfterOverwriteV139) {
+    Element elem("a");
+    elem.set_attribute("href", "https://first.example.com");
+    elem.set_attribute("href", "https://second.example.com");
+
+    auto val = elem.get_attribute("href");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "https://second.example.com");
+
+    // Should still be only one attribute entry, not two
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}

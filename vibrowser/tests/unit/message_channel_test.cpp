@@ -1373,3 +1373,93 @@ TEST(MessageChannelTest, MessageChannelV138_3_RegisterHandlerBeforeAndAfterSend)
     ch.dispatch(msg);
     EXPECT_EQ(first_handler_count, 2);
 }
+
+// ------------------------------------------------------------------
+// V139: Dispatch with no handlers registered — no crash
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV139_1_DispatchWithNoHandlersNoOp) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    // No handlers registered at all — dispatch should not crash
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 1;
+    msg.payload = {0x01, 0x02, 0x03};
+
+    EXPECT_NO_THROW(ch.dispatch(msg));
+
+    // Try dispatching with multiple different types — still no crash
+    for (uint32_t t = 0; t < 10; ++t) {
+        Message m;
+        m.type = t;
+        m.request_id = t + 100;
+        EXPECT_NO_THROW(ch.dispatch(m));
+    }
+}
+
+// ------------------------------------------------------------------
+// V139: Handler accesses full 50-byte payload
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV139_2_HandlerAccessesFullPayload) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    // Build a 50-byte payload with distinct values
+    std::vector<uint8_t> payload(50);
+    for (size_t i = 0; i < 50; ++i) {
+        payload[i] = static_cast<uint8_t>(i * 5);
+    }
+
+    std::vector<uint8_t> captured_payload;
+    ch.on(7, [&](const Message& m) {
+        captured_payload = m.payload;
+    });
+
+    Message msg;
+    msg.type = 7;
+    msg.request_id = 999;
+    msg.payload = payload;
+    ch.dispatch(msg);
+
+    // Verify the handler received the complete payload
+    ASSERT_EQ(captured_payload.size(), 50u);
+    for (size_t i = 0; i < 50; ++i) {
+        EXPECT_EQ(captured_payload[i], static_cast<uint8_t>(i * 5))
+            << "Payload byte mismatch at index " << i;
+    }
+}
+
+// ------------------------------------------------------------------
+// V139: Send/receive 10 messages in rapid succession
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV139_3_SendReceiveRapidSuccession) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    constexpr int num_messages = 10;
+
+    // Send 10 messages rapidly
+    for (int i = 0; i < num_messages; ++i) {
+        Message msg;
+        msg.type = static_cast<uint32_t>(i + 1);
+        msg.request_id = static_cast<uint32_t>(i * 10);
+        msg.payload = {static_cast<uint8_t>(i), static_cast<uint8_t>(i + 100)};
+        ASSERT_TRUE(sender.send(msg)) << "Failed to send message " << i;
+    }
+
+    // Receive all 10 messages and verify ordering and content
+    for (int i = 0; i < num_messages; ++i) {
+        auto received = receiver.receive();
+        ASSERT_TRUE(received.has_value()) << "Failed to receive message " << i;
+        EXPECT_EQ(received->type, static_cast<uint32_t>(i + 1));
+        EXPECT_EQ(received->request_id, static_cast<uint32_t>(i * 10));
+        ASSERT_EQ(received->payload.size(), 2u);
+        EXPECT_EQ(received->payload[0], static_cast<uint8_t>(i));
+        EXPECT_EQ(received->payload[1], static_cast<uint8_t>(i + 100));
+    }
+}

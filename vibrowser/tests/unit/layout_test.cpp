@@ -26106,3 +26106,147 @@ TEST(LayoutNodeProps, PaddingDefaultZeroV138) {
     EXPECT_FLOAT_EQ(n->geometry.padding.bottom, 0.0f);
     EXPECT_FLOAT_EQ(n->geometry.padding.left, 0.0f);
 }
+
+// === V139 Layout Tests ===
+
+TEST(LayoutEngineTest, LayoutV139_1) {
+    // Flex justify-content flex-end: items pushed to end
+    auto root = make_flex("div");
+    root->justify_content = 1; // 1=flex-end
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 40.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Item should be at right edge: x = 600 - 100 = 500
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 500.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV139_2) {
+    // Block with border adds to total size
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.border.top = 5.0f;
+    root->geometry.border.bottom = 5.0f;
+    root->geometry.border.left = 10.0f;
+    root->geometry.border.right = 10.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // border_box_width = border.left + padding.left + width + padding.right + border.right
+    EXPECT_FLOAT_EQ(root->geometry.border_box_width(), 220.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 110.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV139_3) {
+    // Flex item basis overrides natural size
+    auto root = make_flex("div");
+
+    auto child = make_block("div");
+    child->specified_width = 50.0f;
+    child->specified_height = 40.0f;
+    child->flex_basis = 200.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // flex_basis should override specified_width
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV139_4) {
+    // Nested flex with different directions
+    auto root = make_flex("div"); // row (default flex_direction=0)
+
+    auto inner = make_flex("div");
+    inner->flex_direction = 2; // column
+    inner->specified_width = 300.0f;
+
+    auto inner_child1 = make_block("div");
+    inner_child1->specified_height = 50.0f;
+    auto inner_child2 = make_block("div");
+    inner_child2->specified_height = 70.0f;
+
+    inner->append_child(std::move(inner_child1));
+    inner->append_child(std::move(inner_child2));
+    root->append_child(std::move(inner));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Inner flex column: children stack vertically
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->children[1]->geometry.y, 50.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV139_5) {
+    // Block with percentage height via css_height
+    auto root = make_block("div");
+    root->specified_height = 400.0f;
+
+    auto child = make_block("div");
+    child->css_height = clever::css::Length{50.0f, clever::css::Length::Unit::Percent};
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // 50% of parent height 400 = 200
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 200.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV139_6) {
+    // Flex align-items stretch (default=4) stretches cross-axis
+    auto root = make_flex("div");
+    root->specified_height = 200.0f;
+    // align_items defaults to 4 (stretch)
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    // No specified_height — should stretch to container
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // With stretch, child height should match container height
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 200.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV139_7) {
+    // Block elements stacking vertically with spacing from heights
+    auto root = make_block("div");
+
+    auto child1 = make_block("div");
+    child1->specified_height = 60.0f;
+    auto child2 = make_block("div");
+    child2->specified_height = 40.0f;
+    auto child3 = make_block("div");
+    child3->specified_height = 30.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+    root->append_child(std::move(child3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 60.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 100.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 130.0f);
+}
+
+TEST(LayoutNodeProps, SpecifiedWidthDefaultNegativeV139) {
+    auto n = make_block();
+    // specified_width defaults to -1 (auto)
+    EXPECT_FLOAT_EQ(n->specified_width, -1.0f);
+    EXPECT_FLOAT_EQ(n->specified_height, -1.0f);
+}

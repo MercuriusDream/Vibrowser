@@ -25305,3 +25305,41 @@ TEST(CSSStyleTest, CssV138_4_BoxSizingBorderBoxV138) {
     cascade.apply_declaration(style, make_decl("box-sizing", "border-box"), parent);
     EXPECT_EQ(style.box_sizing, BoxSizing::BorderBox);
 }
+
+// === V139 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV139_1_FontStyleItalicV139) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-style", "italic"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+}
+
+TEST(PropertyCascadeTest, TextDecorationUnderlineV139) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-decoration", "underline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+}
+
+TEST(CSSStyleTest, CssV139_3_DisplayInlineBlockV139) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "inline-block"), parent);
+    EXPECT_EQ(style.display, Display::InlineBlock);
+}
+
+TEST(CSSStyleTest, CssV139_4_PositionRelativeV139) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "relative"), parent);
+    EXPECT_EQ(style.position, Position::Relative);
+}

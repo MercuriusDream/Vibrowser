@@ -23704,3 +23704,184 @@ TEST(HttpClient, ConnectionPoolMaxPerHostEnforcedV138) {
     EXPECT_EQ(pool.count("v138other.example.com", 9090), 1u);
     EXPECT_EQ(pool.acquire("v138other.example.com", 9090), 1383);
 }
+
+// ===========================================================================
+// V139 Tests
+// ===========================================================================
+
+// 1. HEAD request serialized correctly
+TEST(HttpClient, RequestSerializeHeadMethodV139) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "v139head.example.com";
+    req.port = 80;
+    req.path = "/status";
+    req.headers.set("Accept", "text/html");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line should use HEAD method
+    EXPECT_NE(result.find("HEAD /status HTTP/1.1\r\n"), std::string::npos);
+    // Host header without port (port 80 omitted)
+    EXPECT_NE(result.find("Host: v139head.example.com\r\n"), std::string::npos);
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Custom headers lowercase
+    EXPECT_NE(result.find("accept: text/html\r\n"), std::string::npos);
+    // Body should be empty for HEAD
+    EXPECT_TRUE(req.body.empty());
+    // Ends with double CRLF
+    EXPECT_NE(result.find("\r\n\r\n"), std::string::npos);
+}
+
+// 2. 401 Unauthorized with WWW-Authenticate header
+TEST(HttpClient, ResponseParse401UnauthorizedV139) {
+    std::string raw =
+        "HTTP/1.1 401 Unauthorized\r\n"
+        "WWW-Authenticate: Bearer realm=\"api\"\r\n"
+        "Content-Length: 12\r\n"
+        "\r\n"
+        "Unauthorized";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 401);
+    EXPECT_EQ(resp->status_text, "Unauthorized");
+    EXPECT_EQ(resp->body_as_string(), "Unauthorized");
+
+    auto www_auth = resp->headers.get("www-authenticate");
+    ASSERT_TRUE(www_auth.has_value());
+    EXPECT_EQ(www_auth.value(), "Bearer realm=\"api\"");
+}
+
+// 3. CookieJar: Path=/a and Path=/b isolated
+TEST(HttpClient, CookieJarSameDomainDifferentPathsV139) {
+    CookieJar jar;
+
+    jar.set_from_header("tokenA=alpha139; Path=/a", "v139paths.example.com");
+    jar.set_from_header("tokenB=beta139; Path=/b", "v139paths.example.com");
+
+    // Request to /a should only see tokenA
+    std::string hdr_a = jar.get_cookie_header("v139paths.example.com", "/a", false);
+    EXPECT_NE(hdr_a.find("tokenA=alpha139"), std::string::npos);
+    EXPECT_EQ(hdr_a.find("tokenB=beta139"), std::string::npos);
+
+    // Request to /b should only see tokenB
+    std::string hdr_b = jar.get_cookie_header("v139paths.example.com", "/b", false);
+    EXPECT_NE(hdr_b.find("tokenB=beta139"), std::string::npos);
+    EXPECT_EQ(hdr_b.find("tokenA=alpha139"), std::string::npos);
+
+    // Request to /c should see neither
+    std::string hdr_c = jar.get_cookie_header("v139paths.example.com", "/c", false);
+    EXPECT_EQ(hdr_c.find("tokenA=alpha139"), std::string::npos);
+    EXPECT_EQ(hdr_c.find("tokenB=beta139"), std::string::npos);
+}
+
+// 4. HeaderMap: set 3, remove 1, verify size 2
+TEST(HttpClient, HeaderMapSizeReflectsOpsV139) {
+    HeaderMap map;
+    EXPECT_EQ(map.size(), 0u);
+
+    map.set("X-V139-A", "val1");
+    map.set("X-V139-B", "val2");
+    map.set("X-V139-C", "val3");
+    EXPECT_EQ(map.size(), 3u);
+
+    map.remove("X-V139-B");
+    EXPECT_EQ(map.size(), 2u);
+
+    // Remaining headers still accessible
+    EXPECT_TRUE(map.get("X-V139-A").has_value());
+    EXPECT_TRUE(map.get("X-V139-C").has_value());
+    // Removed header gone
+    EXPECT_FALSE(map.get("X-V139-B").has_value());
+}
+
+// 5. Request serialize with path containing spaces preserved as-is
+TEST(HttpClient, RequestSerializePathEncodingV139) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v139encode.example.com";
+    req.port = 443;
+    req.path = "/hello world/file name.html";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Path should be preserved as-is in the request line
+    EXPECT_NE(result.find("GET /hello world/file name.html HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 omitted from Host header
+    EXPECT_NE(result.find("Host: v139encode.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: v139encode.example.com:443\r\n"), std::string::npos);
+}
+
+// 6. Response parse with large (10KB) body fully captured
+TEST(HttpClient, ResponseParseLargeBodyV139) {
+    std::string body_10k(10240, 'Q');
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: " + std::to_string(body_10k.size()) + "\r\n"
+        "\r\n" + body_10k;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body.size(), 10240u);
+    EXPECT_EQ(resp->body_as_string(), body_10k);
+    // Verify first and last bytes
+    EXPECT_EQ(resp->body.front(), static_cast<uint8_t>('Q'));
+    EXPECT_EQ(resp->body.back(), static_cast<uint8_t>('Q'));
+}
+
+// 7. CookieJar: set_from_header with empty domain doesn't crash
+TEST(HttpClient, CookieJarSetFromHeaderNoCrashOnEmptyDomainV139) {
+    CookieJar jar;
+
+    // Empty domain should not crash -- just a no-op or handled gracefully
+    EXPECT_NO_THROW(jar.set_from_header("crash=nope139", ""));
+    EXPECT_NO_THROW(jar.set_from_header("another=val139; Path=/", ""));
+
+    // An actual domain should still work after the empty domain calls
+    jar.set_from_header("real=cookie139", "v139real.example.com");
+    std::string hdr = jar.get_cookie_header("v139real.example.com", "/", false);
+    EXPECT_NE(hdr.find("real=cookie139"), std::string::npos);
+}
+
+// 8. ConnectionPool: a.com and b.com pools are independent
+TEST(HttpClient, ConnectionPoolDifferentHostsIndependentV139) {
+    ConnectionPool pool;
+
+    pool.release("v139a.example.com", 80, 1390);
+    pool.release("v139a.example.com", 80, 1391);
+    pool.release("v139b.example.com", 80, 1392);
+
+    // Each host has its own pool
+    EXPECT_EQ(pool.count("v139a.example.com", 80), 2u);
+    EXPECT_EQ(pool.count("v139b.example.com", 80), 1u);
+
+    // Acquiring from a.com doesn't affect b.com
+    int fd_a = pool.acquire("v139a.example.com", 80);
+    EXPECT_NE(fd_a, -1);
+    EXPECT_EQ(pool.count("v139a.example.com", 80), 1u);
+    EXPECT_EQ(pool.count("v139b.example.com", 80), 1u);
+
+    // Acquire from b.com
+    int fd_b = pool.acquire("v139b.example.com", 80);
+    EXPECT_EQ(fd_b, 1392);
+    EXPECT_EQ(pool.count("v139b.example.com", 80), 0u);
+
+    // a.com still has one left
+    EXPECT_EQ(pool.count("v139a.example.com", 80), 1u);
+    int fd_a2 = pool.acquire("v139a.example.com", 80);
+    EXPECT_NE(fd_a2, -1);
+    EXPECT_EQ(pool.count("v139a.example.com", 80), 0u);
+
+    // Both exhausted
+    EXPECT_EQ(pool.acquire("v139a.example.com", 80), -1);
+    EXPECT_EQ(pool.acquire("v139b.example.com", 80), -1);
+}

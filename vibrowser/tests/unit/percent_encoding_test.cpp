@@ -773,3 +773,62 @@ TEST(IsURLCodePoint, ExclamationMarkIsCodePointV138) {
     // Decoding %21 should give back '!'
     EXPECT_EQ(percent_decode("%21"), "!");
 }
+
+// =============================================================================
+// V139 Tests
+// =============================================================================
+
+TEST(PercentEncoding, BackslashEncodedV139) {
+    // Backslash '\' (U+005C) is not an unreserved character and must be encoded
+    EXPECT_EQ(percent_encode("\\"), "%5C");
+    // Backslash within a string should be encoded while safe chars pass through
+    EXPECT_EQ(percent_encode("path\\to\\file"), "path%5Cto%5Cfile");
+    // Multiple consecutive backslashes
+    EXPECT_EQ(percent_encode("\\\\"), "%5C%5C");
+    // Decoding the encoded form should recover the backslash
+    EXPECT_EQ(percent_decode("%5C"), "\\");
+    EXPECT_EQ(percent_decode("%5c"), "\\");
+}
+
+TEST(PercentDecoding, AllHexDigitsValidV139) {
+    // Uppercase hex letters %41 through %5A decode to 'A' through 'Z'
+    EXPECT_EQ(percent_decode("%41"), "A");
+    EXPECT_EQ(percent_decode("%42"), "B");
+    EXPECT_EQ(percent_decode("%43"), "C");
+    EXPECT_EQ(percent_decode("%4D"), "M");
+    EXPECT_EQ(percent_decode("%4E"), "N");
+    EXPECT_EQ(percent_decode("%58"), "X");
+    EXPECT_EQ(percent_decode("%59"), "Y");
+    EXPECT_EQ(percent_decode("%5A"), "Z");
+    // Verify a full sequence of hex-encoded uppercase letters decodes correctly
+    EXPECT_EQ(percent_decode("%48%45%4C%4C%4F"), "HELLO");
+    // Lowercase hex digits are equally valid
+    EXPECT_EQ(percent_decode("%41%42%43"), "ABC");
+    EXPECT_EQ(percent_decode("%61%62%63"), "abc");
+}
+
+TEST(PercentEncoding, DollarSignNotEncodedV139) {
+    // '$' (U+0024) is a sub-delimiter and should NOT be encoded by default
+    EXPECT_EQ(percent_encode("$"), "$");
+    EXPECT_EQ(percent_encode("price=$100"), "price=$100");
+    EXPECT_EQ(percent_encode("$var"), "$var");
+    // Mixed with characters that ARE encoded
+    EXPECT_EQ(percent_encode("$100 USD"), "$100%20USD");
+    // With encode_path_chars=true, '$' SHOULD be encoded
+    EXPECT_EQ(percent_encode("$", true), "%24");
+    // Decoding %24 recovers '$'
+    EXPECT_EQ(percent_decode("%24"), "$");
+}
+
+TEST(IsURLCodePoint, AsteriskIsCodePointV139) {
+    // '*' (U+002A) is a valid URL code point per the WHATWG URL spec
+    EXPECT_TRUE(is_url_code_point('*'));
+    // '*' is a sub-delimiter / path character, so NOT encoded by default
+    EXPECT_EQ(percent_encode("*"), "*");
+    EXPECT_EQ(percent_encode("file*.txt"), "file*.txt");
+    // With encode_path_chars=true, '*' SHOULD be encoded
+    EXPECT_EQ(percent_encode("*", true), "%2A");
+    // Decoding %2A should give back '*'
+    EXPECT_EQ(percent_decode("%2A"), "*");
+    EXPECT_EQ(percent_decode("%2a"), "*");
+}

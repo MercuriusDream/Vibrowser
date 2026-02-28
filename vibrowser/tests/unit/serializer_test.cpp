@@ -20146,3 +20146,63 @@ TEST(SerializerTest, SerializerV138_3_RepeatSameBoolTenTimes) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V139: U8 boundary values (0, 127, 128, 255)
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV139_1_U8BoundaryValues) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(127);
+    s.write_u8(128);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 127u);
+    EXPECT_EQ(d.read_u8(), 128u);
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V139: Long string round-trip (10000 characters)
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV139_2_LongStringRoundTrip) {
+    std::string long_str(10000, 'X');
+    // Make the string non-uniform so it's a meaningful test
+    for (size_t i = 0; i < long_str.size(); ++i) {
+        long_str[i] = static_cast<char>('A' + (i % 26));
+    }
+
+    Serializer s;
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 10000u);
+    EXPECT_EQ(result, long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V139: Bool false then true pattern x4
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV139_3_BoolFalseThenTruePattern) {
+    Serializer s;
+    // Write pattern: false, true, false, true repeated 4 times = 8 bools
+    for (int i = 0; i < 4; ++i) {
+        s.write_bool(false);
+        s.write_bool(true);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_FALSE(d.read_bool()) << "iteration " << i << " first bool should be false";
+        EXPECT_TRUE(d.read_bool()) << "iteration " << i << " second bool should be true";
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

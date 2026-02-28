@@ -35360,3 +35360,103 @@ TEST(JSEngine, JsV138_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "Value is 10 here");
 }
+
+// === V139 JS Engine Tests ===
+
+TEST(JSEngine, JsV139_1) {
+    // WeakSet add/has/delete
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var ws = new WeakSet();
+        var obj = {};
+        ws.add(obj);
+        var r1 = ws.has(obj);
+        ws.delete(obj);
+        var r2 = ws.has(obj);
+        '' + r1 + ',' + r2;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+TEST(JSEngine, JsV139_2) {
+    // String.prototype.split
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var parts = 'a,b,c,d'.split(',');
+        parts.length + ':' + parts[0] + ':' + parts[3];
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4:a:d");
+}
+
+TEST(JSEngine, JsV139_3) {
+    // Array.prototype.sort
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [3, 1, 4, 1, 5];
+        arr.sort(function(a, b) { return a - b; });
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,1,3,4,5");
+}
+
+TEST(JSEngine, JsV139_4) {
+    // Object.assign
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var target = { a: 1 };
+        var source = { b: 2, c: 3 };
+        Object.assign(target, source);
+        target.a + ',' + target.b + ',' + target.c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, JsV139_5) {
+    // Number.toFixed
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var n = 3.14159;
+        n.toFixed(2);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, JsV139_6) {
+    // Array.prototype.indexOf
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        arr.indexOf(30) + ',' + arr.indexOf(99);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,-1");
+}
+
+TEST(JSEngine, JsV139_7) {
+    // String.prototype.replace
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'hello world';
+        s.replace('world', 'browser');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello browser");
+}
+
+TEST(JSEngine, JsV139_8) {
+    // Math.max/min with apply
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var nums = [5, 2, 8, 1, 9];
+        var mx = Math.max.apply(null, nums);
+        var mn = Math.min.apply(null, nums);
+        mx + ',' + mn;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "9,1");
+}

@@ -14455,3 +14455,77 @@ TEST(UrlParserTest, UrlV138_4_LongPathSegments) {
     EXPECT_EQ(result2->query, "format=json");
     EXPECT_EQ(result2->fragment, "top");
 }
+
+// =============================================================================
+// V139 Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV139_1_BlobUrlScheme) {
+    // blob: URLs use the scheme "blob" with the inner URL stored in path
+    auto result = parse("blob:https://example.com/d4c5a7b0-9e1f-4b3a-8c2d-6e7f8a9b0c1d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "blob");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+    // The inner URL including UUID is stored as the path for blob: scheme
+    EXPECT_EQ(result->path, "https://example.com/d4c5a7b0-9e1f-4b3a-8c2d-6e7f8a9b0c1d");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_TRUE(result->username.empty());
+    EXPECT_TRUE(result->password.empty());
+}
+
+TEST(UrlParserTest, UrlV139_2_AboutBlankUrl) {
+    // about:blank is a valid non-special URL with scheme "about" and path "blank"
+    auto result = parse("about:blank");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "about");
+    EXPECT_EQ(result->path, "blank");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    // about:blank has a null origin
+    EXPECT_EQ(result->origin(), "null");
+}
+
+TEST(UrlParserTest, UrlV139_3_HttpsPort443DefaultOmitted) {
+    // HTTPS default port 443 should be omitted from the parsed URL
+    auto result = parse("https://secure.example.com:443/login?user=admin");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    // Default port 443 for https must be normalized to nullopt
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/login");
+    EXPECT_EQ(result->query, "user=admin");
+    // Serialized form must NOT include :443
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized.find(":443"), std::string::npos);
+    EXPECT_EQ(serialized, "https://secure.example.com/login?user=admin");
+}
+
+TEST(UrlParserTest, UrlV139_4_SerializeProducesCanonicalForm) {
+    // Parsing a canonical URL and serializing should produce the exact same string
+    std::string canonical = "https://www.example.org/docs/api?version=3&lang=en#overview";
+    auto result = parse(canonical);
+    ASSERT_TRUE(result.has_value());
+    // Serialize should roundtrip back to the exact canonical form
+    EXPECT_EQ(result->serialize(), canonical);
+
+    // Also verify that parsing with default port and re-serializing strips the port
+    auto result2 = parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result2.has_value());
+    // Port 80 is default for http, so serialize must omit it
+    EXPECT_EQ(result2->serialize(), "http://example.com/index.html");
+
+    // Parse the serialized output again — it should produce identical fields
+    auto result3 = parse(result2->serialize());
+    ASSERT_TRUE(result3.has_value());
+    EXPECT_EQ(result3->scheme, result2->scheme);
+    EXPECT_EQ(result3->host, result2->host);
+    EXPECT_EQ(result3->port, result2->port);
+    EXPECT_EQ(result3->path, result2->path);
+    EXPECT_EQ(result3->serialize(), result2->serialize());
+}

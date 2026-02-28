@@ -1153,3 +1153,40 @@ TEST(MessagePipeTest, MessagePipeV138_2_SendAfterReceiverCloseReturnsFalse) {
     std::vector<uint8_t> data = {0xAA, 0xBB};
     EXPECT_FALSE(a.send(data));
 }
+
+// ------------------------------------------------------------------
+// V139: Receive before send returns nullopt (close sender first)
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV139_1_ReceiveBeforeSendReturnsNullopt) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Close the sender end so that receive on the other end
+    // returns nullopt immediately instead of blocking.
+    a.close();
+
+    auto result = b.receive();
+    EXPECT_FALSE(result.has_value());
+}
+
+// ------------------------------------------------------------------
+// V139: Send max size message (64KB round-trip)
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV139_2_SendMaxSizeMessage) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Create a 64KB message filled with a pattern
+    constexpr size_t msg_size = 64 * 1024;
+    std::vector<uint8_t> big_msg(msg_size);
+    for (size_t i = 0; i < msg_size; ++i) {
+        big_msg[i] = static_cast<uint8_t>(i % 256);
+    }
+
+    ASSERT_TRUE(a.send(big_msg));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), msg_size);
+    EXPECT_EQ(*received, big_msg);
+}

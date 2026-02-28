@@ -10035,3 +10035,61 @@ TEST_F(CSSStylesheetTest, InsetDeclarationV138) {
     }
     EXPECT_TRUE(found) << "inset declaration not found";
 }
+
+// === V139 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, AspectRatioDeclarationV139) {
+    auto ss = parse_stylesheet(".box { aspect-ratio: 16 / 9; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "aspect-ratio") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "16");
+        }
+    }
+    EXPECT_TRUE(found) << "aspect-ratio declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ContainerTypeDeclarationV139) {
+    auto ss = parse_stylesheet(".card { container-type: inline-size; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "container-type") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "inline-size");
+        }
+    }
+    EXPECT_TRUE(found) << "container-type declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ColumnsDeclarationV139) {
+    auto ss = parse_stylesheet(".text { columns: 3 200px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "columns") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "3");
+        }
+    }
+    EXPECT_TRUE(found) << "columns declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, HyphensAutoDeclarationV139) {
+    auto ss = parse_stylesheet("p { hyphens: auto; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "hyphens") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "auto");
+        }
+    }
+    EXPECT_TRUE(found) << "hyphens declaration not found";
+}
