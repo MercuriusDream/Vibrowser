@@ -2330,3 +2330,81 @@ TEST(MessagePipeTest, MessagePipeV158_3_PipePairIndependent) {
     EXPECT_TRUE(a2.is_open());
     EXPECT_TRUE(b2.is_open());
 }
+
+// ------------------------------------------------------------------
+// Round 159 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV159_1_SixteenByteMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int i = 0; i < 10; ++i) {
+        std::vector<uint8_t> data(16, static_cast<uint8_t>(i));
+        ASSERT_TRUE(a.send(data));
+    }
+
+    for (int i = 0; i < 10; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 16u);
+        for (size_t j = 0; j < 16; ++j) {
+            EXPECT_EQ((*received)[j], static_cast<uint8_t>(i));
+        }
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV159_2_InterleaveSmallAndLarge) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int i = 0; i < 6; ++i) {
+        if (i % 2 == 0) {
+            // Small: 100 bytes
+            std::vector<uint8_t> small_msg(100, static_cast<uint8_t>(i));
+            ASSERT_TRUE(a.send(small_msg));
+        } else {
+            // Large: 10240 bytes (10KB)
+            std::vector<uint8_t> large_msg(10240, static_cast<uint8_t>(i));
+            ASSERT_TRUE(a.send(large_msg));
+        }
+    }
+
+    for (int i = 0; i < 6; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        if (i % 2 == 0) {
+            ASSERT_EQ(received->size(), 100u);
+        } else {
+            ASSERT_EQ(received->size(), 10240u);
+        }
+        for (size_t j = 0; j < received->size(); ++j) {
+            EXPECT_EQ((*received)[j], static_cast<uint8_t>(i));
+        }
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV159_3_ReceiveFromClosedSender) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send a few messages before closing
+    std::vector<uint8_t> msg1 = {0x10, 0x20, 0x30};
+    std::vector<uint8_t> msg2 = {0x40, 0x50, 0x60, 0x70};
+    ASSERT_TRUE(a.send(msg1));
+    ASSERT_TRUE(a.send(msg2));
+
+    // Close sender
+    a.close();
+    EXPECT_FALSE(a.is_open());
+
+    // Should still be able to receive buffered messages
+    auto recv1 = b.receive();
+    ASSERT_TRUE(recv1.has_value());
+    EXPECT_EQ(*recv1, msg1);
+
+    auto recv2 = b.receive();
+    ASSERT_TRUE(recv2.has_value());
+    EXPECT_EQ(*recv2, msg2);
+
+    // No more messages — should return nullopt
+    auto recv3 = b.receive();
+    EXPECT_FALSE(recv3.has_value());
+}

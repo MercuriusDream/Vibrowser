@@ -15449,3 +15449,59 @@ TEST(UrlParserTest, UrlV158_4_RelativeDotDotResolution) {
     EXPECT_TRUE(resolved->query.empty());
     EXPECT_TRUE(resolved->fragment.empty());
 }
+
+TEST(UrlParserTest, UrlV159_1_IPv4AddressParsed) {
+    // An IPv4 address with a non-default port should be parsed correctly
+    auto result = parse("http://192.168.0.1:8080/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "192.168.0.1");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080);
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV159_2_SerializeOmitsDefaultHTTPPort) {
+    // When the default port 80 is explicitly given for http, it should
+    // be recognized as the default and NOT stored (port should be nullopt)
+    auto result = parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->port, std::nullopt);
+    // Serialization should omit port 80 for http
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "http://example.com/index.html");
+}
+
+TEST(UrlParserTest, UrlV159_3_EmptyFragmentPreserved) {
+    // A URL ending with '#' but no fragment text should parse with an empty fragment
+    auto result = parse("http://example.com#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    // The fragment should be empty string (present but empty)
+    EXPECT_EQ(result->fragment, "");
+}
+
+TEST(UrlParserTest, UrlV159_4_LongQueryString) {
+    // A very long query string should be preserved in its entirety
+    std::string long_query;
+    for (int i = 0; i < 100; ++i) {
+        if (i > 0) long_query += "&";
+        long_query += "key" + std::to_string(i) + "=val" + std::to_string(i);
+    }
+    std::string url_str = "http://example.com/search?" + long_query;
+    auto result = parse(url_str);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, long_query);
+    EXPECT_TRUE(result->fragment.empty());
+}

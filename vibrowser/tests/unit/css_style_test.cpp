@@ -26162,3 +26162,43 @@ TEST(CSSStyleTest, CssV158_4_TextShadowParsed) {
     EXPECT_EQ(style.text_shadow_color.b, 0);
     EXPECT_EQ(style.text_shadow_color.a, 255);
 }
+
+TEST(PropertyCascadeTest, FontVariantAppliedV159) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_variant, 0);
+    cascade.apply_declaration(style, make_decl("font-variant", "small-caps"), parent);
+    EXPECT_EQ(style.font_variant, 1);
+}
+
+TEST(CSSStyleTest, CssV159_2_LetterSpacingApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.letter_spacing.is_zero());
+    cascade.apply_declaration(style, make_decl("letter-spacing", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(), 2.0f);
+}
+
+TEST(PropertyCascadeTest, DirectionAppliedV159) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.direction, Direction::Ltr);
+    cascade.apply_declaration(style, make_decl("direction", "rtl"), parent);
+    EXPECT_EQ(style.direction, Direction::Rtl);
+}
+
+TEST(CSSStyleTest, CssV159_4_WordSpacingApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.word_spacing.is_zero());
+    cascade.apply_declaration(style, make_decl("word-spacing", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(), 5.0f);
+}

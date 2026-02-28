@@ -27450,3 +27450,198 @@ TEST(HttpClient, CookieJarSubdomainMatchingV158) {
     EXPECT_EQ(parent_cookies.find("local158=subval"), std::string::npos)
         << "Local cookie should NOT be sent to parent domain, got: " << parent_cookies;
 }
+
+// ===========================================================================
+// Round 159 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize with Cache-Control: no-cache header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeCacheControlHeaderV159) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "cache159.example.com";
+    req.port = 443;
+    req.path = "/api/fresh";
+    req.headers.set("Cache-Control", "no-cache");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("GET /api/fresh HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing, got: " << result;
+    // Host without :443
+    EXPECT_NE(result.find("Host: cache159.example.com\r\n"), std::string::npos)
+        << "Host header wrong, got: " << result;
+    // Cache-Control header (custom headers lowercase)
+    EXPECT_NE(result.find("cache-control: no-cache\r\n"), std::string::npos)
+        << "Cache-Control header missing or wrong case, got: " << result;
+    // Connection close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 403 Forbidden
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse403ForbiddenV159) {
+    std::string raw_str =
+        "HTTP/1.1 403 Forbidden\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 17\r\n"
+        "\r\n"
+        "Access denied 159";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 403 response";
+    EXPECT_EQ(resp->status, 403);
+    EXPECT_EQ(resp->status_text, "Forbidden");
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header missing";
+    EXPECT_EQ(ct.value(), "text/plain");
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "Access denied 159")
+        << "Body mismatch, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool acquire returns released fd
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolAcquireSpecificFdV159) {
+    ConnectionPool pool(4);
+    pool.release("fdpool159.example.com", 9090, 159);
+
+    int fd = pool.acquire("fdpool159.example.com", 9090);
+    EXPECT_EQ(fd, 159);
+
+    // Pool is now empty for this host — second acquire returns -1
+    int fd2 = pool.acquire("fdpool159.example.com", 9090);
+    EXPECT_EQ(fd2, -1);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar multiple cookies set from same response (same domain)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarMultipleCookiesSameResponseV159) {
+    CookieJar jar;
+    jar.set_from_header("session159=abc; Path=/", "multi159.example.com");
+    jar.set_from_header("tracking159=xyz; Path=/", "multi159.example.com");
+    jar.set_from_header("pref159=dark; Path=/", "multi159.example.com");
+
+    std::string header = jar.get_cookie_header("multi159.example.com", "/", false);
+
+    EXPECT_NE(header.find("session159=abc"), std::string::npos)
+        << "First cookie should be present, got: " << header;
+    EXPECT_NE(header.find("tracking159=xyz"), std::string::npos)
+        << "Second cookie should be present, got: " << header;
+    EXPECT_NE(header.find("pref159=dark"), std::string::npos)
+        << "Third cookie should be present, got: " << header;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap size tracks adds and removes
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapSizeAfterOperationsV159) {
+    HeaderMap map;
+    EXPECT_EQ(map.size(), 0u);
+
+    map.set("X-First159", "one");
+    map.set("X-Second159", "two");
+    map.append("X-Third159", "three");
+    map.append("X-Third159", "three-b");
+    EXPECT_EQ(map.size(), 4u);
+
+    map.remove("X-First159");
+    EXPECT_EQ(map.size(), 3u);
+
+    map.remove("X-Third159");
+    EXPECT_EQ(map.size(), 1u);
+
+    EXPECT_TRUE(map.has("X-Second159"));
+    EXPECT_EQ(map.get("X-Second159").value(), "two");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize GET with Accept-Encoding header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetWithAcceptEncodingV159) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "encoding159.example.com";
+    req.port = 80;
+    req.path = "/compressed";
+    req.headers.set("Accept-Encoding", "gzip, deflate");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("GET /compressed HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing, got: " << result;
+    // Host without :80
+    EXPECT_NE(result.find("Host: encoding159.example.com\r\n"), std::string::npos)
+        << "Host header wrong, got: " << result;
+    // Accept-Encoding header (custom headers lowercase)
+    EXPECT_NE(result.find("accept-encoding: gzip, deflate\r\n"), std::string::npos)
+        << "Accept-Encoding header missing or wrong case, got: " << result;
+    // Connection close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 200 with Server header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithServerHeaderV159) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Server: ViBrowser/159.0\r\n"
+        "Content-Length: 25\r\n"
+        "\r\n"
+        "<p>Server header v159</p>";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 200 response with Server header";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+
+    auto server = resp->headers.get("Server");
+    ASSERT_TRUE(server.has_value()) << "Server header missing";
+    EXPECT_EQ(server.value(), "ViBrowser/159.0")
+        << "Server header value wrong, got: " << server.value();
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_EQ(ct.value(), "text/html");
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "<p>Server header v159</p>")
+        << "Body mismatch, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar non-matching domain returns nothing
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarNonMatchingDomainNotReturnedV159) {
+    CookieJar jar;
+    jar.set_from_header("secret159=topval; Path=/", "secure159.example.com");
+
+    // Wrong domain should return empty
+    std::string wrong = jar.get_cookie_header("other159.example.com", "/", false);
+    EXPECT_TRUE(wrong.empty())
+        << "Cookie should NOT be returned for non-matching domain, got: " << wrong;
+
+    // Verify the cookie IS available on the correct domain
+    std::string correct = jar.get_cookie_header("secure159.example.com", "/", false);
+    EXPECT_NE(correct.find("secret159=topval"), std::string::npos)
+        << "Cookie should be present on correct domain, got: " << correct;
+}

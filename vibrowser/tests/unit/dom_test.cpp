@@ -23641,3 +23641,121 @@ TEST(DomElement, HasAttributeReturnsFalseForMissingV158) {
     EXPECT_FALSE(elem.has_attribute("style"));
     EXPECT_EQ(elem.attributes().size(), 0u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 159 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. parent() null before append, set after
+TEST(DomNode, AppendChildNullParentBeforeV159) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = child.get();
+
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+    parent->append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), parent.get());
+}
+
+// 2. aria-label and aria-hidden attributes
+TEST(DomElement, AriaAttributeSetAndGetV159) {
+    Element elem("button");
+    elem.set_attribute("aria-label", "Close dialog");
+    elem.set_attribute("aria-hidden", "false");
+
+    auto label = elem.get_attribute("aria-label");
+    ASSERT_TRUE(label.has_value());
+    EXPECT_EQ(label.value(), "Close dialog");
+
+    auto hidden = elem.get_attribute("aria-hidden");
+    ASSERT_TRUE(hidden.has_value());
+    EXPECT_EQ(hidden.value(), "false");
+
+    EXPECT_EQ(elem.attributes().size(), 2u);
+}
+
+// 3. Register 3 ids, lookup each
+TEST(DomDocument, MultipleIdRegistrationsV159) {
+    Document doc;
+    auto e1 = doc.create_element("div");
+    auto e2 = doc.create_element("span");
+    auto e3 = doc.create_element("p");
+    Element* p1 = e1.get();
+    Element* p2 = e2.get();
+    Element* p3 = e3.get();
+
+    e1->set_attribute("id", "header-v159");
+    e2->set_attribute("id", "content-v159");
+    e3->set_attribute("id", "footer-v159");
+
+    doc.register_id("header-v159", p1);
+    doc.register_id("content-v159", p2);
+    doc.register_id("footer-v159", p3);
+
+    doc.append_child(std::move(e1));
+    doc.append_child(std::move(e2));
+    doc.append_child(std::move(e3));
+
+    EXPECT_EQ(doc.get_element_by_id("header-v159"), p1);
+    EXPECT_EQ(doc.get_element_by_id("content-v159"), p2);
+    EXPECT_EQ(doc.get_element_by_id("footer-v159"), p3);
+}
+
+// 4. Event with cancelable=true, verify
+TEST(DomEvent, CancelablePropertyV159) {
+    Event event("submit", /*bubbles=*/false, /*cancelable=*/true);
+    EXPECT_EQ(event.type(), "submit");
+    EXPECT_FALSE(event.bubbles());
+    EXPECT_TRUE(event.cancelable());
+}
+
+// 5. Single child: first_child == last_child
+TEST(DomNode, FirstAndLastChildSameWhenOneChildV159) {
+    auto parent = std::make_unique<Element>("ul");
+    auto child = std::make_unique<Element>("li");
+    Element* child_ptr = child.get();
+
+    parent->append_child(std::move(child));
+    EXPECT_EQ(parent->child_count(), 1u);
+    EXPECT_EQ(parent->first_child(), child_ptr);
+    EXPECT_EQ(parent->last_child(), child_ptr);
+    EXPECT_EQ(parent->first_child(), parent->last_child());
+}
+
+// 6. ClassList add 3, remove 1, length==2
+TEST(DomElement, ClassListRemoveReducesLengthV159) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+
+    elem.class_list().remove("beta");
+    EXPECT_EQ(elem.class_list().length(), 2u);
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_FALSE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+}
+
+// 7. Single child: next/prev sibling null
+TEST(DomNode, SiblingNullWhenSingleChildV159) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = child.get();
+
+    parent->append_child(std::move(child));
+    EXPECT_EQ(child_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(child_ptr->previous_sibling(), nullptr);
+}
+
+// 8. Boolean attribute (empty value)
+TEST(DomElement, BooleanAttributeV159) {
+    Element elem("input");
+    elem.set_attribute("disabled", "");
+    EXPECT_TRUE(elem.has_attribute("disabled"));
+
+    auto val = elem.get_attribute("disabled");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}

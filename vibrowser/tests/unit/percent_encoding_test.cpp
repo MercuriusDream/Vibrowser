@@ -1514,3 +1514,45 @@ TEST(IsURLCodePoint, EqualsAndQuestionMarkValidV158) {
     // Combined in a query-like string: = preserved, ? encoded
     EXPECT_EQ(percent_encode("key=value?more"), "key=value%3Fmore");
 }
+
+TEST(PercentEncoding, TabEncodedV159) {
+    // Tab character (U+0009) should be percent-encoded as %09
+    std::string tab_str(1, '\t');
+    EXPECT_EQ(percent_encode(tab_str), "%09");
+    // Tab embedded in a string
+    EXPECT_EQ(percent_encode("before\tafter"), "before%09after");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%09"), tab_str);
+}
+
+TEST(PercentDecoding, AllLowercaseHexV159) {
+    // Lowercase hex digits in percent-encoded sequences should decode correctly
+    // %61 = 'a', %62 = 'b', %63 = 'c'
+    EXPECT_EQ(percent_decode("%61%62%63"), "abc");
+    // Mixed lowercase hex with literal characters
+    EXPECT_EQ(percent_decode("x%61y%62z%63"), "xaybzc");
+    // Single lowercase hex decode
+    EXPECT_EQ(percent_decode("%7a"), "z");
+}
+
+TEST(PercentEncoding, NewlineEncodedV159) {
+    // Newline character (U+000A) should be percent-encoded as %0A
+    std::string nl_str(1, '\n');
+    EXPECT_EQ(percent_encode(nl_str), "%0A");
+    // Newline embedded in a string
+    EXPECT_EQ(percent_encode("line1\nline2"), "line1%0Aline2");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%0A"), nl_str);
+}
+
+TEST(IsURLCodePoint, AmpersandAndHashValidV159) {
+    // '&' (U+0026) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('&')));
+    // '#' (U+0023) is NOT treated as a URL code point in this implementation
+    // because it serves as the fragment delimiter
+    EXPECT_FALSE(is_url_code_point(static_cast<char32_t>('#')));
+    // '&' is not percent-encoded by the default encode set
+    EXPECT_EQ(percent_encode("&"), "&");
+    // '#' is percent-encoded as %23
+    EXPECT_EQ(percent_encode("#"), "%23");
+}

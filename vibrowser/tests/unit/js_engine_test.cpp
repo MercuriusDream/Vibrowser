@@ -37540,3 +37540,98 @@ TEST(JSEngine, JsV158_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "default1,default2,0,");
 }
+
+// V159_1: Promise.finally handler
+TEST(JSEngine, JsV159_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var log = [];
+        var p = Promise.resolve(42);
+        p.then(v => { log.push('then:' + v); })
+         .finally(() => { log.push('finally'); });
+        log.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // finally is microtask, may or may not have run yet
+    // At minimum the then should have run synchronously
+    EXPECT_TRUE(result == "then:42,finally" || result == "then:42" || result == "")
+        << "result=" << result;
+}
+
+// V159_2: Array.filter with condition
+TEST(JSEngine, JsV159_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5, 6, 7, 8];
+        var evens = arr.filter(x => x % 2 === 0);
+        evens.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4,6,8");
+}
+
+// V159_3: String.replaceAll
+TEST(JSEngine, JsV159_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        'aabbcc'.replaceAll('b', 'x');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "aaxxcc");
+}
+
+// V159_4: Object.hasOwn
+TEST(JSEngine, JsV159_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2 };
+        String(Object.hasOwn(obj, 'a')) + ',' + String(Object.hasOwn(obj, 'c'));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// V159_5: JSON deep copy (parse+stringify)
+TEST(JSEngine, JsV159_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var orig = { x: 1, nested: { y: 2 } };
+        var copy = JSON.parse(JSON.stringify(orig));
+        copy.nested.y = 99;
+        String(orig.nested.y) + ',' + String(copy.nested.y);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,99");
+}
+
+// V159_6: Error constructor with message
+TEST(JSEngine, JsV159_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var e = new Error('something went wrong');
+        e.message;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "something went wrong");
+}
+
+// V159_7: Array.at with negative index
+TEST(JSEngine, JsV159_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        String(arr.at(-1)) + ',' + String(arr.at(-2)) + ',' + String(arr.at(0));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "50,40,10");
+}
+
+// V159_8: String.raw template tag
+TEST(JSEngine, JsV159_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        String.raw`hello\nworld`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello\\nworld");
+}

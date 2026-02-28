@@ -2512,3 +2512,52 @@ TEST(MessageChannelTest, MessageChannelV158_2_RequestIdPreserved) {
         EXPECT_EQ(received->payload[0], static_cast<uint8_t>(rid & 0xFF));
     }
 }
+
+// ------------------------------------------------------------------
+// Round 159 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV159_1_TypeMaxU32) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel a(std::move(pa));
+    MessageChannel b(std::move(pb));
+
+    Message msg;
+    msg.type = UINT32_MAX;
+    msg.request_id = 1;
+    msg.payload = {0xFF, 0xFE, 0xFD};
+
+    ASSERT_TRUE(a.send(msg));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, UINT32_MAX);
+    EXPECT_EQ(received->request_id, 1u);
+    ASSERT_EQ(received->payload.size(), 3u);
+    EXPECT_EQ(received->payload[0], 0xFF);
+    EXPECT_EQ(received->payload[1], 0xFE);
+    EXPECT_EQ(received->payload[2], 0xFD);
+}
+
+TEST(MessageChannelTest, MessageChannelV159_2_RapidFireSameType) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    uint32_t last_req_id = 0;
+    ch.on(42, [&](const Message& m) {
+        ++call_count;
+        last_req_id = m.request_id;
+    });
+
+    for (int i = 0; i < 100; ++i) {
+        Message msg;
+        msg.type = 42;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {static_cast<uint8_t>(i & 0xFF)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(call_count, 100);
+    EXPECT_EQ(last_req_id, 99u);
+}

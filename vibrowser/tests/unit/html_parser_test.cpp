@@ -25057,3 +25057,144 @@ TEST(HtmlParserTest, HtmlV158_8) {
     ASSERT_NE(th, nullptr);
     EXPECT_EQ(th->text_content(), "Header");
 }
+
+TEST(HtmlParserTest, HtmlV159_1) {
+    // em and strong together
+    auto doc = clever::html::parse(
+        "<html><body><p><em>italic</em> and <strong>bold</strong></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->tag_name, "em");
+    EXPECT_EQ(em->text_content(), "italic");
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->tag_name, "strong");
+    EXPECT_EQ(strong->text_content(), "bold");
+}
+
+TEST(HtmlParserTest, HtmlV159_2) {
+    // code and pre
+    auto doc = clever::html::parse(
+        "<html><body><pre><code>int x = 0;</code></pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->tag_name, "code");
+    EXPECT_EQ(code->text_content(), "int x = 0;");
+}
+
+TEST(HtmlParserTest, HtmlV159_3) {
+    // ul with nested ul
+    auto doc = clever::html::parse(
+        "<html><body><ul><li>Item1<ul><li>Nested1</li></ul></li><li>Item2</li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+
+    auto* li = doc->find_element("li");
+    ASSERT_NE(li, nullptr);
+    EXPECT_EQ(li->tag_name, "li");
+}
+
+TEST(HtmlParserTest, HtmlV159_4) {
+    // ol with nested ol
+    auto doc = clever::html::parse(
+        "<html><body><ol><li>First<ol><li>Nested</li></ol></li><li>Second</li></ol></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    EXPECT_EQ(ol->tag_name, "ol");
+
+    auto* li = doc->find_element("li");
+    ASSERT_NE(li, nullptr);
+    EXPECT_EQ(li->tag_name, "li");
+}
+
+TEST(HtmlParserTest, HtmlV159_5) {
+    // div with data attributes
+    auto doc = clever::html::parse(
+        "<html><body><div data-id=\"42\" data-type=\"info\">Content</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(div->text_content(), "Content");
+
+    std::string data_id, data_type;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "data-id") data_id = attr.value;
+        if (attr.name == "data-type") data_type = attr.value;
+    }
+    EXPECT_EQ(data_id, "42");
+    EXPECT_EQ(data_type, "info");
+}
+
+TEST(HtmlParserTest, HtmlV159_6) {
+    // span with multiple classes
+    auto doc = clever::html::parse(
+        "<html><body><span class=\"red bold large\">Styled</span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "Styled");
+
+    std::string class_val;
+    for (const auto& attr : span->attributes) {
+        if (attr.name == "class") class_val = attr.value;
+    }
+    EXPECT_EQ(class_val, "red bold large");
+}
+
+TEST(HtmlParserTest, HtmlV159_7) {
+    // a with mailto href
+    auto doc = clever::html::parse(
+        "<html><body><a href=\"mailto:test@example.com\">Email</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    EXPECT_EQ(a->text_content(), "Email");
+
+    std::string href_val;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "href") href_val = attr.value;
+    }
+    EXPECT_EQ(href_val, "mailto:test@example.com");
+}
+
+TEST(HtmlParserTest, HtmlV159_8) {
+    // img with width and height
+    auto doc = clever::html::parse(
+        "<html><body><img src=\"photo.jpg\" width=\"640\" height=\"480\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_TRUE(img->children.empty());
+
+    std::string src_val, width_val, height_val;
+    for (const auto& attr : img->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+        if (attr.name == "width") width_val = attr.value;
+        if (attr.name == "height") height_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "photo.jpg");
+    EXPECT_EQ(width_val, "640");
+    EXPECT_EQ(height_val, "480");
+}

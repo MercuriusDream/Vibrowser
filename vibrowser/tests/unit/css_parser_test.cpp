@@ -11177,3 +11177,59 @@ TEST_F(CSSStylesheetTest, ResizeHorizontalDeclarationV158) {
     }
     EXPECT_TRUE(found) << "resize declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, FontVariantSmallCapsDeclarationV159) {
+    auto ss = parse_stylesheet("p { font-variant: small-caps; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "font-variant") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "small-caps");
+        }
+    }
+    EXPECT_TRUE(found) << "font-variant declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TextJustifyInterWordDeclarationV159) {
+    auto ss = parse_stylesheet("p { text-justify: inter-word; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-justify") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "inter-word");
+        }
+    }
+    EXPECT_TRUE(found) << "text-justify declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, UnicodeBidiDeclarationV159) {
+    auto ss = parse_stylesheet("span { unicode-bidi: embed; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "unicode-bidi") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "embed");
+        }
+    }
+    EXPECT_TRUE(found) << "unicode-bidi declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, DirectionRtlDeclarationV159) {
+    auto ss = parse_stylesheet("div { direction: rtl; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "direction") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "rtl");
+        }
+    }
+    EXPECT_TRUE(found) << "direction declaration not found";
+}

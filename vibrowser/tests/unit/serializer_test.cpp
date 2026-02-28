@@ -21229,3 +21229,64 @@ TEST(SerializerTest, SerializerV158_3_BytesThenU64ThenBool) {
     EXPECT_FALSE(d.read_bool());
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 159 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV159_1_I32ZeroAndOneRoundTrip) {
+    Serializer s;
+    s.write_i32(0);
+    s.write_i32(1);
+    s.write_i32(0);
+    s.write_i32(1);
+    s.write_i32(0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_EQ(d.read_i32(), 1);
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_EQ(d.read_i32(), 1);
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV159_2_MultipleEmptyStringsAndBools) {
+    Serializer s;
+    for (int i = 0; i < 5; ++i) {
+        s.write_string("");
+    }
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(d.read_string(), "");
+    }
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV159_3_Bytes2048RoundTrip) {
+    Serializer s;
+    std::vector<uint8_t> buf(2048);
+    for (size_t i = 0; i < buf.size(); ++i) {
+        buf[i] = static_cast<uint8_t>(i % 256);
+    }
+    s.write_bytes(buf.data(), buf.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 2048u);
+    for (size_t i = 0; i < result.size(); ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i % 256));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

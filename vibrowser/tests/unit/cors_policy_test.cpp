@@ -12777,3 +12777,54 @@ TEST(CORSPolicyTest, CorsV158_8_ACAOEmptyStringRejectsAll) {
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       headers, false));
 }
+
+// ---------------------------------------------------------------------------
+// Round 159 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. localhost different ports are cross-origin
+TEST(CORSPolicyTest, CorsV159_1_LocalhostDifferentPortCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://localhost:3000", "http://localhost:4000/api"));
+}
+
+// 2. Same origin HTTPS both default port
+TEST(CORSPolicyTest, CorsV159_2_SameOriginHTTPSBothDefaultPort) {
+    EXPECT_FALSE(is_cross_origin("https://secure.example.com", "https://secure.example.com/path"));
+}
+
+// 3. ACAO with trailing whitespace rejects
+TEST(CORSPolicyTest, CorsV159_3_ACAOWithTrailingWhitespaceRejects) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example ");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// 4. Cross-origin: different subdomains same base domain
+TEST(CORSPolicyTest, CorsV159_4_CrossOriginDifferentSubdomains) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/data"));
+}
+
+// 5. file: scheme is not CORS eligible
+TEST(CORSPolicyTest, CorsV159_5_FileSchemeNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///home/user/page.html"));
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///C:/Users/test.html"));
+}
+
+// 6. Same origin case-insensitive host match
+TEST(CORSPolicyTest, CorsV159_6_SameOriginCasInsensitiveHost) {
+    EXPECT_FALSE(is_cross_origin("https://Example.COM", "https://example.com/page"));
+}
+
+// 7. Same non-standard port is same origin
+TEST(CORSPolicyTest, CorsV159_7_NonStandardPortNotDefaultSameOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://app.example:8443", "https://app.example:8443/api"));
+}
+
+// 8. ACAO must match full origin string
+TEST(CORSPolicyTest, CorsV159_8_ACAOMatchPreservesFullOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example:8443");
+    EXPECT_TRUE(cors_allows_response("https://app.example:8443", "https://api.example/data",
+                                     headers, false));
+}
