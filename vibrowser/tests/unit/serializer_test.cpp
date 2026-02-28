@@ -17036,3 +17036,122 @@ TEST(SerializerTest, RoundTripMixedTypesStressV113) {
     EXPECT_EQ(d.read_u8(), uint8_t{255});
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V114 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, WriteU64MaxAndMinV114) {
+    Serializer s;
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+    s.write_u64(std::numeric_limits<uint64_t>::min());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(d.read_u64(), uint64_t{0});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripAlternatingTypesV114) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_u8(42);
+    s.write_bool(false);
+    s.write_u16(9999);
+    s.write_bool(true);
+    s.write_u32(123456u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_u8(), uint8_t{42});
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_u16(), uint16_t{9999});
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_u32(), uint32_t{123456u});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesBinaryPatternV114) {
+    // Write bytes containing all possible single-byte values 0x00..0xFF
+    std::vector<uint8_t> all_bytes(256);
+    std::iota(all_bytes.begin(), all_bytes.end(), uint8_t{0});
+
+    Serializer s;
+    s.write_bytes(all_bytes.data(), all_bytes.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), size_t{256});
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleStringsBackToBackV114) {
+    Serializer s;
+    s.write_string("");
+    s.write_string("a");
+    s.write_string("ab");
+    s.write_string("abc");
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "a");
+    EXPECT_EQ(d.read_string(), "ab");
+    EXPECT_EQ(d.read_string(), "abc");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SubnormalAndTinyV114) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::denorm_min());
+    s.write_f64(std::numeric_limits<double>::min());
+    s.write_f64(std::numeric_limits<double>::epsilon());
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::denorm_min());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::epsilon());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DataVectorGrowsCorrectlyV114) {
+    Serializer s;
+    // Empty serializer should have empty data
+    EXPECT_TRUE(s.data().empty());
+
+    s.write_u8(0xAB);
+    // After writing 1 byte, data should have at least 1 byte
+    EXPECT_GE(s.data().size(), size_t{1});
+
+    s.write_u32(0x12345678u);
+    // After writing u8 + u32, should have at least 5 bytes
+    EXPECT_GE(s.data().size(), size_t{5});
+
+    s.write_string("hello");
+    // String adds 4 bytes length prefix + 5 chars = 9 more bytes, total >= 14
+    EXPECT_GE(s.data().size(), size_t{14});
+}
+
+TEST(SerializerTest, DeserializerUnderflowOnPartialU32V114) {
+    // Manually create a buffer with only 2 bytes - not enough for u32
+    std::vector<uint8_t> short_buf = {0x01, 0x02};
+    Deserializer d(short_buf);
+    EXPECT_THROW(d.read_u32(), std::exception);
+}
+
+TEST(SerializerTest, WriteBoolSequenceAllTrueV114) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_bool(true);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_bool(), true);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

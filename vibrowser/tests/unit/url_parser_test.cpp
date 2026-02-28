@@ -12498,3 +12498,91 @@ TEST(UrlParserTest, DoubleEncodesPercentInFragmentV113) {
     // Double-encodes: %20 becomes %2520 in fragment
     EXPECT_EQ(result->fragment, "section%2520two");
 }
+
+TEST(UrlParserTest, UserinfoWithColonButEmptyPasswordV114) {
+    auto result = parse("http://admin:@example.com/panel");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_TRUE(result->password.empty());
+    EXPECT_EQ(result->path, "/panel");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, HttpsNonDefaultPort4443PreservedV114) {
+    auto result = parse("https://secure.example.com:4443/api/v2/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, 4443);
+    EXPECT_EQ(result->path, "/api/v2/resource");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentEncodedAmpersandInQueryV114) {
+    auto result = parse("https://example.com/search?q=a%26b");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    // Double-encodes: %26 becomes %2526
+    EXPECT_EQ(result->query, "q=a%2526b");
+}
+
+TEST(UrlParserTest, FtpSchemeWithCredentialsAndNonDefaultPortV114) {
+    auto result = parse("ftp://anonymous:guest@ftp.mirror.org:2121/pub/archive.tar.gz");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "ftp.mirror.org");
+    EXPECT_EQ(result->username, "anonymous");
+    EXPECT_EQ(result->password, "guest");
+    EXPECT_EQ(result->port, 2121);
+    EXPECT_EQ(result->path, "/pub/archive.tar.gz");
+}
+
+TEST(UrlParserTest, SerializeRoundTripWithCredentialsAndFragmentV114) {
+    auto result = parse("http://user:pass@example.com:3000/app?mode=debug#footer");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->port, 3000);
+    EXPECT_EQ(result->query, "mode=debug");
+    EXPECT_EQ(result->fragment, "footer");
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find("user:pass@"), std::string::npos);
+    EXPECT_NE(serialized.find(":3000"), std::string::npos);
+    EXPECT_NE(serialized.find("#footer"), std::string::npos);
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentEncodedHashInPathV114) {
+    auto result = parse("https://example.com/dir%23name/file");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // Double-encodes: %23 becomes %2523
+    EXPECT_EQ(result->path, "/dir%2523name/file");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, HttpDefaultPort80OmittedWithCredentialsV114) {
+    auto result = parse("http://deploy:secret@build.example.com:80/ci/status");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "build.example.com");
+    EXPECT_EQ(result->username, "deploy");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/ci/status");
+}
+
+TEST(UrlParserTest, SchemeOnlyBareHostNormalizesToLowercaseV114) {
+    auto result = parse("HTTPS://WWW.EXAMPLE.COM/Path/TO/Resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "www.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    // Path case is preserved
+    EXPECT_EQ(result->path, "/Path/TO/Resource");
+}

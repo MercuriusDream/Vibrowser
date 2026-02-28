@@ -17523,3 +17523,133 @@ TEST(DomTest, DirtyFlagsMarkAndClearV113) {
     el.clear_dirty();
     EXPECT_EQ(el.dirty_flags(), DirtyFlags::None);
 }
+
+// ---------------------------------------------------------------------------
+// V114 tests
+// ---------------------------------------------------------------------------
+
+// 1. insert_before with nullptr reference appends to end (like append_child)
+TEST(DomTest, InsertBeforeNullRefAppendsV114) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    Node* raw_a = a.get();
+    Node* raw_b = b.get();
+    parent.append_child(std::move(a));
+    parent.insert_before(std::move(b), nullptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), raw_a);
+    EXPECT_EQ(parent.last_child(), raw_b);
+    EXPECT_EQ(raw_a->next_sibling(), raw_b);
+    EXPECT_EQ(raw_b->previous_sibling(), raw_a);
+}
+
+// 2. remove_child updates sibling links correctly in the middle of 3 children
+TEST(DomTest, RemoveMiddleChildFixesSiblingLinksV114) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    Node* raw1 = li1.get();
+    Node* raw3 = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    parent.append_child(std::move(li3));
+    // Remove the middle child
+    auto removed = parent.remove_child(*parent.first_child()->next_sibling());
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(raw1->next_sibling(), raw3);
+    EXPECT_EQ(raw3->previous_sibling(), raw1);
+    EXPECT_EQ(removed->parent(), nullptr);
+}
+
+// 3. Document factory methods produce correct node types
+TEST(DomTest, DocumentFactoryMethodsNodeTypesV114) {
+    Document doc;
+    auto el = doc.create_element("span");
+    auto txt = doc.create_text_node("hello");
+    auto cmt = doc.create_comment("note");
+    EXPECT_EQ(el->node_type(), NodeType::Element);
+    EXPECT_EQ(txt->node_type(), NodeType::Text);
+    EXPECT_EQ(cmt->node_type(), NodeType::Comment);
+    EXPECT_EQ(static_cast<int>(el->node_type()), 0);  // Element = 0 in enum
+    EXPECT_EQ(static_cast<int>(txt->node_type()), 1);  // Text = 1
+    EXPECT_EQ(static_cast<int>(cmt->node_type()), 2);  // Comment = 2
+}
+
+// 4. Element set_attribute("id",...) updates id() shortcut
+TEST(DomTest, SetAttributeIdUpdatesIdShortcutV114) {
+    Element el("div");
+    EXPECT_EQ(el.id(), "");
+    el.set_attribute("id", "main-content");
+    EXPECT_EQ(el.id(), "main-content");
+    el.set_attribute("id", "updated");
+    EXPECT_EQ(el.id(), "updated");
+}
+
+// 5. has_attribute returns true/false, remove_attribute clears it
+TEST(DomTest, HasAttributeAndRemoveAttributeV114) {
+    Element el("input");
+    EXPECT_FALSE(el.has_attribute("type"));
+    el.set_attribute("type", "text");
+    EXPECT_TRUE(el.has_attribute("type"));
+    EXPECT_EQ(el.get_attribute("type").value(), "text");
+    el.remove_attribute("type");
+    EXPECT_FALSE(el.has_attribute("type"));
+    EXPECT_FALSE(el.get_attribute("type").has_value());
+}
+
+// 6. for_each_child iterates in insertion order
+TEST(DomTest, ForEachChildIteratesInsertionOrderV114) {
+    Element parent("ol");
+    parent.append_child(std::make_unique<Element>("first"));
+    parent.append_child(std::make_unique<Element>("second"));
+    parent.append_child(std::make_unique<Element>("third"));
+
+    std::vector<std::string> tags;
+    parent.for_each_child([&](Node& child) {
+        auto* el = static_cast<Element*>(&child);
+        tags.push_back(el->tag_name());
+    });
+
+    ASSERT_EQ(tags.size(), 3u);
+    EXPECT_EQ(tags[0], "first");
+    EXPECT_EQ(tags[1], "second");
+    EXPECT_EQ(tags[2], "third");
+}
+
+// 7. text_content on Element returns concatenated text from nested children
+TEST(DomTest, TextContentRecursiveConcatenationV114) {
+    Element div("div");
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("Hello"));
+    div.append_child(std::move(span));
+    div.append_child(std::make_unique<Text>(" World"));
+
+    EXPECT_EQ(div.text_content(), "Hello World");
+}
+
+// 8. ClassList add/remove/contains/length work independently of set_attribute
+TEST(DomTest, ClassListOperationsIndependentV114) {
+    Element el("div");
+    EXPECT_EQ(el.class_list().length(), 0u);
+    EXPECT_FALSE(el.class_list().contains("active"));
+
+    el.class_list().add("active");
+    el.class_list().add("visible");
+    EXPECT_EQ(el.class_list().length(), 2u);
+    EXPECT_TRUE(el.class_list().contains("active"));
+    EXPECT_TRUE(el.class_list().contains("visible"));
+
+    el.class_list().remove("active");
+    EXPECT_EQ(el.class_list().length(), 1u);
+    EXPECT_FALSE(el.class_list().contains("active"));
+    EXPECT_TRUE(el.class_list().contains("visible"));
+
+    // toggle adds back
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    // toggle removes
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+}

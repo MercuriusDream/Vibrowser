@@ -19321,3 +19321,146 @@ TEST(HeaderMapTest, AppendThenGetReturnsFirstValueV113) {
     auto all_lower = map.get_all("x-custom");
     EXPECT_EQ(all_lower.size(), 3u);
 }
+
+// ===========================================================================
+// V114 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: set overwrites all appended values for the same key
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, SetOverwritesAllAppendedValuesV114) {
+    HeaderMap map;
+    map.append("X-Multi", "one");
+    map.append("X-Multi", "two");
+    map.append("X-Multi", "three");
+    EXPECT_EQ(map.get_all("X-Multi").size(), 3u);
+
+    // set() should replace all entries for that key with a single value
+    map.set("X-Multi", "only");
+    auto all = map.get_all("X-Multi");
+    EXPECT_EQ(all.size(), 1u);
+    EXPECT_EQ(all[0], "only");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request: parse_url extracts query string from URL
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlExtractsQueryStringV114) {
+    Request req;
+    req.url = "https://search.example.com/find?q=hello+world&lang=en";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.path, "/find");
+    EXPECT_EQ(req.query, "q=hello+world&lang=en");
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.port, 443);
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response: parse extracts multi-word status text correctly
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseMultiWordStatusTextV114) {
+    std::string raw =
+        "HTTP/1.1 205 Reset Content\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 205);
+    EXPECT_EQ(resp->status_text, "Reset Content");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request: serialize includes Content-Length for POST with body
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePostIncludesContentLengthV114) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "http://api.example.com/submit";
+    req.parse_url();
+    std::string payload = "{\"key\":\"value\"}";
+    req.body.assign(payload.begin(), payload.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    // Must contain Content-Length matching payload size
+    std::string expected_cl = "content-length: " + std::to_string(payload.size());
+    // Convert serialized to lowercase for custom header comparison
+    std::string serialized_lower = serialized;
+    std::transform(serialized_lower.begin(), serialized_lower.end(),
+                   serialized_lower.begin(), ::tolower);
+    EXPECT_NE(serialized_lower.find(expected_cl), std::string::npos);
+    EXPECT_NE(serialized.find("POST /submit HTTP/1.1"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 5. ConnectionPool: count returns correct number of pooled connections
+// ---------------------------------------------------------------------------
+TEST(ConnectionPoolTest, CountReturnsCorrectNumberV114) {
+    ConnectionPool pool(4);
+    EXPECT_EQ(pool.count("host.example.com", 80), 0u);
+
+    pool.release("host.example.com", 80, 100);
+    EXPECT_EQ(pool.count("host.example.com", 80), 1u);
+
+    pool.release("host.example.com", 80, 101);
+    pool.release("host.example.com", 80, 102);
+    EXPECT_EQ(pool.count("host.example.com", 80), 3u);
+
+    // Acquire one, count should decrease
+    int fd = pool.acquire("host.example.com", 80);
+    EXPECT_GE(fd, 0);
+    EXPECT_EQ(pool.count("host.example.com", 80), 2u);
+}
+
+// ---------------------------------------------------------------------------
+// 6. HeaderMap: remove then has returns false, get returns nullopt
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveAllEntriesThenVerifyAbsenceV114) {
+    HeaderMap map;
+    map.append("Authorization", "Bearer token1");
+    map.append("Authorization", "Bearer token2");
+    EXPECT_TRUE(map.has("Authorization"));
+    EXPECT_EQ(map.get_all("Authorization").size(), 2u);
+
+    map.remove("Authorization");
+    EXPECT_FALSE(map.has("Authorization"));
+    EXPECT_FALSE(map.get("authorization").has_value());
+    EXPECT_EQ(map.get_all("authorization").size(), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response: body_as_string converts binary body to string
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, BodyAsStringFromBinaryDataV114) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    std::string content = "Line1\nLine2\nLine3";
+    resp.body.assign(content.begin(), content.end());
+
+    EXPECT_EQ(resp.body_as_string(), content);
+    EXPECT_EQ(resp.body.size(), content.size());
+}
+
+// ---------------------------------------------------------------------------
+// 8. Request: parse_url with HTTP scheme sets use_tls false and port 80
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpSchemeDefaultsV114) {
+    Request req;
+    req.url = "http://plain.example.com/resource/page";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "plain.example.com");
+    EXPECT_EQ(req.port, 80);
+    EXPECT_EQ(req.path, "/resource/page");
+    EXPECT_FALSE(req.use_tls);
+    EXPECT_TRUE(req.query.empty());
+}

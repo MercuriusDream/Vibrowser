@@ -21049,3 +21049,318 @@ TEST(ComputedStyleTest, FontAndLineHeightV113) {
     s.font_style = FontStyle::Oblique;
     EXPECT_EQ(s.font_style, FontStyle::Oblique);
 }
+
+// ---------------------------------------------------------------------------
+// V114 Tests
+// ---------------------------------------------------------------------------
+
+TEST(ComputedStyleTest, PositionAndOffsetLengthsV114) {
+    ComputedStyle s;
+    // Defaults: static position, auto offsets
+    EXPECT_EQ(s.position, Position::Static);
+    EXPECT_TRUE(s.top.is_auto());
+    EXPECT_TRUE(s.right_pos.is_auto());
+    EXPECT_TRUE(s.bottom.is_auto());
+    EXPECT_TRUE(s.left_pos.is_auto());
+    EXPECT_EQ(s.z_index, 0);
+
+    // Set absolute with specific offsets
+    s.position = Position::Absolute;
+    s.top = Length::px(10.0f);
+    s.right_pos = Length::em(2.0f);
+    s.bottom = Length::percent(50.0f);
+    s.left_pos = Length::rem(3.0f);
+    s.z_index = 99;
+
+    EXPECT_EQ(s.position, Position::Absolute);
+    EXPECT_FLOAT_EQ(s.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(s.right_pos.to_px(16.0f), 32.0f); // 2em * 16px parent
+    EXPECT_FLOAT_EQ(s.bottom.to_px(400.0f), 200.0f); // 50% of 400
+    EXPECT_FLOAT_EQ(s.left_pos.to_px(0, 20.0f), 60.0f); // 3rem * 20px root
+    EXPECT_EQ(s.z_index, 99);
+
+    // Fixed and sticky
+    s.position = Position::Fixed;
+    EXPECT_EQ(s.position, Position::Fixed);
+    s.position = Position::Sticky;
+    EXPECT_EQ(s.position, Position::Sticky);
+    s.position = Position::Relative;
+    EXPECT_EQ(s.position, Position::Relative);
+}
+
+TEST(ComputedStyleTest, TextDecorationBitsAndStylesV114) {
+    ComputedStyle s;
+    // Defaults
+    EXPECT_EQ(s.text_decoration, TextDecoration::None);
+    EXPECT_EQ(s.text_decoration_bits, 0);
+    EXPECT_EQ(s.text_decoration_style, TextDecorationStyle::Solid);
+    EXPECT_FLOAT_EQ(s.text_decoration_thickness, 0);
+
+    // Underline + overline bitmask
+    s.text_decoration_bits = 1 | 2; // underline | overline
+    EXPECT_EQ(s.text_decoration_bits, 3);
+    EXPECT_TRUE(s.text_decoration_bits & 1);
+    EXPECT_TRUE(s.text_decoration_bits & 2);
+    EXPECT_FALSE(s.text_decoration_bits & 4);
+
+    // Line-through added
+    s.text_decoration_bits |= 4;
+    EXPECT_EQ(s.text_decoration_bits, 7);
+
+    // Custom decoration color and style
+    s.text_decoration_color = Color{255, 0, 128, 255};
+    s.text_decoration_style = TextDecorationStyle::Wavy;
+    s.text_decoration_thickness = 2.5f;
+    EXPECT_EQ(s.text_decoration_color.r, 255);
+    EXPECT_EQ(s.text_decoration_color.g, 0);
+    EXPECT_EQ(s.text_decoration_color.b, 128);
+    EXPECT_EQ(s.text_decoration_style, TextDecorationStyle::Wavy);
+    EXPECT_FLOAT_EQ(s.text_decoration_thickness, 2.5f);
+
+    // All decoration styles
+    s.text_decoration_style = TextDecorationStyle::Dashed;
+    EXPECT_EQ(s.text_decoration_style, TextDecorationStyle::Dashed);
+    s.text_decoration_style = TextDecorationStyle::Dotted;
+    EXPECT_EQ(s.text_decoration_style, TextDecorationStyle::Dotted);
+    s.text_decoration_style = TextDecorationStyle::Double;
+    EXPECT_EQ(s.text_decoration_style, TextDecorationStyle::Double);
+}
+
+TEST(ComputedStyleTest, TextShadowEntriesV114) {
+    ComputedStyle s;
+    // Default: no text shadows
+    EXPECT_TRUE(s.text_shadows.empty());
+    EXPECT_FLOAT_EQ(s.text_shadow_offset_x, 0);
+    EXPECT_FLOAT_EQ(s.text_shadow_offset_y, 0);
+    EXPECT_FLOAT_EQ(s.text_shadow_blur, 0);
+
+    // Add a text shadow entry
+    ComputedStyle::TextShadowEntry ts1;
+    ts1.offset_x = 2.0f;
+    ts1.offset_y = 3.0f;
+    ts1.blur = 5.0f;
+    ts1.color = Color{0, 0, 0, 128};
+    s.text_shadows.push_back(ts1);
+
+    // Add a second text shadow (colored glow)
+    ComputedStyle::TextShadowEntry ts2;
+    ts2.offset_x = 0.0f;
+    ts2.offset_y = 0.0f;
+    ts2.blur = 10.0f;
+    ts2.color = Color{0, 128, 255, 200};
+    s.text_shadows.push_back(ts2);
+
+    EXPECT_EQ(s.text_shadows.size(), 2u);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].offset_x, 2.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].offset_y, 3.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].blur, 5.0f);
+    EXPECT_EQ(s.text_shadows[0].color.a, 128);
+    EXPECT_FLOAT_EQ(s.text_shadows[1].blur, 10.0f);
+    EXPECT_EQ(s.text_shadows[1].color.b, 255);
+    EXPECT_EQ(s.text_shadows[1].color.a, 200);
+}
+
+TEST(ComputedStyleTest, TransformVariantsV114) {
+    ComputedStyle s;
+    EXPECT_TRUE(s.transforms.empty());
+
+    // Translate
+    Transform t1;
+    t1.type = TransformType::Translate;
+    t1.x = 50.0f;
+    t1.y = -30.0f;
+    s.transforms.push_back(t1);
+
+    // Rotate
+    Transform t2;
+    t2.type = TransformType::Rotate;
+    t2.angle = 45.0f;
+    s.transforms.push_back(t2);
+
+    // Scale
+    Transform t3;
+    t3.type = TransformType::Scale;
+    t3.x = 1.5f;
+    t3.y = 2.0f;
+    s.transforms.push_back(t3);
+
+    // Skew
+    Transform t4;
+    t4.type = TransformType::Skew;
+    t4.x = 10.0f;
+    t4.y = 20.0f;
+    s.transforms.push_back(t4);
+
+    EXPECT_EQ(s.transforms.size(), 4u);
+    EXPECT_EQ(s.transforms[0].type, TransformType::Translate);
+    EXPECT_FLOAT_EQ(s.transforms[0].x, 50.0f);
+    EXPECT_FLOAT_EQ(s.transforms[0].y, -30.0f);
+    EXPECT_EQ(s.transforms[1].type, TransformType::Rotate);
+    EXPECT_FLOAT_EQ(s.transforms[1].angle, 45.0f);
+    EXPECT_EQ(s.transforms[2].type, TransformType::Scale);
+    EXPECT_FLOAT_EQ(s.transforms[2].x, 1.5f);
+    EXPECT_FLOAT_EQ(s.transforms[2].y, 2.0f);
+    EXPECT_EQ(s.transforms[3].type, TransformType::Skew);
+    EXPECT_FLOAT_EQ(s.transforms[3].x, 10.0f);
+}
+
+TEST(ComputedStyleTest, OutlineAndBorderRadiusV114) {
+    ComputedStyle s;
+    // Outline defaults
+    EXPECT_TRUE(s.outline_width.is_zero());
+    EXPECT_EQ(s.outline_style, BorderStyle::None);
+    EXPECT_EQ(s.outline_color, Color::black());
+    EXPECT_TRUE(s.outline_offset.is_zero());
+
+    // Set outline
+    s.outline_width = Length::px(3.0f);
+    s.outline_style = BorderStyle::Dashed;
+    s.outline_color = Color{255, 100, 0, 255};
+    s.outline_offset = Length::px(5.0f);
+    EXPECT_FLOAT_EQ(s.outline_width.to_px(), 3.0f);
+    EXPECT_EQ(s.outline_style, BorderStyle::Dashed);
+    EXPECT_EQ(s.outline_color.r, 255);
+    EXPECT_EQ(s.outline_color.g, 100);
+    EXPECT_FLOAT_EQ(s.outline_offset.to_px(), 5.0f);
+
+    // Border radius defaults
+    EXPECT_FLOAT_EQ(s.border_radius, 0);
+    EXPECT_FLOAT_EQ(s.border_radius_tl, 0);
+    EXPECT_FLOAT_EQ(s.border_radius_tr, 0);
+    EXPECT_FLOAT_EQ(s.border_radius_bl, 0);
+    EXPECT_FLOAT_EQ(s.border_radius_br, 0);
+
+    // Set individual corner radii
+    s.border_radius_tl = 8.0f;
+    s.border_radius_tr = 12.0f;
+    s.border_radius_bl = 4.0f;
+    s.border_radius_br = 16.0f;
+    EXPECT_FLOAT_EQ(s.border_radius_tl, 8.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_tr, 12.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_bl, 4.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_br, 16.0f);
+}
+
+TEST(ComputedStyleTest, FloatClearTextTransformV114) {
+    ComputedStyle s;
+    // Float defaults
+    EXPECT_EQ(s.float_val, Float::None);
+    EXPECT_EQ(s.clear, Clear::None);
+    EXPECT_EQ(s.text_transform, TextTransform::None);
+    EXPECT_EQ(s.text_align, TextAlign::Left);
+
+    // Float left with clear both
+    s.float_val = Float::Left;
+    s.clear = Clear::Both;
+    EXPECT_EQ(s.float_val, Float::Left);
+    EXPECT_EQ(s.clear, Clear::Both);
+
+    // Float right with clear right
+    s.float_val = Float::Right;
+    s.clear = Clear::Right;
+    EXPECT_EQ(s.float_val, Float::Right);
+    EXPECT_EQ(s.clear, Clear::Right);
+
+    s.clear = Clear::Left;
+    EXPECT_EQ(s.clear, Clear::Left);
+
+    // Text transform variants
+    s.text_transform = TextTransform::Uppercase;
+    EXPECT_EQ(s.text_transform, TextTransform::Uppercase);
+    s.text_transform = TextTransform::Lowercase;
+    EXPECT_EQ(s.text_transform, TextTransform::Lowercase);
+    s.text_transform = TextTransform::Capitalize;
+    EXPECT_EQ(s.text_transform, TextTransform::Capitalize);
+
+    // Text align variants
+    s.text_align = TextAlign::Center;
+    EXPECT_EQ(s.text_align, TextAlign::Center);
+    s.text_align = TextAlign::Right;
+    EXPECT_EQ(s.text_align, TextAlign::Right);
+    s.text_align = TextAlign::Justify;
+    EXPECT_EQ(s.text_align, TextAlign::Justify);
+}
+
+TEST(ComputedStyleTest, MultiColumnLayoutV114) {
+    ComputedStyle s;
+    // Defaults
+    EXPECT_EQ(s.column_count, -1); // auto
+    EXPECT_EQ(s.column_fill, 0);   // balance
+    EXPECT_TRUE(s.column_width.is_auto());
+    EXPECT_FLOAT_EQ(s.column_gap_val.to_px(), 0);
+    EXPECT_FLOAT_EQ(s.column_rule_width, 0);
+    EXPECT_EQ(s.column_rule_style, 0); // none
+    EXPECT_EQ(s.column_span, 0); // none
+
+    // 3 columns with gap and rule
+    s.column_count = 3;
+    s.column_width = Length::px(200.0f);
+    s.column_gap_val = Length::px(20.0f);
+    s.column_rule_width = 1.0f;
+    s.column_rule_color = Color{128, 128, 128, 255};
+    s.column_rule_style = 1; // solid
+    s.column_fill = 1; // auto
+    s.column_span = 1; // all
+
+    EXPECT_EQ(s.column_count, 3);
+    EXPECT_FLOAT_EQ(s.column_width.to_px(), 200.0f);
+    EXPECT_FLOAT_EQ(s.column_gap_val.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(s.column_rule_width, 1.0f);
+    EXPECT_EQ(s.column_rule_color.r, 128);
+    EXPECT_EQ(s.column_rule_color.g, 128);
+    EXPECT_EQ(s.column_rule_color.a, 255);
+    EXPECT_EQ(s.column_rule_style, 1);
+    EXPECT_EQ(s.column_fill, 1);
+    EXPECT_EQ(s.column_span, 1);
+}
+
+TEST(ComputedStyleTest, ScrollAndOverscrollBehaviorV114) {
+    ComputedStyle s;
+    // Scroll behavior defaults
+    EXPECT_EQ(s.scroll_behavior, 0); // auto
+    EXPECT_TRUE(s.scroll_snap_type.empty());
+    EXPECT_TRUE(s.scroll_snap_align.empty());
+    EXPECT_EQ(s.scroll_snap_stop, 0); // normal
+
+    // Overscroll behavior defaults
+    EXPECT_EQ(s.overscroll_behavior, 0); // auto
+    EXPECT_EQ(s.overscroll_behavior_x, 0);
+    EXPECT_EQ(s.overscroll_behavior_y, 0);
+
+    // Scroll margin/padding defaults
+    EXPECT_FLOAT_EQ(s.scroll_margin_top, 0);
+    EXPECT_FLOAT_EQ(s.scroll_margin_right, 0);
+    EXPECT_FLOAT_EQ(s.scroll_margin_bottom, 0);
+    EXPECT_FLOAT_EQ(s.scroll_margin_left, 0);
+    EXPECT_FLOAT_EQ(s.scroll_padding_top, 0);
+    EXPECT_FLOAT_EQ(s.scroll_padding_right, 0);
+
+    // Set smooth scrolling with snap
+    s.scroll_behavior = 1; // smooth
+    s.scroll_snap_type = "y mandatory";
+    s.scroll_snap_align = "start";
+    s.scroll_snap_stop = 1; // always
+
+    EXPECT_EQ(s.scroll_behavior, 1);
+    EXPECT_EQ(s.scroll_snap_type, "y mandatory");
+    EXPECT_EQ(s.scroll_snap_align, "start");
+    EXPECT_EQ(s.scroll_snap_stop, 1);
+
+    // Set overscroll containment
+    s.overscroll_behavior = 1; // contain
+    s.overscroll_behavior_x = 2; // none
+    s.overscroll_behavior_y = 1; // contain
+    EXPECT_EQ(s.overscroll_behavior, 1);
+    EXPECT_EQ(s.overscroll_behavior_x, 2);
+    EXPECT_EQ(s.overscroll_behavior_y, 1);
+
+    // Set scroll margin and padding
+    s.scroll_margin_top = 10.0f;
+    s.scroll_margin_bottom = 20.0f;
+    s.scroll_padding_top = 15.0f;
+    s.scroll_padding_left = 25.0f;
+    EXPECT_FLOAT_EQ(s.scroll_margin_top, 10.0f);
+    EXPECT_FLOAT_EQ(s.scroll_margin_bottom, 20.0f);
+    EXPECT_FLOAT_EQ(s.scroll_padding_top, 15.0f);
+    EXPECT_FLOAT_EQ(s.scroll_padding_left, 25.0f);
+}

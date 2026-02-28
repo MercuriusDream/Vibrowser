@@ -18434,3 +18434,231 @@ TEST(HtmlParser, ArticleWithHeaderTimeFooterV113) {
     ASSERT_NE(small_el, nullptr);
     EXPECT_EQ(small_el->text_content(), "By Author");
 }
+
+// ============================================================================
+// V114 Tests
+// ============================================================================
+
+// 1. Nested fieldset with legend and mixed form controls
+TEST(HtmlParser, NestedFieldsetWithLegendAndControlsV114) {
+    auto doc = clever::html::parse(
+        "<html><body><form>"
+        "<fieldset><legend>Personal</legend>"
+        "<input type=\"text\" name=\"fname\" />"
+        "<fieldset><legend>Address</legend>"
+        "<input type=\"text\" name=\"street\" />"
+        "<input type=\"text\" name=\"city\" />"
+        "</fieldset></fieldset>"
+        "</form></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto fieldsets = doc->find_all_elements("fieldset");
+    ASSERT_EQ(fieldsets.size(), 2u);
+    auto legends = doc->find_all_elements("legend");
+    ASSERT_EQ(legends.size(), 2u);
+    EXPECT_EQ(legends[0]->text_content(), "Personal");
+    EXPECT_EQ(legends[1]->text_content(), "Address");
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 3u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "fname");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "street");
+    EXPECT_EQ(get_attr_v63(inputs[2], "name"), "city");
+    // All inputs are void elements
+    for (auto* inp : inputs) {
+        EXPECT_TRUE(inp->children.empty());
+    }
+}
+
+// 2. Table with colgroup and col elements preserving span attribute
+TEST(HtmlParser, TableWithColgroupColSpanAttributeV114) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<colgroup><col span=\"2\" /><col span=\"1\" /></colgroup>"
+        "<thead><tr><th>A</th><th>B</th><th>C</th></tr></thead>"
+        "<tbody><tr><td>1</td><td>2</td><td>3</td></tr></tbody>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* colgroup = doc->find_element("colgroup");
+    ASSERT_NE(colgroup, nullptr);
+    auto cols = doc->find_all_elements("col");
+    ASSERT_EQ(cols.size(), 2u);
+    EXPECT_EQ(get_attr_v63(cols[0], "span"), "2");
+    EXPECT_EQ(get_attr_v63(cols[1], "span"), "1");
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 3u);
+    EXPECT_EQ(ths[0]->text_content(), "A");
+    EXPECT_EQ(ths[2]->text_content(), "C");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 3u);
+    EXPECT_EQ(tds[1]->text_content(), "2");
+}
+
+// 3. Multiple sibling aside elements with different roles
+TEST(HtmlParser, MultipleSiblingAsidesWithRoleAttributeV114) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<aside role=\"complementary\"><p>Sidebar info</p></aside>"
+        "<aside role=\"note\"><p>Additional note</p></aside>"
+        "<aside role=\"navigation\"><a href=\"/map\">Site map</a></aside>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto asides = doc->find_all_elements("aside");
+    ASSERT_EQ(asides.size(), 3u);
+    EXPECT_EQ(get_attr_v63(asides[0], "role"), "complementary");
+    EXPECT_EQ(get_attr_v63(asides[1], "role"), "note");
+    EXPECT_EQ(get_attr_v63(asides[2], "role"), "navigation");
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 2u);
+    EXPECT_EQ(ps[0]->text_content(), "Sidebar info");
+    EXPECT_EQ(ps[1]->text_content(), "Additional note");
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->text_content(), "Site map");
+    EXPECT_EQ(get_attr_v63(a, "href"), "/map");
+}
+
+// 4. Deeply nested inline elements preserve structure and text
+TEST(HtmlParser, DeeplyNestedInlineChainV114) {
+    auto doc = clever::html::parse(
+        "<html><body><p>"
+        "<em><strong><code><mark>highlighted code</mark></code></strong></em>"
+        "</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->text_content(), "highlighted code");
+    // Verify nesting: em contains strong
+    EXPECT_EQ(em->children.size(), 1u);
+    EXPECT_EQ(em->children[0]->tag_name, "strong");
+    // strong contains code
+    EXPECT_EQ(strong->children.size(), 1u);
+    EXPECT_EQ(strong->children[0]->tag_name, "code");
+    // code contains mark
+    EXPECT_EQ(code->children.size(), 1u);
+    EXPECT_EQ(code->children[0]->tag_name, "mark");
+}
+
+// 5. Picture element with multiple source elements and img fallback
+TEST(HtmlParser, PictureSourcesAndImgFallbackV114) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<picture>"
+        "<source media=\"(min-width: 800px)\" srcset=\"large.webp\" type=\"image/webp\" />"
+        "<source media=\"(min-width: 400px)\" srcset=\"medium.jpg\" type=\"image/jpeg\" />"
+        "<img src=\"small.jpg\" alt=\"Responsive image\" />"
+        "</picture>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* picture = doc->find_element("picture");
+    ASSERT_NE(picture, nullptr);
+    auto sources = doc->find_all_elements("source");
+    ASSERT_EQ(sources.size(), 2u);
+    EXPECT_EQ(get_attr_v63(sources[0], "srcset"), "large.webp");
+    EXPECT_EQ(get_attr_v63(sources[0], "type"), "image/webp");
+    EXPECT_EQ(get_attr_v63(sources[1], "srcset"), "medium.jpg");
+    EXPECT_EQ(get_attr_v63(sources[1], "type"), "image/jpeg");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "small.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Responsive image");
+    EXPECT_TRUE(img->children.empty());
+    // source elements are void
+    for (auto* src : sources) {
+        EXPECT_TRUE(src->children.empty());
+    }
+}
+
+// 6. Ordered list with reversed and start attributes
+TEST(HtmlParser, OrderedListReversedStartAttributesV114) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ol reversed=\"reversed\" start=\"5\">"
+        "<li>Five</li><li>Four</li><li>Three</li>"
+        "</ol>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    EXPECT_EQ(get_attr_v63(ol, "reversed"), "reversed");
+    EXPECT_EQ(get_attr_v63(ol, "start"), "5");
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "Five");
+    EXPECT_EQ(lis[1]->text_content(), "Four");
+    EXPECT_EQ(lis[2]->text_content(), "Three");
+    // Verify parent relationship: lis are children of ol
+    EXPECT_EQ(ol->children.size(), 3u);
+    for (size_t i = 0; i < 3; ++i) {
+        EXPECT_EQ(ol->children[i]->tag_name, "li");
+    }
+}
+
+// 7. Multiple blockquote elements with cite attributes and nested paragraphs
+TEST(HtmlParser, MultipleBlockquotesWithCiteAndParagraphsV114) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<blockquote cite=\"https://example.com/1\">"
+        "<p>First quote paragraph one.</p>"
+        "<p>First quote paragraph two.</p>"
+        "</blockquote>"
+        "<blockquote cite=\"https://example.com/2\">"
+        "<p>Second quote.</p>"
+        "</blockquote>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto bqs = doc->find_all_elements("blockquote");
+    ASSERT_EQ(bqs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(bqs[0], "cite"), "https://example.com/1");
+    EXPECT_EQ(get_attr_v63(bqs[1], "cite"), "https://example.com/2");
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 3u);
+    EXPECT_EQ(ps[0]->text_content(), "First quote paragraph one.");
+    EXPECT_EQ(ps[1]->text_content(), "First quote paragraph two.");
+    EXPECT_EQ(ps[2]->text_content(), "Second quote.");
+    // First blockquote has 2 paragraph children
+    size_t p_count = 0;
+    for (auto& child : bqs[0]->children) {
+        if (child->tag_name == "p") ++p_count;
+    }
+    EXPECT_EQ(p_count, 2u);
+}
+
+// 8. Main, header, footer semantic elements with aria-label attributes
+TEST(HtmlParser, SemanticElementsWithAriaLabelV114) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<header aria-label=\"site header\"><h1>Title</h1></header>"
+        "<main aria-label=\"main content\">"
+        "<section aria-label=\"intro\"><p>Welcome</p></section>"
+        "<section aria-label=\"details\"><p>Info</p></section>"
+        "</main>"
+        "<footer aria-label=\"site footer\"><p>Copyright</p></footer>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    EXPECT_EQ(get_attr_v63(header, "aria-label"), "site header");
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    EXPECT_EQ(get_attr_v63(main_el, "aria-label"), "main content");
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(get_attr_v63(footer, "aria-label"), "site footer");
+    auto sections = doc->find_all_elements("section");
+    ASSERT_EQ(sections.size(), 2u);
+    EXPECT_EQ(get_attr_v63(sections[0], "aria-label"), "intro");
+    EXPECT_EQ(get_attr_v63(sections[1], "aria-label"), "details");
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 3u);
+    EXPECT_EQ(ps[0]->text_content(), "Welcome");
+    EXPECT_EQ(ps[1]->text_content(), "Info");
+    EXPECT_EQ(ps[2]->text_content(), "Copyright");
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Title");
+}

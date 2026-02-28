@@ -30717,3 +30717,209 @@ TEST(JSEngine, WeakMapPrivateDataPattern_V113) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "30|Alice_secret|25|Bob_secret|undefined|true|false|false|true");
 }
+
+// ============================================================================
+// V114 — 8 new JS engine tests
+// ============================================================================
+
+// V114-1. String.raw tagged template literal
+TEST(JsEngineTest, StringRawTaggedTemplateV114) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var path = String.raw`C:\new\test\file`;
+        var interp = String.raw`${1+2} plus ${3+4}`;
+        path + "|" + interp;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, R"(C:\new\test\file|3 plus 7)");
+}
+
+// V114-2. Array.from with mapFn and Set deduplication
+TEST(JsEngineTest, ArrayFromWithMapFnAndSetDedupeV114) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push(Array.from({length: 5}, function(_, i) { return i * i; }).join(","));
+        r.push(Array.from(new Set([3,1,4,1,5,9,2,6,5,3])).sort(function(a,b){return a-b;}).join(","));
+        r.push(Array.from("hello").reverse().join(""));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,4,9,16|1,2,3,4,5,6,9|olleh");
+}
+
+// V114-3. Object.getOwnPropertyDescriptor and defineProperty
+TEST(JsEngineTest, PropertyDescriptorDefineAndInspectV114) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {};
+        Object.defineProperty(obj, "x", {
+            value: 42,
+            writable: false,
+            enumerable: true,
+            configurable: false
+        });
+        var desc = Object.getOwnPropertyDescriptor(obj, "x");
+        var r = [];
+        r.push(desc.value);
+        r.push(desc.writable);
+        r.push(desc.enumerable);
+        r.push(desc.configurable);
+        try { obj.x = 99; } catch(e) { r.push("caught"); }
+        r.push(obj.x);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // In strict mode assignment throws; in sloppy mode it silently fails
+    // QuickJS evaluate is sloppy by default, so obj.x stays 42, no throw
+    EXPECT_TRUE(result == "42|false|true|false|42" || result == "42|false|true|false|caught|42");
+}
+
+// V114-4. Computed property names and Symbol.toPrimitive
+TEST(JsEngineTest, ComputedPropertyNamesAndSymbolToPrimitiveV114) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var prefix = "data";
+        var obj = {
+            [prefix + "_a"]: 1,
+            [prefix + "_b"]: 2,
+            ["method_" + 1]: function() { return 42; }
+        };
+        var r = [];
+        r.push(obj.data_a);
+        r.push(obj.data_b);
+        r.push(obj.method_1());
+        r.push(Object.keys(obj).sort().join(","));
+
+        var custom = {
+            [Symbol.toPrimitive]: function(hint) {
+                if (hint === "number") return 100;
+                if (hint === "string") return "hundred";
+                return true;
+            }
+        };
+        r.push(+custom);
+        r.push(`${custom}`);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|42|data_a,data_b,method_1|100|hundred");
+}
+
+// V114-5. Map iteration order and chaining with forEach
+TEST(JsEngineTest, MapIterationOrderAndForEachV114) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("z", 3);
+        m.set("a", 1);
+        m.set("m", 2);
+        var keys = [];
+        var vals = [];
+        m.forEach(function(v, k) { keys.push(k); vals.push(v); });
+        var entries = [];
+        for (var pair of m.entries()) { entries.push(pair[0] + "=" + pair[1]); }
+        keys.join(",") + "|" + vals.join(",") + "|" + entries.join(",") + "|" + m.size;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "z,a,m|3,1,2|z=3,a=1,m=2|3");
+}
+
+// V114-6. Proxy with get/set/has traps and Reflect
+TEST(JsEngineTest, ProxyGetSetHasTrapsWithReflectV114) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var target = { x: 10, y: 20 };
+        var handler = {
+            get: function(t, prop, recv) {
+                log.push("get:" + prop);
+                return Reflect.get(t, prop, recv);
+            },
+            set: function(t, prop, val, recv) {
+                log.push("set:" + prop + "=" + val);
+                return Reflect.set(t, prop, val, recv);
+            },
+            has: function(t, prop) {
+                log.push("has:" + prop);
+                return Reflect.has(t, prop);
+            }
+        };
+        var p = new Proxy(target, handler);
+        var a = p.x;
+        p.y = 99;
+        var b = ("y" in p);
+        var c = p.y;
+        log.join(",") + "|" + a + "|" + b + "|" + c;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "get:x,set:y=99,has:y,get:y|10|true|99");
+}
+
+// V114-7. Generator with return, throw, and done states
+TEST(JsEngineTest, GeneratorReturnAndDoneStatesV114) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* counter() {
+            var i = 0;
+            while (true) {
+                var reset = yield i;
+                if (reset) { i = 0; } else { i++; }
+            }
+        }
+        var gen = counter();
+        var r = [];
+        r.push(gen.next().value);
+        r.push(gen.next().value);
+        r.push(gen.next().value);
+        r.push(gen.next(true).value);
+        r.push(gen.next().value);
+        var ret = gen.return(42);
+        r.push(ret.value);
+        r.push(ret.done);
+        r.push(String(gen.next().value));
+        r.push(gen.next().done);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0|1|2|0|1|42|true|undefined|true");
+}
+
+// V114-8. Error subclasses and stack-like properties
+TEST(JsEngineTest, ErrorSubclassesAndPropertiesV114) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var e1 = new TypeError("bad type");
+        r.push(e1 instanceof TypeError);
+        r.push(e1 instanceof Error);
+        r.push(e1.name);
+        r.push(e1.message);
+
+        var e2 = new RangeError("out of range");
+        r.push(e2.name);
+        r.push(e2.message);
+
+        var e3 = new URIError("bad uri");
+        r.push(e3.name);
+
+        var e4 = new SyntaxError("parse fail");
+        r.push(e4.name);
+
+        // Custom error subclass via prototype chain
+        function AppError(msg) {
+            this.name = "AppError";
+            this.message = msg;
+        }
+        AppError.prototype = Object.create(Error.prototype);
+        AppError.prototype.constructor = AppError;
+        var e5 = new AppError("app broke");
+        r.push(e5 instanceof Error);
+        r.push(e5.name);
+        r.push(e5.message);
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|TypeError|bad type|RangeError|out of range|URIError|SyntaxError|true|AppError|app broke");
+}
