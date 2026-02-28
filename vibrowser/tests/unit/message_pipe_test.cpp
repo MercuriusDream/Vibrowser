@@ -807,3 +807,32 @@ TEST(MessagePipeTest, MessagePipeV129_2_MoveConstructPreservesState) {
     ASSERT_TRUE(received.has_value());
     EXPECT_EQ(*received, data);
 }
+
+TEST(MessagePipeTest, MessagePipeV130_1_ZeroLengthPayloadRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> empty_data;
+    ASSERT_TRUE(a.send(empty_data));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_TRUE(received->empty());
+}
+
+TEST(MessagePipeTest, MessagePipeV130_2_TwoPairsInterleavedNoContamination) {
+    auto [a1, b1] = MessagePipe::create_pair();
+    auto [a2, b2] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> data1 = {0xAA};
+    std::vector<uint8_t> data2 = {0xBB};
+
+    ASSERT_TRUE(a1.send(data1));
+    ASSERT_TRUE(a2.send(data2));
+
+    auto recv1 = b1.receive();
+    auto recv2 = b2.receive();
+
+    ASSERT_TRUE(recv1.has_value());
+    ASSERT_TRUE(recv2.has_value());
+    EXPECT_EQ(*recv1, data1);
+    EXPECT_EQ(*recv2, data2);
+}

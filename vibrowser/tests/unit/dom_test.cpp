@@ -19893,3 +19893,107 @@ TEST(DomNode, RemoveFirstChildUpdatesFirstChildPointerAndSiblingsV129) {
     EXPECT_EQ(b_raw->next_sibling(), c_raw);
     EXPECT_EQ(parent.child_count(), 2u);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V130 tests
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, InsertBeforeReturnsReferenceToInsertedNodeV130) {
+    Element parent("ul");
+    auto first_li = std::make_unique<Element>("li");
+    Node* first_raw = first_li.get();
+    parent.append_child(std::move(first_li));
+
+    auto second_li = std::make_unique<Element>("li");
+    Node* second_raw = second_li.get();
+    Node& returned = parent.insert_before(std::move(second_li), first_raw);
+
+    EXPECT_EQ(&returned, second_raw);
+    EXPECT_EQ(parent.first_child(), second_raw);
+}
+
+TEST(DomNode, ForEachChildVisitsMixedNodeTypesInOrderV130) {
+    Element parent("div");
+    parent.append_child(std::make_unique<Element>("span"));
+    parent.append_child(std::make_unique<Text>("hello"));
+    parent.append_child(std::make_unique<Comment>("note"));
+
+    std::vector<NodeType> types;
+    parent.for_each_child([&](const Node& child) {
+        types.push_back(child.node_type());
+    });
+
+    ASSERT_EQ(types.size(), 3u);
+    EXPECT_EQ(types[0], NodeType::Element);
+    EXPECT_EQ(types[1], NodeType::Text);
+    EXPECT_EQ(types[2], NodeType::Comment);
+}
+
+TEST(DomNode, RemoveChildReturnsOwnedUniquePointerStillUsableV130) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Element* child_raw = child.get();
+    child_raw->set_attribute("data-id", "42");
+    parent.append_child(std::move(child));
+
+    auto removed = parent.remove_child(*child_raw);
+    ASSERT_NE(removed, nullptr);
+
+    Element* removed_elem = static_cast<Element*>(removed.get());
+    EXPECT_EQ(removed_elem->get_attribute("data-id"), "42");
+    EXPECT_EQ(removed_elem->parent(), nullptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+}
+
+TEST(DomNode, DirtyFlagsTwoFlagComboExcludesThirdV130) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::Style | DirtyFlags::Paint);
+
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+TEST(DomDocument, CreateCommentAppendToTreeExcludedFromTextContentV130) {
+    Document doc;
+    auto div = std::make_unique<Element>("div");
+    Element* div_raw = div.get();
+
+    div_raw->append_child(doc.create_text_node("visible"));
+    div_raw->append_child(doc.create_comment("invisible"));
+
+    EXPECT_EQ(div_raw->text_content(), "visible");
+    EXPECT_EQ(div_raw->child_count(), 2u);
+}
+
+TEST(DomClassList, ToggleOnEmptyListAddsClassAndItemsReflectsV130) {
+    Element elem("div");
+    elem.class_list().toggle("active");
+
+    EXPECT_EQ(elem.class_list().length(), 1u);
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().items().size(), 1u);
+    EXPECT_EQ(elem.class_list().items()[0], "active");
+}
+
+TEST(DomText, SetDataOnAttachedNodeUpdatesParentTextContentV130) {
+    Element parent("p");
+    auto text_node = std::make_unique<Text>("original");
+    Text* text_raw = text_node.get();
+    parent.append_child(std::move(text_node));
+
+    EXPECT_EQ(parent.text_content(), "original");
+
+    text_raw->set_data("modified");
+    EXPECT_EQ(parent.text_content(), "modified");
+}
+
+TEST(DomElement, RemoveIdAttributeClearsIdAccessorToEmptyV130) {
+    Element elem("div");
+    elem.set_attribute("id", "main-content");
+    EXPECT_EQ(elem.id(), "main-content");
+
+    elem.remove_attribute("id");
+    EXPECT_EQ(elem.id(), "");
+    EXPECT_FALSE(elem.has_attribute("id"));
+}

@@ -24694,3 +24694,156 @@ TEST(LayoutNodeProps, AspectRatioDefaultZeroV129) {
     auto n = make_block();
     EXPECT_FLOAT_EQ(n->aspect_ratio, 0.0f);
 }
+
+TEST(LayoutEngineTest, LayoutV130_1) {
+    // border_box flag: engine stores specified_width as geometry.width
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->border_box = true;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // With border_box, geometry.width = specified_width
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_TRUE(root->border_box);
+}
+
+TEST(LayoutEngineTest, LayoutV130_2) {
+    // text_indent preserved through layout
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->text_indent = 32.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->text_indent, 32.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV130_3) {
+    // flex layout places children sequentially in row direction
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 50.0f;
+    c1->specified_height = 30.0f;
+    auto* p1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 50.0f;
+    c2->specified_height = 30.0f;
+    auto* p2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    // Without gap, second child starts right after the first
+    EXPECT_FLOAT_EQ(p1->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.x, 50.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV130_4) {
+    // float_type=1 (left), width stays specified
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->float_type = 1; // left
+    child->specified_width = 120.0f;
+    child->specified_height = 50.0f;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(cp->geometry.width, 120.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV130_5) {
+    // position_type relative with pos_top offset
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 50.0f;
+    child->position_type = 1; // relative
+    child->pos_top = 20.0f;
+    child->pos_top_set = true;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Relative positioning adds pos_top to normal flow y
+    EXPECT_GE(cp->geometry.y, 20.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV130_6) {
+    // row_gap and column_gap fields are stored on the node
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->row_gap = 15.0f;
+    root->column_gap = 20.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 80.0f;
+    c1->specified_height = 40.0f;
+    auto* p1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 80.0f;
+    c2->specified_height = 40.0f;
+    auto* p2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Children placed sequentially; verify widths computed correctly
+    EXPECT_FLOAT_EQ(p1->geometry.width, 80.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.width, 80.0f);
+    // row_gap and column_gap fields are preserved
+    EXPECT_FLOAT_EQ(root->row_gap, 15.0f);
+    EXPECT_FLOAT_EQ(root->column_gap, 20.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV130_7) {
+    // visibility_hidden still takes space
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    child->visibility_hidden = true;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Hidden element still occupies space in layout
+    EXPECT_FLOAT_EQ(cp->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.height, 100.0f);
+}
+
+TEST(LayoutNodeProps, LayoutNodeFieldDefaultsV130) {
+    auto n = make_block();
+    EXPECT_EQ(n->border_box, false);
+    EXPECT_FLOAT_EQ(n->text_indent, 0.0f);
+    EXPECT_EQ(n->float_type, 0);
+}

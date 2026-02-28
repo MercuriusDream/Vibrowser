@@ -21678,3 +21678,93 @@ TEST(HtmlParserTest, HtmlV129_8) {
     ASSERT_NE(tbody, nullptr);
     ASSERT_NE(tfoot, nullptr);
 }
+
+TEST(HtmlParserTest, HtmlV130_1) {
+    auto doc = clever::html::parse("<html><body><details><summary>Click me</summary><p>Hidden content</p></details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(details, nullptr);
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->tag_name, "summary");
+    EXPECT_EQ(summary->text_content(), "Click me");
+}
+
+TEST(HtmlParserTest, HtmlV130_2) {
+    auto doc = clever::html::parse("<html><body><dialog open>Hello dialog</dialog></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+    EXPECT_EQ(dialog->tag_name, "dialog");
+    EXPECT_EQ(get_attr_v63(dialog, "open"), "");
+}
+
+TEST(HtmlParserTest, HtmlV130_3) {
+    auto doc = clever::html::parse("<html><body><template><p>Template content</p></template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tmpl = doc->find_element("template");
+    ASSERT_NE(tmpl, nullptr);
+    EXPECT_EQ(tmpl->tag_name, "template");
+}
+
+TEST(HtmlParserTest, HtmlV130_4) {
+    auto doc = clever::html::parse("<html><body><abbr title='HyperText Markup Language'>HTML</abbr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->tag_name, "abbr");
+    EXPECT_EQ(get_attr_v63(abbr, "title"), "HyperText Markup Language");
+    EXPECT_EQ(abbr->text_content(), "HTML");
+}
+
+TEST(HtmlParserTest, HtmlV130_5) {
+    auto doc = clever::html::parse("<html><body><time datetime='2024-01-15'>January 15</time></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* time_el = doc->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(time_el->tag_name, "time");
+    EXPECT_EQ(get_attr_v63(time_el, "datetime"), "2024-01-15");
+    EXPECT_EQ(time_el->text_content(), "January 15");
+}
+
+TEST(HtmlParserTest, HtmlV130_6) {
+    auto doc = clever::html::parse("<html><body><p>This is <mark>highlighted</mark> text</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->tag_name, "mark");
+    EXPECT_EQ(mark->text_content(), "highlighted");
+}
+
+TEST(HtmlParserTest, HtmlV130_7) {
+    auto doc = clever::html::parse("<html><body><picture><source srcset='large.webp' media='(min-width: 800px)'><img src='small.jpg' alt='Photo'></picture></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* picture = doc->find_element("picture");
+    auto* source = doc->find_element("source");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(picture, nullptr);
+    ASSERT_NE(source, nullptr);
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(source, "srcset"), "large.webp");
+    EXPECT_EQ(get_attr_v63(img, "src"), "small.jpg");
+}
+
+TEST(HtmlParserTest, HtmlV130_8) {
+    auto doc = clever::html::parse("<html><body><input list='colors'><datalist id='colors'><option value='Red'><option value='Blue'></datalist></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* datalist = doc->find_element("datalist");
+    ASSERT_NE(datalist, nullptr);
+    EXPECT_EQ(datalist->tag_name, "datalist");
+    EXPECT_EQ(get_attr_v63(datalist, "id"), "colors");
+
+    auto options = doc->find_all_elements("option");
+    EXPECT_GE(options.size(), 2u);
+}

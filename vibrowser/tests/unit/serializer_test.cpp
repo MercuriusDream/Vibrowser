@@ -19637,3 +19637,65 @@ TEST(SerializerTest, SerializerV129_3_EmptyStringSequenceRoundTrip) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, SerializerV130_1_TakeDataThenDeserializeFromRawPointer) {
+    Serializer s;
+    s.write_u32(0xDEADBEEF);
+    s.write_string("raw_ptr_test");
+    s.write_bool(true);
+    s.write_f64(2.71828);
+
+    std::vector<uint8_t> raw = s.take_data();
+    EXPECT_TRUE(s.data().empty());
+
+    Deserializer d(raw.data(), raw.size());
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_string(), "raw_ptr_test");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.71828);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV130_2_F64BoundaryValuesInfinityDenormalized) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::denorm_min());
+
+    Deserializer d(s.data());
+    double pos_inf = d.read_f64();
+    double neg_inf = d.read_f64();
+    double denorm = d.read_f64();
+
+    EXPECT_TRUE(std::isinf(pos_inf));
+    EXPECT_GT(pos_inf, 0.0);
+    EXPECT_TRUE(std::isinf(neg_inf));
+    EXPECT_LT(neg_inf, 0.0);
+    EXPECT_EQ(denorm, std::numeric_limits<double>::denorm_min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV130_3_RemainingTracksHeterogeneousTypeReads) {
+    Serializer s;
+    s.write_u8(0x42);
+    s.write_u16(0x1234);
+    s.write_u32(0xAABBCCDD);
+    s.write_u64(0x1122334455667788ULL);
+
+    Deserializer d(s.data());
+    size_t total = d.remaining();
+    EXPECT_EQ(total, 1u + 2u + 4u + 8u);
+
+    d.read_u8();
+    EXPECT_EQ(d.remaining(), total - 1u);
+
+    d.read_u16();
+    EXPECT_EQ(d.remaining(), total - 1u - 2u);
+
+    d.read_u32();
+    EXPECT_EQ(d.remaining(), total - 1u - 2u - 4u);
+
+    d.read_u64();
+    EXPECT_EQ(d.remaining(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}

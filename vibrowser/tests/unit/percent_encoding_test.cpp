@@ -360,3 +360,29 @@ TEST(IsURLCodePoint, BoundaryUnicodeCodePointsV129) {
     // U+10FFFE is a noncharacter — should be rejected
     EXPECT_FALSE(is_url_code_point(0x10FFFE));
 }
+
+TEST(IsURLCodePoint, PercentEncodingV130_1_IsUrlCodePointPositiveBoundaryAsciiSafe) {
+    EXPECT_TRUE(is_url_code_point(U'A'));
+    EXPECT_TRUE(is_url_code_point(U'z'));
+    EXPECT_TRUE(is_url_code_point(U'0'));
+    EXPECT_TRUE(is_url_code_point(U'9'));
+    EXPECT_TRUE(is_url_code_point(U'-'));
+    EXPECT_TRUE(is_url_code_point(U'.'));
+    EXPECT_TRUE(is_url_code_point(U'_'));
+    EXPECT_TRUE(is_url_code_point(U'~'));
+}
+
+TEST(PercentDecoding, PercentEncodingV130_2_DecodeAllEncodedStringNoLiterals) {
+    EXPECT_EQ(percent_decode("%48%65%6C%6C%6F"), "Hello");
+}
+
+TEST(PercentDecoding, PercentEncodingV130_3_DecodeAllEncodedHelloWorldV130) {
+    EXPECT_EQ(percent_decode("%48%65%6C%6C%6F%20%57%6F%72%6C%64"), "Hello World");
+}
+
+TEST(IsURLCodePoint, IsUrlCodePointV130_4_NullAndLowAsciiControlCharsRejected) {
+    EXPECT_FALSE(is_url_code_point(0x0000));
+    EXPECT_FALSE(is_url_code_point(0x0007));
+    EXPECT_FALSE(is_url_code_point(0x000A));
+    EXPECT_FALSE(is_url_code_point(0x001F));
+}

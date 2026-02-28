@@ -10427,3 +10427,85 @@ TEST(CORSPolicyTest, CorsV129_8_CorsAllowsResponseExactOriginMatchWithPortV129) 
                                      "https://api.example.com/data",
                                      h2, false));
 }
+
+TEST(CORSPolicyTest, CorsV130_1_CredentialsFalseHeaderBlocksCredentialedRequest) {
+    // ACA-Credentials set to "false" (not "true") → credentialed request blocked
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://app.example.com");
+    h.set("Access-Control-Allow-Credentials", "false");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      h, true));
+
+    // Verify that same setup with "true" would succeed
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://app.example.com");
+    h2.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                     "https://api.example.com/data",
+                                     h2, true));
+}
+
+TEST(CORSPolicyTest, CorsV130_2_NormalizeOriginHeaderSetsNewHeaderForCrossOriginWithoutExisting) {
+    // No pre-existing Origin header, cross-origin → normalize adds Origin
+    clever::net::HeaderMap hdrs;
+    // Verify no Origin header initially
+    EXPECT_FALSE(hdrs.has("Origin"));
+    normalize_outgoing_origin_header(hdrs, "https://app.example.com",
+                                     "https://api.example.com/data");
+    auto val = hdrs.get("Origin");
+    EXPECT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "https://app.example.com");
+}
+
+TEST(CORSPolicyTest, CorsV130_3_EligibilityAcceptsQueryStringWithNonStandardPort) {
+    // URL with query string + non-standard port → eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com:8443/path?key=value&foo=bar"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com:9090/search?q=test"));
+}
+
+TEST(CORSPolicyTest, CorsV130_4_CrossOriginSameHostDifferentExplicitPorts) {
+    // Same host, two different non-standard ports → cross-origin
+    EXPECT_TRUE(is_cross_origin("https://example.com:8080",
+                                "https://example.com:9090/path"));
+    // Same host, same non-standard port → same origin
+    EXPECT_FALSE(is_cross_origin("https://example.com:8080",
+                                 "https://example.com:8080/path"));
+}
+
+TEST(CORSPolicyTest, CorsV130_5_ShouldNotAttachOriginForEmptyDocumentOrigin) {
+    // Empty string origin → should_attach returns false
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
+    // Non-empty origin, cross-origin → should attach
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com",
+                                            "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, CorsV130_6_CorsAllowsResponseNullACAOMatchesNullDocOrigin) {
+    // ACAO "null" matches "null" document origin → allowed (non-credentialed)
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "null");
+    EXPECT_TRUE(cors_allows_response("null",
+                                     "https://api.example.com/data",
+                                     h, false));
+}
+
+TEST(CORSPolicyTest, CorsV130_7_NormalizeSameOriginRemovesExistingOriginHeader) {
+    // Same-origin with pre-existing Origin → removed or cleared
+    clever::net::HeaderMap hdrs;
+    hdrs.set("Origin", "https://example.com");
+    normalize_outgoing_origin_header(hdrs, "https://example.com",
+                                     "https://example.com/api/data");
+    auto val = hdrs.get("Origin");
+    // Same-origin: Origin header should be removed or absent
+    EXPECT_TRUE(!val.has_value() || val.value().empty());
+}
+
+TEST(CORSPolicyTest, CorsV130_8_EligibilityRejectsJavascriptAndMailtoWithPaths) {
+    // javascript: URLs are not eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:void(0)"));
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:alert('xss')"));
+    // mailto: URLs are not eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("mailto:user@host.com"));
+    EXPECT_FALSE(is_cors_eligible_request_url("mailto:admin@example.com?subject=test"));
+}

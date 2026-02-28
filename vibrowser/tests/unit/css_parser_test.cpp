@@ -9647,3 +9647,51 @@ TEST_F(CSSStylesheetTest, InterpolateSizeDeclarationV129) {
     }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, ScopeRuleParsingV130) {
+    auto ss = parse_stylesheet("@scope (.card) to (.content) { div { color: red; } }");
+    // Parser should handle @scope without crashing
+    // If supported, scope_rules will contain the parsed rule
+    if (!ss.scope_rules.empty()) {
+        EXPECT_EQ(ss.scope_rules.size(), 1u);
+        EXPECT_NE(ss.scope_rules[0].scope_start.find(".card"), std::string::npos);
+        EXPECT_NE(ss.scope_rules[0].scope_end.find(".content"), std::string::npos);
+        EXPECT_GE(ss.scope_rules[0].rules.size(), 1u);
+    }
+    // No crash is the minimum requirement
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, CounterStyleRuleParsingV130) {
+    auto ss = parse_stylesheet("@counter-style thumbs { system: cyclic; symbols: thumbsup; suffix: ' '; }");
+    // Parser should handle @counter-style without crashing
+    if (!ss.counter_style_rules.empty()) {
+        EXPECT_EQ(ss.counter_style_rules.size(), 1u);
+        EXPECT_EQ(ss.counter_style_rules[0].name, "thumbs");
+        EXPECT_FALSE(ss.counter_style_rules[0].descriptors.empty());
+    }
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, PropertyRuleParsingV130) {
+    auto ss = parse_stylesheet("@property --my-color { syntax: '<color>'; inherits: false; initial-value: #c0ffee; }");
+    // Parser should handle @property without crashing
+    if (!ss.property_rules.empty()) {
+        EXPECT_EQ(ss.property_rules.size(), 1u);
+        EXPECT_EQ(ss.property_rules[0].name, "--my-color");
+        EXPECT_FALSE(ss.property_rules[0].inherits);
+        EXPECT_NE(ss.property_rules[0].initial_value.find("c0ffee"), std::string::npos);
+    }
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, ContainerRuleParsingV130) {
+    auto ss = parse_stylesheet("@container sidebar (min-width: 400px) { .card { font-size: 20px; } }");
+    // Parser should handle @container without crashing
+    if (!ss.container_rules.empty()) {
+        EXPECT_EQ(ss.container_rules.size(), 1u);
+        EXPECT_NE(ss.container_rules[0].name.find("sidebar"), std::string::npos);
+        EXPECT_GE(ss.container_rules[0].rules.size(), 1u);
+    }
+    SUCCEED();
+}

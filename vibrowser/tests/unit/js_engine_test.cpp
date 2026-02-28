@@ -34537,3 +34537,90 @@ TEST(JSEngine, JsV129_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "test");
 }
+
+TEST(JSEngine, JsV130_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Array.isArray([]);
+        var b = Array.isArray({});
+        var c = Array.isArray("str");
+        String(a) + " " + String(b) + " " + String(c);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true false false");
+}
+
+TEST(JSEngine, JsV130_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        m.set("c", 3);
+        String(m.size) + " " + String(m.get("b")) + " " + String(m.has("d"));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3 2 false");
+}
+
+TEST(JSEngine, JsV130_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        "aabbcc".replaceAll("b", "X");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "aaXXcc");
+}
+
+TEST(JSEngine, JsV130_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Object.hasOwn({a:1}, "a");
+        var b = Object.hasOwn({a:1}, "b");
+        String(a) + " " + String(b);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true false");
+}
+
+TEST(JSEngine, JsV130_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        String(arr.at(0)) + " " + String(arr.at(-1));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10 30");
+}
+
+TEST(JSEngine, JsV130_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var o = {a: {b: 42}};
+        var v1 = o?.a?.b;
+        var v2 = o?.x?.y;
+        String(v1) + " " + String(v2);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42 undefined");
+}
+
+TEST(JSEngine, JsV130_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = null ?? "default";
+        var b = 0 ?? "default";
+        a + " " + String(b);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "default 0");
+}
+
+TEST(JSEngine, JsV130_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        typeof globalThis;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object");
+}

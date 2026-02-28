@@ -24943,3 +24943,41 @@ TEST(CSSStyleTest, CssV129_8_OpacityAndVisibilityCombo) {
     EXPECT_EQ(style.visibility, Visibility::Hidden);
     EXPECT_EQ(style.z_index, 10);
 }
+
+TEST(PropertyCascadeTest, TransitionBehaviorAllowDiscreteV130) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("transition-behavior", "allow-discrete"), parent);
+    EXPECT_EQ(style.transition_behavior, 1);
+}
+
+TEST(PropertyCascadeTest, ScrollbarWidthThinV130) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("scrollbar-width", "thin"), parent);
+    EXPECT_EQ(style.scrollbar_width, 1);
+}
+
+TEST(PropertyCascadeTest, OverflowBlockInlineV130) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow-block", "hidden"), parent);
+    cascade.apply_declaration(style, make_decl("overflow-inline", "scroll"), parent);
+    EXPECT_EQ(style.overflow_block, 1);
+    EXPECT_EQ(style.overflow_inline, 2);
+}
+
+TEST(PropertyCascadeTest, BoxDecorationBreakCloneV130) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("box-decoration-break", "clone"), parent);
+    EXPECT_EQ(style.box_decoration_break, 1);
+}

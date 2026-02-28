@@ -13929,3 +13929,36 @@ TEST(UrlParserTest, UrlV129_4_PortNormalizationFtpDefault21Omitted) {
     ASSERT_TRUE(result2->port.has_value());
     EXPECT_EQ(result2->port.value(), 2121u);
 }
+
+TEST(UrlParserTest, UrlV130_1_NonSpecialSchemeOriginReturnsNull) {
+    auto result = parse("custom://example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->is_special());
+    EXPECT_EQ(result->origin(), "null");
+}
+
+TEST(UrlParserTest, UrlV130_2_SameOriginDifferentPortsReturnsFalse) {
+    auto a = parse("http://example.com:8080/a");
+    ASSERT_TRUE(a.has_value());
+    auto b = parse("http://example.com:9090/b");
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+TEST(UrlParserTest, UrlV130_3_FileSchemeTripleSlashPathParsed) {
+    auto result = parse("file:///usr/local/bin/tool");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_EQ(result->path, "/usr/local/bin/tool");
+}
+
+TEST(UrlParserTest, UrlV130_4_RelativeQueryOnlyOverridesBaseQuery) {
+    auto base = parse("https://example.com/dir/page.html?oldquery");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("?newquery", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->query, "newquery");
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "example.com");
+    EXPECT_EQ(resolved->path, "/dir/page.html");
+}

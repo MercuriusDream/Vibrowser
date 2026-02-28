@@ -642,3 +642,53 @@ TEST(MessageChannelTest, MessageChannelV129_3_DispatchHandlerInspectsPayloadCont
     EXPECT_EQ(received_str, "payload_test");
     EXPECT_TRUE(received_flag);
 }
+
+TEST(MessageChannelTest, MessageChannelV130_1_OverwriteHandlerOnlyReplacementFires) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int first_count = 0;
+    int second_count = 0;
+
+    ch.on(10, [&](const Message&) { first_count++; });
+    ch.on(10, [&](const Message&) { second_count++; });
+
+    Message msg;
+    msg.type = 10;
+    ch.dispatch(msg);
+
+    EXPECT_EQ(first_count, 0);
+    EXPECT_EQ(second_count, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV130_2_CloseOneSideReceiveReturnsNullopt) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    cha.close();
+
+    auto result = chb.receive();
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(MessageChannelTest, MessageChannelV130_3_MultipleTypesInOrderOverSingleChannel) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    for (uint32_t t = 1; t <= 3; ++t) {
+        Message msg;
+        msg.type = t;
+        msg.payload = {static_cast<uint8_t>(t)};
+        ASSERT_TRUE(cha.send(msg));
+    }
+
+    for (uint32_t t = 1; t <= 3; ++t) {
+        auto received = chb.receive();
+        ASSERT_TRUE(received.has_value());
+        EXPECT_EQ(received->type, t);
+        ASSERT_EQ(received->payload.size(), 1u);
+        EXPECT_EQ(received->payload[0], static_cast<uint8_t>(t));
+    }
+}
