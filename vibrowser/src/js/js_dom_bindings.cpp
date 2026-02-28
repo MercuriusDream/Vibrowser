@@ -5687,6 +5687,7 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
         // ------------------------------------------------------------------
         // 2. Click on <input type="submit"> or <button type="submit">
         //    → dispatch 'submit' event on closest parent <form>
+        //    → if not prevented, collect form data and navigate
         // ------------------------------------------------------------------
         if ((tag == "input" &&
              tag_lower(get_attr(*target, "type")) == "submit") ||
@@ -5736,6 +5737,164 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
 
                     dispatch_event_propagated(ctx, state, form, submit_evt,
                                               "submit", true);
+
+                    // Check if preventDefault was called
+                    JSValue prevented_val = JS_GetPropertyStr(ctx, submit_evt, "defaultPrevented");
+                    bool submit_prevented = JS_ToBool(ctx, prevented_val) != 0;
+                    JS_FreeValue(ctx, prevented_val);
+
+                    // If not prevented, collect form data and submit
+                    if (!submit_prevented) {
+                        std::string action = get_attr(*form, "action");
+                        std::string method_str = tag_lower(get_attr(*form, "method"));
+                        if (method_str.empty()) method_str = "get";
+                        std::string enctype = get_attr(*form, "enctype");
+
+                        // Collect form data: name=value pairs
+                        std::vector<std::pair<std::string, std::string>> form_data;
+
+                        std::function<void(clever::html::SimpleNode*)> collect_inputs =
+                            [&](clever::html::SimpleNode* node) {
+                            if (!node) return;
+                            if (node->type == clever::html::SimpleNode::Element) {
+                                std::string node_tag = tag_lower(node->tag_name);
+                                if (node_tag == "input") {
+                                    std::string input_name = get_attr(*node, "name");
+                                    if (!input_name.empty() && !has_attr(*node, "disabled")) {
+                                        std::string input_type = tag_lower(get_attr(*node, "type"));
+                                        if (input_type == "checkbox" || input_type == "radio") {
+                                            if (has_attr(*node, "checked")) {
+                                                std::string input_value = get_attr(*node, "value");
+                                                if (input_value.empty()) input_value = "on";
+                                                form_data.push_back({input_name, input_value});
+                                            }
+                                        } else if (input_type != "submit" && input_type != "image" &&
+                                                   input_type != "button" && input_type != "file") {
+                                            std::string input_value = get_attr(*node, "value");
+                                            form_data.push_back({input_name, input_value});
+                                        }
+                                    }
+                                } else if (node_tag == "textarea") {
+                                    std::string textarea_name = get_attr(*node, "name");
+                                    if (!textarea_name.empty() && !has_attr(*node, "disabled")) {
+                                        std::string textarea_value = node->text_content();
+                                        form_data.push_back({textarea_name, textarea_value});
+                                    }
+                                } else if (node_tag == "select") {
+                                    std::string select_name = get_attr(*node, "name");
+                                    if (!select_name.empty() && !has_attr(*node, "disabled")) {
+                                        for (auto& child : node->children) {
+                                            if (child->type == clever::html::SimpleNode::Element &&
+                                                tag_lower(child->tag_name) == "option" &&
+                                                has_attr(*child, "selected")) {
+                                                std::string opt_value = get_attr(*child, "value");
+                                                if (opt_value.empty()) {
+                                                    opt_value = child->text_content();
+                                                }
+                                                form_data.push_back({select_name, opt_value});
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            for (auto& child : node->children) {
+                                collect_inputs(child.get());
+                            }
+                        };
+
+                        collect_inputs(form);
+
+                        // Include submitter button's name/value if it has a name
+                        std::string submitter_name = get_attr(*target, "name");
+                        if (!submitter_name.empty()) {
+                            std::string submitter_value = get_attr(*target, "value");
+                            if (submitter_value.empty()) submitter_value = "Submit";
+                            form_data.push_back({submitter_name, submitter_value});
+                        }
+
+                        // URL encode form data
+                        auto url_encode_char = [](unsigned char c) -> std::string {
+                            if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                                (c >= 'a' && c <= 'z') || c == '-' || c == '_' ||
+                                c == '.' || c == '~') {
+                                return std::string(1, c);
+                            }
+                            char buf[4];
+                            std::snprintf(buf, sizeof(buf), "%%%02X", c);
+                            return buf;
+                        };
+
+                        std::string encoded_data;
+                        for (size_t i = 0; i < form_data.size(); i++) {
+                            if (i > 0) encoded_data += "&";
+                            for (unsigned char c : form_data[i].first) {
+                                encoded_data += url_encode_char(c);
+                            }
+                            encoded_data += "=";
+                            for (unsigned char c : form_data[i].second) {
+                                if (c == ' ') {
+                                    encoded_data += "+";
+                                } else {
+                                    encoded_data += url_encode_char(c);
+                                }
+                            }
+                        }
+
+                        // Determine target URL
+                        std::string target_url = action;
+                        if (target_url.empty()) {
+                            JSValue global = JS_GetGlobalObject(ctx);
+                            JSValue loc = JS_GetPropertyStr(ctx, global, "location");
+                            if (JS_IsObject(loc)) {
+                                JSValue href = JS_GetPropertyStr(ctx, loc, "href");
+                                const char* href_cstr = JS_ToCString(ctx, href);
+                                if (href_cstr) {
+                                    target_url = href_cstr;
+                                    JS_FreeCString(ctx, href_cstr);
+                                }
+                                JS_FreeValue(ctx, href);
+                            }
+                            JS_FreeValue(ctx, loc);
+                            JS_FreeValue(ctx, global);
+                        }
+
+                        // Navigate based on method
+                        JSValue global = JS_GetGlobalObject(ctx);
+                        JSValue loc = JS_GetPropertyStr(ctx, global, "location");
+                        if (JS_IsObject(loc)) {
+                            if (method_str == "get") {
+                                // Append query string to URL
+                                std::string final_url = target_url;
+                                if (!encoded_data.empty()) {
+                                    size_t hash_pos = final_url.find('#');
+                                    std::string fragment;
+                                    if (hash_pos != std::string::npos) {
+                                        fragment = final_url.substr(hash_pos);
+                                        final_url = final_url.substr(0, hash_pos);
+                                    }
+                                    final_url += (final_url.find('?') != std::string::npos ? "&" : "?");
+                                    final_url += encoded_data;
+                                    final_url += fragment;
+                                }
+                                JS_SetPropertyStr(ctx, loc, "href",
+                                    JS_NewString(ctx, final_url.c_str()));
+                            } else {
+                                // POST: store form data metadata and navigate
+                                JS_SetPropertyStr(ctx, loc, "__formMethod",
+                                    JS_NewString(ctx, "POST"));
+                                JS_SetPropertyStr(ctx, loc, "__formEnctype",
+                                    JS_NewString(ctx, enctype.empty() ? "application/x-www-form-urlencoded" : enctype.c_str()));
+                                JS_SetPropertyStr(ctx, loc, "__formData",
+                                    JS_NewString(ctx, encoded_data.c_str()));
+                                JS_SetPropertyStr(ctx, loc, "href",
+                                    JS_NewString(ctx, target_url.c_str()));
+                            }
+                        }
+                        JS_FreeValue(ctx, loc);
+                        JS_FreeValue(ctx, global);
+                    }
+
                     JS_FreeValue(ctx, submit_evt);
                     break;
                 }
