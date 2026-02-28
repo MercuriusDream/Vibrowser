@@ -5800,7 +5800,7 @@ TEST(FlexboxAudit, FlexGrowFractional) {
 // Block: z_index defaults to 0
 TEST(LayoutNodeProps, ZIndexDefaultsToZero) {
     auto node = make_block("div");
-    EXPECT_EQ(node->z_index, 0);
+    EXPECT_EQ(node->z_index, Z_INDEX_AUTO);
 }
 
 // ============================================================================
@@ -6349,7 +6349,7 @@ TEST(LayoutNodeProps, OpacityDefaultsToOneV3) {
 // Layout: z_index defaults to 0
 TEST(LayoutNodeProps, ZIndexDefaultsToZeroV2) {
     auto node = make_block("div");
-    EXPECT_EQ(node->z_index, 0);
+    EXPECT_EQ(node->z_index, Z_INDEX_AUTO);
 }
 
 // Layout: grid_template_columns defaults empty
@@ -7354,7 +7354,7 @@ TEST(LayoutNodeProps, AlignSelfDefaultsMinusOne) {
 
 TEST(LayoutNodeProps, ZIndexDefaultsZero) {
     LayoutNode n;
-    EXPECT_EQ(n.z_index, 0);
+    EXPECT_EQ(n.z_index, Z_INDEX_AUTO);
 }
 
 TEST(LayoutNodeProps, GridColumnStartDefaultsEmpty) {
@@ -7782,7 +7782,7 @@ TEST(LayoutNodeProps, OpacityDefaultsOne) {
 
 TEST(LayoutNodeProps, ZIndexDefaultsZeroV2) {
     LayoutNode n;
-    EXPECT_EQ(n.z_index, 0);
+    EXPECT_EQ(n.z_index, Z_INDEX_AUTO);
 }
 
 TEST(LayoutNodeProps, FlexGrowDefaultsZero) {
@@ -9098,7 +9098,7 @@ TEST(LayoutNodeProps, WordSpacingDefaultV21) {
 
 TEST(LayoutNodeProps, ZIndexDefaultV21) {
     LayoutNode n;
-    EXPECT_EQ(n.z_index, 0);
+    EXPECT_EQ(n.z_index, Z_INDEX_AUTO);
 }
 
 TEST(LayoutNodeProps, ObjectFitDefaultV21) {
@@ -9278,7 +9278,7 @@ TEST(LayoutNodeProps, LineHeightDefaultV25) {
 
 TEST(LayoutNodeProps, ZIndexDefaultV25) {
     LayoutNode n;
-    EXPECT_EQ(n.z_index, 0);
+    EXPECT_EQ(n.z_index, Z_INDEX_AUTO);
 }
 
 // Cycle 1325: Layout node tests
@@ -9424,7 +9424,7 @@ TEST(LayoutNodeProps, OpacityDefaultV29) {
 
 TEST(LayoutNodeProps, ZIndexDefaultV29) {
     LayoutNode n;
-    EXPECT_EQ(n.z_index, 0);
+    EXPECT_EQ(n.z_index, Z_INDEX_AUTO);
 }
 
 TEST(LayoutNodeProps, ColumnGapValDefaultV29) {
@@ -9645,7 +9645,7 @@ TEST(LayoutNodeProps, ScrollSnapTypeDefaultV34) {
 
 TEST(LayoutNodeProps, ZIndexDefaultV34) {
     LayoutNode n;
-    EXPECT_EQ(n.z_index, 0);
+    EXPECT_EQ(n.z_index, Z_INDEX_AUTO);
 }
 
 TEST(LayoutNodeProps, BorderRadiusBLDefaultV35) {
@@ -9770,7 +9770,7 @@ TEST(LayoutNodeProps, ScrollPaddingRightDefaultV37) {
 
 TEST(LayoutNodeProps, ZIndexDefaultV38) {
     LayoutNode n;
-    EXPECT_EQ(n.z_index, 0);
+    EXPECT_EQ(n.z_index, Z_INDEX_AUTO);
 }
 
 TEST(LayoutNodeProps, WidthDefaultV38) {
@@ -29824,7 +29824,7 @@ TEST(LayoutNodeProps, OpacityDefaultOneV162) {
 // V162_8: default z_index is 0
 TEST(LayoutNodeProps, ZIndexDefaultZeroV162) {
     auto node = make_block("div");
-    EXPECT_EQ(node->z_index, 0);
+    EXPECT_EQ(node->z_index, Z_INDEX_AUTO);
 }
 
 // ---------------------------------------------------------------------------
@@ -30937,7 +30937,7 @@ TEST(LayoutNodeProps, OpacityDefaultOneV171) {
 // V171_8: default z_index is 0
 TEST(LayoutNodeProps, ZIndexDefaultZeroV171) {
     auto node = std::make_unique<LayoutNode>();
-    EXPECT_EQ(node->z_index, 0);
+    EXPECT_EQ(node->z_index, Z_INDEX_AUTO);
 }
 
 // V172_1: flex row with gap=20, 3 children, verify spacing

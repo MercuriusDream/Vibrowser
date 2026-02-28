@@ -13461,7 +13461,7 @@ TEST(PropertyCascadeTest, ResolverZIndexAutoDefaultZeroV69) {
     ComputedStyle parent;
     auto style = resolver.resolve(elem, parent);
 
-    EXPECT_EQ(style.z_index, 0);
+    EXPECT_EQ(style.z_index, clever::layout::Z_INDEX_AUTO);
 }
 
 TEST(PropertyCascadeTest, ResolverMarginTopPxValueV70) {

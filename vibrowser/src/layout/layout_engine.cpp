@@ -835,8 +835,11 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
             }
         }
 
-        // Apply CSS white-space collapsing before measuring and font-variant processing
-        node.text_content = collapse_whitespace(node.text_content, node.white_space, node.white_space_pre);
+        // Apply CSS white-space collapsing before measuring and font-variant processing.
+        // Skip for <br> elements — their newline must be preserved regardless of white-space.
+        if (node.tag_name != "br") {
+            node.text_content = collapse_whitespace(node.text_content, node.white_space, node.white_space_pre);
+        }
 
         // font-variant: small-caps — measure per-character width since
         // originally-lowercase letters render at 80% font size while

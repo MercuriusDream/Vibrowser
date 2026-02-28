@@ -920,8 +920,8 @@ TEST(RequestSerializeTest, DefaultUserAgent) {
     req.parse_url();
     auto bytes = req.serialize();
     std::string s(bytes.begin(), bytes.end());
-    EXPECT_NE(s.find("Vibrowser/0.7.0"), std::string::npos)
-        << "Should include default User-Agent header with Vibrowser version";
+    EXPECT_NE(s.find("Chrome/120.0.0.0"), std::string::npos)
+        << "Should include default User-Agent header with Chrome UA";
     EXPECT_NE(s.find("Accept: "), std::string::npos)
         << "Should include default Accept header";
     EXPECT_NE(s.find("Accept-Encoding: gzip"), std::string::npos)
