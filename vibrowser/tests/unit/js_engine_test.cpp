@@ -29187,3 +29187,222 @@ TEST(JsEngineTest, ErrorTypesAndCustomErrorV108) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true|true|true|true|true|true|AppError|404|not found");
 }
+
+// ============================================================================
+// V109 Tests
+// ============================================================================
+
+TEST(JsEngineTest, StringPaddingAndRepeatMethodsV109) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push("5".padStart(4, "0"));
+        r.push("hi".padEnd(6, "."));
+        r.push("ab".repeat(3));
+        r.push("hello world".startsWith("hello"));
+        r.push("hello world".endsWith("world"));
+        r.push("hello world".includes("lo wo"));
+        r.push("  trim  ".trim());
+        r.push("abc".padStart(1));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0005|hi....|ababab|true|true|true|trim|abc");
+}
+
+TEST(JsEngineTest, ArrayFlatAndFlatMapV109) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push([1, [2, [3]]].flat().join(","));
+        r.push([1, [2, [3]]].flat(Infinity).join(","));
+        r.push([[1,2],[3,4]].flatMap(function(x){ return x.concat(0); }).join(","));
+        r.push([1,2,3].find(function(x){ return x > 1; }));
+        r.push([1,2,3].findIndex(function(x){ return x > 2; }));
+        r.push(Array.from({length:3}, function(_,i){ return i*2; }).join(","));
+        r.push(Array.of(5,10,15).join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3|1,2,3|1,2,0,3,4,0|2|2|0,2,4|5,10,15");
+}
+
+TEST(JsEngineTest, MapAndSetOperationsV109) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        m.set("c", 3);
+        r.push(m.size);
+        r.push(m.get("b"));
+        r.push(m.has("c"));
+        m.delete("a");
+        r.push(m.size);
+        var keys = [];
+        m.forEach(function(v, k) { keys.push(k + "=" + v); });
+        r.push(keys.join(","));
+
+        var s = new Set([10, 20, 30, 20, 10]);
+        r.push(s.size);
+        s.add(40);
+        r.push(s.has(30));
+        r.push(s.has(99));
+        s.delete(20);
+        var vals = [];
+        s.forEach(function(v) { vals.push(v); });
+        r.push(vals.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|2|true|2|b=2,c=3|3|true|false|10,30,40");
+}
+
+TEST(JsEngineTest, GeneratorFunctionBasicsV109) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        function* range(start, end) {
+            for (var i = start; i < end; i++) {
+                yield i;
+            }
+        }
+        var gen = range(3, 7);
+        var item;
+        while (!(item = gen.next()).done) {
+            r.push(item.value);
+        }
+
+        function* fibonacci() {
+            var a = 0, b = 1;
+            while (true) {
+                yield a;
+                var tmp = a;
+                a = b;
+                b = tmp + b;
+            }
+        }
+        var fib = fibonacci();
+        for (var i = 0; i < 8; i++) {
+            r.push(fib.next().value);
+        }
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|4|5|6|0|1|1|2|3|5|8|13");
+}
+
+TEST(JsEngineTest, SymbolBasicsAndWellKnownV109) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var s1 = Symbol("test");
+        var s2 = Symbol("test");
+        r.push(s1 !== s2);
+        r.push(typeof s1);
+        r.push(s1.toString());
+        r.push(s1.description);
+
+        var sg1 = Symbol.for("global");
+        var sg2 = Symbol.for("global");
+        r.push(sg1 === sg2);
+        r.push(Symbol.keyFor(sg1));
+
+        var obj = {};
+        var sym = Symbol("key");
+        obj[sym] = 42;
+        r.push(obj[sym]);
+        r.push(sym in obj);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|symbol|Symbol(test)|test|true|global|42|true");
+}
+
+TEST(JsEngineTest, ProxyGetSetAndHasTrapsV109) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var log = [];
+        var target = {x: 10, y: 20};
+        var handler = {
+            get: function(obj, prop) {
+                log.push("get:" + prop);
+                return prop in obj ? obj[prop] : -1;
+            },
+            set: function(obj, prop, val) {
+                log.push("set:" + prop);
+                obj[prop] = val * 2;
+                return true;
+            },
+            has: function(obj, prop) {
+                log.push("has:" + prop);
+                return prop in obj;
+            }
+        };
+        var p = new Proxy(target, handler);
+        r.push(p.x);
+        p.z = 5;
+        r.push(p.z);
+        r.push("x" in p);
+        r.push("w" in p);
+        r.push(log.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|10|true|false|get:x,set:z,get:z,has:x,has:w");
+}
+
+TEST(JsEngineTest, TemplateLiteralsAndTaggedTemplatesV109) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var name = "World";
+        var num = 42;
+        r.push(`Hello, ${name}!`);
+        r.push(`${num} * 2 = ${num * 2}`);
+        r.push(`multi
+line`);
+
+        function tag(strings) {
+            var vals = [];
+            for (var i = 1; i < arguments.length; i++) vals.push(arguments[i]);
+            var result = "";
+            for (var i = 0; i < strings.length; i++) {
+                result += strings[i];
+                if (i < vals.length) result += String(vals[i]).toUpperCase();
+            }
+            return result;
+        }
+        r.push(tag`hi ${name} num ${num}`);
+        r.push(`${"nested" + ` ${"template"}`}`);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello, World!|42 * 2 = 84|multi\nline|hi WORLD num 42|nested template");
+}
+
+TEST(JsEngineTest, RegexNamedGroupsAndMethodsV109) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var re = /(\d{4})-(\d{2})-(\d{2})/;
+        var m = "2026-02-28".match(re);
+        r.push(m[1]);
+        r.push(m[2]);
+        r.push(m[3]);
+
+        r.push("hello world hello".replace(/hello/g, "hi"));
+        r.push("a1b2c3".split(/\d/).join(","));
+        r.push(/^\d+$/.test("12345"));
+        r.push(/^\d+$/.test("123a5"));
+
+        var re2 = /[aeiou]/gi;
+        var vowels = "Education".match(re2).join(",");
+        r.push(vowels);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2026|02|28|hi world hi|a,b,c,|true|false|E,u,a,i,o");
+}

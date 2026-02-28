@@ -12091,3 +12091,85 @@ TEST(UrlParserTest, MultipleQueryParamsAndFragmentV108) {
     EXPECT_EQ(result->query, "item=42&qty=3&color=blue");
     EXPECT_EQ(result->fragment, "summary");
 }
+
+// =============================================================================
+// V109 Tests
+// =============================================================================
+
+TEST(UrlParserTest, FtpSchemeWithCredentialsV109) {
+    auto result = parse("ftp://admin:secret@files.example.com/pub/docs");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->path, "/pub/docs");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, HttpDefaultPort80OmittedV109) {
+    auto result = parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPort443OmittedV109) {
+    auto result = parse("https://secure.example.com:443/api/v2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/api/v2");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentSequenceV109) {
+    auto result = parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/hello%2520world");
+}
+
+TEST(UrlParserTest, SerializeFullUrlWithAllComponentsV109) {
+    auto result = parse("https://user:pw@example.com:9999/a/b?x=1#top");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("https"), std::string::npos);
+    EXPECT_NE(s.find("example.com"), std::string::npos);
+    EXPECT_NE(s.find("9999"), std::string::npos);
+    EXPECT_NE(s.find("/a/b"), std::string::npos);
+    EXPECT_NE(s.find("x=1"), std::string::npos);
+    EXPECT_NE(s.find("top"), std::string::npos);
+}
+
+TEST(UrlParserTest, QueryOnlyNoFragmentV109) {
+    auto result = parse("https://search.example.com/find?q=openai&lang=en");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/find");
+    EXPECT_EQ(result->query, "q=openai&lang=en");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, FragmentOnlyNoQueryV109) {
+    auto result = parse("https://docs.example.com/guide#chapter-3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "docs.example.com");
+    EXPECT_EQ(result->path, "/guide");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "chapter-3");
+}
+
+TEST(UrlParserTest, HighPortNumberWithDeepPathV109) {
+    auto result = parse("http://internal.example.com:65535/a/b/c/d/e");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "internal.example.com");
+    EXPECT_EQ(result->port, 65535);
+    EXPECT_EQ(result->path, "/a/b/c/d/e");
+    EXPECT_TRUE(result->username.empty());
+    EXPECT_TRUE(result->password.empty());
+}

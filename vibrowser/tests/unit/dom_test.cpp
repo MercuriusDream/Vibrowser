@@ -16894,3 +16894,129 @@ TEST(DomTest, ClassListAddDuplicateIdempotentV108) {
     el.class_list().remove("foo");
     EXPECT_EQ(el.class_list().length(), 0u);
 }
+
+// ---------------------------------------------------------------------------
+// V109 Tests
+// ---------------------------------------------------------------------------
+
+// 1. insert_before places node before a specific sibling
+TEST(DomTest, InsertBeforePositionsCorrectlyV109) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    Node* raw1 = li1.get();
+    Node* raw3 = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li3));
+
+    auto li2 = std::make_unique<Element>("li");
+    li2->set_attribute("id", "middle");
+    parent.insert_before(std::move(li2), raw3);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    Node* second = raw1->next_sibling();
+    ASSERT_NE(second, nullptr);
+    auto* second_elem = static_cast<Element*>(second);
+    EXPECT_EQ(second_elem->get_attribute("id"), "middle");
+    EXPECT_EQ(second->next_sibling(), raw3);
+}
+
+// 2. remove_child decrements child_count and clears parent
+TEST(DomTest, RemoveChildDecrementsCountV109) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("span");
+    auto c2 = std::make_unique<Text>("hello");
+    Node* raw1 = c1.get();
+    Node* raw2 = c2.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    EXPECT_EQ(parent.child_count(), 2u);
+
+    parent.remove_child(*raw1);
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(raw1->parent(), nullptr);
+    EXPECT_EQ(parent.first_child(), raw2);
+}
+
+// 3. Comment node stores data and has correct node type
+TEST(DomTest, CommentNodeDataAndTypeV109) {
+    Comment c("this is a comment");
+    EXPECT_EQ(c.data(), "this is a comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+// 4. set_attribute overwrites existing attribute value
+TEST(DomTest, SetAttributeOverwritesValueV109) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    EXPECT_EQ(el.get_attribute("type"), "text");
+    el.set_attribute("type", "password");
+    EXPECT_EQ(el.get_attribute("type"), "password");
+}
+
+// 5. Append multiple children and traverse via next_sibling chain
+TEST(DomTest, NextSiblingChainTraversalV109) {
+    Element parent("ol");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    Node* ra = a.get();
+    Node* rb = b.get();
+    Node* rc = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    EXPECT_EQ(parent.first_child(), ra);
+    EXPECT_EQ(ra->next_sibling(), rb);
+    EXPECT_EQ(rb->next_sibling(), rc);
+    EXPECT_EQ(rc->next_sibling(), nullptr);
+}
+
+// 6. class_list add/remove/contains multiple classes
+TEST(DomTest, ClassListMultipleClassesV109) {
+    Element el("div");
+    el.class_list().add("alpha");
+    el.class_list().add("beta");
+    el.class_list().add("gamma");
+    EXPECT_EQ(el.class_list().length(), 3u);
+    EXPECT_TRUE(el.class_list().contains("beta"));
+
+    el.class_list().remove("beta");
+    EXPECT_EQ(el.class_list().length(), 2u);
+    EXPECT_FALSE(el.class_list().contains("beta"));
+    EXPECT_TRUE(el.class_list().contains("alpha"));
+    EXPECT_TRUE(el.class_list().contains("gamma"));
+}
+
+// 7. Text node as child preserves text_content through parent
+TEST(DomTest, TextChildPreservesContentV109) {
+    Element p("p");
+    auto t = std::make_unique<Text>("paragraph text");
+    Node* raw_t = t.get();
+    p.append_child(std::move(t));
+
+    EXPECT_EQ(p.child_count(), 1u);
+    EXPECT_EQ(p.first_child(), raw_t);
+    EXPECT_EQ(raw_t->parent(), &p);
+    auto* text_node = static_cast<Text*>(raw_t);
+    EXPECT_EQ(text_node->text_content(), "paragraph text");
+}
+
+// 8. insert_before with nullptr reference appends at end
+TEST(DomTest, InsertBeforeNullAppendsV109) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("span");
+    Node* raw1 = c1.get();
+    parent.append_child(std::move(c1));
+
+    auto c2 = std::make_unique<Element>("em");
+    c2->set_attribute("class", "last");
+    Node* raw2 = c2.get();
+    parent.insert_before(std::move(c2), nullptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(raw1->next_sibling(), raw2);
+    auto* last_elem = static_cast<Element*>(raw2);
+    EXPECT_EQ(last_elem->get_attribute("class"), "last");
+}

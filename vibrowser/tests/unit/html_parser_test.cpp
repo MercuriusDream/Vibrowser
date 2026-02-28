@@ -17576,3 +17576,193 @@ TEST(HtmlParserTest, HeadingHierarchyAndSiblingTextV108) {
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->text_content(), "Paragraph under section.");
 }
+
+// ---------------------------------------------------------------------------
+// V109 Tests
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, NestedListsWithMixedContentV109) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ul>"
+        "<li>Item A</li>"
+        "<li><ol><li>Sub 1</li><li>Sub 2</li></ol></li>"
+        "<li>Item C</li>"
+        "</ul>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto lis = doc->find_all_elements("li");
+    // 3 outer + 2 inner = 5
+    EXPECT_GE(lis.size(), 5u);
+    EXPECT_EQ(lis[0]->text_content(), "Item A");
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    EXPECT_EQ(ol->tag_name, "ol");
+    auto inner = ol->find_all_elements("li");
+    EXPECT_EQ(inner.size(), 2u);
+    EXPECT_EQ(inner[0]->text_content(), "Sub 1");
+    EXPECT_EQ(inner[1]->text_content(), "Sub 2");
+}
+
+TEST(HtmlParserTest, TableWithHeaderAndDataCellsV109) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr></tbody>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto ths = doc->find_all_elements("th");
+    EXPECT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+    auto tds = doc->find_all_elements("td");
+    EXPECT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "30");
+}
+
+TEST(HtmlParserTest, FormElementsWithMultipleAttributesV109) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<form action=\"/submit\" method=\"post\">"
+        "<input type=\"email\" name=\"user_email\" placeholder=\"you@example.com\"/>"
+        "<textarea name=\"message\" rows=\"5\" cols=\"40\">Hello</textarea>"
+        "<button type=\"submit\">Send</button>"
+        "</form>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "email");
+    EXPECT_EQ(get_attr_v63(input, "placeholder"), "you@example.com");
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(get_attr_v63(textarea, "rows"), "5");
+    EXPECT_EQ(textarea->text_content(), "Hello");
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->text_content(), "Send");
+}
+
+TEST(HtmlParserTest, DefinitionListWithTermsAndDescriptionsV109) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>HTML</dt><dd>HyperText Markup Language</dd>"
+        "<dt>CSS</dt><dd>Cascading Style Sheets</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto dts = doc->find_all_elements("dt");
+    EXPECT_EQ(dts.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "HTML");
+    EXPECT_EQ(dts[1]->text_content(), "CSS");
+    auto dds = doc->find_all_elements("dd");
+    EXPECT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dds[0]->text_content(), "HyperText Markup Language");
+    EXPECT_EQ(dds[1]->text_content(), "Cascading Style Sheets");
+}
+
+TEST(HtmlParserTest, ArticleWithHeaderFooterAndSectionsV109) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<article>"
+        "<header><h1>Blog Post</h1></header>"
+        "<section><p>First paragraph.</p></section>"
+        "<section><p>Second paragraph.</p></section>"
+        "<footer><small>Copyright 2026</small></footer>"
+        "</article>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Blog Post");
+    auto sections = doc->find_all_elements("section");
+    EXPECT_EQ(sections.size(), 2u);
+    auto ps = doc->find_all_elements("p");
+    EXPECT_EQ(ps.size(), 2u);
+    EXPECT_EQ(ps[0]->text_content(), "First paragraph.");
+    EXPECT_EQ(ps[1]->text_content(), "Second paragraph.");
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->text_content(), "Copyright 2026");
+}
+
+TEST(HtmlParserTest, SelectWithOptionGroupsV109) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<select name=\"car\">"
+        "<optgroup label=\"Swedish\">"
+        "<option value=\"volvo\">Volvo</option>"
+        "<option value=\"saab\">Saab</option>"
+        "</optgroup>"
+        "<optgroup label=\"German\">"
+        "<option value=\"bmw\">BMW</option>"
+        "</optgroup>"
+        "</select>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* sel = doc->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    EXPECT_EQ(get_attr_v63(sel, "name"), "car");
+    auto optgroups = doc->find_all_elements("optgroup");
+    EXPECT_EQ(optgroups.size(), 2u);
+    EXPECT_EQ(get_attr_v63(optgroups[0], "label"), "Swedish");
+    EXPECT_EQ(get_attr_v63(optgroups[1], "label"), "German");
+    auto options = doc->find_all_elements("option");
+    EXPECT_EQ(options.size(), 3u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "volvo");
+    EXPECT_EQ(options[0]->text_content(), "Volvo");
+    EXPECT_EQ(options[2]->text_content(), "BMW");
+}
+
+TEST(HtmlParserTest, FigureWithFigcaptionAndImgV109) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<figure>"
+        "<img src=\"photo.jpg\" alt=\"A scenic view\" width=\"800\"/>"
+        "<figcaption>A beautiful landscape photo.</figcaption>"
+        "</figure>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "photo.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "A scenic view");
+    EXPECT_EQ(get_attr_v63(img, "width"), "800");
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "A beautiful landscape photo.");
+}
+
+TEST(HtmlParserTest, DetailsAndSummaryElementsV109) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details>"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content revealed on click.</p>"
+        "</details>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->tag_name, "details");
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content revealed on click.");
+}

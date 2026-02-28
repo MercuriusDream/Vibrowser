@@ -18484,3 +18484,190 @@ TEST(ResponseTest, ParseStatus301WithLocationHeaderV108) {
     EXPECT_EQ(resp->headers.get("location").value(), "https://www.example.com/new-path");
     EXPECT_EQ(resp->body.size(), 0u);
 }
+
+// ===========================================================================
+// V109 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap append creates multiple values retrievable via get_all V109
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendCreatesMultipleValuesV109) {
+    HeaderMap map;
+    map.append("X-Custom", "alpha");
+    map.append("X-Custom", "beta");
+    map.append("X-Custom", "gamma");
+
+    auto all = map.get_all("x-custom");
+    ASSERT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], "alpha");
+    EXPECT_EQ(all[1], "beta");
+    EXPECT_EQ(all[2], "gamma");
+    // get() should return the first value
+    EXPECT_EQ(map.get("X-Custom").value(), "alpha");
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap remove deletes all values for a key V109
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveDeletesAllValuesForKeyV109) {
+    HeaderMap map;
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+    map.set("Host", "example.com");
+
+    EXPECT_TRUE(map.has("Accept"));
+    map.remove("Accept");
+    EXPECT_FALSE(map.has("accept"));
+    EXPECT_EQ(map.get_all("Accept").size(), 0u);
+    // Host should remain
+    EXPECT_TRUE(map.has("Host"));
+    EXPECT_EQ(map.get("host").value(), "example.com");
+}
+
+// ---------------------------------------------------------------------------
+// 3. HeaderMap size reflects total header entries V109
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, SizeReflectsTotalEntriesV109) {
+    HeaderMap map;
+    EXPECT_EQ(map.size(), 0u);
+
+    map.set("Content-Type", "text/plain");
+    EXPECT_EQ(map.size(), 1u);
+
+    map.append("Set-Cookie", "a=1");
+    map.append("Set-Cookie", "b=2");
+    EXPECT_EQ(map.size(), 3u);
+
+    map.remove("Set-Cookie");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request serialize PUT method with body V109
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutMethodWithBodyV109) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/resource/42";
+
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("PUT /resource/42 HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 with TLS should be omitted from Host
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
+    // Custom header lowercased
+    EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos);
+    // Content-Length auto-added
+    std::string cl = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_NE(result.find(cl), std::string::npos);
+    // Body at end
+    EXPECT_NE(result.find("\r\n\r\n" + body_str), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Request serialize HEAD method has no body V109
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadMethodNoBodyV109) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("HEAD /status HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Host: example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+    // Ends with double CRLF and nothing after
+    auto pos = result.find("\r\n\r\n");
+    ASSERT_NE(pos, std::string::npos);
+    EXPECT_EQ(pos + 4, result.size());
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request parse_url handles HTTP with explicit port 8080 V109
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpWithExplicitPort8080V109) {
+    Request req;
+    req.url = "http://internal.example.com:8080/health?ready=true";
+    req.method = Method::GET;
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "internal.example.com");
+    EXPECT_EQ(req.port, 8080);
+    EXPECT_EQ(req.path, "/health");
+    EXPECT_EQ(req.query, "ready=true");
+    EXPECT_FALSE(req.use_tls);
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Non-standard port included in Host header
+    EXPECT_NE(result.find("Host: internal.example.com:8080\r\n"), std::string::npos);
+    EXPECT_NE(result.find("GET /health?ready=true HTTP/1.1\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 500 Internal Server Error with body V109
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseStatus500WithBodyV109) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 21\r\n"
+        "\r\n"
+        "Something went wrong!";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->body_as_string(), "Something went wrong!");
+    EXPECT_EQ(resp->body.size(), 21u);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Request serialize with multiple custom headers lowercased V109
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeMultipleCustomHeadersLowercasedV109) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/v2/submit";
+
+    std::string body_str = "data=hello";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+    req.headers.set("Authorization", "Bearer tok123");
+    req.headers.set("X-Request-ID", "req-9876");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("POST /v2/submit HTTP/1.1\r\n"), std::string::npos);
+    // Host and Connection keep caps
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+    // All custom headers lowercased
+    EXPECT_NE(result.find("content-type: application/x-www-form-urlencoded\r\n"), std::string::npos);
+    EXPECT_NE(result.find("authorization: Bearer tok123\r\n"), std::string::npos);
+    EXPECT_NE(result.find("x-request-id: req-9876\r\n"), std::string::npos);
+    // Body present
+    EXPECT_NE(result.find("\r\n\r\ndata=hello"), std::string::npos);
+}

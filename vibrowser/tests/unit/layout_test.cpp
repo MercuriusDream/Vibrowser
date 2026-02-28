@@ -20079,3 +20079,291 @@ TEST(LayoutNodeTest, BlockWithBoxShadowAndOverflowV108) {
     EXPECT_EQ(node.overflow, 1);
     EXPECT_EQ(node.color, 0xFF333333u);
 }
+
+// ===== V109 Tests =====
+
+TEST(LayoutNodeTest, FlexContainerColumnDirectionV109) {
+    using namespace clever::layout;
+    auto parent = std::make_unique<LayoutNode>();
+    parent->tag_name = "div";
+    parent->display = DisplayType::Flex;
+    parent->mode = LayoutMode::Flex;
+    parent->flex_direction = 2; // column
+    parent->specified_width = 400.0f;
+    parent->specified_height = 600.0f;
+    parent->background_color = 0xFFEEEEEEu;
+    parent->gap = 10.0f;
+
+    auto child1 = std::make_unique<LayoutNode>();
+    child1->tag_name = "section";
+    child1->display = DisplayType::Block;
+    child1->specified_height = 100.0f;
+    child1->background_color = 0xFFFF0000u;
+    child1->flex_grow = 1.0f;
+
+    auto child2 = std::make_unique<LayoutNode>();
+    child2->tag_name = "section";
+    child2->display = DisplayType::Block;
+    child2->specified_height = 200.0f;
+    child2->background_color = 0xFF00FF00u;
+    child2->flex_grow = 2.0f;
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+
+    EXPECT_EQ(parent->display, DisplayType::Flex);
+    EXPECT_EQ(parent->flex_direction, 2);
+    EXPECT_FLOAT_EQ(parent->specified_width, 400.0f);
+    EXPECT_FLOAT_EQ(parent->specified_height, 600.0f);
+    EXPECT_FLOAT_EQ(parent->gap, 10.0f);
+    EXPECT_EQ(parent->background_color, 0xFFEEEEEEu);
+    EXPECT_EQ(parent->children.size(), 2u);
+    EXPECT_EQ(parent->children[0]->background_color, 0xFFFF0000u);
+    EXPECT_FLOAT_EQ(parent->children[0]->flex_grow, 1.0f);
+    EXPECT_EQ(parent->children[1]->background_color, 0xFF00FF00u);
+    EXPECT_FLOAT_EQ(parent->children[1]->flex_grow, 2.0f);
+}
+
+TEST(LayoutNodeTest, InlineNodeWithTextDecorationV109) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.tag_name = "a";
+    node.display = DisplayType::Inline;
+    node.mode = LayoutMode::Inline;
+    node.color = 0xFF0066CCu;
+    node.text_decoration = 1; // underline
+    node.text_decoration_color = 0xFF0066CCu;
+    node.text_decoration_style = 0; // solid
+    node.font_size = 14.0f;
+    node.font_weight = 700;
+    node.link_href = "https://example.com";
+
+    EXPECT_EQ(node.display, DisplayType::Inline);
+    EXPECT_EQ(node.color, 0xFF0066CCu);
+    EXPECT_EQ(node.text_decoration, 1);
+    EXPECT_EQ(node.text_decoration_color, 0xFF0066CCu);
+    EXPECT_EQ(node.text_decoration_style, 0);
+    EXPECT_FLOAT_EQ(node.font_size, 14.0f);
+    EXPECT_EQ(node.font_weight, 700);
+    EXPECT_EQ(node.link_href, "https://example.com");
+}
+
+TEST(LayoutNodeTest, BlockNodeBorderRadiusAllCornersV109) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.display = DisplayType::Block;
+    node.specified_width = 200.0f;
+    node.specified_height = 200.0f;
+    node.background_color = 0xFF4488FFu;
+    node.border_radius_tl = 10.0f;
+    node.border_radius_tr = 20.0f;
+    node.border_radius_bl = 30.0f;
+    node.border_radius_br = 40.0f;
+    node.border_style = 1; // solid
+    node.border_color = 0xFF000000u;
+    node.geometry.border.top = 2.0f;
+    node.geometry.border.right = 2.0f;
+    node.geometry.border.bottom = 2.0f;
+    node.geometry.border.left = 2.0f;
+
+    EXPECT_EQ(node.display, DisplayType::Block);
+    EXPECT_FLOAT_EQ(node.specified_width, 200.0f);
+    EXPECT_FLOAT_EQ(node.specified_height, 200.0f);
+    EXPECT_EQ(node.background_color, 0xFF4488FFu);
+    EXPECT_FLOAT_EQ(node.border_radius_tl, 10.0f);
+    EXPECT_FLOAT_EQ(node.border_radius_tr, 20.0f);
+    EXPECT_FLOAT_EQ(node.border_radius_bl, 30.0f);
+    EXPECT_FLOAT_EQ(node.border_radius_br, 40.0f);
+    EXPECT_EQ(node.border_style, 1);
+    EXPECT_EQ(node.border_color, 0xFF000000u);
+    EXPECT_FLOAT_EQ(node.geometry.border.top, 2.0f);
+    EXPECT_FLOAT_EQ(node.geometry.border_box_width(), 2.0f + 0.0f + 0.0f + 0.0f + 2.0f);
+}
+
+TEST(LayoutNodeTest, FlexRowWithJustifyAndAlignV109) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.display = DisplayType::Flex;
+    node.mode = LayoutMode::Flex;
+    node.flex_direction = 0; // row
+    node.justify_content = 2; // center
+    node.align_items = 2; // center
+    node.flex_wrap = 1; // wrap
+    node.specified_width = 500.0f;
+    node.specified_height = 300.0f;
+    node.row_gap = 12.0f;
+    node.column_gap = 16.0f;
+    node.background_color = 0xFFF0F0F0u;
+
+    EXPECT_EQ(node.display, DisplayType::Flex);
+    EXPECT_EQ(node.flex_direction, 0);
+    EXPECT_EQ(node.justify_content, 2);
+    EXPECT_EQ(node.align_items, 2);
+    EXPECT_EQ(node.flex_wrap, 1);
+    EXPECT_FLOAT_EQ(node.specified_width, 500.0f);
+    EXPECT_FLOAT_EQ(node.specified_height, 300.0f);
+    EXPECT_FLOAT_EQ(node.row_gap, 12.0f);
+    EXPECT_FLOAT_EQ(node.column_gap, 16.0f);
+    EXPECT_EQ(node.background_color, 0xFFF0F0F0u);
+}
+
+TEST(LayoutNodeTest, BlockWithGradientBackgroundV109) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.display = DisplayType::Block;
+    node.specified_width = 300.0f;
+    node.specified_height = 150.0f;
+    node.gradient_type = 1; // linear
+    node.gradient_angle = 90.0f; // to right
+    node.gradient_stops.push_back({0xFFFF0000u, 0.0f}); // red at 0%
+    node.gradient_stops.push_back({0xFF0000FFu, 1.0f}); // blue at 100%
+    node.color = 0xFFFFFFFFu;
+    node.border_radius = 8.0f;
+
+    EXPECT_EQ(node.display, DisplayType::Block);
+    EXPECT_FLOAT_EQ(node.specified_width, 300.0f);
+    EXPECT_FLOAT_EQ(node.specified_height, 150.0f);
+    EXPECT_EQ(node.gradient_type, 1);
+    EXPECT_FLOAT_EQ(node.gradient_angle, 90.0f);
+    EXPECT_EQ(node.gradient_stops.size(), 2u);
+    EXPECT_EQ(node.gradient_stops[0].first, 0xFFFF0000u);
+    EXPECT_FLOAT_EQ(node.gradient_stops[0].second, 0.0f);
+    EXPECT_EQ(node.gradient_stops[1].first, 0xFF0000FFu);
+    EXPECT_FLOAT_EQ(node.gradient_stops[1].second, 1.0f);
+    EXPECT_EQ(node.color, 0xFFFFFFFFu);
+    EXPECT_FLOAT_EQ(node.border_radius, 8.0f);
+}
+
+TEST(LayoutNodeTest, NestedBlocksWithMarginsAndPaddingV109) {
+    using namespace clever::layout;
+    auto outer = std::make_unique<LayoutNode>();
+    outer->tag_name = "div";
+    outer->display = DisplayType::Block;
+    outer->specified_width = 600.0f;
+    outer->specified_height = 400.0f;
+    outer->background_color = 0xFFCCCCCCu;
+    outer->geometry.padding.top = 20.0f;
+    outer->geometry.padding.right = 20.0f;
+    outer->geometry.padding.bottom = 20.0f;
+    outer->geometry.padding.left = 20.0f;
+
+    auto inner = std::make_unique<LayoutNode>();
+    inner->tag_name = "div";
+    inner->display = DisplayType::Block;
+    inner->specified_width = 200.0f;
+    inner->specified_height = 100.0f;
+    inner->background_color = 0xFF99BBDDu;
+    inner->geometry.margin.top = 10.0f;
+    inner->geometry.margin.right = 10.0f;
+    inner->geometry.margin.bottom = 10.0f;
+    inner->geometry.margin.left = 10.0f;
+
+    auto* inner_ptr = inner.get();
+    outer->append_child(std::move(inner));
+
+    EXPECT_EQ(outer->display, DisplayType::Block);
+    EXPECT_FLOAT_EQ(outer->specified_width, 600.0f);
+    EXPECT_EQ(outer->background_color, 0xFFCCCCCCu);
+    EXPECT_FLOAT_EQ(outer->geometry.padding.top, 20.0f);
+    EXPECT_FLOAT_EQ(outer->geometry.padding.left, 20.0f);
+    EXPECT_EQ(outer->children.size(), 1u);
+    EXPECT_FLOAT_EQ(inner_ptr->specified_width, 200.0f);
+    EXPECT_FLOAT_EQ(inner_ptr->specified_height, 100.0f);
+    EXPECT_EQ(inner_ptr->background_color, 0xFF99BBDDu);
+    EXPECT_FLOAT_EQ(inner_ptr->geometry.margin.top, 10.0f);
+    EXPECT_FLOAT_EQ(inner_ptr->geometry.margin.left, 10.0f);
+}
+
+TEST(LayoutNodeTest, BlockPositionRelativeWithOffsetsV109) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.display = DisplayType::Block;
+    node.specified_width = 150.0f;
+    node.specified_height = 80.0f;
+    node.position_type = 1; // relative
+    node.pos_top = 5.0f;
+    node.pos_top_set = true;
+    node.pos_left = 10.0f;
+    node.pos_left_set = true;
+    node.background_color = 0xFFAABBCCu;
+    node.color = 0xFF112233u;
+    node.z_index = 5;
+    node.opacity = 0.9f;
+
+    EXPECT_EQ(node.display, DisplayType::Block);
+    EXPECT_FLOAT_EQ(node.specified_width, 150.0f);
+    EXPECT_FLOAT_EQ(node.specified_height, 80.0f);
+    EXPECT_EQ(node.position_type, 1);
+    EXPECT_FLOAT_EQ(node.pos_top, 5.0f);
+    EXPECT_TRUE(node.pos_top_set);
+    EXPECT_FLOAT_EQ(node.pos_left, 10.0f);
+    EXPECT_TRUE(node.pos_left_set);
+    EXPECT_EQ(node.background_color, 0xFFAABBCCu);
+    EXPECT_EQ(node.color, 0xFF112233u);
+    EXPECT_EQ(node.z_index, 5);
+    EXPECT_FLOAT_EQ(node.opacity, 0.9f);
+}
+
+TEST(LayoutNodeTest, FlexItemWithOrderAndAlignSelfV109) {
+    using namespace clever::layout;
+    auto container = std::make_unique<LayoutNode>();
+    container->tag_name = "div";
+    container->display = DisplayType::Flex;
+    container->mode = LayoutMode::Flex;
+    container->flex_direction = 0; // row
+    container->specified_width = 800.0f;
+    container->specified_height = 200.0f;
+
+    auto item1 = std::make_unique<LayoutNode>();
+    item1->tag_name = "div";
+    item1->display = DisplayType::Block;
+    item1->specified_width = 100.0f;
+    item1->specified_height = 50.0f;
+    item1->order = 3;
+    item1->align_self = 2; // center
+    item1->flex_shrink = 0.0f;
+    item1->background_color = 0xFFDD4444u;
+
+    auto item2 = std::make_unique<LayoutNode>();
+    item2->tag_name = "div";
+    item2->display = DisplayType::Block;
+    item2->specified_width = 100.0f;
+    item2->specified_height = 50.0f;
+    item2->order = 1;
+    item2->align_self = 0; // flex-start
+    item2->flex_shrink = 1.0f;
+    item2->background_color = 0xFF44DD44u;
+
+    auto item3 = std::make_unique<LayoutNode>();
+    item3->tag_name = "div";
+    item3->display = DisplayType::Block;
+    item3->specified_width = 100.0f;
+    item3->specified_height = 50.0f;
+    item3->order = 2;
+    item3->align_self = 1; // flex-end
+    item3->flex_basis = 120.0f;
+    item3->background_color = 0xFF4444DDu;
+
+    container->append_child(std::move(item1));
+    container->append_child(std::move(item2));
+    container->append_child(std::move(item3));
+
+    EXPECT_EQ(container->display, DisplayType::Flex);
+    EXPECT_FLOAT_EQ(container->specified_width, 800.0f);
+    EXPECT_EQ(container->children.size(), 3u);
+
+    EXPECT_EQ(container->children[0]->order, 3);
+    EXPECT_EQ(container->children[0]->align_self, 2);
+    EXPECT_FLOAT_EQ(container->children[0]->flex_shrink, 0.0f);
+    EXPECT_EQ(container->children[0]->background_color, 0xFFDD4444u);
+
+    EXPECT_EQ(container->children[1]->order, 1);
+    EXPECT_EQ(container->children[1]->align_self, 0);
+    EXPECT_FLOAT_EQ(container->children[1]->flex_shrink, 1.0f);
+    EXPECT_EQ(container->children[1]->background_color, 0xFF44DD44u);
+
+    EXPECT_EQ(container->children[2]->order, 2);
+    EXPECT_EQ(container->children[2]->align_self, 1);
+    EXPECT_FLOAT_EQ(container->children[2]->flex_basis, 120.0f);
+    EXPECT_EQ(container->children[2]->background_color, 0xFF4444DDu);
+}
