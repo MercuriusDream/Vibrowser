@@ -6,6 +6,8 @@ add_library(vibrowser_net STATIC
     request.cpp
     response.cpp
     tls_socket.cpp
+    hpack.cpp
+    http2_connection.cpp
 )
 
 target_include_directories(vibrowser_net PUBLIC

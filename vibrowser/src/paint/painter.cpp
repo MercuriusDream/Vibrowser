@@ -3032,8 +3032,29 @@ void Painter::paint_svg_shape(const clever::layout::LayoutNode& node, DisplayLis
             float r_y = attrs[2] * vb_sy;
             float sw = attrs[3] * std::min(vb_sx, vb_sy);
 
-            list.draw_ellipse(abs_x + cx, abs_y + cy, r_x, r_y,
-                              fill_color, stroke_color, sw);
+            // Apply fill (solid or gradient)
+            if (fill_gradient && fill_gradient->stops.size() >= 2) {
+                // Gradient fill: create bounding rect for gradient
+                Rect grad_rect = {abs_x + cx - r_x, abs_y + cy - r_y, r_x * 2, r_y * 2};
+                if (!fill_gradient->is_radial) {
+                    // Linear gradient
+                    float dx = fill_gradient->x2 - fill_gradient->x1;
+                    float dy = fill_gradient->y2 - fill_gradient->y1;
+                    float angle_deg = std::atan2(dy, dx) * 180.0f / static_cast<float>(M_PI) + 90.0f;
+                    list.fill_gradient(grad_rect, angle_deg, fill_gradient->stops, 0, 1, 0);
+                } else {
+                    // Radial gradient
+                    list.fill_gradient(grad_rect, 0, fill_gradient->stops, 0, 2, 0);
+                }
+            } else if (fill_color.a > 0) {
+                // Solid fill: use draw_ellipse with both fill and stroke
+                list.draw_ellipse(abs_x + cx, abs_y + cy, r_x, r_y, fill_color, {0, 0, 0, 0}, 0);
+            }
+
+            // Apply stroke on top if present
+            if (stroke_color.a > 0 && sw > 0) {
+                list.draw_ellipse(abs_x + cx, abs_y + cy, r_x, r_y, {0, 0, 0, 0}, stroke_color, sw);
+            }
             break;
         }
         case 3: { // ellipse
@@ -3044,8 +3065,29 @@ void Painter::paint_svg_shape(const clever::layout::LayoutNode& node, DisplayLis
             float ery = attrs[3] * vb_sy;
             float sw = attrs[4] * std::min(vb_sx, vb_sy);
 
-            list.draw_ellipse(abs_x + cx, abs_y + cy, erx, ery,
-                              fill_color, stroke_color, sw);
+            // Apply fill (solid or gradient)
+            if (fill_gradient && fill_gradient->stops.size() >= 2) {
+                // Gradient fill: create bounding rect for gradient
+                Rect grad_rect = {abs_x + cx - erx, abs_y + cy - ery, erx * 2, ery * 2};
+                if (!fill_gradient->is_radial) {
+                    // Linear gradient
+                    float dx = fill_gradient->x2 - fill_gradient->x1;
+                    float dy = fill_gradient->y2 - fill_gradient->y1;
+                    float angle_deg = std::atan2(dy, dx) * 180.0f / static_cast<float>(M_PI) + 90.0f;
+                    list.fill_gradient(grad_rect, angle_deg, fill_gradient->stops, 0, 1, 0);
+                } else {
+                    // Radial gradient
+                    list.fill_gradient(grad_rect, 0, fill_gradient->stops, 0, 2, 0);
+                }
+            } else if (fill_color.a > 0) {
+                // Solid fill: use draw_ellipse with both fill and stroke
+                list.draw_ellipse(abs_x + cx, abs_y + cy, erx, ery, fill_color, {0, 0, 0, 0}, 0);
+            }
+
+            // Apply stroke on top if present
+            if (stroke_color.a > 0 && sw > 0) {
+                list.draw_ellipse(abs_x + cx, abs_y + cy, erx, ery, {0, 0, 0, 0}, stroke_color, sw);
+            }
             break;
         }
         case 4: { // line

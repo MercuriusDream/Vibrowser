@@ -6,6 +6,7 @@
 #include <clever/js/js_engine.h>
 #include <clever/js/js_dom_bindings.h>
 #include <clever/html/tree_builder.h>
+#include <clever/paint/animation_controller.h>
 #include <memory>
 #include <optional>
 #include <set>
@@ -67,6 +68,7 @@ struct RenderResult {
     std::unordered_map<std::string, clever::css::KeyframeAnimation> keyframe_animations; // name -> animation map
     std::vector<clever::css::FontFaceRule> font_faces;      // parsed @font-face rules
     std::vector<TransitionState> active_transitions;         // active CSS transition animations
+    std::unique_ptr<AnimationController> animation_controller; // CSS animations/transitions runtime
     std::unique_ptr<clever::layout::LayoutNode> root;       // layout tree root (for inspection)
     std::vector<FormData> forms;                             // collected form data for submission
     std::vector<FormSubmitRegion> form_submit_regions;       // clickable regions for submit buttons

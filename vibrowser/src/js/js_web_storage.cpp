@@ -265,6 +265,7 @@ static JSValue storage_clear(JSContext* ctx, JSValueConst this_val,
                              int argc, JSValueConst* argv) {
     (void)argc;
     (void)argv;
+    (void)ctx;
 
     auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, 0));
     if (!state) {
@@ -305,7 +306,11 @@ static JSValue storage_key(JSContext* ctx, JSValueConst this_val,
     return JS_NewString(ctx, it->first.c_str());
 }
 
-static JSValue storage_get_length(JSContext* ctx, JSValueConst this_val) {
+static JSValue storage_get_length(JSContext* ctx, JSValueConst this_val,
+                                  int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+
     auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, 0));
     if (!state) {
         return JS_NewInt32(ctx, 0);
@@ -351,12 +356,14 @@ static JSValue create_storage_object(JSContext* ctx, const std::string& origin,
     JS_SetPropertyStr(ctx, storage, "key",
         JS_NewCFunction(ctx, storage_key, "key", 1));
 
-    // Add length as a simple getter via Object.defineProperty-like behavior
-    // For QuickJS, we'll use a function that returns the length
-    // Actually, we need to add a getter property. Let's add a length getter function
-    JSValue length_getter = JS_NewCFunction(ctx, storage_get_length, "length", 0);
-    JS_DefinePropertyGetSet(ctx, storage, JS_NewAtom(ctx, "length"),
-                           length_getter, JS_UNDEFINED, JS_PROP_ENUMERABLE);
+    // Add length as a getter-only property
+    {
+        JSAtom length_atom = JS_NewAtom(ctx, "length");
+        JSValue length_getter = JS_NewCFunction(ctx, storage_get_length, "get length", 0);
+        JS_DefinePropertyGetSet(ctx, storage, length_atom, length_getter, JS_UNDEFINED,
+                               JS_PROP_ENUMERABLE);
+        JS_FreeAtom(ctx, length_atom);
+    }
 
     return storage;
 }

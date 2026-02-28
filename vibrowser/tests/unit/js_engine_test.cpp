@@ -39853,3 +39853,123 @@ TEST(JSEngine, JsV181_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "2");
 }
+
+// ============================================================================
+// Web Storage API Tests
+// ============================================================================
+
+TEST(JSEngine, LocalStorageExists) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    auto result = engine.evaluate("typeof localStorage");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, LocalStorageSetGetItem) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    engine.evaluate("localStorage.clear()");
+    engine.evaluate("localStorage.setItem('testkey', 'testvalue')");
+    auto result = engine.evaluate("localStorage.getItem('testkey')");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "testvalue");
+}
+
+TEST(JSEngine, LocalStorageGetNonExistentKey) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    engine.evaluate("localStorage.clear()");
+    auto result = engine.evaluate("localStorage.getItem('nonexistent')");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "null");
+}
+
+TEST(JSEngine, LocalStorageLength) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    engine.evaluate("localStorage.clear()");
+    engine.evaluate("localStorage.setItem('k1', 'v1')");
+    engine.evaluate("localStorage.setItem('k2', 'v2')");
+    engine.evaluate("localStorage.setItem('k3', 'v3')");
+    auto result = engine.evaluate("localStorage.length");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, LocalStorageRemoveItem) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    engine.evaluate("localStorage.clear()");
+    engine.evaluate("localStorage.setItem('k1', 'v1')");
+    engine.evaluate("localStorage.setItem('k2', 'v2')");
+    engine.evaluate("localStorage.removeItem('k1')");
+    auto result = engine.evaluate("localStorage.length");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "1");
+    auto removed = engine.evaluate("localStorage.getItem('k1')");
+    EXPECT_EQ(removed, "null");
+}
+
+TEST(JSEngine, LocalStorageClear) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    engine.evaluate("localStorage.setItem('k1', 'v1')");
+    engine.evaluate("localStorage.setItem('k2', 'v2')");
+    engine.evaluate("localStorage.clear()");
+    auto result = engine.evaluate("localStorage.length");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, LocalStorageKey) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    engine.evaluate("localStorage.clear()");
+    engine.evaluate("localStorage.setItem('firstkey', 'value1')");
+    engine.evaluate("localStorage.setItem('secondkey', 'value2')");
+    auto result = engine.evaluate("typeof localStorage.key(0)");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "string");
+    auto out_of_bounds = engine.evaluate("localStorage.key(10)");
+    EXPECT_EQ(out_of_bounds, "null");
+}
+
+TEST(JSEngine, SessionStorageExists) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    auto result = engine.evaluate("typeof sessionStorage");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, SessionStorageSetGetItem) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    engine.evaluate("sessionStorage.clear()");
+    engine.evaluate("sessionStorage.setItem('sesskey', 'sessvalue')");
+    auto result = engine.evaluate("sessionStorage.getItem('sesskey')");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "sessvalue");
+}
+
+TEST(JSEngine, SessionStorageLength) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    engine.evaluate("sessionStorage.clear()");
+    engine.evaluate("sessionStorage.setItem('s1', 'v1')");
+    engine.evaluate("sessionStorage.setItem('s2', 'v2')");
+    auto result = engine.evaluate("sessionStorage.length");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, LocalStorageNonStringValue) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    engine.evaluate("localStorage.clear()");
+    engine.evaluate("localStorage.setItem('numkey', 42)");
+    auto result = engine.evaluate("localStorage.getItem('numkey')");
+    EXPECT_FALSE(engine.has_error());
+    EXPECT_EQ(result, "42");
+}
