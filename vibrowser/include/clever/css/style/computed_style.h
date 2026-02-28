@@ -206,6 +206,7 @@ struct ComputedStyle {
     Length min_height = Length::zero();
     Length max_height = Length::px(std::numeric_limits<float>::max());
     float aspect_ratio = 0; // 0 = none, >0 = width/height ratio
+    bool aspect_ratio_is_auto = false; // true for "auto" or "auto <ratio>"
 
     // Margin, Padding
     EdgeSizes margin = {Length::zero(), Length::zero(), Length::zero(), Length::zero()};

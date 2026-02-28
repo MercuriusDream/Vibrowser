@@ -917,6 +917,75 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
         // viewport-relative coordinates from layout.
         if (child->position_type == 3) {
             paint_node(*child, list, 0.0f, 0.0f);
+        } else if (child->position_type == 4) {
+            // position:sticky — apply scroll-based clamping during paint
+            // The sticky constraint box is the nearest ancestor with overflow != visible
+            LayoutNode* scroll_container = node.parent;
+            while (scroll_container && !scroll_container->is_scroll_container) {
+                scroll_container = scroll_container->parent;
+            }
+
+            float sticky_offset_x = 0.0f, sticky_offset_y = 0.0f;
+
+            if (scroll_container) {
+                // Calculate sticky position clamping within the constraint box
+                const auto& child_geom = child->geometry;
+
+                // Get the constraint box bounds (in current coordinate system)
+                float constraint_top = scroll_container->geometry.y + scroll_container->geometry.border.top;
+                float constraint_left = scroll_container->geometry.x + scroll_container->geometry.border.left;
+                float constraint_bottom = constraint_top + scroll_container->geometry.border_box_height();
+                float constraint_right = constraint_left + scroll_container->geometry.border_box_width();
+
+                // Child position relative to scroll container
+                float child_pos_y = child_offset_y + child_geom.y;
+                float child_pos_x = child_offset_x + child_geom.x;
+
+                // Vertical sticking (top has priority over bottom)
+                if (child->pos_top_set) {
+                    // Clamp to stay pos_top pixels from top of constraint box
+                    float min_y = constraint_top + child->pos_top;
+                    float max_y = constraint_bottom - child->pos_top - child_geom.border_box_height();
+                    if (child_pos_y < min_y) {
+                        sticky_offset_y = min_y - child_pos_y;
+                    } else if (child_pos_y > max_y && max_y >= min_y) {
+                        sticky_offset_y = max_y - child_pos_y;
+                    }
+                } else if (child->pos_bottom_set) {
+                    // Clamp to stay pos_bottom pixels from bottom of constraint box
+                    float max_y = constraint_bottom - child->pos_bottom - child_geom.border_box_height();
+                    float min_y = constraint_top + child->pos_bottom;
+                    if (child_pos_y > max_y) {
+                        sticky_offset_y = max_y - child_pos_y;
+                    } else if (child_pos_y < min_y && min_y <= max_y) {
+                        sticky_offset_y = min_y - child_pos_y;
+                    }
+                }
+
+                // Horizontal sticking (left has priority over right)
+                if (child->pos_left_set) {
+                    // Clamp to stay pos_left pixels from left of constraint box
+                    float min_x = constraint_left + child->pos_left;
+                    float max_x = constraint_right - child->pos_left - child_geom.border_box_width();
+                    if (child_pos_x < min_x) {
+                        sticky_offset_x = min_x - child_pos_x;
+                    } else if (child_pos_x > max_x && max_x >= min_x) {
+                        sticky_offset_x = max_x - child_pos_x;
+                    }
+                } else if (child->pos_right_set) {
+                    // Clamp to stay pos_right pixels from right of constraint box
+                    float max_x = constraint_right - child->pos_right - child_geom.border_box_width();
+                    float min_x = constraint_left + child->pos_right;
+                    if (child_pos_x > max_x) {
+                        sticky_offset_x = max_x - child_pos_x;
+                    } else if (child_pos_x < min_x && min_x <= max_x) {
+                        sticky_offset_x = min_x - child_pos_x;
+                    }
+                }
+            }
+
+            // Paint sticky child with adjusted offset
+            paint_node(*child, list, child_offset_x + sticky_offset_x, child_offset_y + sticky_offset_y);
         } else {
             paint_node(*child, list, child_offset_x, child_offset_y);
         }

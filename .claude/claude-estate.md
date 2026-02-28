@@ -39,7 +39,7 @@
 #### P0-1: Mixed block/inline container skips text-align offset in block flow
 - **Root cause**: Block-flow path selected when children are mixed (layout_engine.cpp:522-533). Inline-like children positioned left only. Centering/right offset NOT applied in block positioning (layout_engine.cpp:1201, see also 1199-1218).
 - **Effect**: `text-align:center` ignored when block + inline-like siblings coexist.
-- **Status**: [ ] PRIMARY CULPRIT — strongest evidence
+- **Status**: [x] VERIFIED FIXED — position_block_children handles inline centering (Round 9)
 
 #### P0-2: Legacy `<center>` requires exact zero margins for auto-centering
 - **Root cause**: Auto-centering condition at render_pipeline.cpp:10641 only triggers when child margins are explicitly non-zero (defaults usually zero).
@@ -53,7 +53,7 @@
 #### P0-4: Negative margins collide with auto-margin sentinel
 - **Root cause**: Auto detected via `margin < 0` (layout_engine.cpp:470, 940, 2397). Auto encoded as -1 (render_pipeline.cpp:10041). Negative gutters misinterpreted as auto-centering.
 - **Effect**: Elements with negative margins get incorrectly auto-centered.
-- **Status**: [ ] RELATED — separate issue
+- **Status**: [x] FIXED — MARGIN_AUTO sentinel + is_margin_auto() helper (Round 9)
 
 ### Rendering Issue Mitigations (Comprehensive Diagnosis)
 

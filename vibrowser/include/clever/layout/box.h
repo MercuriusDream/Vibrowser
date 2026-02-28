@@ -435,6 +435,11 @@ struct LayoutNode {
     float pos_top = 0, pos_right = 0, pos_bottom = 0, pos_left = 0;
     bool pos_top_set = false, pos_right_set = false, pos_bottom_set = false, pos_left_set = false;
 
+    // Sticky positioning: element stays in normal flow but adjusts position during paint
+    // based on scroll offset within its constraint box.
+    float sticky_original_y = 0;  // original normal flow Y position (set during layout)
+    float sticky_original_x = 0;  // original normal flow X position (set during layout)
+
     // CSS Transforms
     std::vector<clever::css::Transform> transforms;
 

@@ -483,7 +483,7 @@ void PropertyCascade::apply_declaration(
         if (prop == "outline-style") { style.outline_style = parent.outline_style; return; }
         if (prop == "user-select") { style.user_select = parent.user_select; return; }
         if (prop == "pointer-events") { style.pointer_events = parent.pointer_events; return; }
-        if (prop == "aspect-ratio") { style.aspect_ratio = parent.aspect_ratio; return; }
+        if (prop == "aspect-ratio") { style.aspect_ratio = parent.aspect_ratio; style.aspect_ratio_is_auto = parent.aspect_ratio_is_auto; return; }
         if (prop == "writing-mode") { style.writing_mode = parent.writing_mode; return; }
         if (prop == "content") { style.content = parent.content; return; }
         return;
@@ -568,7 +568,7 @@ void PropertyCascade::apply_declaration(
         if (prop == "gap" || prop == "grid-gap") { style.gap = Length::zero(); style.column_gap_val = Length::zero(); return; }
         if (prop == "row-gap" || prop == "grid-row-gap") { style.gap = Length::zero(); return; }
         if (prop == "column-gap" || prop == "grid-column-gap") { style.column_gap_val = Length::zero(); return; }
-        if (prop == "aspect-ratio") { style.aspect_ratio = 0; return; }
+        if (prop == "aspect-ratio") { style.aspect_ratio = 0; style.aspect_ratio_is_auto = false; return; }
         if (prop == "user-select") { style.user_select = UserSelect::Auto; return; }
         if (prop == "pointer-events") { style.pointer_events = PointerEvents::Auto; return; }
         return;
@@ -776,9 +776,27 @@ void PropertyCascade::apply_declaration(
         return;
     }
     if (prop == "aspect-ratio") {
+        style.aspect_ratio = 0;
+        style.aspect_ratio_is_auto = false;
+
         if (value_lower == "auto") {
-            style.aspect_ratio = 0; // 0 = auto
+            style.aspect_ratio_is_auto = true;
+        } else if (value_lower.substr(0, 5) == "auto ") {
+            // "auto <ratio>" format
+            style.aspect_ratio_is_auto = true;
+            std::string ratio_part = value_lower.substr(5);
+            auto slash = ratio_part.find('/');
+            if (slash != std::string::npos) {
+                try {
+                    float w = std::stof(ratio_part.substr(0, slash));
+                    float h = std::stof(ratio_part.substr(slash + 1));
+                    if (h > 0) style.aspect_ratio = w / h;
+                } catch (...) {}
+            } else {
+                try { style.aspect_ratio = std::stof(ratio_part); } catch (...) {}
+            }
         } else {
+            // "<ratio>" format (decimal or fraction)
             auto slash = value_lower.find('/');
             if (slash != std::string::npos) {
                 try {

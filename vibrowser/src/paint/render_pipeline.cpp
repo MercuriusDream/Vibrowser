@@ -1962,7 +1962,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                 if (s == "center") return 50.0f;
                 if (s == "right" || s == "bottom") return 100.0f;
                 if (!s.empty() && s.back() == '%') {
-                    try { return std::stof(s); } catch (...) { return 50.0f; }
+                    try { return std::stof(s.substr(0, s.size() - 1)); } catch (...) { return 50.0f; }
                 }
                 try { return std::stof(s); } catch (...) { return 50.0f; }
             };
