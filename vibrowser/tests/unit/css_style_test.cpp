@@ -24648,3 +24648,180 @@ TEST(CSSStyleTest, CssV126_8_ResolveBorderShorthandAllEdges) {
     EXPECT_FLOAT_EQ(style.opacity, 0.75f);
     EXPECT_EQ(style.z_index, 5);
 }
+
+// ---------------------------------------------------------------------------
+// V127 tests
+// ---------------------------------------------------------------------------
+
+TEST(CSSStyleTest, CssV127_1_LetterSpacingAndWordSpacingFromCSS) {
+    const std::string css = ".spaced{letter-spacing:2px;word-spacing:4px;font-size:14px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.classes = {"spaced"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(), 4.0f);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 14.0f);
+}
+
+TEST(CSSStyleTest, CssV127_2_OutlineWidthStyleColorFromCSS) {
+    const std::string css = ".focused{outline-width:3px;outline-style:solid;outline-color:#00ff00;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "input";
+    elem.classes = {"focused"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(), 3.0f);
+    EXPECT_EQ(style.outline_style, BorderStyle::Solid);
+    EXPECT_EQ(style.outline_color.r, 0);
+    EXPECT_EQ(style.outline_color.g, 255);
+    EXPECT_EQ(style.outline_color.b, 0);
+    EXPECT_EQ(style.outline_color.a, 255);
+}
+
+TEST(CSSStyleTest, CssV127_3_PointerEventsNoneWithTextOverflowEllipsis) {
+    const std::string css = ".disabled{pointer-events:none;text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"disabled"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+    EXPECT_EQ(style.text_overflow, TextOverflow::Ellipsis);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}
+
+TEST(ComputedStyleTest, CssV127_4_BoxShadowEntryBlurAndSpreadFields) {
+    ComputedStyle s;
+    ComputedStyle::BoxShadowEntry shadow;
+    shadow.offset_x = 3.0f;
+    shadow.offset_y = 5.0f;
+    shadow.blur = 10.0f;
+    shadow.spread = 2.0f;
+    shadow.color = Color{128, 0, 255, 200};
+    shadow.inset = true;
+    s.box_shadows.push_back(shadow);
+
+    EXPECT_EQ(s.box_shadows.size(), 1u);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].offset_x, 3.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].offset_y, 5.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].blur, 10.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].spread, 2.0f);
+    EXPECT_EQ(s.box_shadows[0].color.r, 128);
+    EXPECT_EQ(s.box_shadows[0].color.g, 0);
+    EXPECT_EQ(s.box_shadows[0].color.b, 255);
+    EXPECT_EQ(s.box_shadows[0].color.a, 200);
+    EXPECT_TRUE(s.box_shadows[0].inset);
+}
+
+TEST(CSSStyleTest, CssV127_5_FlexDirectionColumnReverseWithWrap) {
+    const std::string css = ".col-flex{flex-direction:column-reverse;flex-wrap:wrap;justify-content:center;display:flex;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"col-flex"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.flex_direction, FlexDirection::ColumnReverse);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::Wrap);
+    EXPECT_EQ(style.justify_content, JustifyContent::Center);
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(ComputedStyleTest, CssV127_6_LengthFactoryMethodsAndConversion) {
+    Length px_len = Length::px(24.0f);
+    EXPECT_FLOAT_EQ(px_len.to_px(), 24.0f);
+    EXPECT_FALSE(px_len.is_auto());
+    EXPECT_FALSE(px_len.is_zero());
+
+    Length auto_len = Length::auto_val();
+    EXPECT_TRUE(auto_len.is_auto());
+
+    Length zero_len = Length::zero();
+    EXPECT_TRUE(zero_len.is_zero());
+    EXPECT_FALSE(zero_len.is_auto());
+
+    Length em_len = Length::em(2.0f);
+    // em relative to parent_value (font_size); 2em * 16px parent = 32px
+    EXPECT_FLOAT_EQ(em_len.to_px(16.0f), 32.0f);
+
+    Length pct_len = Length::percent(50.0f);
+    // 50% of 200px parent = 100px
+    EXPECT_FLOAT_EQ(pct_len.to_px(200.0f), 100.0f);
+}
+
+TEST(CSSStyleTest, CssV127_7_TextTransformAndFontStyleItalic) {
+    const std::string css = ".fancy{text-transform:uppercase;font-style:italic;text-decoration:underline;color:#ff6600;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"fancy"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+    EXPECT_EQ(style.color.r, 0xFF);
+    EXPECT_EQ(style.color.g, 0x66);
+    EXPECT_EQ(style.color.b, 0x00);
+}
+
+TEST(CSSStyleTest, CssV127_8_PositionFixedWithTopLeftAndOverflowScroll) {
+    const std::string css = ".modal{position:fixed;top:0px;left:0px;overflow:scroll;background-color:#ffffff;z-index:1000;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"modal"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Fixed);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 0.0f);
+    EXPECT_EQ(style.overflow_x, Overflow::Scroll);
+    EXPECT_EQ(style.overflow_y, Overflow::Scroll);
+    EXPECT_EQ(style.background_color.r, 255);
+    EXPECT_EQ(style.background_color.g, 255);
+    EXPECT_EQ(style.background_color.b, 255);
+    EXPECT_EQ(style.z_index, 1000);
+}

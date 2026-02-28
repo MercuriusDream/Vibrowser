@@ -34063,3 +34063,268 @@ TEST(JSEngine, JsV126_8) {
     EXPECT_EQ(result, "true|false|Hello, World!|84|revoked|50");
 }
 
+TEST(JSEngine, JsV127_1) {
+    // String.raw tagged template literal and advanced string methods
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        // String.raw preserves backslashes
+        r.push(String.raw`line1\nline2`);
+        // padStart / padEnd
+        r.push("7".padStart(3, "0"));
+        r.push("hi".padEnd(5, "!"));
+        // repeat
+        r.push("ab".repeat(3));
+        // startsWith / endsWith / includes
+        r.push("foobar".startsWith("foo"));
+        r.push("foobar".endsWith("bar"));
+        r.push("foobar".includes("oba"));
+        // trimStart / trimEnd
+        r.push("  ok  ".trimStart());
+        r.push("  ok  ".trimEnd());
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "line1\\nline2|007|hi!!!|ababab|true|true|true|ok  |  ok");
+}
+
+TEST(JSEngine, JsV127_2) {
+    // WeakRef and FinalizationRegistry basic API surface
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        // WeakRef: deref returns target when still alive
+        let obj = { name: "alive" };
+        const wref = new WeakRef(obj);
+        r.push(wref.deref().name);
+        // FinalizationRegistry can be constructed (callback won't fire synchronously)
+        const registry = new FinalizationRegistry(function(heldValue) {});
+        registry.register(obj, "token1");
+        r.push(typeof registry.register);
+        r.push(typeof registry.unregister);
+        // WeakRef still holds target
+        r.push(wref.deref() !== undefined);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "alive|function|function|true");
+}
+
+TEST(JSEngine, JsV127_3) {
+    // Generator: fibonacci sequence with return value and done flag
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        function* fib() {
+            let a = 0, b = 1;
+            while (true) {
+                yield a;
+                const t = a + b;
+                a = b;
+                b = t;
+            }
+        }
+        const gen = fib();
+        const vals = [];
+        for (let i = 0; i < 8; i++) {
+            vals.push(gen.next().value);
+        }
+        r.push(vals.join(","));
+        // Generator with return
+        function* counted() {
+            yield 1;
+            yield 2;
+            return "end";
+        }
+        const g2 = counted();
+        r.push(g2.next().value);
+        r.push(g2.next().value);
+        const last = g2.next();
+        r.push(last.value);
+        r.push(last.done);
+        // After done, next().done is still true
+        const after = g2.next();
+        r.push(after.done);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,1,2,3,5,8,13|1|2|end|true|true");
+}
+
+TEST(JSEngine, JsV127_4) {
+    // Object.entries, Object.fromEntries, and Object.assign deep behavior
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        const src = { a: 1, b: 2, c: 3 };
+        // Object.entries
+        const entries = Object.entries(src);
+        r.push(entries.map(function(e) { return e[0] + "=" + e[1]; }).join(","));
+        // Object.fromEntries roundtrip
+        const rebuilt = Object.fromEntries(entries);
+        r.push(JSON.stringify(rebuilt));
+        // Transform via map on entries
+        const doubled = Object.fromEntries(
+            Object.entries(src).map(function(e) { return [e[0], e[1] * 2]; })
+        );
+        r.push(doubled.a + ":" + doubled.b + ":" + doubled.c);
+        // Object.assign merges, later wins
+        const merged = Object.assign({}, { x: 1, y: 2 }, { y: 3, z: 4 });
+        r.push(merged.x + "," + merged.y + "," + merged.z);
+        // Object.assign returns target
+        const target = { m: 0 };
+        const ret = Object.assign(target, { n: 1 });
+        r.push(ret === target);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a=1,b=2,c=3|{\"a\":1,\"b\":2,\"c\":3}|2:4:6|1,3,4|true");
+}
+
+TEST(JSEngine, JsV127_5) {
+    // Symbol: well-known symbols, Symbol.for, description, and toPrimitive
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        // Symbol basics
+        const s1 = Symbol("test");
+        const s2 = Symbol("test");
+        r.push(s1 !== s2); // unique
+        r.push(typeof s1);
+        r.push(s1.description);
+        // Symbol.for shared registry
+        const g1 = Symbol.for("shared");
+        const g2 = Symbol.for("shared");
+        r.push(g1 === g2);
+        r.push(Symbol.keyFor(g1));
+        r.push(Symbol.keyFor(s1) === undefined);
+        // Symbol.toPrimitive customizes type coercion
+        const obj = {
+            [Symbol.toPrimitive](hint) {
+                if (hint === "number") return 42;
+                if (hint === "string") return "custom";
+                return true;
+            }
+        };
+        r.push(+obj);
+        r.push(`${obj}`);
+        // Symbol.iterator on custom object
+        const range = {
+            from: 1,
+            to: 4,
+            [Symbol.iterator]() {
+                let cur = this.from;
+                const last = this.to;
+                return {
+                    next() {
+                        return cur <= last
+                            ? { value: cur++, done: false }
+                            : { done: true };
+                    }
+                };
+            }
+        };
+        r.push([...range].join(","));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|symbol|test|true|shared|true|42|custom|1,2,3,4");
+}
+
+TEST(JSEngine, JsV127_6) {
+    // Map advanced: iteration order, size, chaining, and conversion
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        const m = new Map();
+        m.set("z", 3).set("a", 1).set("m", 2);
+        r.push(m.size);
+        // Iteration preserves insertion order
+        const keys = [];
+        m.forEach(function(v, k) { keys.push(k); });
+        r.push(keys.join(","));
+        // Map from array of pairs
+        const m2 = new Map([["x", 10], ["y", 20]]);
+        r.push(m2.get("x") + m2.get("y"));
+        // delete returns boolean
+        r.push(m2.delete("x"));
+        r.push(m2.delete("x"));
+        r.push(m2.size);
+        // Spread keys/values into arrays
+        const m3 = new Map([["p", 1], ["q", 2], ["r", 3]]);
+        r.push(Array.from(m3.keys()).join(","));
+        r.push(Array.from(m3.values()).reduce(function(a, b) { return a + b; }, 0));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|z,a,m|30|true|false|1|p,q,r|6");
+}
+
+TEST(JSEngine, JsV127_7) {
+    // Error subclasses and custom error with cause
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        // Built-in error types
+        try { null.x; } catch(e) { r.push(e instanceof TypeError); }
+        try { eval("{{{{"); } catch(e) { r.push(e instanceof SyntaxError); }
+        try { decodeURIComponent("%"); } catch(e) { r.push(e instanceof URIError); }
+        try { new Array(-1); } catch(e) { r.push(e instanceof RangeError); }
+        // Custom error class
+        class AppError extends Error {
+            constructor(msg, code) {
+                super(msg);
+                this.name = "AppError";
+                this.code = code;
+            }
+        }
+        try {
+            throw new AppError("not found", 404);
+        } catch(e) {
+            r.push(e instanceof AppError);
+            r.push(e instanceof Error);
+            r.push(e.name);
+            r.push(e.message);
+            r.push(e.code);
+        }
+        // Error.prototype.stack exists (string)
+        r.push(typeof (new Error("test")).stack);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|true|true|true|AppError|not found|404|string");
+}
+
+TEST(JSEngine, JsV127_8) {
+    // Destructuring: nested, defaults, rest, swap, and computed keys
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        // Array destructuring with rest
+        const [first, second, ...rest] = [10, 20, 30, 40, 50];
+        r.push(first);
+        r.push(second);
+        r.push(rest.join(","));
+        // Swap via destructuring
+        let x = "A", y = "B";
+        [x, y] = [y, x];
+        r.push(x + y);
+        // Object destructuring with rename and default
+        const { name: n, age: a = 25, city: c = "Seoul" } = { name: "Lee", age: 30 };
+        r.push(n);
+        r.push(a);
+        r.push(c);
+        // Nested destructuring
+        const { data: { items: [head, ...tail] } } = { data: { items: [1, 2, 3] } };
+        r.push(head);
+        r.push(tail.join(","));
+        // Computed property destructuring
+        const key = "foo";
+        const { [key]: val } = { foo: "bar" };
+        r.push(val);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|20|30,40,50|BA|Lee|30|Seoul|1|2,3|bar");
+}
+

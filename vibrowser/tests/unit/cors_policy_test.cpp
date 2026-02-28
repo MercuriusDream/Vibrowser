@@ -10158,3 +10158,107 @@ TEST(CORSPolicyTest, CorsV126_8_ShouldAttachOriginHeaderVariousEdgeCases) {
     EXPECT_TRUE(should_attach_origin_header("https://app.example.com",
                                              "https://api.example.com/data"));
 }
+
+// ---------------------------------------------------------------------------
+// V127 — CORS policy additional tests
+// ---------------------------------------------------------------------------
+
+TEST(CORSPolicyTest, CorsV127_1_EnforceabilityRejectsJavascriptAndAboutSchemes) {
+    // javascript: and about: scheme origins are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:void(0)"));
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+    EXPECT_FALSE(has_enforceable_document_origin("about:srcdoc"));
+    // file:// is not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("file:///Users/test/page.html"));
+    // Sanity: http and https remain enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.example.com"));
+}
+
+TEST(CORSPolicyTest, CorsV127_2_CrossOriginDetectionDifferentPorts) {
+    // Same host but different ports → cross-origin
+    EXPECT_TRUE(is_cross_origin("http://app.example.com:3000",
+                                 "http://app.example.com:4000/data"));
+    // Same host and same non-default port → same origin
+    EXPECT_FALSE(is_cross_origin("http://app.example.com:3000",
+                                  "http://app.example.com:3000/data"));
+    // Same host, different schemes → cross-origin
+    EXPECT_TRUE(is_cross_origin("http://app.example.com",
+                                 "https://app.example.com/data"));
+}
+
+TEST(CORSPolicyTest, CorsV127_3_CorsEligibilityRejectsUrlsWithUserInfo) {
+    // URLs containing userinfo (user:pass@) are NOT eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://admin:secret@api.example.com/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://user@api.example.com/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://user:@api.example.com/data"));
+    // Clean URLs remain eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, CorsV127_4_NormalizeOriginHeaderSetsOriginForCrossScheme) {
+    // http → https cross-origin should set Origin header
+    clever::net::HeaderMap h;
+    normalize_outgoing_origin_header(h, "http://app.example.com",
+                                     "https://app.example.com/api");
+    ASSERT_TRUE(h.has("origin"));
+    EXPECT_EQ(h.get("origin").value(), "http://app.example.com");
+
+    // Same scheme/host → same origin → no Origin header
+    clever::net::HeaderMap h2;
+    normalize_outgoing_origin_header(h2, "https://app.example.com",
+                                     "https://app.example.com/api");
+    EXPECT_FALSE(h2.has("origin"));
+}
+
+TEST(CORSPolicyTest, CorsV127_5_CorsAllowsResponseExactMatchNoCredentials) {
+    // Exact match ACAO with no credentials → allowed
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      h, false));
+
+    // Mismatched ACAO → not allowed
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://other.example.com");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                       "https://api.example.com/data",
+                                       h2, false));
+}
+
+TEST(CORSPolicyTest, CorsV127_6_CorsEligibilityAcceptsNumericPortInUrl) {
+    // Standard ports on valid http/https URLs are eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com:8443/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com:8080/data"));
+    // URL with empty port specifier is NOT eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com:/data"));
+}
+
+TEST(CORSPolicyTest, CorsV127_7_ShouldAttachOriginHeaderNotForNonEligibleTarget) {
+    // If the request URL is not CORS-eligible (e.g., ftp://), should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com",
+                                              "ftp://files.example.com/data"));
+    // If the request URL uses data: scheme, should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com",
+                                              "data:text/html,<h1>hi</h1>"));
+    // If the request URL has a non-empty fragment, should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com",
+                                              "https://api.example.com/data#section"));
+}
+
+TEST(CORSPolicyTest, CorsV127_8_CorsAllowsResponseMissingACAOHeader) {
+    // No ACAO header at all → response NOT allowed for cross-origin
+    clever::net::HeaderMap h;
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                       "https://api.example.com/data",
+                                       h, false));
+
+    // No ACAO header, with credentials → also NOT allowed
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                       "https://api.example.com/data",
+                                       h2, true));
+}

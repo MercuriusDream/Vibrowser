@@ -19547,3 +19547,140 @@ TEST(DomElement, ElementV126_8) {
     EXPECT_EQ(attrs[2].name, "placeholder");
     EXPECT_EQ(attrs[2].value, "Enter name");
 }
+
+// ---------------------------------------------------------------------------
+// V127 tests
+// ---------------------------------------------------------------------------
+
+// 1. insert_before with nullptr reference appends at end (same as append_child)
+TEST(DomNode, ElementV127_1) {
+    Element parent("ul");
+    auto first = std::make_unique<Element>("li");
+    first->set_attribute("id", "first");
+    auto* first_ptr = first.get();
+    parent.append_child(std::move(first));
+
+    auto second = std::make_unique<Element>("li");
+    second->set_attribute("id", "second");
+    auto* second_ptr = second.get();
+    parent.insert_before(std::move(second), nullptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), first_ptr);
+    EXPECT_EQ(parent.last_child(), second_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(second_ptr->previous_sibling(), first_ptr);
+}
+
+// 2. text_content on Element with mixed child types (Text + nested Element with Text)
+TEST(DomElement, ElementV127_2) {
+    Element div("div");
+    div.append_child(std::make_unique<Text>("Hello "));
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("world"));
+    div.append_child(std::move(span));
+    div.append_child(std::make_unique<Text>("!"));
+
+    EXPECT_EQ(div.text_content(), "Hello world!");
+}
+
+// 3. ClassList toggle removes when present, adds when absent
+TEST(DomElement, ElementV127_3) {
+    Element elem("div");
+    elem.class_list().add("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 1u);
+
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 0u);
+
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 1u);
+}
+
+// 4. Document factory methods produce correct node types
+TEST(DomDocument, ElementV127_4) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    EXPECT_EQ(elem->tag_name(), "section");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+
+    auto text = doc.create_text_node("sample text");
+    EXPECT_EQ(text->data(), "sample text");
+    EXPECT_EQ(text->node_type(), NodeType::Text);
+
+    auto comment = doc.create_comment("a comment");
+    EXPECT_EQ(comment->data(), "a comment");
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+}
+
+// 5. remove_child detaches node and updates sibling pointers
+TEST(DomNode, ElementV127_5) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    auto* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    EXPECT_EQ(parent.child_count(), 3u);
+
+    auto removed = parent.remove_child(*b_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(b_ptr->parent(), nullptr);
+    EXPECT_EQ(b_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), nullptr);
+}
+
+// 6. Comment set_data updates data
+TEST(DomComment, ElementV127_6) {
+    Comment c("initial");
+    EXPECT_EQ(c.data(), "initial");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+
+    c.set_data("updated comment");
+    EXPECT_EQ(c.data(), "updated comment");
+}
+
+// 7. for_each_child iterates all children in insertion order
+TEST(DomNode, ElementV127_7) {
+    Element parent("ol");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Text>("text"));
+    parent.append_child(std::make_unique<Comment>("note"));
+
+    std::vector<NodeType> types;
+    parent.for_each_child([&](const Node& child) {
+        types.push_back(child.node_type());
+    });
+
+    ASSERT_EQ(types.size(), 3u);
+    EXPECT_EQ(types[0], NodeType::Element);
+    EXPECT_EQ(types[1], NodeType::Text);
+    EXPECT_EQ(types[2], NodeType::Comment);
+}
+
+// 8. Setting attribute "id" updates id() shortcut and overwriting an attribute replaces its value
+TEST(DomElement, ElementV127_8) {
+    Element elem("div");
+    EXPECT_EQ(elem.id(), "");
+
+    elem.set_attribute("id", "main-content");
+    EXPECT_EQ(elem.id(), "main-content");
+    auto attr = elem.get_attribute("id");
+    ASSERT_TRUE(attr.has_value());
+    EXPECT_EQ(attr.value(), "main-content");
+
+    // Overwrite the same attribute
+    elem.set_attribute("id", "sidebar");
+    EXPECT_EQ(elem.id(), "sidebar");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+    EXPECT_EQ(elem.attributes()[0].value, "sidebar");
+}

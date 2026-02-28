@@ -21205,3 +21205,197 @@ TEST(HtmlParserTest, HtmlV126_8) {
     ASSERT_NE(h1, nullptr);
     EXPECT_EQ(h1->text_content(), "Styled");
 }
+
+// ============================================================================
+// V127 Tests
+// ============================================================================
+
+// 1. Parse a definition list (dl/dt/dd) and verify structure and text content
+TEST(HtmlParserTest, HtmlV127_1) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term1</dt><dd>Definition1</dd>"
+        "<dt>Term2</dt><dd>Definition2</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+
+    auto dts = dl->find_all_elements("dt");
+    auto dds = dl->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term1");
+    EXPECT_EQ(dts[1]->text_content(), "Term2");
+    EXPECT_EQ(dds[0]->text_content(), "Definition1");
+    EXPECT_EQ(dds[1]->text_content(), "Definition2");
+}
+
+// 2. Parse multiple inline elements sharing a parent and verify parent pointers
+TEST(HtmlParserTest, HtmlV127_2) {
+    auto doc = clever::html::parse(
+        "<html><body><p><strong>Bold</strong><em>Italic</em><code>Code</code></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+
+    auto* strong = p->find_element("strong");
+    auto* em = p->find_element("em");
+    auto* code = p->find_element("code");
+    ASSERT_NE(strong, nullptr);
+    ASSERT_NE(em, nullptr);
+    ASSERT_NE(code, nullptr);
+
+    EXPECT_EQ(strong->text_content(), "Bold");
+    EXPECT_EQ(em->text_content(), "Italic");
+    EXPECT_EQ(code->text_content(), "Code");
+
+    // All three inline elements share the same parent <p>
+    EXPECT_EQ(strong->parent, p);
+    EXPECT_EQ(em->parent, p);
+    EXPECT_EQ(code->parent, p);
+}
+
+// 3. Parse a comment embedded between elements and verify it exists in children
+TEST(HtmlParserTest, HtmlV127_3) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div>Before</div>"
+        "<!-- middle comment -->"
+        "<div>After</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    bool found_comment = false;
+    for (auto& child : body->children) {
+        if (child->type == clever::html::SimpleNode::Comment) {
+            found_comment = true;
+            EXPECT_EQ(child->data, " middle comment ");
+        }
+    }
+    EXPECT_TRUE(found_comment);
+
+    auto divs = body->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 2u);
+    EXPECT_EQ(divs[0]->text_content(), "Before");
+    EXPECT_EQ(divs[1]->text_content(), "After");
+}
+
+// 4. Parse a table with thead, tbody, tfoot and verify cell content
+TEST(HtmlParserTest, HtmlV127_4) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<thead><tr><th>Header</th></tr></thead>"
+        "<tbody><tr><td>Cell1</td></tr></tbody>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+
+    auto* th = table->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->text_content(), "Header");
+
+    auto* td = table->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "Cell1");
+
+    auto* thead = table->find_element("thead");
+    auto* tbody = table->find_element("tbody");
+    ASSERT_NE(thead, nullptr);
+    ASSERT_NE(tbody, nullptr);
+}
+
+// 5. Parse an element with multiple attributes and verify all via get_attr_v63
+TEST(HtmlParserTest, HtmlV127_5) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<input type=\"email\" name=\"user_email\" placeholder=\"you@example.com\" "
+        "required=\"required\" maxlength=\"255\">"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "email");
+    EXPECT_EQ(get_attr_v63(input, "name"), "user_email");
+    EXPECT_EQ(get_attr_v63(input, "placeholder"), "you@example.com");
+    EXPECT_EQ(get_attr_v63(input, "required"), "required");
+    EXPECT_EQ(get_attr_v63(input, "maxlength"), "255");
+    EXPECT_EQ(input->attributes.size(), 5u);
+}
+
+// 6. Parse nested blockquote and verify recursive text_content
+TEST(HtmlParserTest, HtmlV127_6) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<blockquote>"
+        "<p>Line one</p>"
+        "<blockquote><p>Nested quote</p></blockquote>"
+        "</blockquote>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer_bq = doc->find_element("blockquote");
+    ASSERT_NE(outer_bq, nullptr);
+
+    // text_content is recursive, should contain both paragraphs' text
+    std::string full_text = outer_bq->text_content();
+    EXPECT_NE(full_text.find("Line one"), std::string::npos);
+    EXPECT_NE(full_text.find("Nested quote"), std::string::npos);
+
+    auto inner_bqs = outer_bq->find_all_elements("blockquote");
+    ASSERT_EQ(inner_bqs.size(), 1u);
+    EXPECT_EQ(inner_bqs[0]->find_element("p")->text_content(), "Nested quote");
+}
+
+// 7. Parse document type and verify it is the first child of the document root
+TEST(HtmlParserTest, HtmlV127_7) {
+    auto doc = clever::html::parse("<!DOCTYPE html><html><head><title>T</title></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    EXPECT_EQ(doc->type, clever::html::SimpleNode::Document);
+
+    // First child should be DOCTYPE
+    ASSERT_FALSE(doc->children.empty());
+    EXPECT_EQ(doc->children.front()->type, clever::html::SimpleNode::DocumentType);
+    EXPECT_EQ(doc->children.front()->doctype_name, "html");
+
+    // Title should be accessible
+    auto* title = doc->find_element("title");
+    ASSERT_NE(title, nullptr);
+    EXPECT_EQ(title->text_content(), "T");
+}
+
+// 8. Parse a script tag with special characters and verify raw text preservation
+TEST(HtmlParserTest, HtmlV127_8) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<script>var x = 10 < 20 && 30 > 5; // comment</script>"
+        "<p>After script</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+
+    // Script content should be raw text, not parsed as HTML
+    std::string script_text = script->text_content();
+    EXPECT_NE(script_text.find("10 < 20"), std::string::npos);
+    EXPECT_NE(script_text.find("30 > 5"), std::string::npos);
+    EXPECT_NE(script_text.find("// comment"), std::string::npos);
+
+    // Content after script should still parse normally
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "After script");
+}

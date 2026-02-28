@@ -19387,3 +19387,155 @@ TEST(SerializerTest, SerializerV126_8_F64SubnormalAndLargeMagnitude) {
     EXPECT_EQ(d.read_f64(), neg_largest);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V127 Tests
+// ------------------------------------------------------------------
+
+// Test 1: Serialize and deserialize a complete message-like structure
+// (header u32 + type u8 + payload string + checksum u32)
+TEST(SerializerTest, SerializerV127_1_MessageFrameRoundTrip) {
+    Serializer s;
+    uint32_t msg_id = 42;
+    uint8_t msg_type = 3;
+    std::string payload = "hello world";
+    uint32_t checksum = 0xDEADBEEFu;
+
+    s.write_u32(msg_id);
+    s.write_u8(msg_type);
+    s.write_string(payload);
+    s.write_u32(checksum);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), msg_id);
+    EXPECT_EQ(d.read_u8(), msg_type);
+    EXPECT_EQ(d.read_string(), payload);
+    EXPECT_EQ(d.read_u32(), checksum);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 2: Multiple serializers produce independent buffers
+TEST(SerializerTest, SerializerV127_2_IndependentBuffers) {
+    Serializer s1;
+    Serializer s2;
+
+    s1.write_u32(100);
+    s2.write_u64(200);
+
+    // Each serializer has its own buffer with its own size
+    // u32 = 4 bytes, u64 = 8 bytes
+    EXPECT_EQ(s1.data().size(), 4u);
+    EXPECT_EQ(s2.data().size(), 8u);
+
+    Deserializer d1(s1.data());
+    EXPECT_EQ(d1.read_u32(), 100u);
+    EXPECT_FALSE(d1.has_remaining());
+
+    Deserializer d2(s2.data());
+    EXPECT_EQ(d2.read_u64(), 200u);
+    EXPECT_FALSE(d2.has_remaining());
+}
+
+// Test 3: write_bytes with single byte payload and verify round-trip
+TEST(SerializerTest, SerializerV127_3_SingleByteWriteBytes) {
+    Serializer s;
+    uint8_t single = 0xAB;
+    s.write_bytes(&single, 1);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_EQ(result[0], 0xAB);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 4: I32 and I64 alternation preserves all values exactly
+TEST(SerializerTest, SerializerV127_4_AlternatingI32I64Values) {
+    Serializer s;
+    s.write_i32(-100);
+    s.write_i64(-200LL);
+    s.write_i32(300);
+    s.write_i64(400LL);
+    s.write_i32(-2147483647);
+    s.write_i64(9223372036854775807LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -100);
+    EXPECT_EQ(d.read_i64(), -200LL);
+    EXPECT_EQ(d.read_i32(), 300);
+    EXPECT_EQ(d.read_i64(), 400LL);
+    EXPECT_EQ(d.read_i32(), -2147483647);
+    EXPECT_EQ(d.read_i64(), 9223372036854775807LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 5: Strings containing only whitespace and special characters
+TEST(SerializerTest, SerializerV127_5_WhitespaceAndSpecialStrings) {
+    Serializer s;
+    s.write_string("   ");
+    s.write_string("\t\n\r");
+    s.write_string("!@#$%^&*()_+-=[]{}|;':\",./<>?");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "   ");
+    EXPECT_EQ(d.read_string(), "\t\n\r");
+    EXPECT_EQ(d.read_string(), "!@#$%^&*()_+-=[]{}|;':\",./<>?");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 6: Deserializer remaining tracks correctly for mixed small types
+TEST(SerializerTest, SerializerV127_6_RemainingTracksForBoolU8Sequence) {
+    Serializer s;
+    s.write_bool(true);   // 1 byte
+    s.write_bool(false);  // 1 byte
+    s.write_u8(42);       // 1 byte
+    s.write_u16(1000);    // 2 bytes
+
+    Deserializer d(s.data());
+    size_t total = d.remaining();
+    EXPECT_EQ(total, 5u); // 1+1+1+2
+
+    d.read_bool();
+    EXPECT_EQ(d.remaining(), 4u);
+    d.read_bool();
+    EXPECT_EQ(d.remaining(), 3u);
+    d.read_u8();
+    EXPECT_EQ(d.remaining(), 2u);
+    d.read_u16();
+    EXPECT_EQ(d.remaining(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 7: F64 powers of two round-trip exactly (IEEE 754 exact representation)
+TEST(SerializerTest, SerializerV127_7_F64PowersOfTwoExact) {
+    Serializer s;
+    double vals[] = {1.0, 2.0, 4.0, 0.5, 0.25, 0.125, 1024.0, 1.0/1024.0};
+    for (double v : vals) {
+        s.write_f64(v);
+    }
+
+    Deserializer d(s.data());
+    for (double v : vals) {
+        EXPECT_EQ(d.read_f64(), v);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 8: take_data yields vector usable to construct a new Deserializer
+TEST(SerializerTest, SerializerV127_8_TakeDataThenDeserialize) {
+    Serializer s;
+    s.write_u32(0x12345678u);
+    s.write_string("taken");
+    s.write_bool(true);
+
+    std::vector<uint8_t> moved = s.take_data();
+    // After take_data, the original serializer's buffer is moved from
+    EXPECT_TRUE(s.data().empty());
+
+    // The moved buffer is still valid for deserialization
+    Deserializer d(moved);
+    EXPECT_EQ(d.read_u32(), 0x12345678u);
+    EXPECT_EQ(d.read_string(), "taken");
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -13754,3 +13754,111 @@ TEST(UrlParserTest, UrlV126_8_HttpsExplicit443AndImplicitAreSameOrigin) {
     EXPECT_EQ(explicit_port->origin(), implicit_port->origin());
     EXPECT_EQ(explicit_port->origin(), "https://secure.example.com");
 }
+
+// =============================================================================
+// V127 Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV127_1_FtpWithUserinfoParseAndSerialize) {
+    // FTP URL with username and password should parse all components and
+    // serialize them back correctly; default port 21 is normalized to nullopt
+    auto result = parse("ftp://admin:secret@files.example.com:21/pub/releases/v2.tar.gz");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->port, std::nullopt);  // 21 is default for ftp
+    EXPECT_EQ(result->path, "/pub/releases/v2.tar.gz");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_TRUE(result->is_special());
+    // Serialize should omit the default port
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "ftp://admin:secret@files.example.com/pub/releases/v2.tar.gz");
+}
+
+TEST(UrlParserTest, UrlV127_2_DifferentPortsMakeNotSameOrigin) {
+    // Two HTTP URLs with different non-default ports are NOT same-origin,
+    // even if scheme and host are identical
+    auto url_a = parse("http://api.example.com:3000/v1");
+    auto url_b = parse("http://api.example.com:4000/v1");
+    ASSERT_TRUE(url_a.has_value());
+    ASSERT_TRUE(url_b.has_value());
+    EXPECT_FALSE(urls_same_origin(*url_a, *url_b));
+    // Their origins should differ because of port
+    EXPECT_NE(url_a->origin(), url_b->origin());
+    EXPECT_EQ(url_a->origin(), "http://api.example.com:3000");
+    EXPECT_EQ(url_b->origin(), "http://api.example.com:4000");
+}
+
+TEST(UrlParserTest, UrlV127_3_RelativeQueryOnlyReplacesQueryKeepsPath) {
+    // A relative reference that is just "?newq" should keep the base path
+    // but replace the query and clear the fragment
+    auto base = parse("https://example.com/app/settings?old=1#section");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("?replaced=yes", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "example.com");
+    EXPECT_EQ(resolved->path, "/app/settings");
+    EXPECT_EQ(resolved->query, "replaced=yes");
+    EXPECT_TRUE(resolved->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV127_4_FragmentOnlyRelativeKeepsPathAndQuery) {
+    // A relative reference that is just "#newfrag" should keep path and query
+    // from the base, but replace the fragment
+    auto base = parse("https://docs.example.com/guide?version=3#old");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("#updated", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "docs.example.com");
+    EXPECT_EQ(resolved->path, "/guide");
+    EXPECT_EQ(resolved->query, "version=3");
+    EXPECT_EQ(resolved->fragment, "updated");
+}
+
+TEST(UrlParserTest, UrlV127_5_PercentEncodedSpaceInPathDoubleEncodes) {
+    // The URL parser double-encodes percent sequences: %20 becomes %2520
+    auto result = parse("https://example.com/path%20with%20spaces");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path%2520with%2520spaces");
+}
+
+TEST(UrlParserTest, UrlV127_6_NonSpecialSchemeOriginIsNull) {
+    // Non-special schemes (like "myapp") should return "null" for origin
+    // and is_special() should be false
+    auto result = parse("myapp://config/theme?dark=true#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "myapp");
+    EXPECT_FALSE(result->is_special());
+    EXPECT_EQ(result->origin(), "null");
+    EXPECT_EQ(result->query, "dark=true");
+    EXPECT_EQ(result->fragment, "top");
+}
+
+TEST(UrlParserTest, UrlV127_7_HttpAndHttpsDifferentSchemesNotSameOrigin) {
+    // HTTP and HTTPS on the same host are NOT same-origin because schemes differ
+    auto http_url = parse("http://www.example.com/page");
+    auto https_url = parse("https://www.example.com/page");
+    ASSERT_TRUE(http_url.has_value());
+    ASSERT_TRUE(https_url.has_value());
+    EXPECT_FALSE(urls_same_origin(*http_url, *https_url));
+    EXPECT_EQ(http_url->origin(), "http://www.example.com");
+    EXPECT_EQ(https_url->origin(), "https://www.example.com");
+}
+
+TEST(UrlParserTest, UrlV127_8_RelativeDotDotBeyondRootClampsToRoot) {
+    // Navigating above the root with "../../../" should clamp to "/"
+    auto base = parse("https://example.com/a/page.html");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("../../../other.html", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "example.com");
+    EXPECT_EQ(resolved->path, "/other.html");
+}

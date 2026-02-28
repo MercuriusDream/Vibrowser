@@ -21696,3 +21696,154 @@ TEST(HttpClient, HeaderMapIterationAfterMixedOpsV126) {
     auto encodings = map.get_all("accept-encoding");
     EXPECT_EQ(encodings.size(), 2u);
 }
+
+// ===========================================================================
+// V127 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request::serialize with POST method includes body and Content-Length
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithBodyV127) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "http://api.example.com/submit";
+    req.parse_url();
+    std::string payload = R"({"key":"value"})";
+    req.body.assign(payload.begin(), payload.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_NE(s.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(s.find("Host: api.example.com\r\n"), std::string::npos);
+    EXPECT_NE(s.find("content-type: application/json\r\n"), std::string::npos);
+    // Body should appear after the double CRLF header terminator
+    auto hdr_end = s.find("\r\n\r\n");
+    ASSERT_NE(hdr_end, std::string::npos);
+    std::string body_part = s.substr(hdr_end + 4);
+    EXPECT_EQ(body_part, payload);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response::parse with 204 No Content: empty body, status text correct
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse204NoContentV127) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "X-Request-Id: abc123\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body_as_string(), "");
+    EXPECT_EQ(resp->headers.get("x-request-id").value(), "abc123");
+}
+
+// ---------------------------------------------------------------------------
+// 3. parse_url with HTTPS scheme sets use_tls and port 443
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ParseUrlHttpsSetsPortAndTlsV127) {
+    Request req;
+    req.url = "https://secure.example.com/login?user=admin";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "secure.example.com");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.path, "/login");
+    EXPECT_EQ(req.query, "user=admin");
+}
+
+// ---------------------------------------------------------------------------
+// 4. HeaderMap: append then set overwrites all appended values
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapSetAfterAppendOverwritesAllV127) {
+    HeaderMap map;
+    map.append("Via", "proxy-a");
+    map.append("Via", "proxy-b");
+    map.append("Via", "proxy-c");
+    EXPECT_EQ(map.get_all("via").size(), 3u);
+
+    // set() should replace ALL values for this key with exactly one
+    map.set("Via", "proxy-final");
+    EXPECT_EQ(map.get_all("via").size(), 1u);
+    EXPECT_EQ(map.get("via").value(), "proxy-final");
+}
+
+// ---------------------------------------------------------------------------
+// 5. CookieJar: HttpOnly cookie stored and retrievable
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarHttpOnlyCookieStoredV127) {
+    CookieJar jar;
+    jar.clear();
+    jar.set_from_header("sid=sess-v127; Path=/; HttpOnly", "httponly-v127.example.com");
+
+    EXPECT_EQ(jar.size(), 1u);
+    std::string header = jar.get_cookie_header("httponly-v127.example.com", "/", false);
+    EXPECT_EQ(header, "sid=sess-v127");
+}
+
+// ---------------------------------------------------------------------------
+// 6. parse_cache_control: public + max-age parsed together
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ParseCacheControlPublicMaxAgeV127) {
+    auto cc = parse_cache_control("public, max-age=86400");
+    EXPECT_TRUE(cc.is_public);
+    EXPECT_EQ(cc.max_age, 86400);
+    EXPECT_FALSE(cc.no_cache);
+    EXPECT_FALSE(cc.no_store);
+    EXPECT_FALSE(cc.must_revalidate);
+    EXPECT_FALSE(cc.is_private);
+}
+
+// ---------------------------------------------------------------------------
+// 7. method_to_string and string_to_method round-trip for all methods
+// ---------------------------------------------------------------------------
+TEST(HttpClient, MethodConversionRoundTripV127) {
+    // Each Method enum should survive a round-trip through to_string -> from_string
+    auto check = [](Method m, const std::string& expected_str) {
+        EXPECT_EQ(method_to_string(m), expected_str);
+        EXPECT_EQ(string_to_method(expected_str), m);
+    };
+
+    check(Method::GET,           "GET");
+    check(Method::POST,          "POST");
+    check(Method::PUT,           "PUT");
+    check(Method::HEAD,          "HEAD");
+    check(Method::OPTIONS,       "OPTIONS");
+    check(Method::PATCH,         "PATCH");
+    check(Method::DELETE_METHOD, "DELETE");
+}
+
+// ---------------------------------------------------------------------------
+// 8. Response::parse with multiple headers including Content-Type and custom
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseMultipleHeadersV127) {
+    std::string body_text = "Welcome to the page";
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n"
+        "X-Powered-By: Vibrowser\r\n"
+        "Cache-Control: no-cache\r\n"
+        "Content-Length: " + std::to_string(body_text.size()) + "\r\n"
+        "\r\n" + body_text;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_EQ(resp->body_as_string(), body_text);
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/html; charset=utf-8");
+    EXPECT_EQ(resp->headers.get("x-powered-by").value(), "Vibrowser");
+    EXPECT_EQ(resp->headers.get("cache-control").value(), "no-cache");
+    EXPECT_TRUE(resp->headers.has("content-length"));
+}
