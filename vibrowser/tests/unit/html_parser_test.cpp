@@ -19699,3 +19699,191 @@ TEST(HtmlParserTest, AnchorWithHrefAndNestedSpanV120) {
     EXPECT_EQ(spans[0]->tag_name, "span");
     EXPECT_EQ(spans[1]->text_content(), "About");
 }
+
+TEST(HtmlParserTest, ImplicitBodyInsertionWhenOnlyTextV121) {
+    // When parsing bare text with no explicit tags, the parser should
+    // still produce a document with an html/body structure containing the text.
+    auto doc = clever::html::parse("Hello world, no tags here!");
+    ASSERT_NE(doc, nullptr);
+
+    auto* html_el = doc->find_element("html");
+    ASSERT_NE(html_el, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    std::string tc = body->text_content();
+    EXPECT_NE(tc.find("Hello world"), std::string::npos);
+    EXPECT_NE(tc.find("no tags here"), std::string::npos);
+}
+
+TEST(HtmlParserTest, TableColgroupMultipleColElementsV121) {
+    auto doc = clever::html::parse(
+        "<table>"
+        "<colgroup>"
+        "<col span=\"2\" style=\"background:red\">"
+        "<col style=\"background:blue\">"
+        "</colgroup>"
+        "<tr><td>A</td><td>B</td><td>C</td></tr>"
+        "</table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* colgroup = doc->find_element("colgroup");
+    ASSERT_NE(colgroup, nullptr);
+
+    auto cols = doc->find_all_elements("col");
+    ASSERT_EQ(cols.size(), 2u);
+    EXPECT_EQ(get_attr_v63(cols[0], "span"), "2");
+    EXPECT_EQ(get_attr_v63(cols[0], "style"), "background:red");
+    EXPECT_EQ(get_attr_v63(cols[1], "style"), "background:blue");
+
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 3u);
+    EXPECT_EQ(tds[2]->text_content(), "C");
+}
+
+TEST(HtmlParserTest, EntityDecodingAmpLtGtQuotInTextV121) {
+    auto doc = clever::html::parse(
+        "<p>5 &lt; 10 &amp; 20 &gt; 15 &quot;ok&quot;</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    std::string text = p->text_content();
+    // Decoded entities should appear as literal characters
+    EXPECT_NE(text.find("<"), std::string::npos);
+    EXPECT_NE(text.find("&"), std::string::npos);
+    EXPECT_NE(text.find(">"), std::string::npos);
+    // The raw entity forms should NOT appear as-is
+    EXPECT_EQ(text.find("&lt;"), std::string::npos);
+    EXPECT_EQ(text.find("&gt;"), std::string::npos);
+    EXPECT_EQ(text.find("&amp;"), std::string::npos);
+}
+
+TEST(HtmlParserTest, UnclosedParagraphsAutoCloseOnBlockV121) {
+    // Per HTML spec, a <p> is auto-closed when another block element starts.
+    auto doc = clever::html::parse(
+        "<div>"
+        "<p>First paragraph"
+        "<p>Second paragraph"
+        "<div>Block inside</div>"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ps = doc->find_all_elements("p");
+    ASSERT_GE(ps.size(), 2u);
+    EXPECT_EQ(ps[0]->text_content(), "First paragraph");
+    EXPECT_EQ(ps[1]->text_content(), "Second paragraph");
+
+    // The inner div should be a sibling, not nested inside a <p>
+    auto divs = doc->find_all_elements("div");
+    ASSERT_GE(divs.size(), 2u);
+    // Inner div contains the block text
+    bool found_inner = false;
+    for (auto* d : divs) {
+        if (d->text_content() == "Block inside") {
+            found_inner = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_inner);
+}
+
+TEST(HtmlParserTest, TemplateAndSlotElementsRecognizedV121) {
+    auto doc = clever::html::parse(
+        "<div>"
+        "<template id=\"card-tmpl\">"
+        "<div class=\"card\"><slot name=\"title\">Default</slot></div>"
+        "</template>"
+        "<span>Visible content</span>"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tmpl = doc->find_element("template");
+    ASSERT_NE(tmpl, nullptr);
+    EXPECT_EQ(get_attr_v63(tmpl, "id"), "card-tmpl");
+
+    auto* slot = doc->find_element("slot");
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(get_attr_v63(slot, "name"), "title");
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "Visible content");
+}
+
+TEST(HtmlParserTest, MixedCaseAttributeNamesLowercasedV121) {
+    auto doc = clever::html::parse(
+        "<div DATA-UserID=\"42\" Class=\"highlight\" TITLE=\"Info\">"
+        "<input TYPE=\"email\" PLACEHOLDER=\"you@example.com\">"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    // HTML attributes should be lowercased
+    EXPECT_EQ(get_attr_v63(div, "data-userid"), "42");
+    EXPECT_EQ(get_attr_v63(div, "class"), "highlight");
+    EXPECT_EQ(get_attr_v63(div, "title"), "Info");
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "email");
+    EXPECT_EQ(get_attr_v63(input, "placeholder"), "you@example.com");
+}
+
+TEST(HtmlParserTest, NestedFormsAndButtonElementsV121) {
+    auto doc = clever::html::parse(
+        "<form action=\"/submit\" method=\"post\">"
+        "<fieldset>"
+        "<legend>Login</legend>"
+        "<label for=\"user\">Username</label>"
+        "<input id=\"user\" name=\"username\" type=\"text\">"
+        "<label for=\"pass\">Password</label>"
+        "<input id=\"pass\" name=\"password\" type=\"password\">"
+        "<button type=\"submit\">Log In</button>"
+        "</fieldset>"
+        "</form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+
+    auto labels = doc->find_all_elements("label");
+    ASSERT_EQ(labels.size(), 2u);
+    EXPECT_EQ(get_attr_v63(labels[0], "for"), "user");
+    EXPECT_EQ(labels[1]->text_content(), "Password");
+
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "password");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "password");
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->text_content(), "Log In");
+    EXPECT_EQ(get_attr_v63(button, "type"), "submit");
+}
+
+TEST(HtmlParserTest, StyleTagRawContentNotParsedAsChildElementsV121) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<style>.foo > .bar { color: red; } h1 { font-size: 2em; }</style>"
+        "</head><body><h1>Title</h1></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+
+    // Style content should be raw text, NOT parsed as tags
+    std::string css = style->text_content();
+    EXPECT_NE(css.find(".foo > .bar"), std::string::npos);
+    EXPECT_NE(css.find("color: red"), std::string::npos);
+
+    // There should be exactly one <h1> — the one in body, not a false one from CSS
+    auto h1s = doc->find_all_elements("h1");
+    ASSERT_EQ(h1s.size(), 1u);
+    EXPECT_EQ(h1s[0]->text_content(), "Title");
+}

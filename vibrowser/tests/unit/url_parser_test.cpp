@@ -13055,3 +13055,101 @@ TEST(UrlParserTest, FtpDefaultPort21NormalizedAndIsSpecialV120) {
     EXPECT_EQ(result->host, "mirror.example.net");
     EXPECT_EQ(result->path, "/pub/releases");
 }
+
+// =============================================================================
+// V121 Tests
+// =============================================================================
+
+TEST(UrlParserTest, DoubleEncodesPercentInUsernameFieldV121) {
+    // Percent-encoded characters in the userinfo section get double-encoded
+    auto result = parse("http://user%40name:p%40ss@host.example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->username, "user%2540name");
+    EXPECT_EQ(result->password, "p%2540ss");
+    EXPECT_EQ(result->host, "host.example.com");
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(UrlParserTest, OriginDiffersForHttpVsHttpsSameDomainV121) {
+    // Same domain under http vs https produces different origins
+    auto http_url = parse("http://api.example.com/v1");
+    auto https_url = parse("https://api.example.com/v1");
+    ASSERT_TRUE(http_url.has_value());
+    ASSERT_TRUE(https_url.has_value());
+    EXPECT_EQ(http_url->origin(), "http://api.example.com");
+    EXPECT_EQ(https_url->origin(), "https://api.example.com");
+    EXPECT_NE(http_url->origin(), https_url->origin());
+}
+
+TEST(UrlParserTest, SerializeOmitsDefaultPortButKeepsNonDefaultV121) {
+    // Port 443 on https is default (omitted), port 8443 is non-default (kept)
+    auto default_port = parse("https://secure.example.com:443/login");
+    auto custom_port = parse("https://secure.example.com:8443/login");
+    ASSERT_TRUE(default_port.has_value());
+    ASSERT_TRUE(custom_port.has_value());
+    EXPECT_EQ(default_port->port, std::nullopt);
+    EXPECT_EQ(default_port->serialize(), "https://secure.example.com/login");
+    EXPECT_EQ(custom_port->port, 8443);
+    EXPECT_EQ(custom_port->serialize(), "https://secure.example.com:8443/login");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentSpaceInPathSegmentsV121) {
+    // %20 in path gets double-encoded to %2520
+    auto result = parse("https://cdn.example.com/files/my%20document/data%20sheet.pdf");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "cdn.example.com");
+    EXPECT_EQ(result->path, "/files/my%2520document/data%2520sheet.pdf");
+    EXPECT_EQ(result->scheme, "https");
+}
+
+TEST(UrlParserTest, NonSpecialSchemeOriginIsNullAndNotSpecialV121) {
+    // Custom scheme like "myapp" has null origin and is not special
+    auto result = parse("myapp://controller/action?id=42#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "myapp");
+    EXPECT_FALSE(result->is_special());
+    EXPECT_EQ(result->origin(), "null");
+    EXPECT_EQ(result->query, "id=42");
+    EXPECT_EQ(result->fragment, "section");
+}
+
+TEST(UrlParserTest, IPv6WithNonDefaultPortOriginAndSerializeV121) {
+    // IPv6 address with non-default port must appear in origin and serialize correctly
+    auto result = parse("http://[::1]:9090/debug?verbose=true");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "[::1]");
+    EXPECT_EQ(result->port, 9090);
+    EXPECT_EQ(result->path, "/debug");
+    EXPECT_EQ(result->query, "verbose=true");
+    EXPECT_EQ(result->origin(), "http://[::1]:9090");
+    EXPECT_EQ(result->serialize(), "http://[::1]:9090/debug?verbose=true");
+}
+
+TEST(UrlParserTest, FtpPort21NormalizedHttpPort80NormalizedSamePatternV121) {
+    // Both FTP port 21 and HTTP port 80 should normalize to nullopt
+    auto ftp = parse("ftp://archive.example.org:21/data/archive.tar.gz");
+    auto http = parse("http://archive.example.org:80/data/archive.tar.gz");
+    ASSERT_TRUE(ftp.has_value());
+    ASSERT_TRUE(http.has_value());
+    EXPECT_EQ(ftp->port, std::nullopt);
+    EXPECT_EQ(http->port, std::nullopt);
+    EXPECT_TRUE(ftp->is_special());
+    EXPECT_TRUE(http->is_special());
+    // Serialized forms should omit the default port
+    EXPECT_EQ(ftp->serialize(), "ftp://archive.example.org/data/archive.tar.gz");
+    EXPECT_EQ(http->serialize(), "http://archive.example.org/data/archive.tar.gz");
+}
+
+TEST(UrlParserTest, CredentialsWithSpecialCharsDoubleEncodedInSerializeV121) {
+    // Credentials containing pre-encoded colons and slashes get double-encoded
+    auto result = parse("http://admin%3Aroot:p%2Fword@internal.example.com:8080/manage");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "admin%253Aroot");
+    EXPECT_EQ(result->password, "p%252Fword");
+    EXPECT_EQ(result->host, "internal.example.com");
+    EXPECT_EQ(result->port, 8080);
+    EXPECT_EQ(result->path, "/manage");
+    EXPECT_EQ(result->serialize(), "http://admin%253Aroot:p%252Fword@internal.example.com:8080/manage");
+}

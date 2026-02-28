@@ -20480,3 +20480,209 @@ TEST(ResponseTest, Parse500ServerErrorWithHtmlBodyV120) {
     EXPECT_EQ(resp->headers.get("content-type").value(), "text/html");
     EXPECT_EQ(resp->body_as_string(), "<html><body>Error 500</body></html>");
 }
+
+// ===========================================================================
+// V121 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request: serialize with multiple custom headers ensures all are lowercase
+//    while Host and Connection remain capitalized
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeMultipleCustomHeadersAllLowercaseV121) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/v2/users";
+    req.use_tls = true;
+    req.headers.set("Authorization", "Bearer tok-v121");
+    req.headers.set("X-Correlation-Id", "corr-9876");
+    req.headers.set("Accept-Language", "en-US,ko-KR;q=0.9");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Host and Connection keep their canonical caps
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+    // Port 443 with HTTPS is standard, so omitted from Host
+    EXPECT_EQ(result.find("api.example.com:443"), std::string::npos);
+    // All custom headers must be lowercased
+    EXPECT_NE(result.find("authorization: Bearer tok-v121\r\n"), std::string::npos);
+    EXPECT_NE(result.find("x-correlation-id: corr-9876\r\n"), std::string::npos);
+    EXPECT_NE(result.find("accept-language: en-US,ko-KR;q=0.9\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap: append then set replaces all appended values with one
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendThenSetReplacesAllValuesV121) {
+    HeaderMap map;
+    map.append("X-Trace", "trace-a");
+    map.append("X-Trace", "trace-b");
+    map.append("X-Trace", "trace-c");
+    EXPECT_EQ(map.get_all("x-trace").size(), 3u);
+
+    // set() should replace ALL three appended values with a single one
+    map.set("x-trace", "trace-final");
+    EXPECT_EQ(map.get_all("x-trace").size(), 1u);
+    EXPECT_EQ(map.get("X-Trace").value(), "trace-final");
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response: parse a response with multi-line body containing \r\n sequences
+//    that should NOT be confused with header boundaries
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseBodyContainingCRLFSequencesV121) {
+    std::string body_content = "line1\r\nline2\r\nline3\r\n";
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body_content.size()) + "\r\n"
+        "\r\n" + body_content;
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    // The body must preserve the embedded \r\n literally
+    EXPECT_EQ(resp->body_as_string(), body_content);
+    EXPECT_EQ(resp->body_as_string().size(), body_content.size());
+}
+
+// ---------------------------------------------------------------------------
+// 4. ConnectionPool: releasing to the same host+port fills up to max,
+//    then further releases are silently dropped
+// ---------------------------------------------------------------------------
+TEST(ConnectionPoolTest, ExceedMaxPerHostDropsExcessV121) {
+    ConnectionPool pool(3);  // max 3 per host
+
+    pool.release("overflow.example.com", 80, 100);
+    pool.release("overflow.example.com", 80, 101);
+    pool.release("overflow.example.com", 80, 102);
+    pool.release("overflow.example.com", 80, 103);  // should be dropped
+
+    EXPECT_EQ(pool.count("overflow.example.com", 80), 3u);
+
+    // Acquire all three, then pool should be empty
+    int fd1 = pool.acquire("overflow.example.com", 80);
+    int fd2 = pool.acquire("overflow.example.com", 80);
+    int fd3 = pool.acquire("overflow.example.com", 80);
+    int fd4 = pool.acquire("overflow.example.com", 80);  // should be -1
+
+    EXPECT_NE(fd1, -1);
+    EXPECT_NE(fd2, -1);
+    EXPECT_NE(fd3, -1);
+    EXPECT_EQ(fd4, -1);
+}
+
+// ---------------------------------------------------------------------------
+// 5. CookieJar: HttpOnly attribute is parsed and stored, cookie still
+//    available via get_cookie_header (HttpOnly restricts JS, not C++ access)
+// ---------------------------------------------------------------------------
+TEST(CookieJarTest, HttpOnlyParsedAndStoredV121) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123; HttpOnly; Path=/; Domain=secure.example.com",
+                        "secure.example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    std::string header = jar.get_cookie_header("secure.example.com", "/dashboard", false);
+    EXPECT_NE(header.find("session=abc123"), std::string::npos);
+
+    // Also verify the cookie does NOT appear for a non-matching subdomain
+    std::string other = jar.get_cookie_header("other.example.com", "/", false);
+    EXPECT_EQ(other.find("session=abc123"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. CacheControl: parse a Cache-Control header with max-age, public,
+//    and must-revalidate combined together
+// ---------------------------------------------------------------------------
+TEST(CacheControlTest, ParseCombinedMaxAgePublicMustRevalidateV121) {
+    auto cc = parse_cache_control("public, max-age=600, must-revalidate");
+    EXPECT_EQ(cc.max_age, 600);
+    EXPECT_TRUE(cc.is_public);
+    EXPECT_TRUE(cc.must_revalidate);
+    EXPECT_FALSE(cc.no_cache);
+    EXPECT_FALSE(cc.no_store);
+    EXPECT_FALSE(cc.is_private);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request: parse_url with query string containing special characters
+//    and verify all fields are decomposed correctly
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlQueryWithAmpersandAndEqualsV121) {
+    Request req;
+    req.url = "https://search.example.com:9200/api/search?q=hello+world&lang=en&limit=50";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.port, 9200);
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.path, "/api/search");
+    // query should include the full query string after '?'
+    EXPECT_NE(req.query.find("q=hello+world"), std::string::npos);
+    EXPECT_NE(req.query.find("lang=en"), std::string::npos);
+    EXPECT_NE(req.query.find("limit=50"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 8. HttpCache: store two entries, lookup moves entry to front of LRU,
+//    then eviction under tight budget removes the least-recently-used one
+// ---------------------------------------------------------------------------
+TEST(HttpCacheTest, LRUOrderUpdatedOnLookupV121) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    // Create two entries with known body sizes
+    CacheEntry e1;
+    e1.url = "https://v121-lru.test/first";
+    e1.body = std::string(500, 'A');
+    e1.status = 200;
+    e1.max_age_seconds = 3600;
+    e1.stored_at = std::chrono::steady_clock::now();
+
+    CacheEntry e2;
+    e2.url = "https://v121-lru.test/second";
+    e2.body = std::string(500, 'B');
+    e2.status = 200;
+    e2.max_age_seconds = 3600;
+    e2.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(e1);
+    cache.store(e2);
+    EXPECT_EQ(cache.entry_count(), 2u);
+
+    // Lookup e1 to move it to the front of LRU (most recently used)
+    auto hit = cache.lookup("https://v121-lru.test/first");
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_EQ(hit->body, std::string(500, 'A'));
+
+    // Now tighten the budget so only one entry can survive
+    // approx_size includes URL + body + overhead; shrink to fit ~one entry
+    size_t one_entry_budget = e1.approx_size() + 64;
+    cache.set_max_bytes(one_entry_budget);
+
+    // Store a third entry to trigger eviction
+    CacheEntry e3;
+    e3.url = "https://v121-lru.test/third";
+    e3.body = std::string(100, 'C');
+    e3.status = 200;
+    e3.max_age_seconds = 3600;
+    e3.stored_at = std::chrono::steady_clock::now();
+    cache.store(e3);
+
+    // e2 was least recently used (e1 was looked up more recently), so e2 should be evicted
+    auto miss = cache.lookup("https://v121-lru.test/second");
+    EXPECT_FALSE(miss.has_value());
+
+    // e1 or e3 should still exist (at least e3 which was just stored)
+    auto still = cache.lookup("https://v121-lru.test/third");
+    EXPECT_TRUE(still.has_value());
+
+    // Restore default budget for other tests
+    cache.set_max_bytes(HttpCache::kDefaultMaxBytes);
+    cache.clear();
+}

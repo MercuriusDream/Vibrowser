@@ -18375,3 +18375,189 @@ TEST(DomNode, ForEachChildVisitsInOrderV120) {
     EXPECT_EQ(types[1], NodeType::Text);
     EXPECT_EQ(types[2], NodeType::Comment);
 }
+
+// ---------------------------------------------------------------------------
+// V121 Tests
+// ---------------------------------------------------------------------------
+
+// 1. insert_before between two existing siblings updates previous_sibling chain correctly
+TEST(DomNode, InsertBetweenSiblingsFixesPrevChainV121) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    auto* r1 = li1.get();
+    auto* r3 = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li3));
+
+    // Insert li2 before li3 — should sit between r1 and r3
+    auto li2 = std::make_unique<Element>("li");
+    auto* r2 = li2.get();
+    parent.insert_before(std::move(li2), r3);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(r1->next_sibling(), r2);
+    EXPECT_EQ(r2->next_sibling(), r3);
+    EXPECT_EQ(r2->previous_sibling(), r1);
+    EXPECT_EQ(r3->previous_sibling(), r2);
+    EXPECT_EQ(parent.first_child(), r1);
+    EXPECT_EQ(parent.last_child(), r3);
+}
+
+// 2. Removing the only child results in null first/last and previous_sibling sanity
+TEST(DomNode, RemoveOnlyChildLeavesEmptyTreeV121) {
+    Element parent("section");
+    auto child = std::make_unique<Element>("article");
+    auto* raw = child.get();
+    parent.append_child(std::move(child));
+    ASSERT_EQ(parent.child_count(), 1u);
+
+    auto removed = parent.remove_child(*raw);
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+    // The removed node should have cleared parent and sibling pointers
+    EXPECT_EQ(removed->parent(), nullptr);
+    EXPECT_EQ(removed->next_sibling(), nullptr);
+    EXPECT_EQ(removed->previous_sibling(), nullptr);
+}
+
+// 3. Document factory methods produce nodes with correct types and ownership can transfer
+TEST(DomDocument, FactoryNodesCanBeReparentedV121) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    auto text = doc.create_text_node("hello");
+    auto cmt = doc.create_comment("annotation");
+
+    // Transfer all three into elem
+    auto* text_raw = text.get();
+    auto* cmt_raw = cmt.get();
+    elem->append_child(std::move(text));
+    elem->append_child(std::move(cmt));
+
+    EXPECT_EQ(elem->child_count(), 2u);
+    EXPECT_EQ(text_raw->parent(), elem.get());
+    EXPECT_EQ(cmt_raw->parent(), elem.get());
+    // text_content should include the text node but not the comment
+    EXPECT_EQ(elem->text_content(), "hello");
+}
+
+// 4. ClassList items() returns classes in add-order and toggle round-trip works
+TEST(DomClassList, ItemsOrderAndToggleRoundTripV121) {
+    ClassList cl;
+    cl.add("alpha");
+    cl.add("beta");
+    cl.add("gamma");
+    const auto& items = cl.items();
+    ASSERT_EQ(items.size(), 3u);
+    EXPECT_EQ(items[0], "alpha");
+    EXPECT_EQ(items[1], "beta");
+    EXPECT_EQ(items[2], "gamma");
+
+    // Toggle removes "beta"
+    cl.toggle("beta");
+    EXPECT_FALSE(cl.contains("beta"));
+    EXPECT_EQ(cl.length(), 2u);
+
+    // Toggle adds "beta" back
+    cl.toggle("beta");
+    EXPECT_TRUE(cl.contains("beta"));
+    EXPECT_EQ(cl.length(), 3u);
+}
+
+// 5. DirtyFlags::Paint propagates up a 3-level tree
+TEST(DomNode, PaintDirtyPropagatesUpThreeLevelsV121) {
+    Element grandparent("div");
+    auto parent_up = std::make_unique<Element>("section");
+    auto* parent_raw = parent_up.get();
+    auto child_up = std::make_unique<Element>("span");
+    auto* child_raw = child_up.get();
+    parent_up->append_child(std::move(child_up));
+    grandparent.append_child(std::move(parent_up));
+
+    // Clear all dirty flags
+    grandparent.clear_dirty();
+    parent_raw->clear_dirty();
+    child_raw->clear_dirty();
+
+    // Mark only the leaf with Paint
+    child_raw->mark_dirty(DirtyFlags::Paint);
+    EXPECT_NE(static_cast<uint8_t>(child_raw->dirty_flags() & DirtyFlags::Paint), 0);
+    // Propagation should dirty both ancestors
+    EXPECT_NE(static_cast<uint8_t>(parent_raw->dirty_flags()), 0);
+    EXPECT_NE(static_cast<uint8_t>(grandparent.dirty_flags()), 0);
+}
+
+// 6. set_attribute("id",...) updates Document id map so getElementById finds re-IDed element
+TEST(DomDocument, ReIDElementUpdatesLookupV121) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    auto* raw = elem.get();
+    elem->set_attribute("id", "first");
+    doc.register_id("first", raw);
+    doc.append_child(std::move(elem));
+
+    EXPECT_EQ(doc.get_element_by_id("first"), raw);
+
+    // Change the id
+    doc.unregister_id("first");
+    raw->set_attribute("id", "second");
+    doc.register_id("second", raw);
+
+    EXPECT_EQ(doc.get_element_by_id("first"), nullptr);
+    EXPECT_EQ(doc.get_element_by_id("second"), raw);
+}
+
+// 7. text_content on a deeply nested mixed tree concatenates only Text nodes
+TEST(DomNode, TextContentDeepMixedTreeV121) {
+    Element root("div");
+    auto p = std::make_unique<Element>("p");
+    auto* p_raw = p.get();
+    p->append_child(std::make_unique<Text>("Hello"));
+    p->append_child(std::make_unique<Comment>("ignored"));
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>(", "));
+    auto em = std::make_unique<Element>("em");
+    em->append_child(std::make_unique<Text>("world"));
+    span->append_child(std::move(em));
+    p->append_child(std::move(span));
+    p->append_child(std::make_unique<Text>("!"));
+    root.append_child(std::move(p));
+
+    // root > p > ["Hello", <!--ignored-->, span > [", ", em > ["world"]], "!"]
+    EXPECT_EQ(root.text_content(), "Hello, world!");
+    EXPECT_EQ(p_raw->text_content(), "Hello, world!");
+}
+
+// 8. for_each_child count matches child_count after mixed insert_before and remove
+TEST(DomNode, ForEachChildConsistentAfterMutationsV121) {
+    Element parent("nav");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("a");
+    auto c = std::make_unique<Element>("a");
+    auto d = std::make_unique<Element>("a");
+    auto* ra = a.get();
+    auto* rb = b.get();
+    auto* rc = c.get();
+    parent.append_child(std::move(a));  // [a]
+    parent.append_child(std::move(c));  // [a, c]
+    parent.insert_before(std::move(b), rc);  // [a, b, c]
+    parent.append_child(std::move(d));  // [a, b, c, d]
+    parent.remove_child(*rb);           // [a, c, d]
+
+    EXPECT_EQ(parent.child_count(), 3u);
+
+    size_t visited = 0;
+    std::vector<Node*> order;
+    parent.for_each_child([&](const Node& n) {
+        visited++;
+        order.push_back(const_cast<Node*>(&n));
+    });
+    EXPECT_EQ(visited, 3u);
+    EXPECT_EQ(visited, parent.child_count());
+    // Verify the order is [a, c, d] with correct sibling links
+    EXPECT_EQ(order[0], ra);
+    EXPECT_EQ(order[1], rc);
+    EXPECT_EQ(ra->next_sibling(), rc);
+    EXPECT_EQ(rc->previous_sibling(), ra);
+}

@@ -32118,3 +32118,343 @@ TEST(JsEngineTest, TypedArraySliceSubarrayBufferSharingV120) {
     EXPECT_EQ(result, "20,30,40|20|20,30,40|888|true|false|2,4,6|4");
 }
 
+// V121-1. Proxy has trap intercepts 'in' operator and property enumeration
+TEST(JsEngineTest, ProxyHasTrapInterceptsInOperatorV121) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Proxy with has trap that hides properties starting with underscore
+        var secret = {_password: "abc123", username: "alice", _token: "xyz"};
+        var proxy = new Proxy(secret, {
+            has: function(target, prop) {
+                if (typeof prop === "string" && prop.startsWith("_")) return false;
+                return prop in target;
+            },
+            ownKeys: function(target) {
+                return Object.keys(target).filter(function(k) { return !k.startsWith("_"); });
+            },
+            getOwnPropertyDescriptor: function(target, prop) {
+                if (prop.startsWith("_")) return undefined;
+                return Object.getOwnPropertyDescriptor(target, prop);
+            }
+        });
+        // 'in' operator respects the has trap
+        r.push("username" in proxy);
+        r.push("_password" in proxy);
+        r.push("_token" in proxy);
+        // Direct property access still works (get is not trapped)
+        r.push(proxy._password);
+        // Object.keys on proxy uses ownKeys trap
+        r.push(Object.keys(proxy).join(","));
+        // for...in uses has trap indirectly
+        var visible = [];
+        for (var k in proxy) visible.push(k);
+        r.push(visible.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|false|abc123|username|username");
+}
+
+// V121-2. Generator yield delegation with yield* across multiple generators
+TEST(JsEngineTest, GeneratorYieldDelegationChainV121) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Inner generators
+        function* range(start, end) {
+            for (var i = start; i < end; i++) yield i;
+        }
+        function* letters(a, b) {
+            for (var c = a.charCodeAt(0); c <= b.charCodeAt(0); c++) {
+                yield String.fromCharCode(c);
+            }
+        }
+        // Outer generator delegates to both
+        function* combined() {
+            yield "START";
+            yield* range(1, 4);
+            yield "MID";
+            yield* letters("x", "z");
+            yield "END";
+        }
+        // Consume the combined generator
+        var gen = combined();
+        var step;
+        while (!(step = gen.next()).done) {
+            r.push(step.value);
+        }
+        // Also verify generator early return
+        var gen2 = range(0, 100);
+        r.push(gen2.next().value);
+        r.push(gen2.next().value);
+        var retVal = gen2.return(42);
+        r.push(retVal.value);
+        r.push(retVal.done);
+        // After return, next yields done
+        r.push(gen2.next().done);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "START|1|2|3|MID|x|y|z|END|0|1|42|true|true");
+}
+
+// V121-3. Custom iterable protocol with Symbol.iterator and spread/destructuring
+TEST(JsEngineTest, CustomIterableProtocolSpreadAndDestructureV121) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Create a custom range iterable (not a generator)
+        function RangeIterable(low, high) {
+            this.low = low;
+            this.high = high;
+        }
+        RangeIterable.prototype[Symbol.iterator] = function() {
+            var current = this.low;
+            var high = this.high;
+            return {
+                next: function() {
+                    if (current <= high) {
+                        return { value: current++, done: false };
+                    }
+                    return { value: undefined, done: true };
+                }
+            };
+        };
+        var myRange = new RangeIterable(5, 9);
+        // for...of consumes the iterable
+        var items = [];
+        for (var v of myRange) items.push(v);
+        r.push(items.join(","));
+        // Spread operator works with custom iterable
+        var spread = [...new RangeIterable(1, 3)];
+        r.push(spread.join(","));
+        // Destructuring assignment from custom iterable
+        var [a, b, c] = new RangeIterable(10, 15);
+        r.push(a);
+        r.push(b);
+        r.push(c);
+        // Array.from with custom iterable
+        var arr = Array.from(new RangeIterable(20, 22));
+        r.push(arr.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,6,7,8,9|1,2,3|10|11|12|20,21,22");
+}
+
+// V121-4. WeakMap for private-data pattern and reference semantics
+TEST(JsEngineTest, WeakMapPrivateDataPatternV121) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var wm = new WeakMap();
+        var obj1 = {name: "first"};
+        var obj2 = {name: "second"};
+        var obj3 = {name: "third"};
+        // Set private data associated with objects
+        wm.set(obj1, {count: 10, secret: "alpha"});
+        wm.set(obj2, {count: 20, secret: "beta"});
+        // has/get semantics
+        r.push(wm.has(obj1));
+        r.push(wm.has(obj3));
+        r.push(wm.get(obj1).count);
+        r.push(wm.get(obj2).secret);
+        r.push(String(wm.get(obj3)));  // "undefined"
+        // Overwrite existing entry
+        wm.set(obj1, {count: 100, secret: "gamma"});
+        r.push(wm.get(obj1).count);
+        // Delete an entry
+        r.push(wm.delete(obj2));
+        r.push(wm.has(obj2));
+        // WeakMap cannot be iterated — no size, no forEach, no keys
+        r.push(typeof wm.size);   // undefined (no size property on WeakMap)
+        r.push(typeof wm.forEach);  // undefined
+        // Keys must be objects — primitive key throws
+        var threw = false;
+        try { wm.set("stringKey", 1); } catch(e) { threw = true; }
+        r.push(threw);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|10|beta|undefined|100|true|false|undefined|undefined|true");
+}
+
+// V121-5. Object.getOwnPropertyNames vs Object.keys with non-enumerable props
+TEST(JsEngineTest, OwnPropertyNamesVsKeysNonEnumerableV121) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var obj = {};
+        Object.defineProperty(obj, "hidden", {
+            value: 42, enumerable: false, writable: true, configurable: true
+        });
+        Object.defineProperty(obj, "visible", {
+            value: 99, enumerable: true, writable: true, configurable: true
+        });
+        obj.normal = "hello";
+        // Object.keys: only enumerable own properties
+        r.push(Object.keys(obj).sort().join(","));
+        // Object.getOwnPropertyNames: all own properties (including non-enumerable)
+        r.push(Object.getOwnPropertyNames(obj).sort().join(","));
+        // for...in shows only enumerable (own + inherited)
+        var forInKeys = [];
+        for (var k in obj) forInKeys.push(k);
+        r.push(forInKeys.sort().join(","));
+        // propertyIsEnumerable checks
+        r.push(obj.propertyIsEnumerable("hidden"));
+        r.push(obj.propertyIsEnumerable("visible"));
+        r.push(obj.propertyIsEnumerable("normal"));
+        // Verify non-enumerable prop is still accessible
+        r.push(obj.hidden);
+        // Object.defineProperties with multiple at once
+        var obj2 = {};
+        Object.defineProperties(obj2, {
+            a: { value: 1, enumerable: true },
+            b: { value: 2, enumerable: false },
+            c: { value: 3, enumerable: true }
+        });
+        r.push(Object.keys(obj2).join(","));
+        r.push(Object.getOwnPropertyNames(obj2).sort().join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "normal,visible|hidden,normal,visible|normal,visible|false|true|true|42|a,c|a,b,c");
+}
+
+// V121-6. RegExp named capture groups and String.prototype.matchAll
+TEST(JsEngineTest, RegExpNamedCapturesAndMatchAllV121) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Named capture groups
+        var dateRegex = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+        var m = "2025-12-31".match(dateRegex);
+        r.push(m.groups.year);
+        r.push(m.groups.month);
+        r.push(m.groups.day);
+        // matchAll returns an iterator of all matches with groups
+        var text = "Alice:30 Bob:25 Charlie:35";
+        var re = /(?<name>[A-Za-z]+):(?<age>\d+)/g;
+        var matches = [...text.matchAll(re)];
+        r.push(matches.length);
+        r.push(matches[0].groups.name);
+        r.push(matches[0].groups.age);
+        r.push(matches[1].groups.name);
+        r.push(matches[2].groups.name);
+        r.push(matches[2].groups.age);
+        // replace with named backreference using function
+        var swapped = "2025-06-15".replace(dateRegex, function(match, y, mo, d) {
+            return d + "/" + mo + "/" + y;
+        });
+        r.push(swapped);
+        // Verify matchAll returns independent match objects
+        r.push(matches[0].index);
+        r.push(matches[1].index);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2025|12|31|3|Alice|30|Bob|Charlie|35|15/06/2025|0|9");
+}
+
+// V121-7. Set operations: union, intersection, difference via manual implementation
+TEST(JsEngineTest, SetOperationsUnionIntersectDiffV121) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var setA = new Set([1, 2, 3, 4, 5]);
+        var setB = new Set([3, 4, 5, 6, 7]);
+        // Union
+        var union = new Set([...setA, ...setB]);
+        r.push([...union].sort(function(a,b){return a-b}).join(","));
+        // Intersection
+        var intersection = new Set([...setA].filter(function(x) { return setB.has(x); }));
+        r.push([...intersection].sort(function(a,b){return a-b}).join(","));
+        // Difference (A - B)
+        var diff = new Set([...setA].filter(function(x) { return !setB.has(x); }));
+        r.push([...diff].sort(function(a,b){return a-b}).join(","));
+        // Symmetric difference (elements in either but not both)
+        var symDiff = new Set([
+            ...[...setA].filter(function(x) { return !setB.has(x); }),
+            ...[...setB].filter(function(x) { return !setA.has(x); })
+        ]);
+        r.push([...symDiff].sort(function(a,b){return a-b}).join(","));
+        // Set preserves insertion order and deduplicates
+        var ordered = new Set([5, 3, 1, 3, 5, 2, 1, 4]);
+        r.push([...ordered].join(","));
+        r.push(ordered.size);
+        // Set with mixed types
+        var mixed = new Set([1, "1", true, null, undefined]);
+        r.push(mixed.size);
+        r.push(mixed.has(1));
+        r.push(mixed.has("1"));
+        r.push(mixed.has(null));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6,7|3,4,5|1,2|1,2,6,7|5,3,1,2,4|5|5|true|true|true");
+}
+
+// V121-8. Error subclassing with custom properties and instanceof chain
+TEST(JsEngineTest, ErrorSubclassingCustomPropertiesV121) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Custom error class extending Error
+        class ValidationError extends Error {
+            constructor(field, value, message) {
+                super(message);
+                this.name = "ValidationError";
+                this.field = field;
+                this.invalidValue = value;
+            }
+        }
+        // Nested custom error class
+        class RangeValidationError extends ValidationError {
+            constructor(field, value, min, max) {
+                super(field, value, field + " must be between " + min + " and " + max);
+                this.name = "RangeValidationError";
+                this.min = min;
+                this.max = max;
+            }
+        }
+        // Throw and catch custom error
+        try {
+            throw new ValidationError("email", "not-an-email", "Invalid email format");
+        } catch(e) {
+            r.push(e instanceof ValidationError);
+            r.push(e instanceof Error);
+            r.push(e.name);
+            r.push(e.field);
+            r.push(e.invalidValue);
+            r.push(e.message);
+        }
+        // Throw and catch nested custom error
+        try {
+            throw new RangeValidationError("age", 150, 0, 120);
+        } catch(e) {
+            r.push(e instanceof RangeValidationError);
+            r.push(e instanceof ValidationError);
+            r.push(e instanceof Error);
+            r.push(e.name);
+            r.push(e.min);
+            r.push(e.max);
+            r.push(e.field);
+            r.push(e.message);
+        }
+        // Selective catch pattern
+        var caught = "none";
+        try {
+            throw new RangeValidationError("score", -5, 0, 100);
+        } catch(e) {
+            if (e instanceof RangeValidationError) caught = "range";
+            else if (e instanceof ValidationError) caught = "validation";
+            else caught = "generic";
+        }
+        r.push(caught);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|ValidationError|email|not-an-email|Invalid email format|true|true|true|RangeValidationError|0|120|age|age must be between 0 and 120|range");
+}
+

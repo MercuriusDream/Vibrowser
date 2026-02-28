@@ -17975,3 +17975,209 @@ TEST(SerializerTest, U64ThenStringThenBytesInterleavedV120) {
     EXPECT_EQ(d.read_string(), "");
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, TwoSerializersMergedDeserializationV121) {
+    // Serialize data into two separate serializers, concatenate their raw
+    // buffers, and verify that a single Deserializer can read the combined
+    // stream in order.
+    Serializer s1;
+    s1.write_u32(0xDEADBEEFu);
+    s1.write_string("first-half");
+
+    Serializer s2;
+    s2.write_u64(0x0102030405060708ull);
+    s2.write_bool(true);
+
+    // Concatenate the raw buffers.
+    std::vector<uint8_t> combined(s1.data().begin(), s1.data().end());
+    combined.insert(combined.end(), s2.data().begin(), s2.data().end());
+
+    Deserializer d(combined);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_string(), "first-half");
+    EXPECT_EQ(d.read_u64(), 0x0102030405060708ull);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16StaircasePatternV121) {
+    // Write a staircase of u16 values where each value is the previous
+    // value left-shifted by 1 with the low bit set, creating 0x0001,
+    // 0x0003, 0x0007, ... up to 0x7FFF, then wrap back.
+    Serializer s;
+    std::vector<uint16_t> staircase;
+    uint16_t val = 1;
+    for (int i = 0; i < 15; ++i) {
+        staircase.push_back(val);
+        s.write_u16(val);
+        val = static_cast<uint16_t>((val << 1) | 1);
+    }
+
+    Deserializer d(s.data());
+    for (size_t i = 0; i < staircase.size(); ++i) {
+        EXPECT_EQ(d.read_u16(), staircase[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64MathConstantsIdentityV121) {
+    // Serialize several well-known mathematical constants and verify
+    // bit-exact round-trip.
+    Serializer s;
+    s.write_f64(3.14159265358979323846);  // pi
+    s.write_f64(2.71828182845904523536);  // e
+    s.write_f64(1.41421356237309504880);  // sqrt(2)
+    s.write_f64(0.69314718055994530942);  // ln(2)
+    s.write_f64(1.61803398874989484820);  // golden ratio
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), 3.14159265358979323846);
+    EXPECT_EQ(d.read_f64(), 2.71828182845904523536);
+    EXPECT_EQ(d.read_f64(), 1.41421356237309504880);
+    EXPECT_EQ(d.read_f64(), 0.69314718055994530942);
+    EXPECT_EQ(d.read_f64(), 1.61803398874989484820);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesSelfDescribingMessageV121) {
+    // Simulate a self-describing message: write a u16 "type" tag, a u32
+    // "payload length" hint, then bytes, then a trailing u32 CRC-like
+    // checksum (just XOR of the payload bytes for simplicity).
+    uint8_t payload[] = {0x10, 0x20, 0x30, 0x40, 0x50};
+    uint32_t xor_checksum = 0;
+    for (auto b : payload) xor_checksum ^= b;
+
+    Serializer s;
+    s.write_u16(42);                             // message type
+    s.write_u32(static_cast<uint32_t>(sizeof(payload)));  // payload size hint
+    s.write_bytes(payload, sizeof(payload));      // payload
+    s.write_u32(xor_checksum);                   // checksum
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 42);
+    uint32_t len = d.read_u32();
+    EXPECT_EQ(len, 5u);
+    auto read_payload = d.read_bytes();
+    ASSERT_EQ(read_payload.size(), 5u);
+    uint32_t verify_checksum = 0;
+    for (auto b : read_payload) verify_checksum ^= b;
+    EXPECT_EQ(d.read_u32(), verify_checksum);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithEveryPrintableAsciiCharV121) {
+    // Build a string containing every printable ASCII character (0x20-0x7E)
+    // and round-trip it.
+    std::string printable;
+    for (char c = 0x20; c <= 0x7E; ++c) {
+        printable.push_back(c);
+    }
+    ASSERT_EQ(printable.size(), 95u);
+
+    Serializer s;
+    s.write_string(printable);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 95u);
+    EXPECT_EQ(result, printable);
+    // Verify individual character integrity at boundaries.
+    EXPECT_EQ(result.front(), ' ');
+    EXPECT_EQ(result.back(), '~');
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DataSizeAccumulationWithMixedTypesV121) {
+    // Verify that data().size() grows correctly as we write heterogeneous
+    // types, so we can reason about wire format sizes.
+    Serializer s;
+    size_t prev_size = s.data().size();
+    EXPECT_EQ(prev_size, 0u);
+
+    s.write_bool(false);
+    EXPECT_GT(s.data().size(), prev_size);
+    prev_size = s.data().size();
+
+    s.write_u16(0xFFFF);
+    EXPECT_GT(s.data().size(), prev_size);
+    prev_size = s.data().size();
+
+    s.write_u32(123456);
+    EXPECT_GT(s.data().size(), prev_size);
+    prev_size = s.data().size();
+
+    s.write_u64(0ull);
+    EXPECT_GT(s.data().size(), prev_size);
+    prev_size = s.data().size();
+
+    s.write_f64(1.0);
+    EXPECT_GT(s.data().size(), prev_size);
+    prev_size = s.data().size();
+
+    s.write_string("test");
+    EXPECT_GT(s.data().size(), prev_size);
+    prev_size = s.data().size();
+
+    uint8_t blob[] = {1, 2, 3};
+    s.write_bytes(blob, 3);
+    EXPECT_GT(s.data().size(), prev_size);
+
+    // Verify everything deserializes correctly despite mixed types.
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_u16(), 0xFFFF);
+    EXPECT_EQ(d.read_u32(), 123456u);
+    EXPECT_EQ(d.read_u64(), 0ull);
+    EXPECT_EQ(d.read_f64(), 1.0);
+    EXPECT_EQ(d.read_string(), "test");
+    auto b = d.read_bytes();
+    ASSERT_EQ(b.size(), 3u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RepeatedIdenticalStringsIndependentV121) {
+    // Write the same string N times and ensure each is stored and read
+    // independently (no deduplication or aliasing).
+    const std::string repeated = "echo";
+    const int count = 50;
+
+    Serializer s;
+    for (int i = 0; i < count; ++i) {
+        s.write_string(repeated);
+    }
+
+    // The data should be larger than a single copy — each string is
+    // independently length-prefixed.
+    EXPECT_GT(s.data().size(), repeated.size() * count);
+
+    Deserializer d(s.data());
+    for (int i = 0; i < count; ++i) {
+        EXPECT_EQ(d.read_string(), repeated);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32BitPatternsMirrorAndInvertV121) {
+    // Write pairs of (value, bitwise-NOT-of-value) for several u32 patterns
+    // and verify that for each pair, the XOR of the two reads yields 0xFFFFFFFF.
+    std::vector<uint32_t> patterns = {
+        0x00000000u, 0x12345678u, 0xA5A5A5A5u, 0x80000001u,
+        0x0F0F0F0Fu, 0x55555555u, 0xFFFF0000u, 0x00FF00FFu
+    };
+
+    Serializer s;
+    for (uint32_t p : patterns) {
+        s.write_u32(p);
+        s.write_u32(~p);
+    }
+
+    Deserializer d(s.data());
+    for (size_t i = 0; i < patterns.size(); ++i) {
+        uint32_t val = d.read_u32();
+        uint32_t inv = d.read_u32();
+        EXPECT_EQ(val, patterns[i]);
+        EXPECT_EQ(inv, ~patterns[i]);
+        EXPECT_EQ(val ^ inv, 0xFFFFFFFFu);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

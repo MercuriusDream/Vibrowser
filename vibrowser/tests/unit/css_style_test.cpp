@@ -22641,3 +22641,348 @@ TEST(ComputedStyleTest, SvgMarkerAndMaskPropertiesV120) {
     s.mask_position = "center center";
     EXPECT_EQ(s.mask_position, "center center");
 }
+
+TEST(ComputedStyleTest, CalcExprUnaryMathFunctionsV121) {
+    // Test CSS math functions: abs(), sign(), sin(), cos(), sqrt()
+    using Op = CalcExpr::Op;
+
+    // abs(-42px) => 42
+    auto neg42 = CalcExpr::make_value(Length::px(-42.0f));
+    auto abs_expr = CalcExpr::make_unary(Op::Abs, neg42);
+    EXPECT_FLOAT_EQ(abs_expr->evaluate(0, 16), 42.0f);
+
+    // abs(0) => 0
+    auto zero_node = CalcExpr::make_value(Length::px(0.0f));
+    auto abs_zero = CalcExpr::make_unary(Op::Abs, zero_node);
+    EXPECT_FLOAT_EQ(abs_zero->evaluate(0, 16), 0.0f);
+
+    // sign(-99px) => -1, sign(0px) => 0, sign(5px) => 1
+    auto neg99 = CalcExpr::make_value(Length::px(-99.0f));
+    auto sign_neg = CalcExpr::make_unary(Op::Sign, neg99);
+    EXPECT_FLOAT_EQ(sign_neg->evaluate(0, 16), -1.0f);
+
+    auto sign_zero = CalcExpr::make_unary(Op::Sign, CalcExpr::make_value(Length::px(0.0f)));
+    EXPECT_FLOAT_EQ(sign_zero->evaluate(0, 16), 0.0f);
+
+    auto sign_pos = CalcExpr::make_unary(Op::Sign, CalcExpr::make_value(Length::px(5.0f)));
+    EXPECT_FLOAT_EQ(sign_pos->evaluate(0, 16), 1.0f);
+
+    // sin(0) => 0
+    auto sin_zero = CalcExpr::make_unary(Op::Sin, CalcExpr::make_value(Length::px(0.0f)));
+    EXPECT_NEAR(sin_zero->evaluate(0, 16), 0.0f, 1e-6f);
+
+    // cos(0) => 1
+    auto cos_zero = CalcExpr::make_unary(Op::Cos, CalcExpr::make_value(Length::px(0.0f)));
+    EXPECT_NEAR(cos_zero->evaluate(0, 16), 1.0f, 1e-6f);
+
+    // sqrt(144px) => 12
+    auto sqrt144 = CalcExpr::make_unary(Op::Sqrt, CalcExpr::make_value(Length::px(144.0f)));
+    EXPECT_FLOAT_EQ(sqrt144->evaluate(0, 16), 12.0f);
+
+    // sqrt(-1px) => 0 (clamped for negative input)
+    auto sqrt_neg = CalcExpr::make_unary(Op::Sqrt, CalcExpr::make_value(Length::px(-1.0f)));
+    EXPECT_FLOAT_EQ(sqrt_neg->evaluate(0, 16), 0.0f);
+}
+
+TEST(ComputedStyleTest, CalcExprRoundingOperationsV121) {
+    // Test CSS round() with all four rounding strategies
+    using Op = CalcExpr::Op;
+
+    auto val_7_3 = CalcExpr::make_value(Length::px(7.3f));
+    auto step_5 = CalcExpr::make_value(Length::px(5.0f));
+
+    // round(nearest, 7.3, 5) => round(7.3/5)*5 = round(1.46)*5 = 1*5 = 5
+    auto nearest = CalcExpr::make_binary(Op::RoundNearest, val_7_3, step_5);
+    EXPECT_FLOAT_EQ(nearest->evaluate(0, 16), 5.0f);
+
+    // round(up, 7.3, 5) => ceil(7.3/5)*5 = ceil(1.46)*5 = 2*5 = 10
+    auto up = CalcExpr::make_binary(Op::RoundUp, val_7_3, step_5);
+    EXPECT_FLOAT_EQ(up->evaluate(0, 16), 10.0f);
+
+    // round(down, 7.3, 5) => floor(7.3/5)*5 = floor(1.46)*5 = 1*5 = 5
+    auto down = CalcExpr::make_binary(Op::RoundDown, val_7_3, step_5);
+    EXPECT_FLOAT_EQ(down->evaluate(0, 16), 5.0f);
+
+    // round(to-zero, -7.3, 5) => trunc(-7.3/5)*5 = trunc(-1.46)*5 = -1*5 = -5
+    auto neg_val = CalcExpr::make_value(Length::px(-7.3f));
+    auto to_zero = CalcExpr::make_binary(Op::RoundToZero, neg_val, step_5);
+    EXPECT_FLOAT_EQ(to_zero->evaluate(0, 16), -5.0f);
+
+    // round(nearest, 12.5, 5) => round(2.5)*5 = 3*5 = 15 (round half away from zero)
+    auto val_12_5 = CalcExpr::make_value(Length::px(12.5f));
+    auto nearest_half = CalcExpr::make_binary(Op::RoundNearest, val_12_5, step_5);
+    EXPECT_FLOAT_EQ(nearest_half->evaluate(0, 16), 15.0f);
+
+    // Division by zero step => 0
+    auto step_0 = CalcExpr::make_value(Length::px(0.0f));
+    auto round_div_zero = CalcExpr::make_binary(Op::RoundNearest, val_7_3, step_0);
+    EXPECT_FLOAT_EQ(round_div_zero->evaluate(0, 16), 0.0f);
+}
+
+TEST(ComputedStyleTest, CalcExprModVsRemSignBehaviorV121) {
+    // CSS mod() result has sign of divisor, rem() has sign of dividend
+    using Op = CalcExpr::Op;
+
+    auto pos_18 = CalcExpr::make_value(Length::px(18.0f));
+    auto neg_5 = CalcExpr::make_value(Length::px(-5.0f));
+
+    // mod(18, -5): fmod(18,-5) = 3, since result>0 and divisor<0, result += -5 => -2
+    auto mod_expr = CalcExpr::make_binary(Op::Mod, pos_18, neg_5);
+    EXPECT_FLOAT_EQ(mod_expr->evaluate(0, 16), -2.0f);
+
+    // rem(18, -5): fmod(18,-5) = 3 (sign of dividend = positive)
+    auto rem_expr = CalcExpr::make_binary(Op::Rem, pos_18, neg_5);
+    EXPECT_FLOAT_EQ(rem_expr->evaluate(0, 16), 3.0f);
+
+    // mod(-18, 5): fmod(-18,5) = -3, since result<0 and divisor>0, result += 5 => 2
+    auto neg_18 = CalcExpr::make_value(Length::px(-18.0f));
+    auto pos_5 = CalcExpr::make_value(Length::px(5.0f));
+    auto mod_neg = CalcExpr::make_binary(Op::Mod, neg_18, pos_5);
+    EXPECT_FLOAT_EQ(mod_neg->evaluate(0, 16), 2.0f);
+
+    // rem(-18, 5): fmod(-18,5) = -3 (sign of dividend = negative)
+    auto rem_neg = CalcExpr::make_binary(Op::Rem, neg_18, pos_5);
+    EXPECT_FLOAT_EQ(rem_neg->evaluate(0, 16), -3.0f);
+
+    // Division by zero for both => 0
+    auto zero_div = CalcExpr::make_value(Length::px(0.0f));
+    EXPECT_FLOAT_EQ(CalcExpr::make_binary(Op::Mod, pos_18, zero_div)->evaluate(0, 16), 0.0f);
+    EXPECT_FLOAT_EQ(CalcExpr::make_binary(Op::Rem, pos_18, zero_div)->evaluate(0, 16), 0.0f);
+}
+
+TEST(ComputedStyleTest, CalcExprPowHypotExpLogChainV121) {
+    // Test pow(), hypot(), exp(), log() and nesting them
+    using Op = CalcExpr::Op;
+
+    // pow(3, 4) => 81
+    auto base3 = CalcExpr::make_value(Length::px(3.0f));
+    auto exp4 = CalcExpr::make_value(Length::px(4.0f));
+    auto pow_expr = CalcExpr::make_binary(Op::Pow, base3, exp4);
+    EXPECT_FLOAT_EQ(pow_expr->evaluate(0, 16), 81.0f);
+
+    // hypot(3, 4) => 5
+    auto h3 = CalcExpr::make_value(Length::px(3.0f));
+    auto h4 = CalcExpr::make_value(Length::px(4.0f));
+    auto hypot_expr = CalcExpr::make_binary(Op::Hypot, h3, h4);
+    EXPECT_FLOAT_EQ(hypot_expr->evaluate(0, 16), 5.0f);
+
+    // exp(0) => 1
+    auto exp_zero = CalcExpr::make_unary(Op::Exp, CalcExpr::make_value(Length::px(0.0f)));
+    EXPECT_FLOAT_EQ(exp_zero->evaluate(0, 16), 1.0f);
+
+    // log(1) => 0
+    auto log_one = CalcExpr::make_unary(Op::Log, CalcExpr::make_value(Length::px(1.0f)));
+    EXPECT_NEAR(log_one->evaluate(0, 16), 0.0f, 1e-6f);
+
+    // log(-1) => 0 (clamped for non-positive input)
+    auto log_neg = CalcExpr::make_unary(Op::Log, CalcExpr::make_value(Length::px(-1.0f)));
+    EXPECT_FLOAT_EQ(log_neg->evaluate(0, 16), 0.0f);
+
+    // Nesting: sqrt(pow(5, 2) + pow(12, 2)) = sqrt(25 + 144) = sqrt(169) = 13
+    // Build using hypot(5, 12) = 13 for the same result
+    auto five = CalcExpr::make_value(Length::px(5.0f));
+    auto twelve = CalcExpr::make_value(Length::px(12.0f));
+    auto nested_hypot = CalcExpr::make_binary(Op::Hypot, five, twelve);
+    EXPECT_FLOAT_EQ(nested_hypot->evaluate(0, 16), 13.0f);
+
+    // exp(log(42)) => 42 (roundtrip)
+    auto val42 = CalcExpr::make_value(Length::px(42.0f));
+    auto log42 = CalcExpr::make_unary(Op::Log, val42);
+    auto roundtrip = CalcExpr::make_unary(Op::Exp, log42);
+    EXPECT_NEAR(roundtrip->evaluate(0, 16), 42.0f, 0.01f);
+}
+
+TEST(ComputedStyleTest, LengthVminVmaxNonSquareViewportV121) {
+    // vmin/vmax depend on the smaller/larger of viewport width and height
+    // Ensure they resolve correctly with a non-square viewport
+
+    // Save original viewport
+    float orig_w = Length::s_viewport_w;
+    float orig_h = Length::s_viewport_h;
+
+    // Set a landscape viewport: 1200x400
+    Length::set_viewport(1200.0f, 400.0f);
+
+    // 10vmin = 10% of min(1200,400) = 10% of 400 = 40px
+    Length vmin10 = Length::vmin(10.0f);
+    EXPECT_FLOAT_EQ(vmin10.to_px(), 40.0f);
+
+    // 10vmax = 10% of max(1200,400) = 10% of 1200 = 120px
+    Length vmax10 = Length::vmax(10.0f);
+    EXPECT_FLOAT_EQ(vmax10.to_px(), 120.0f);
+
+    // 100vmin == the shorter dimension
+    Length vmin100 = Length::vmin(100.0f);
+    EXPECT_FLOAT_EQ(vmin100.to_px(), 400.0f);
+
+    // Switch to portrait: 500x900
+    Length::set_viewport(500.0f, 900.0f);
+    Length vmin25 = Length::vmin(25.0f);
+    EXPECT_FLOAT_EQ(vmin25.to_px(), 125.0f); // 25% of 500
+
+    Length vmax25 = Length::vmax(25.0f);
+    EXPECT_FLOAT_EQ(vmax25.to_px(), 225.0f); // 25% of 900
+
+    // Also verify vw/vh in this portrait viewport
+    Length vw50 = Length::vw(50.0f);
+    EXPECT_FLOAT_EQ(vw50.to_px(), 250.0f); // 50% of 500
+
+    Length vh50 = Length::vh(50.0f);
+    EXPECT_FLOAT_EQ(vh50.to_px(), 450.0f); // 50% of 900
+
+    // Restore original viewport
+    Length::set_viewport(orig_w, orig_h);
+}
+
+TEST(ComputedStyleTest, CSSMotionPathOffsetPropertiesV121) {
+    // Test CSS Motion Path module: offset-path, offset-distance, offset-rotate, offset-anchor, offset-position
+    ComputedStyle s;
+
+    // Verify defaults
+    EXPECT_EQ(s.offset_path, "none");
+    EXPECT_FLOAT_EQ(s.offset_distance, 0.0f);
+    EXPECT_EQ(s.offset_rotate, "auto");
+    EXPECT_EQ(s.offset_anchor, "auto");
+    EXPECT_EQ(s.offset_position, "normal");
+    EXPECT_TRUE(s.offset.empty());
+
+    // Set a SVG path as motion path
+    s.offset_path = "path('M0 0 C100 0 100 100 200 100')";
+    EXPECT_EQ(s.offset_path, "path('M0 0 C100 0 100 100 200 100')");
+
+    // Move element to midpoint of path
+    s.offset_distance = 50.0f;
+    EXPECT_FLOAT_EQ(s.offset_distance, 50.0f);
+
+    // Fixed rotation instead of auto
+    s.offset_rotate = "45deg";
+    EXPECT_EQ(s.offset_rotate, "45deg");
+
+    // Set anchor and position
+    s.offset_anchor = "50% 50%";
+    s.offset_position = "auto";
+    EXPECT_EQ(s.offset_anchor, "50% 50%");
+    EXPECT_EQ(s.offset_position, "auto");
+
+    // Test offset shorthand
+    s.offset = "path('M0 0L200 200') 75% auto 30deg / 25% 25%";
+    EXPECT_EQ(s.offset, "path('M0 0L200 200') 75% auto 30deg / 25% 25%");
+
+    // Test auto+angle rotation
+    s.offset_rotate = "auto 90deg";
+    EXPECT_EQ(s.offset_rotate, "auto 90deg");
+
+    // Verify multiple properties can coexist independently
+    ComputedStyle s2;
+    s2.offset_path = "circle(200px at 50% 50%)";
+    s2.offset_distance = 100.0f;
+    EXPECT_EQ(s2.offset_path, "circle(200px at 50% 50%)");
+    EXPECT_FLOAT_EQ(s2.offset_distance, 100.0f);
+    EXPECT_EQ(s2.offset_rotate, "auto"); // still default
+}
+
+TEST(ComputedStyleTest, FontVariantAdvancedAndSynthesisV121) {
+    // Test font-variant-east-asian, font-variant-position, font-variant-alternates,
+    // font-synthesis bitmask, font-stretch, font-language-override
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_EQ(s.font_variant_east_asian, 0); // normal
+    EXPECT_EQ(s.font_variant_position, 0);   // normal
+    EXPECT_EQ(s.font_variant_alternates, 0); // normal
+    EXPECT_EQ(s.font_synthesis, 7);          // all enabled (1|2|4)
+    EXPECT_EQ(s.font_stretch, 5);            // normal
+    EXPECT_TRUE(s.font_language_override.empty());
+    EXPECT_FLOAT_EQ(s.font_size_adjust, 0.0f); // none
+
+    // font-variant-east-asian: jis04
+    s.font_variant_east_asian = 4;
+    EXPECT_EQ(s.font_variant_east_asian, 4);
+
+    // font-variant-position: super
+    s.font_variant_position = 2;
+    EXPECT_EQ(s.font_variant_position, 2);
+
+    // font-variant-alternates: historical-forms
+    s.font_variant_alternates = 1;
+    EXPECT_EQ(s.font_variant_alternates, 1);
+
+    // font-synthesis: disable weight (remove bit 1), keep style (2) and small-caps (4) => 6
+    s.font_synthesis = 6;
+    EXPECT_EQ(s.font_synthesis, 6);
+    EXPECT_TRUE((s.font_synthesis & 1) == 0);  // weight disabled
+    EXPECT_TRUE((s.font_synthesis & 2) != 0);  // style enabled
+    EXPECT_TRUE((s.font_synthesis & 4) != 0);  // small-caps enabled
+
+    // font-synthesis: none
+    s.font_synthesis = 0;
+    EXPECT_EQ(s.font_synthesis, 0);
+
+    // font-stretch: ultra-expanded
+    s.font_stretch = 9;
+    EXPECT_EQ(s.font_stretch, 9);
+
+    // font-language-override
+    s.font_language_override = "TRK";
+    EXPECT_EQ(s.font_language_override, "TRK");
+
+    // font-size-adjust with custom aspect ratio
+    s.font_size_adjust = 0.56f;
+    EXPECT_FLOAT_EQ(s.font_size_adjust, 0.56f);
+}
+
+TEST(ComputedStyleTest, ContainmentContainerQueriesContentVisibilityV121) {
+    // Test CSS containment (contain), container queries, content-visibility,
+    // and related intrinsic sizing hints
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_EQ(s.contain, 0);                  // none
+    EXPECT_EQ(s.container_type, 0);           // normal
+    EXPECT_TRUE(s.container_name.empty());
+    EXPECT_EQ(s.content_visibility, 0);       // visible
+    EXPECT_FLOAT_EQ(s.contain_intrinsic_width, 0.0f);
+    EXPECT_FLOAT_EQ(s.contain_intrinsic_height, 0.0f);
+    EXPECT_EQ(s.isolation, 0);                // auto
+
+    // contain: strict => 1
+    s.contain = 1;
+    EXPECT_EQ(s.contain, 1);
+
+    // Set up as a container query context
+    s.container_type = 2;  // inline-size
+    s.container_name = "sidebar";
+    EXPECT_EQ(s.container_type, 2);
+    EXPECT_EQ(s.container_name, "sidebar");
+
+    // content-visibility: auto => 2 (enables skip rendering off-screen)
+    s.content_visibility = 2;
+    EXPECT_EQ(s.content_visibility, 2);
+
+    // When content-visibility: auto, provide intrinsic sizing hints
+    s.contain_intrinsic_width = 300.0f;
+    s.contain_intrinsic_height = 200.0f;
+    EXPECT_FLOAT_EQ(s.contain_intrinsic_width, 300.0f);
+    EXPECT_FLOAT_EQ(s.contain_intrinsic_height, 200.0f);
+
+    // isolation: isolate creates new stacking context
+    s.isolation = 1;
+    EXPECT_EQ(s.isolation, 1);
+
+    // contain: paint => 6
+    s.contain = 6;
+    EXPECT_EQ(s.contain, 6);
+
+    // Verify all containment values are distinct
+    ComputedStyle s2;
+    s2.contain = 2; // content
+    s2.container_type = 1; // size
+    s2.content_visibility = 1; // hidden
+    EXPECT_EQ(s2.contain, 2);
+    EXPECT_EQ(s2.container_type, 1);
+    EXPECT_EQ(s2.content_visibility, 1);
+    // hidden content-visibility with size containment still has intrinsic size hint
+    s2.contain_intrinsic_width = 100.0f;
+    EXPECT_FLOAT_EQ(s2.contain_intrinsic_width, 100.0f);
+    EXPECT_FLOAT_EQ(s2.contain_intrinsic_height, 0.0f); // unchanged default
+}
