@@ -17155,3 +17155,133 @@ TEST(SerializerTest, WriteBoolSequenceAllTrueV114) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V115 Tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, RoundTripU16PowersOfTwoV115) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_u16(static_cast<uint16_t>(1u << i));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(1u << i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU64MaxMinV115) {
+    Serializer s;
+    s.write_u64(0);
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+    s.write_u64(std::numeric_limits<uint64_t>::max() - 1);
+    s.write_u64(1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max() - 1);
+    EXPECT_EQ(d.read_u64(), 1u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripF64SubnormalV115) {
+    Serializer s;
+    double subnormal = std::numeric_limits<double>::denorm_min();
+    double neg_subnormal = -std::numeric_limits<double>::denorm_min();
+    s.write_f64(subnormal);
+    s.write_f64(neg_subnormal);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), subnormal);
+    EXPECT_EQ(d.read_f64(), neg_subnormal);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripStringBinaryContentV115) {
+    // String containing bytes that look like control characters
+    std::string binary_str;
+    for (int i = 0; i < 256; ++i) {
+        binary_str.push_back(static_cast<char>(i));
+    }
+    Serializer s;
+    s.write_string(binary_str);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(static_cast<uint8_t>(result[i]), static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripBytesAllZerosV115) {
+    std::vector<uint8_t> zeros(1024, 0x00);
+    Serializer s;
+    s.write_bytes(zeros.data(), zeros.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 1024u);
+    for (auto b : result) {
+        EXPECT_EQ(b, 0x00);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedTypesRoundTripV115) {
+    // Write different types interleaved: u8, string, bool, u32, f64, bytes, u16, u64
+    Serializer s;
+    s.write_u8(0xAB);
+    s.write_string("interleaved");
+    s.write_bool(false);
+    s.write_u32(0xDEADBEEF);
+    s.write_f64(2.718281828);
+    uint8_t payload[] = {0xCA, 0xFE};
+    s.write_bytes(payload, 2);
+    s.write_u16(12345);
+    s.write_u64(9999999999ULL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xAB);
+    EXPECT_EQ(d.read_string(), "interleaved");
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828);
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes[0], 0xCA);
+    EXPECT_EQ(bytes[1], 0xFE);
+    EXPECT_EQ(d.read_u16(), 12345u);
+    EXPECT_EQ(d.read_u64(), 9999999999ULL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DeserializerUnderflowOnPartialU64V115) {
+    // Write only 7 bytes manually - not enough for a u64
+    std::vector<uint8_t> short_buf = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07};
+    Deserializer d(short_buf);
+    EXPECT_THROW(d.read_u64(), std::exception);
+}
+
+TEST(SerializerTest, MultipleStringsWithVaryingLengthsV115) {
+    Serializer s;
+    std::vector<std::string> strings;
+    strings.push_back("");
+    strings.push_back("a");
+    strings.push_back(std::string(100, 'x'));
+    strings.push_back(std::string(1000, 'y'));
+    strings.push_back("final");
+
+    for (const auto& str : strings) {
+        s.write_string(str);
+    }
+
+    Deserializer d(s.data());
+    for (const auto& expected : strings) {
+        EXPECT_EQ(d.read_string(), expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -17653,3 +17653,126 @@ TEST(DomTest, ClassListOperationsIndependentV114) {
     el.class_list().toggle("active");
     EXPECT_FALSE(el.class_list().contains("active"));
 }
+
+// ---------------------------------------------------------------------------
+// V115 Tests
+// ---------------------------------------------------------------------------
+
+// 1. Verify previous_sibling is correctly maintained after insert_before
+TEST(DomTest, PreviousSiblingAfterInsertBeforeV115) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("a");
+    auto c2 = std::make_unique<Element>("b");
+    auto c3 = std::make_unique<Element>("c");
+
+    Node* a_ptr = &parent.append_child(std::move(c1));
+    Node* b_ptr = &parent.append_child(std::move(c2));
+    // Insert c before b: order becomes a, c, b
+    Node* c_ptr = &parent.insert_before(std::move(c3), b_ptr);
+
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), c_ptr);
+    EXPECT_EQ(parent.child_count(), 3u);
+}
+
+// 2. Remove the only child and verify tree is empty
+TEST(DomTest, RemoveOnlyChildLeavesEmptyTreeV115) {
+    Element parent("ul");
+    auto li = std::make_unique<Element>("li");
+    Node* li_ptr = &parent.append_child(std::move(li));
+
+    EXPECT_EQ(parent.child_count(), 1u);
+    auto removed = parent.remove_child(*li_ptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+    EXPECT_EQ(removed->parent(), nullptr);
+}
+
+// 3. Document factory: create_comment returns correct node_type and data
+TEST(DomTest, DocumentCreateCommentV115) {
+    Document doc;
+    auto comment = doc.create_comment("hello world");
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+    auto* c = static_cast<Comment*>(comment.get());
+    EXPECT_EQ(c->data(), "hello world");
+}
+
+// 4. text_content on an element with mixed children (element + text + comment)
+TEST(DomTest, TextContentMixedChildrenV115) {
+    Element div("div");
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("Hello"));
+    div.append_child(std::move(span));
+    div.append_child(std::make_unique<Text>(" World"));
+    div.append_child(std::make_unique<Comment>("ignored"));
+
+    // text_content should concatenate text nodes recursively, skip comments
+    EXPECT_EQ(div.text_content(), "Hello World");
+}
+
+// 5. set_attribute overwrites id and id() accessor updates
+TEST(DomTest, SetAttributeUpdatesIdAccessorV115) {
+    Element el("div");
+    el.set_attribute("id", "first");
+    EXPECT_EQ(el.id(), "first");
+    el.set_attribute("id", "second");
+    EXPECT_EQ(el.id(), "second");
+    EXPECT_EQ(el.get_attribute("id").value(), "second");
+}
+
+// 6. Verify mark_dirty propagates to parent
+TEST(DomTest, MarkDirtyPropagesToParentV115) {
+    Element parent("div");
+    auto child_ptr = std::make_unique<Element>("span");
+    Node* child = &parent.append_child(std::move(child_ptr));
+
+    parent.clear_dirty();
+    child->mark_dirty(DirtyFlags::Layout);
+    // Child should have layout dirty
+    EXPECT_NE(static_cast<uint8_t>(child->dirty_flags() & DirtyFlags::Layout), 0u);
+    // Parent should also be marked dirty (propagation)
+    EXPECT_NE(static_cast<uint8_t>(parent.dirty_flags() & DirtyFlags::Layout), 0u);
+}
+
+// 7. for_each_child visits children in append order
+TEST(DomTest, ForEachChildVisitsInAppendOrderV115) {
+    Element parent("ol");
+    parent.append_child(std::make_unique<Element>("a"));
+    parent.append_child(std::make_unique<Element>("b"));
+    parent.append_child(std::make_unique<Element>("c"));
+
+    std::vector<std::string> tags;
+    parent.for_each_child([&](const Node& node) {
+        auto* el = static_cast<const Element*>(&node);
+        tags.push_back(el->tag_name());
+    });
+    ASSERT_EQ(tags.size(), 3u);
+    EXPECT_EQ(tags[0], "a");
+    EXPECT_EQ(tags[1], "b");
+    EXPECT_EQ(tags[2], "c");
+}
+
+// 8. Removing middle child updates sibling pointers of neighbors
+TEST(DomTest, RemoveMiddleChildFixesSiblingPointersV115) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Node* a_ptr = &parent.append_child(std::move(a));
+    Node* b_ptr = &parent.append_child(std::move(b));
+    Node* c_ptr = &parent.append_child(std::move(c));
+
+    // Remove middle child (b)
+    auto removed = parent.remove_child(*b_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    // a's next should now be c
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    // c's prev should now be a
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+    // removed node has no siblings
+    EXPECT_EQ(removed->next_sibling(), nullptr);
+    EXPECT_EQ(removed->previous_sibling(), nullptr);
+}

@@ -12586,3 +12586,99 @@ TEST(UrlParserTest, SchemeOnlyBareHostNormalizesToLowercaseV114) {
     // Path case is preserved
     EXPECT_EQ(result->path, "/Path/TO/Resource");
 }
+
+// =============================================================================
+// V115 Tests
+// =============================================================================
+
+TEST(UrlParserTest, FtpDefaultPort21NormalizedToNulloptV115) {
+    auto result = parse("ftp://files.example.com:21/pub/release.tar.gz");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    // Default FTP port 21 should be normalized away
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/release.tar.gz");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInQueryStringV115) {
+    auto result = parse("https://search.example.com/find?q=hello%20world&lang=en");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/find");
+    // Double-encodes: %20 becomes %2520
+    EXPECT_EQ(result->query, "q=hello%2520world&lang=en");
+}
+
+TEST(UrlParserTest, UsernameOnlyNoPasswordParsedV115) {
+    auto result = parse("https://admin@dashboard.example.com/settings");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "dashboard.example.com");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_TRUE(result->password.empty());
+    EXPECT_EQ(result->path, "/settings");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, SerializePreservesNonDefaultPortAndFragmentV115) {
+    auto result = parse("http://api.example.com:9090/v2/data?format=json#results");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "api.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9090);
+    EXPECT_EQ(result->path, "/v2/data");
+    EXPECT_EQ(result->query, "format=json");
+    EXPECT_EQ(result->fragment, "results");
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find(":9090"), std::string::npos);
+    EXPECT_NE(serialized.find("?format=json"), std::string::npos);
+    EXPECT_NE(serialized.find("#results"), std::string::npos);
+}
+
+TEST(UrlParserTest, EmptyPathDefaultsToSlashV115) {
+    auto result = parse("https://bare.example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "bare.example.com");
+    // Bare host with no trailing slash should have path = "/"
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, CredentialsWithSpecialCharsInPasswordV115) {
+    auto result = parse("https://user:p%40ss@secure.example.com/login");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->username, "user");
+    // Password with percent-encoded @ sign — double-encodes %40 → %2540
+    EXPECT_EQ(result->password, "p%2540ss");
+    EXPECT_EQ(result->path, "/login");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, QueryOnlyNoFragmentParsedCorrectlyV115) {
+    auto result = parse("https://example.com/?key=value&another=123");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->query, "key=value&another=123");
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, FragmentOnlyNoQueryParsedV115) {
+    auto result = parse("https://docs.example.com/guide#section-5");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "docs.example.com");
+    EXPECT_EQ(result->path, "/guide");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "section-5");
+    EXPECT_EQ(result->port, std::nullopt);
+}

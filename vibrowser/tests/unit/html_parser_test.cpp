@@ -18662,3 +18662,132 @@ TEST(HtmlParser, SemanticElementsWithAriaLabelV114) {
     ASSERT_NE(h1, nullptr);
     EXPECT_EQ(h1->text_content(), "Title");
 }
+
+// ---------------------------------------------------------------------------
+// V115 Tests — 8 new parser tests
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, NestedTablesV115) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table><tr><td>"
+        "<table><tr><td>inner</td></tr></table>"
+        "</td></tr></table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto tables = doc->find_all_elements("table");
+    ASSERT_EQ(tables.size(), 2u);
+    auto tds = doc->find_all_elements("td");
+    ASSERT_GE(tds.size(), 2u);
+    bool found_inner = false;
+    for (auto* td : tds) {
+        if (td->text_content() == "inner") { found_inner = true; break; }
+    }
+    EXPECT_TRUE(found_inner);
+}
+
+TEST(HtmlParserTest, MultipleDataAttributesV115) {
+    auto doc = clever::html::parse(
+        "<div data-id=\"42\" data-role=\"admin\" data-active=\"true\">content</div>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(div, "data-active"), "true");
+    EXPECT_EQ(div->text_content(), "content");
+}
+
+TEST(HtmlParserTest, PreformattedWhitespacePreservedV115) {
+    auto doc = clever::html::parse(
+        "<html><body><pre>  line1\n  line2\n  line3</pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+    std::string content = pre->text_content();
+    EXPECT_NE(content.find("line1"), std::string::npos);
+    EXPECT_NE(content.find("line2"), std::string::npos);
+    EXPECT_NE(content.find("line3"), std::string::npos);
+}
+
+TEST(HtmlParserTest, DefinitionListStructureV115) {
+    auto doc = clever::html::parse(
+        "<dl>"
+        "<dt>Term1</dt><dd>Def1</dd>"
+        "<dt>Term2</dt><dd>Def2</dd>"
+        "</dl>");
+    ASSERT_NE(doc, nullptr);
+    auto dts = doc->find_all_elements("dt");
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term1");
+    EXPECT_EQ(dts[1]->text_content(), "Term2");
+    EXPECT_EQ(dds[0]->text_content(), "Def1");
+    EXPECT_EQ(dds[1]->text_content(), "Def2");
+}
+
+TEST(HtmlParserTest, MixedInlineElementsV115) {
+    auto doc = clever::html::parse(
+        "<p>This is <strong>bold</strong> and <em>italic</em> and <code>code</code> text.</p>");
+    ASSERT_NE(doc, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "bold");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "italic");
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->text_content(), "code");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    std::string full = p->text_content();
+    EXPECT_NE(full.find("bold"), std::string::npos);
+    EXPECT_NE(full.find("italic"), std::string::npos);
+    EXPECT_NE(full.find("code"), std::string::npos);
+}
+
+TEST(HtmlParserTest, ScriptTagContentNotParsedV115) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<script>var x = '<div>not a real tag</div>';</script>"
+        "<p>after script</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    auto inner_divs_in_script = script->find_all_elements("div");
+    EXPECT_EQ(inner_divs_in_script.size(), 0u);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "after script");
+}
+
+TEST(HtmlParserTest, EmptyAttributeAndBooleanAttrV115) {
+    auto doc = clever::html::parse(
+        "<input type=\"checkbox\" checked disabled value=\"\">");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "checkbox");
+    EXPECT_EQ(get_attr_v63(input, "checked"), "");
+    EXPECT_EQ(get_attr_v63(input, "disabled"), "");
+    EXPECT_EQ(get_attr_v63(input, "value"), "");
+}
+
+TEST(HtmlParserTest, DeepNestingStressV115) {
+    std::string html;
+    const int depth = 50;
+    for (int i = 0; i < depth; ++i) html += "<div>";
+    html += "<span>deep</span>";
+    for (int i = 0; i < depth; ++i) html += "</div>";
+    auto doc = clever::html::parse(html);
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "deep");
+    auto divs = doc->find_all_elements("div");
+    EXPECT_EQ(divs.size(), static_cast<size_t>(depth));
+}

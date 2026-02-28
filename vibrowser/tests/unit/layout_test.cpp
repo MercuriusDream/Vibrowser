@@ -21358,3 +21358,162 @@ TEST(LayoutEngineTest, FlexRowNoShrinkPreservesWidthV114) {
     EXPECT_FLOAT_EQ(p1->geometry.width, 150.0f);
     EXPECT_FLOAT_EQ(p2->geometry.width, 150.0f);
 }
+
+// V115-1: Block with border-box sizing computes correct border_box_width
+TEST(LayoutEngineTest, BorderBoxSizingIncludesPaddingV115) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->border_box = true;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 20.0f;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Engine sets content width to specified_width; border_box includes padding+border
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border_box_width(), 250.0f);
+}
+
+// V115-2: Flex column direction stacks children vertically
+TEST(LayoutEngineTest, FlexColumnStacksVerticallyV115) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // Column
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Second child should be positioned after first child vertically
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_GE(p2->geometry.y, 50.0f);
+}
+
+// V115-3: Block child margin collapses with parent content area
+TEST(LayoutEngineTest, BlockChildMarginOffsetsPositionV115) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->geometry.margin.top = 30.0f;
+    child->geometry.margin.left = 40.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(cp->geometry.margin.top, 30.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.margin.left, 40.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.width, 200.0f);
+}
+
+// V115-4: max_width clamps a block's computed width
+TEST(LayoutEngineTest, MaxWidthClampsBlockWidthV115) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->max_width = 300.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_LE(root->geometry.width, 300.0f);
+}
+
+// V115-5: min_height ensures minimum content height
+TEST(LayoutEngineTest, MinHeightEnforcesMinimumV115) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->min_height = 200.0f;
+    // No children, so content height would be 0 without min-height
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_GE(root->geometry.height, 200.0f);
+}
+
+// V115-6: Flex row items are placed sequentially without overlap
+TEST(LayoutEngineTest, FlexRowItemsPlacedSequentiallyV115) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // Row
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Second child starts right after first child in a row flex layout
+    EXPECT_FLOAT_EQ(p1->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.x, p1->geometry.x + p1->geometry.width);
+}
+
+// V115-7: Flex grow distributes remaining space proportionally
+TEST(LayoutEngineTest, FlexGrowDistributesSpaceV115) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // Row
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    c1->specified_height = 40.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 2.0f;
+    c2->specified_height = 40.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // c2 should get twice as much width as c1
+    EXPECT_GT(p1->geometry.width, 0.0f);
+    EXPECT_GT(p2->geometry.width, 0.0f);
+    EXPECT_NEAR(p2->geometry.width, p1->geometry.width * 2.0f, 1.0f);
+}
+
+// V115-8: Margin box width includes margin + border + padding + content
+TEST(LayoutEngineTest, MarginBoxWidthCalculationV115) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->geometry.margin.left = 10.0f;
+    root->geometry.margin.right = 10.0f;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+    root->geometry.padding.left = 15.0f;
+    root->geometry.padding.right = 15.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // margin_box_width = 10 + 5 + 15 + 300 + 15 + 5 + 10 = 360
+    EXPECT_FLOAT_EQ(root->geometry.margin_box_width(), 360.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border_box_width(), 340.0f);
+}

@@ -19464,3 +19464,157 @@ TEST(RequestTest, ParseUrlHttpSchemeDefaultsV114) {
     EXPECT_FALSE(req.use_tls);
     EXPECT_TRUE(req.query.empty());
 }
+
+// ===========================================================================
+// V115 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: append then get_all returns all appended values
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendMultipleGetAllReturnsAllV115) {
+    HeaderMap map;
+    map.append("Set-Cookie", "a=1");
+    map.append("Set-Cookie", "b=2");
+    map.append("Set-Cookie", "c=3");
+
+    auto all = map.get_all("Set-Cookie");
+    EXPECT_EQ(all.size(), 3u);
+    // get() should return one of them
+    EXPECT_TRUE(map.get("set-cookie").has_value());
+    // size counts each appended entry
+    EXPECT_EQ(map.size(), 3u);
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap: set overwrites all previous appended values for same key
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, SetOverwritesAllAppendedValuesV115) {
+    HeaderMap map;
+    map.append("X-Custom", "val1");
+    map.append("X-Custom", "val2");
+    EXPECT_EQ(map.get_all("X-Custom").size(), 2u);
+
+    // set should replace all entries for this key with a single value
+    map.set("X-Custom", "only-one");
+    EXPECT_EQ(map.get_all("X-Custom").size(), 1u);
+    EXPECT_EQ(map.get("x-custom").value(), "only-one");
+}
+
+// ---------------------------------------------------------------------------
+// 3. Request: serialize GET with custom header produces lowercase header name
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeCustomHeaderLowercaseV115) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/v2/data";
+    req.use_tls = true;
+    req.headers.set("X-Request-Id", "abc-123");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Custom headers should be lowercase
+    EXPECT_NE(raw.find("x-request-id: abc-123"), std::string::npos);
+    // Host header should keep capitalization and omit port 443 for HTTPS
+    EXPECT_NE(raw.find("Host: api.example.com\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request: parse_url with query string containing multiple params
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlMultiQueryParamsV115) {
+    Request req;
+    req.url = "https://search.example.com/find?q=hello&lang=en&page=3";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_EQ(req.path, "/find");
+    EXPECT_EQ(req.query, "q=hello&lang=en&page=3");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Response: parse a response with Content-Length and verify body length
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseResponseBodyMatchesContentLengthV115) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 11\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "hello world";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "hello world");
+    EXPECT_EQ(resp->body.size(), 11u);
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response: parse 101 Switching Protocols status
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse101SwitchingProtocolsV115) {
+    std::string raw =
+        "HTTP/1.1 101 Switching Protocols\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 101);
+    EXPECT_EQ(resp->status_text, "Switching Protocols");
+    EXPECT_EQ(resp->headers.get("upgrade").value(), "websocket");
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request: serialize POST with body includes Content-Length
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePostBodyIncludesContentLengthV115) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/submit";
+    req.use_tls = true;
+    std::string payload = R"({"key":"value"})";
+    req.body.assign(payload.begin(), payload.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(raw.find("Content-Length: 15\r\n"), std::string::npos);
+    // Host should omit port 443 for HTTPS
+    EXPECT_NE(raw.find("Host: api.example.com\r\n"), std::string::npos);
+    // Body should appear after double CRLF
+    EXPECT_NE(raw.find("\r\n\r\n{\"key\":\"value\"}"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 8. HeaderMap: remove then has returns false, get returns nullopt
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveThenHasAndGetConsistentV115) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token123");
+    map.set("Accept", "application/json");
+    EXPECT_TRUE(map.has("Authorization"));
+    EXPECT_EQ(map.size(), 2u);
+
+    map.remove("Authorization");
+    EXPECT_FALSE(map.has("Authorization"));
+    EXPECT_FALSE(map.get("authorization").has_value());
+    EXPECT_EQ(map.size(), 1u);
+    // Other key unaffected
+    EXPECT_TRUE(map.has("Accept"));
+    EXPECT_EQ(map.get("accept").value(), "application/json");
+}

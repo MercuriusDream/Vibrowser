@@ -30923,3 +30923,159 @@ TEST(JsEngineTest, ErrorSubclassesAndPropertiesV114) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true|true|TypeError|bad type|RangeError|out of range|URIError|SyntaxError|true|AppError|app broke");
 }
+
+// ============================================================================
+// V115 — 8 new JS engine tests
+// ============================================================================
+
+// V115-1. TypedArray slice, subarray, and buffer sharing
+TEST(JsEngineTest, TypedArraySliceAndSubarrayV115) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = new Uint8Array([10, 20, 30, 40, 50]);
+        var sliced = a.slice(1, 4);
+        sliced[0] = 99;
+        var sameBuffer = sliced.buffer !== a.buffer;
+        var sub = a.subarray(2, 5);
+        sub[0] = 77;
+        var shared = a[2] === 77;
+        [sliced.join(","), sameBuffer, a.join(","), shared].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "99,30,40|true|10,20,77,40,50|true");
+}
+
+// V115-2. Int32Array and Float64Array construction and iteration with for...of
+TEST(JsEngineTest, Int32Float64ForOfIterationV115) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var i32 = new Int32Array([100, -200, 300]);
+        var sum32 = 0;
+        for (var v of i32) sum32 += v;
+        var f64 = new Float64Array([1.5, 2.5, 3.0]);
+        var sumF = 0;
+        for (var v of f64) sumF += v;
+        sum32 + "|" + sumF;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "200|7");
+}
+
+// V115-3. DataView multi-type read/write round-trip in single buffer
+TEST(JsEngineTest, DataViewMultiTypeRoundTripV115) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var buf = new ArrayBuffer(16);
+        var dv = new DataView(buf);
+        dv.setUint8(0, 255);
+        dv.setInt16(1, -1234, true);
+        dv.setFloat32(4, 3.14, false);
+        dv.setUint32(8, 0xDEADBEEF, true);
+        var r = [];
+        r.push(dv.getUint8(0));
+        r.push(dv.getInt16(1, true));
+        r.push(dv.getFloat32(4, false).toFixed(2));
+        r.push(dv.getUint32(8, true).toString(16));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "255|-1234|3.14|deadbeef");
+}
+
+// V115-4. Object.keys/values/entries with for...in vs for...of comparison
+TEST(JsEngineTest, ObjectKeysValuesEntriesForInVsForOfV115) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {x: 10, y: 20, z: 30};
+        var keysForIn = [];
+        for (var k in obj) keysForIn.push(k);
+        var keysApi = Object.keys(obj);
+        var vals = Object.values(obj);
+        var entries = Object.entries(obj);
+        var entriesStr = entries.map(function(e){ return e[0] + "=" + e[1]; }).join(",");
+        [keysForIn.join(","), keysApi.join(","), vals.reduce(function(a,b){return a+b},0), entriesStr].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x,y,z|x,y,z|60|x=10,y=20,z=30");
+}
+
+// V115-5. Object.assign deep merge and Object.freeze prevents writes
+TEST(JsEngineTest, ObjectAssignAndFreezeInteractionV115) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var base = {a: 1, b: 2};
+        var ext1 = {b: 99, c: 3};
+        var ext2 = {d: 4};
+        var merged = Object.assign({}, base, ext1, ext2);
+        var frozen = Object.freeze({val: 42});
+        try { frozen.val = 100; } catch(e) {}
+        var isFrozen = Object.isFrozen(frozen);
+        [merged.a, merged.b, merged.c, merged.d, frozen.val, isFrozen].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|99|3|4|42|true");
+}
+
+// V115-6. Number static methods: isFinite, isNaN, isInteger, isSafeInteger, parseFloat, parseInt
+TEST(JsEngineTest, NumberStaticMethodsV115) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push(Number.isFinite(42));
+        r.push(Number.isFinite(Infinity));
+        r.push(Number.isFinite(NaN));
+        r.push(Number.isNaN(NaN));
+        r.push(Number.isNaN(42));
+        r.push(Number.isInteger(5));
+        r.push(Number.isInteger(5.5));
+        r.push(Number.isSafeInteger(Number.MAX_SAFE_INTEGER));
+        r.push(Number.isSafeInteger(Number.MAX_SAFE_INTEGER + 1));
+        r.push(Number.parseFloat("3.14abc"));
+        r.push(Number.parseInt("0xFF", 16));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|false|true|false|true|false|true|false|3.14|255");
+}
+
+// V115-7. Date basics: construction, getFullYear, getMonth, toISOString prefix, Date.now
+TEST(JsEngineTest, DateConstructionAndMethodsV115) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var d = new Date(2024, 0, 15, 12, 30, 45);
+        var r = [];
+        r.push(d.getFullYear());
+        r.push(d.getMonth());
+        r.push(d.getDate());
+        r.push(d.getHours());
+        r.push(d.getMinutes());
+        r.push(d.getSeconds());
+        r.push(typeof Date.now() === "number");
+        r.push(d instanceof Date);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2024|0|15|12|30|45|true|true");
+}
+
+// V115-8. Optional chaining and nullish coalescing combined patterns
+TEST(JsEngineTest, OptionalChainingAndNullishCoalescingV115) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: {b: {c: 42}}, arr: [1,2,3], fn: function(x){return x*2;}};
+        var r = [];
+        r.push(obj?.a?.b?.c);
+        r.push(obj?.a?.missing?.deep);
+        r.push(obj?.arr?.[1]);
+        r.push(obj?.fn?.(5));
+        r.push(obj?.noFn?.(5));
+        var x = null;
+        r.push(x ?? "default");
+        r.push(x?.prop ?? "fallback");
+        r.push(0 ?? "not used");
+        r.push(undefined ?? null ?? "last");
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42||2|10||default|fallback|0|last");
+}
