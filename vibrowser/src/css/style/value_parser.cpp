@@ -918,10 +918,105 @@ std::optional<Color> parse_color(const std::string& input) {
         return count;
     };
 
-    // rgb() and rgba() functions
+    // rgb() and rgba() functions (including relative color syntax)
     if (value.substr(0, 4) == "rgb(" || value.substr(0, 5) == "rgba(") {
         auto args = extract_func_args(value);
         if (!args) return std::nullopt;
+
+        std::string args_lower = to_lower(*args);
+        if (args_lower.substr(0, 5) == "from ") {
+            // Relative color syntax: rgb(from <ref-color> <r-expr> <g-expr> <b-expr> [/ <alpha-expr>])
+            size_t from_pos = args_lower.find("from ");
+            if (from_pos == std::string::npos) return std::nullopt;
+
+            std::string rest = args->substr(from_pos + 5);
+            rest = trim(rest);
+
+            // Find the reference color (first token before space or paren)
+            size_t ref_end = 0;
+            int paren_depth = 0;
+            for (size_t i = 0; i < rest.size(); i++) {
+                if (rest[i] == '(') paren_depth++;
+                else if (rest[i] == ')') paren_depth--;
+                else if ((rest[i] == ' ' || rest[i] == '/') && paren_depth == 0) {
+                    ref_end = i;
+                    break;
+                }
+            }
+            if (ref_end == 0) ref_end = rest.size();
+
+            std::string ref_color_str = trim(rest.substr(0, ref_end));
+            auto ref_color = parse_color(ref_color_str);
+            if (!ref_color) return std::nullopt;
+
+            // Extract channel expressions
+            std::string channel_str = trim(rest.substr(ref_end));
+
+            float ref_r = ref_color->r, ref_g = ref_color->g, ref_b = ref_color->b;
+            float ref_a = ref_color->a / 255.0f;
+
+            // Parse channels: space/comma/slash separated
+            std::vector<std::string> channel_tokens;
+            std::string current_token;
+            for (char c : channel_str) {
+                if (c == ' ' || c == ',' || c == '/') {
+                    if (!current_token.empty()) {
+                        channel_tokens.push_back(current_token);
+                        current_token.clear();
+                    }
+                } else {
+                    current_token += c;
+                }
+            }
+            if (!current_token.empty()) {
+                channel_tokens.push_back(current_token);
+            }
+
+            float out_r = 0, out_g = 0, out_b = 0, out_a = 255;
+
+            for (size_t i = 0; i < channel_tokens.size(); i++) {
+                std::string tok = to_lower(channel_tokens[i]);
+                tok = trim(tok);
+                if (tok.empty()) continue;
+
+                float* target = nullptr;
+                if (i == 0) target = &out_r;
+                else if (i == 1) target = &out_g;
+                else if (i == 2) target = &out_b;
+                else if (i == 3) target = &out_a;
+
+                if (!target) break;
+
+                if (tok == "r") {
+                    *target = ref_r;
+                } else if (tok == "g") {
+                    *target = ref_g;
+                } else if (tok == "b") {
+                    *target = ref_b;
+                } else if (tok == "alpha") {
+                    *target = ref_a * 255.0f;
+                } else {
+                    // Try to parse as number with optional %
+                    try {
+                        if (tok.back() == '%') {
+                            float pct = std::stof(tok.substr(0, tok.size() - 1));
+                            *target = (pct / 100.0f) * 255.0f;
+                        } else {
+                            *target = std::stof(tok);
+                        }
+                    } catch (...) {
+                        *target = 0;
+                    }
+                }
+            }
+
+            return Color{
+                static_cast<uint8_t>(std::clamp(out_r, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(out_g, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(out_b, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(out_a, 0.0f, 255.0f))
+            };
+        }
 
         float vals[4] = {0, 0, 0, 255};
         int count = parse_func_values(*args, vals, 4);
@@ -940,11 +1035,142 @@ std::optional<Color> parse_color(const std::string& input) {
         };
     }
 
-    // hsl() and hsla() functions
+    // hsl() and hsla() functions (including relative color syntax)
     // hsl(hue, saturation%, lightness% [, alpha])
     if (value.substr(0, 4) == "hsl(" || value.substr(0, 5) == "hsla(") {
         auto args = extract_func_args(value);
         if (!args) return std::nullopt;
+
+        std::string args_lower = to_lower(*args);
+        if (args_lower.substr(0, 5) == "from ") {
+            // Relative color syntax: hsl(from <ref-color> <h-expr> <s-expr> <l-expr> [/ <alpha-expr>])
+            size_t from_pos = args_lower.find("from ");
+            if (from_pos == std::string::npos) return std::nullopt;
+
+            std::string rest = args->substr(from_pos + 5);
+            rest = trim(rest);
+
+            // Find the reference color
+            size_t ref_end = 0;
+            int paren_depth = 0;
+            for (size_t i = 0; i < rest.size(); i++) {
+                if (rest[i] == '(') paren_depth++;
+                else if (rest[i] == ')') paren_depth--;
+                else if ((rest[i] == ' ' || rest[i] == '/') && paren_depth == 0) {
+                    ref_end = i;
+                    break;
+                }
+            }
+            if (ref_end == 0) ref_end = rest.size();
+
+            std::string ref_color_str = trim(rest.substr(0, ref_end));
+            auto ref_color = parse_color(ref_color_str);
+            if (!ref_color) return std::nullopt;
+
+            // Decompose reference color to HSL
+            float r = ref_color->r / 255.0f, g = ref_color->g / 255.0f, b = ref_color->b / 255.0f;
+            float max_c = std::max({r, g, b});
+            float min_c = std::min({r, g, b});
+            float delta = max_c - min_c;
+            float ref_h = 0, ref_s = 0, ref_l = (max_c + min_c) / 2.0f;
+
+            if (delta != 0) {
+                if (max_c == r) ref_h = std::fmod(60.0f * ((g - b) / delta) + 360.0f, 360.0f);
+                else if (max_c == g) ref_h = std::fmod(60.0f * ((b - r) / delta) + 120.0f, 360.0f);
+                else ref_h = std::fmod(60.0f * ((r - g) / delta) + 240.0f, 360.0f);
+                ref_s = delta / (1.0f - std::abs(2.0f * ref_l - 1.0f));
+            }
+            float ref_a = ref_color->a / 255.0f;
+
+            // Parse channels
+            std::string channel_str = trim(rest.substr(ref_end));
+            std::vector<std::string> channel_tokens;
+            std::string current_token;
+            for (char c : channel_str) {
+                if (c == ' ' || c == ',' || c == '/') {
+                    if (!current_token.empty()) {
+                        channel_tokens.push_back(current_token);
+                        current_token.clear();
+                    }
+                } else {
+                    current_token += c;
+                }
+            }
+            if (!current_token.empty()) {
+                channel_tokens.push_back(current_token);
+            }
+
+            float out_h = 0, out_s = 0, out_l = 0, out_a = 1.0f;
+
+            for (size_t i = 0; i < channel_tokens.size(); i++) {
+                std::string tok = to_lower(channel_tokens[i]);
+                tok = trim(tok);
+                if (tok.empty()) continue;
+
+                float* target = nullptr;
+                if (i == 0) target = &out_h;
+                else if (i == 1) target = &out_s;
+                else if (i == 2) target = &out_l;
+                else if (i == 3) target = &out_a;
+
+                if (!target) break;
+
+                if (tok == "h") {
+                    *target = ref_h;
+                } else if (tok == "s") {
+                    *target = ref_s * 100.0f;
+                } else if (tok == "l") {
+                    *target = ref_l * 100.0f;
+                } else if (tok == "alpha") {
+                    *target = ref_a;
+                } else {
+                    // Try to parse as number with optional %
+                    try {
+                        if (tok.back() == '%') {
+                            *target = std::stof(tok.substr(0, tok.size() - 1));
+                        } else {
+                            *target = std::stof(tok);
+                        }
+                    } catch (...) {
+                        *target = 0;
+                    }
+                }
+            }
+
+            // Convert HSL to RGB
+            float h = std::fmod(out_h, 360.0f);
+            if (h < 0) h += 360.0f;
+            float s = std::clamp(out_s, 0.0f, 100.0f) / 100.0f;
+            float l = std::clamp(out_l, 0.0f, 100.0f) / 100.0f;
+            float a = std::clamp(out_a, 0.0f, 1.0f);
+
+            auto hue2rgb = [](float p, float q, float t) -> float {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
+                if (t < 1.0f / 2.0f) return q;
+                if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
+                return p;
+            };
+
+            float r_out, g_out, b_out;
+            if (s == 0) {
+                r_out = g_out = b_out = l;
+            } else {
+                float q = l < 0.5f ? l * (1 + s) : l + s - l * s;
+                float p = 2 * l - q;
+                r_out = hue2rgb(p, q, h / 360.0f + 1.0f / 3.0f);
+                g_out = hue2rgb(p, q, h / 360.0f);
+                b_out = hue2rgb(p, q, h / 360.0f - 1.0f / 3.0f);
+            }
+
+            return Color{
+                static_cast<uint8_t>(std::clamp(r_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(g_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(b_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(a * 255.0f, 0.0f, 255.0f))
+            };
+        }
 
         float vals[4] = {0, 0, 0, 1.0f};
         int count = parse_func_values(*args, vals, 4);
@@ -985,11 +1211,149 @@ std::optional<Color> parse_color(const std::string& input) {
         };
     }
 
-    // oklch() function — CSS Color Level 4
+    // oklch() function — CSS Color Level 4 (including relative color syntax)
     // oklch(lightness chroma hue [/ alpha])
     if (value.substr(0, 6) == "oklch(") {
         auto args = extract_func_args(value);
         if (!args) return std::nullopt;
+
+        std::string args_lower = to_lower(*args);
+        if (args_lower.substr(0, 5) == "from ") {
+            // Relative color syntax: oklch(from <ref-color> <l-expr> <c-expr> <h-expr> [/ <alpha-expr>])
+            size_t from_pos = args_lower.find("from ");
+            if (from_pos == std::string::npos) return std::nullopt;
+
+            std::string rest = args->substr(from_pos + 5);
+            rest = trim(rest);
+
+            // Find the reference color
+            size_t ref_end = 0;
+            int paren_depth = 0;
+            for (size_t i = 0; i < rest.size(); i++) {
+                if (rest[i] == '(') paren_depth++;
+                else if (rest[i] == ')') paren_depth--;
+                else if ((rest[i] == ' ' || rest[i] == '/') && paren_depth == 0) {
+                    ref_end = i;
+                    break;
+                }
+            }
+            if (ref_end == 0) ref_end = rest.size();
+
+            std::string ref_color_str = trim(rest.substr(0, ref_end));
+            auto ref_color = parse_color(ref_color_str);
+            if (!ref_color) return std::nullopt;
+
+            // Decompose reference color to OKLch (via sRGB → OKLab)
+            float r = ref_color->r / 255.0f, g = ref_color->g / 255.0f, b = ref_color->b / 255.0f;
+
+            auto srgb_to_linear = [](float c) -> float {
+                if (c <= 0.04045f) return c / 12.92f;
+                return std::pow((c + 0.055f) / 1.055f, 2.4f);
+            };
+            float r_lin = srgb_to_linear(r);
+            float g_lin = srgb_to_linear(g);
+            float b_lin = srgb_to_linear(b);
+
+            float l_val = 0.4122214708f * r_lin + 0.5363325363f * g_lin + 0.0514459929f * b_lin;
+            float m_val = 0.2119034982f * r_lin + 0.6806995451f * g_lin + 0.1073969566f * b_lin;
+            float s_val = 0.0883024619f * r_lin + 0.0817845529f * g_lin + 0.8943868922f * b_lin;
+
+            float l_cbrt = std::cbrt(l_val), m_cbrt = std::cbrt(m_val), s_cbrt = std::cbrt(s_val);
+
+            float ref_L = 0.2104542553f * l_cbrt + 0.7936177850f * m_cbrt - 0.0040720468f * s_cbrt;
+            float ref_a = 1.9779984951f * l_cbrt - 2.4285922050f * m_cbrt + 0.4505937099f * s_cbrt;
+            float ref_b = 0.0259040371f * l_cbrt + 0.7827717662f * m_cbrt - 0.8086757660f * s_cbrt;
+
+            float ref_C = std::sqrt(ref_a * ref_a + ref_b * ref_b);
+            float ref_h = 0;
+            if (ref_C != 0) {
+                ref_h = std::atan2(ref_b, ref_a) * 180.0f / 3.14159265f;
+                if (ref_h < 0) ref_h += 360.0f;
+            }
+            float ref_a_alpha = ref_color->a / 255.0f;
+
+            // Parse channels
+            std::string channel_str = trim(rest.substr(ref_end));
+            std::vector<std::string> channel_tokens;
+            std::string current_token;
+            for (char c : channel_str) {
+                if (c == ' ' || c == ',' || c == '/') {
+                    if (!current_token.empty()) {
+                        channel_tokens.push_back(current_token);
+                        current_token.clear();
+                    }
+                } else {
+                    current_token += c;
+                }
+            }
+            if (!current_token.empty()) {
+                channel_tokens.push_back(current_token);
+            }
+
+            float out_L = 0, out_C = 0, out_h = 0, out_alpha = 1.0f;
+
+            for (size_t i = 0; i < channel_tokens.size(); i++) {
+                std::string tok = to_lower(channel_tokens[i]);
+                tok = trim(tok);
+                if (tok.empty()) continue;
+
+                float* target = nullptr;
+                if (i == 0) target = &out_L;
+                else if (i == 1) target = &out_C;
+                else if (i == 2) target = &out_h;
+                else if (i == 3) target = &out_alpha;
+
+                if (!target) break;
+
+                if (tok == "l") {
+                    *target = ref_L;
+                } else if (tok == "c") {
+                    *target = ref_C;
+                } else if (tok == "h") {
+                    *target = ref_h;
+                } else if (tok == "alpha") {
+                    *target = ref_a_alpha;
+                } else {
+                    // Try to parse as number with optional %
+                    try {
+                        if (tok.back() == '%') {
+                            *target = std::stof(tok.substr(0, tok.size() - 1));
+                        } else {
+                            *target = std::stof(tok);
+                        }
+                    } catch (...) {
+                        *target = 0;
+                    }
+                }
+            }
+
+            // Convert OKLch to OKLab to sRGB
+            float h_rad = out_h * 3.14159265f / 180.0f;
+            float a_lab = out_C * std::cos(h_rad);
+            float b_lab = out_C * std::sin(h_rad);
+
+            float l_ = out_L + 0.3963377774f * a_lab + 0.2158037573f * b_lab;
+            float m_ = out_L - 0.1055613458f * a_lab - 0.0638541728f * b_lab;
+            float s_ = out_L - 0.0894841775f * a_lab - 1.2914855480f * b_lab;
+
+            float l3 = l_ * l_ * l_, m3 = m_ * m_ * m_, s3 = s_ * s_ * s_;
+
+            float r_lin_out = +4.0767416621f * l3 - 3.3077115913f * m3 + 0.2309699292f * s3;
+            float g_lin_out = -1.2684380046f * l3 + 2.6097574011f * m3 - 0.3413193965f * s3;
+            float b_lin_out = -0.0041960863f * l3 - 0.7034186147f * m3 + 1.7076147010f * s3;
+
+            auto linear_to_srgb = [](float c) -> float {
+                if (c <= 0.0031308f) return 12.92f * c;
+                return 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
+            };
+
+            return Color{
+                static_cast<uint8_t>(std::clamp(linear_to_srgb(r_lin_out) * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(linear_to_srgb(g_lin_out) * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(linear_to_srgb(b_lin_out) * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(out_alpha * 255.0f, 0.0f, 255.0f))
+            };
+        }
 
         float vals[4] = {0, 0, 0, 1.0f};
         int count = parse_func_values(*args, vals, 4);
@@ -1033,11 +1397,138 @@ std::optional<Color> parse_color(const std::string& input) {
         };
     }
 
-    // oklab() function — CSS Color Level 4
+    // oklab() function — CSS Color Level 4 (including relative color syntax)
     // oklab(lightness a-axis b-axis [/ alpha])
     if (value.substr(0, 6) == "oklab(") {
         auto args = extract_func_args(value);
         if (!args) return std::nullopt;
+
+        std::string args_lower = to_lower(*args);
+        if (args_lower.substr(0, 5) == "from ") {
+            // Relative color syntax: oklab(from <ref-color> <l-expr> <a-expr> <b-expr> [/ <alpha-expr>])
+            size_t from_pos = args_lower.find("from ");
+            if (from_pos == std::string::npos) return std::nullopt;
+
+            std::string rest = args->substr(from_pos + 5);
+            rest = trim(rest);
+
+            // Find the reference color
+            size_t ref_end = 0;
+            int paren_depth = 0;
+            for (size_t i = 0; i < rest.size(); i++) {
+                if (rest[i] == '(') paren_depth++;
+                else if (rest[i] == ')') paren_depth--;
+                else if ((rest[i] == ' ' || rest[i] == '/') && paren_depth == 0) {
+                    ref_end = i;
+                    break;
+                }
+            }
+            if (ref_end == 0) ref_end = rest.size();
+
+            std::string ref_color_str = trim(rest.substr(0, ref_end));
+            auto ref_color = parse_color(ref_color_str);
+            if (!ref_color) return std::nullopt;
+
+            // Decompose reference color to OKLab (sRGB → OKLab)
+            float r = ref_color->r / 255.0f, g = ref_color->g / 255.0f, b = ref_color->b / 255.0f;
+
+            auto srgb_to_linear = [](float c) -> float {
+                if (c <= 0.04045f) return c / 12.92f;
+                return std::pow((c + 0.055f) / 1.055f, 2.4f);
+            };
+            float r_lin = srgb_to_linear(r);
+            float g_lin = srgb_to_linear(g);
+            float b_lin = srgb_to_linear(b);
+
+            float l_val = 0.4122214708f * r_lin + 0.5363325363f * g_lin + 0.0514459929f * b_lin;
+            float m_val = 0.2119034982f * r_lin + 0.6806995451f * g_lin + 0.1073969566f * b_lin;
+            float s_val = 0.0883024619f * r_lin + 0.0817845529f * g_lin + 0.8943868922f * b_lin;
+
+            float l_cbrt = std::cbrt(l_val), m_cbrt = std::cbrt(m_val), s_cbrt = std::cbrt(s_val);
+
+            float ref_L = 0.2104542553f * l_cbrt + 0.7936177850f * m_cbrt - 0.0040720468f * s_cbrt;
+            float ref_a = 1.9779984951f * l_cbrt - 2.4285922050f * m_cbrt + 0.4505937099f * s_cbrt;
+            float ref_b = 0.0259040371f * l_cbrt + 0.7827717662f * m_cbrt - 0.8086757660f * s_cbrt;
+            float ref_a_alpha = ref_color->a / 255.0f;
+
+            // Parse channels
+            std::string channel_str = trim(rest.substr(ref_end));
+            std::vector<std::string> channel_tokens;
+            std::string current_token;
+            for (char c : channel_str) {
+                if (c == ' ' || c == ',' || c == '/') {
+                    if (!current_token.empty()) {
+                        channel_tokens.push_back(current_token);
+                        current_token.clear();
+                    }
+                } else {
+                    current_token += c;
+                }
+            }
+            if (!current_token.empty()) {
+                channel_tokens.push_back(current_token);
+            }
+
+            float out_L = 0, out_a = 0, out_b = 0, out_alpha = 1.0f;
+
+            for (size_t i = 0; i < channel_tokens.size(); i++) {
+                std::string tok = to_lower(channel_tokens[i]);
+                tok = trim(tok);
+                if (tok.empty()) continue;
+
+                float* target = nullptr;
+                if (i == 0) target = &out_L;
+                else if (i == 1) target = &out_a;
+                else if (i == 2) target = &out_b;
+                else if (i == 3) target = &out_alpha;
+
+                if (!target) break;
+
+                if (tok == "l") {
+                    *target = ref_L;
+                } else if (tok == "a") {
+                    *target = ref_a;
+                } else if (tok == "b") {
+                    *target = ref_b;
+                } else if (tok == "alpha") {
+                    *target = ref_a_alpha;
+                } else {
+                    // Try to parse as number with optional %
+                    try {
+                        if (tok.back() == '%') {
+                            *target = std::stof(tok.substr(0, tok.size() - 1));
+                        } else {
+                            *target = std::stof(tok);
+                        }
+                    } catch (...) {
+                        *target = 0;
+                    }
+                }
+            }
+
+            // Convert OKLab to sRGB
+            float l_ = out_L + 0.3963377774f * out_a + 0.2158037573f * out_b;
+            float m_ = out_L - 0.1055613458f * out_a - 0.0638541728f * out_b;
+            float s_ = out_L - 0.0894841775f * out_a - 1.2914855480f * out_b;
+
+            float l3 = l_ * l_ * l_, m3 = m_ * m_ * m_, s3 = s_ * s_ * s_;
+
+            float r_lin_out = +4.0767416621f * l3 - 3.3077115913f * m3 + 0.2309699292f * s3;
+            float g_lin_out = -1.2684380046f * l3 + 2.6097574011f * m3 - 0.3413193965f * s3;
+            float b_lin_out = -0.0041960863f * l3 - 0.7034186147f * m3 + 1.7076147010f * s3;
+
+            auto linear_to_srgb = [](float c) -> float {
+                if (c <= 0.0031308f) return 12.92f * c;
+                return 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
+            };
+
+            return Color{
+                static_cast<uint8_t>(std::clamp(linear_to_srgb(r_lin_out) * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(linear_to_srgb(g_lin_out) * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(linear_to_srgb(b_lin_out) * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(out_alpha * 255.0f, 0.0f, 255.0f))
+            };
+        }
 
         float vals[4] = {0, 0, 0, 1.0f};
         int count = parse_func_values(*args, vals, 4);
@@ -1074,11 +1565,145 @@ std::optional<Color> parse_color(const std::string& input) {
         };
     }
 
-    // hwb() function — CSS Color Level 4
+    // hwb() function — CSS Color Level 4 (including relative color syntax)
     // hwb(hue whiteness% blackness% [/ alpha])
     if (value.substr(0, 4) == "hwb(") {
         auto args = extract_func_args(value);
         if (!args) return std::nullopt;
+
+        std::string args_lower = to_lower(*args);
+        if (args_lower.substr(0, 5) == "from ") {
+            // Relative color syntax: hwb(from <ref-color> <h-expr> <w-expr> <b-expr> [/ <alpha-expr>])
+            size_t from_pos = args_lower.find("from ");
+            if (from_pos == std::string::npos) return std::nullopt;
+
+            std::string rest = args->substr(from_pos + 5);
+            rest = trim(rest);
+
+            // Find the reference color
+            size_t ref_end = 0;
+            int paren_depth = 0;
+            for (size_t i = 0; i < rest.size(); i++) {
+                if (rest[i] == '(') paren_depth++;
+                else if (rest[i] == ')') paren_depth--;
+                else if ((rest[i] == ' ' || rest[i] == '/') && paren_depth == 0) {
+                    ref_end = i;
+                    break;
+                }
+            }
+            if (ref_end == 0) ref_end = rest.size();
+
+            std::string ref_color_str = trim(rest.substr(0, ref_end));
+            auto ref_color = parse_color(ref_color_str);
+            if (!ref_color) return std::nullopt;
+
+            // Decompose reference color to HWB
+            float r = ref_color->r / 255.0f, g = ref_color->g / 255.0f, b = ref_color->b / 255.0f;
+            float max_c = std::max({r, g, b});
+            float min_c = std::min({r, g, b});
+            float ref_h = 0;
+
+            if (max_c != min_c) {
+                if (max_c == r) ref_h = std::fmod(60.0f * ((g - b) / (max_c - min_c)) + 360.0f, 360.0f);
+                else if (max_c == g) ref_h = 60.0f * ((b - r) / (max_c - min_c)) + 120.0f;
+                else ref_h = 60.0f * ((r - g) / (max_c - min_c)) + 240.0f;
+            }
+            float ref_w = min_c;
+            float ref_b = 1.0f - max_c;
+            float ref_a = ref_color->a / 255.0f;
+
+            // Parse channels
+            std::string channel_str = trim(rest.substr(ref_end));
+            std::vector<std::string> channel_tokens;
+            std::string current_token;
+            for (char c : channel_str) {
+                if (c == ' ' || c == ',' || c == '/') {
+                    if (!current_token.empty()) {
+                        channel_tokens.push_back(current_token);
+                        current_token.clear();
+                    }
+                } else {
+                    current_token += c;
+                }
+            }
+            if (!current_token.empty()) {
+                channel_tokens.push_back(current_token);
+            }
+
+            float out_h = 0, out_w = 0, out_b = 0, out_a = 1.0f;
+
+            for (size_t i = 0; i < channel_tokens.size(); i++) {
+                std::string tok = to_lower(channel_tokens[i]);
+                tok = trim(tok);
+                if (tok.empty()) continue;
+
+                float* target = nullptr;
+                if (i == 0) target = &out_h;
+                else if (i == 1) target = &out_w;
+                else if (i == 2) target = &out_b;
+                else if (i == 3) target = &out_a;
+
+                if (!target) break;
+
+                if (tok == "h") {
+                    *target = ref_h;
+                } else if (tok == "w") {
+                    *target = ref_w * 100.0f;
+                } else if (tok == "b") {
+                    *target = ref_b * 100.0f;
+                } else if (tok == "alpha") {
+                    *target = ref_a;
+                } else {
+                    // Try to parse as number with optional %
+                    try {
+                        if (tok.back() == '%') {
+                            *target = std::stof(tok.substr(0, tok.size() - 1));
+                        } else {
+                            *target = std::stof(tok);
+                        }
+                    } catch (...) {
+                        *target = 0;
+                    }
+                }
+            }
+
+            // Convert HWB to RGB
+            float h = std::fmod(out_h, 360.0f);
+            if (h < 0) h += 360.0f;
+            float w = std::clamp(out_w, 0.0f, 100.0f) / 100.0f;
+            float b_val = std::clamp(out_b, 0.0f, 100.0f) / 100.0f;
+            float alpha = std::clamp(out_a, 0.0f, 1.0f);
+
+            if (w + b_val > 1) {
+                float sum = w + b_val;
+                w /= sum;
+                b_val /= sum;
+            }
+
+            auto hue2rgb = [](float p, float q, float t) -> float {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
+                if (t < 1.0f / 2.0f) return q;
+                if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
+                return p;
+            };
+
+            float r_pure = hue2rgb(0, 1, h / 360.0f + 1.0f / 3.0f);
+            float g_pure = hue2rgb(0, 1, h / 360.0f);
+            float b_pure = hue2rgb(0, 1, h / 360.0f - 1.0f / 3.0f);
+
+            float r_out = r_pure * (1 - w - b_val) + w;
+            float g_out = g_pure * (1 - w - b_val) + w;
+            float b_out = b_pure * (1 - w - b_val) + w;
+
+            return Color{
+                static_cast<uint8_t>(std::clamp(r_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(g_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(b_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(alpha * 255.0f, 0.0f, 255.0f))
+            };
+        }
 
         float vals[4] = {0, 0, 0, 1.0f};
         int count = parse_func_values(*args, vals, 4);
