@@ -21990,3 +21990,195 @@ TEST(ComputedStyleTest, TextShadowEntryMultipleV117) {
     EXPECT_EQ(s.text_shadows[1].color.b, 255);
     EXPECT_EQ(s.text_shadows[1].color.a, 200);
 }
+
+// ---------------------------------------------------------------------------
+// V118 Tests
+// ---------------------------------------------------------------------------
+
+TEST(ComputedStyleTest, DisplayPositionAndBoxSizingDefaultsV118) {
+    // Verify default enum values for display, position, and box_sizing
+    ComputedStyle s;
+    EXPECT_EQ(s.display, Display::Inline);
+    EXPECT_EQ(s.position, Position::Static);
+    EXPECT_EQ(s.box_sizing, BoxSizing::ContentBox);
+    EXPECT_EQ(s.float_val, Float::None);
+    EXPECT_EQ(s.clear, Clear::None);
+
+    // Mutate to non-default values
+    s.display = Display::Flex;
+    s.position = Position::Relative;
+    s.box_sizing = BoxSizing::BorderBox;
+    EXPECT_EQ(s.display, Display::Flex);
+    EXPECT_EQ(s.position, Position::Relative);
+    EXPECT_EQ(s.box_sizing, BoxSizing::BorderBox);
+}
+
+TEST(ComputedStyleTest, MarginPaddingEdgeSizesIndependentV118) {
+    // Each edge of margin and padding can be set independently as Length
+    ComputedStyle s;
+    s.margin.top = Length::px(10.0f);
+    s.margin.right = Length::px(20.0f);
+    s.margin.bottom = Length::px(30.0f);
+    s.margin.left = Length::px(40.0f);
+
+    s.padding.top = Length::em(1.0f);
+    s.padding.right = Length::em(2.0f);
+    s.padding.bottom = Length::em(3.0f);
+    s.padding.left = Length::em(4.0f);
+
+    EXPECT_FLOAT_EQ(s.margin.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(s.margin.right.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(s.margin.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(s.margin.left.to_px(), 40.0f);
+
+    float fs = 16.0f; // base font size
+    EXPECT_FLOAT_EQ(s.padding.top.to_px(fs), 16.0f);
+    EXPECT_FLOAT_EQ(s.padding.right.to_px(fs), 32.0f);
+    EXPECT_FLOAT_EQ(s.padding.bottom.to_px(fs), 48.0f);
+    EXPECT_FLOAT_EQ(s.padding.left.to_px(fs), 64.0f);
+}
+
+TEST(ComputedStyleTest, BorderEdgesFourSidesColorV118) {
+    // border_top/right/bottom/left each have width, style, color
+    // NO border_color shorthand — must access per-side
+    ComputedStyle s;
+    s.border_top.width = Length::px(1.0f);
+    s.border_top.style = BorderStyle::Solid;
+    s.border_top.color = Color{255, 0, 0, 255};
+
+    s.border_right.width = Length::px(2.0f);
+    s.border_right.style = BorderStyle::Dashed;
+    s.border_right.color = Color{0, 255, 0, 255};
+
+    s.border_bottom.width = Length::px(3.0f);
+    s.border_bottom.style = BorderStyle::Dotted;
+    s.border_bottom.color = Color{0, 0, 255, 255};
+
+    s.border_left.width = Length::px(4.0f);
+    s.border_left.style = BorderStyle::Double;
+    s.border_left.color = Color{128, 128, 128, 200};
+
+    EXPECT_FLOAT_EQ(s.border_top.width.to_px(), 1.0f);
+    EXPECT_EQ(s.border_top.color.r, 255);
+    EXPECT_EQ(s.border_top.style, BorderStyle::Solid);
+
+    EXPECT_FLOAT_EQ(s.border_right.width.to_px(), 2.0f);
+    EXPECT_EQ(s.border_right.color.g, 255);
+    EXPECT_EQ(s.border_right.style, BorderStyle::Dashed);
+
+    EXPECT_FLOAT_EQ(s.border_bottom.width.to_px(), 3.0f);
+    EXPECT_EQ(s.border_bottom.color.b, 255);
+    EXPECT_EQ(s.border_bottom.style, BorderStyle::Dotted);
+
+    EXPECT_FLOAT_EQ(s.border_left.width.to_px(), 4.0f);
+    EXPECT_EQ(s.border_left.color.a, 200);
+    EXPECT_EQ(s.border_left.style, BorderStyle::Double);
+}
+
+TEST(ComputedStyleTest, OverflowXYIndependentEnumsV118) {
+    // overflow_x and overflow_y are independent Overflow enums
+    ComputedStyle s;
+    EXPECT_EQ(s.overflow_x, Overflow::Visible);
+    EXPECT_EQ(s.overflow_y, Overflow::Visible);
+
+    s.overflow_x = Overflow::Hidden;
+    s.overflow_y = Overflow::Scroll;
+    EXPECT_EQ(s.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(s.overflow_y, Overflow::Scroll);
+
+    // Also verify auto overflow
+    s.overflow_x = Overflow::Auto;
+    EXPECT_EQ(s.overflow_x, Overflow::Auto);
+    // overflow_y unchanged
+    EXPECT_EQ(s.overflow_y, Overflow::Scroll);
+}
+
+TEST(ComputedStyleTest, OutlinePropertiesAllFieldsV118) {
+    // outline_width is Length (.to_px()), outline_offset is also Length
+    ComputedStyle s;
+    s.outline_width = Length::px(3.0f);
+    s.outline_style = BorderStyle::Dashed;
+    s.outline_color = Color{100, 200, 50, 180};
+    s.outline_offset = Length::px(5.0f);
+
+    EXPECT_FLOAT_EQ(s.outline_width.to_px(), 3.0f);
+    EXPECT_EQ(s.outline_style, BorderStyle::Dashed);
+    EXPECT_EQ(s.outline_color.r, 100);
+    EXPECT_EQ(s.outline_color.g, 200);
+    EXPECT_EQ(s.outline_color.b, 50);
+    EXPECT_EQ(s.outline_color.a, 180);
+    EXPECT_FLOAT_EQ(s.outline_offset.to_px(), 5.0f);
+}
+
+TEST(CSSStyleTest, ParseWhiteSpaceNoWrapEnumV118) {
+    // white-space: nowrap should map to WhiteSpace::NoWrap
+    const std::string css = "p{white-space:nowrap;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}
+
+TEST(ComputedStyleTest, BoxShadowInsetAndSpreadFieldsV118) {
+    // BoxShadowEntry has .blur (not .blur_radius), .spread, .inset
+    ComputedStyle s;
+
+    ComputedStyle::BoxShadowEntry outer;
+    outer.offset_x = 5.0f;
+    outer.offset_y = 5.0f;
+    outer.blur = 10.0f;
+    outer.spread = 2.0f;
+    outer.color = Color{0, 0, 0, 200};
+    outer.inset = false;
+
+    ComputedStyle::BoxShadowEntry inner;
+    inner.offset_x = 0.0f;
+    inner.offset_y = 0.0f;
+    inner.blur = 6.0f;
+    inner.spread = -3.0f;
+    inner.color = Color{255, 255, 255, 100};
+    inner.inset = true;
+
+    s.box_shadows.push_back(outer);
+    s.box_shadows.push_back(inner);
+
+    ASSERT_EQ(s.box_shadows.size(), 2u);
+
+    // First shadow: outer
+    EXPECT_FLOAT_EQ(s.box_shadows[0].offset_x, 5.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].blur, 10.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].spread, 2.0f);
+    EXPECT_FALSE(s.box_shadows[0].inset);
+    EXPECT_EQ(s.box_shadows[0].color.a, 200);
+
+    // Second shadow: inset
+    EXPECT_FLOAT_EQ(s.box_shadows[1].blur, 6.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[1].spread, -3.0f);
+    EXPECT_TRUE(s.box_shadows[1].inset);
+    EXPECT_EQ(s.box_shadows[1].color.r, 255);
+}
+
+TEST(CSSStyleTest, ParseVerticalAlignMiddleViaResolverV118) {
+    // vertical-align: middle maps to VerticalAlign::Middle enum
+    const std::string css = "td{vertical-align:middle;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "td";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+}

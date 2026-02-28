@@ -12838,3 +12838,78 @@ TEST(UrlParserTest, HttpPortOnePreservedNotDefaultV117) {
     EXPECT_EQ(result->port, 1);
     EXPECT_EQ(result->path, "/status");
 }
+
+// =============================================================================
+// V118 Tests
+// =============================================================================
+
+TEST(UrlParserTest, SerializeWithCredentialsAndNonDefaultPortV118) {
+    auto result = parse("http://admin:s3cret@internal.example.com:9090/dashboard");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "s3cret");
+    EXPECT_EQ(result->host, "internal.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9090);
+    EXPECT_EQ(result->serialize(), "http://admin:s3cret@internal.example.com:9090/dashboard");
+}
+
+TEST(UrlParserTest, FtpDefaultPort21NormalizedToNulloptV118) {
+    auto result = parse("ftp://files.example.org:21/pub/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/readme.txt");
+}
+
+TEST(UrlParserTest, OriginIncludesNonDefaultPortV118) {
+    auto result = parse("https://api.example.com:8443/v2/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->origin(), "https://api.example.com:8443");
+    EXPECT_TRUE(result->is_special());
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInFragmentV118) {
+    auto result = parse("https://docs.example.com/page#section%20title");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "docs.example.com");
+    EXPECT_EQ(result->path, "/page");
+    // %20 in fragment gets double-encoded to %2520
+    EXPECT_EQ(result->fragment, "section%2520title");
+}
+
+TEST(UrlParserTest, SameOriginDifferentPortsNotEqualV118) {
+    auto a = parse("https://example.com:443/a");
+    auto b = parse("https://example.com:8443/b");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    // 443 is default for https so normalized away; 8443 is non-default
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+TEST(UrlParserTest, UsernameOnlyNoPasswordParsedV118) {
+    auto result = parse("http://readonly@storage.example.com/files");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "readonly");
+    EXPECT_TRUE(result->password.empty());
+    EXPECT_EQ(result->host, "storage.example.com");
+    EXPECT_EQ(result->path, "/files");
+}
+
+TEST(UrlParserTest, HostCaseNormalizedInOriginV118) {
+    auto result = parse("https://API.Example.COM:9000/endpoint");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "api.example.com");
+    EXPECT_EQ(result->origin(), "https://api.example.com:9000");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInPathSegmentV118) {
+    auto result = parse("https://cdn.example.com/images%2Flogo%20v2.png");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.com");
+    // %2F→%252F, %20→%2520 (double-encoding)
+    EXPECT_EQ(result->path, "/images%252Flogo%2520v2.png");
+}

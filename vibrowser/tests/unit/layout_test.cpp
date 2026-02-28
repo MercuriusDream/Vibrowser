@@ -21872,3 +21872,197 @@ TEST(LayoutEngineTest, FlexShrinkReducesOverflowingItemsV117) {
     EXPECT_LT(p1->geometry.width, 200.0f);
     EXPECT_LT(p2->geometry.width, 200.0f);
 }
+
+// V118-1: Block element with both padding and border accumulates geometry
+TEST(LayoutEngineTest, BlockPaddingAndBorderAccumulateV118) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->geometry.padding.left = 15.0f;
+    root->geometry.padding.right = 15.0f;
+    root->geometry.border.left = 3.0f;
+    root->geometry.border.right = 3.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = parent width - padding - border = 300 - 30 - 6 = 264
+    EXPECT_NEAR(cp->geometry.width, 264.0f, 1.0f);
+}
+
+// V118-2: Flex row with three children distributes equal grow
+TEST(LayoutEngineTest, FlexRowThreeEqualGrowChildrenV118) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // Row
+    root->specified_width = 900.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    c1->flex_shrink = 0.0f;
+    c1->flex_basis = 0.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 1.0f;
+    c2->flex_shrink = 0.0f;
+    c2->flex_basis = 0.0f;
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    auto c3 = make_block("div");
+    c3->flex_grow = 1.0f;
+    c3->flex_shrink = 0.0f;
+    c3->flex_basis = 0.0f;
+    c3->specified_height = 50.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 1000.0f, 600.0f);
+
+    // Each child should get 900/3 = 300
+    EXPECT_NEAR(p1->geometry.width, 300.0f, 1.0f);
+    EXPECT_NEAR(p2->geometry.width, 300.0f, 1.0f);
+    EXPECT_NEAR(p3->geometry.width, 300.0f, 1.0f);
+}
+
+// V118-3: min_height enforces minimum on short element
+TEST(LayoutEngineTest, MinHeightEnforcesMinimumV118) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 30.0f;
+    root->min_height = 100.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Height should be at least min_height
+    EXPECT_GE(root->geometry.height, 100.0f);
+}
+
+// V118-4: Border-box includes padding in specified height
+TEST(LayoutEngineTest, BorderBoxIncludesPaddingInHeightV118) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 150.0f;
+    root->border_box = true;
+    root->geometry.padding.top = 20.0f;
+    root->geometry.padding.bottom = 20.0f;
+    root->geometry.border.top = 5.0f;
+    root->geometry.border.bottom = 5.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // With border-box, outer height = specified_height = 150
+    EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
+}
+
+// V118-5: Flex column distributes grow vertically
+TEST(LayoutEngineTest, FlexColumnGrowDistributesVerticallyV118) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // Column
+    root->specified_width = 200.0f;
+    root->specified_height = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    c1->flex_shrink = 0.0f;
+    c1->flex_basis = 0.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 3.0f;
+    c2->flex_shrink = 0.0f;
+    c2->flex_basis = 0.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // c1 gets 1/4 of available space, c2 gets 3/4
+    EXPECT_NEAR(p1->geometry.height, 50.0f, 2.0f);
+    EXPECT_NEAR(p2->geometry.height, 150.0f, 2.0f);
+}
+
+// V118-6: Multiple block children with margins stack correctly
+TEST(LayoutEngineTest, BlockChildrenWithMarginsStackV118) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 80.0f;
+    c1->geometry.margin.bottom = 10.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    c2->geometry.margin.top = 20.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // c2 should start after c1 height + some margin
+    EXPECT_GE(p2->geometry.y, 80.0f);
+    // Root should encompass both children + margins
+    EXPECT_GE(root->geometry.height, 140.0f);
+}
+
+// V118-7: max_width constrains element that would be wider
+TEST(LayoutEngineTest, MaxWidthConstrainsWideElementV118) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->max_width = 250.0f;
+    root->specified_height = 100.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Width should be clamped to max_width
+    EXPECT_LE(root->geometry.width, 250.0f);
+}
+
+// V118-8: Flex basis sets initial main size before grow/shrink
+TEST(LayoutEngineTest, FlexBasisSetsInitialSizeBeforeGrowV118) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // Row
+    root->specified_width = 500.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_basis = 100.0f;
+    c1->flex_grow = 1.0f;
+    c1->flex_shrink = 0.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_basis = 200.0f;
+    c2->flex_grow = 1.0f;
+    c2->flex_shrink = 0.0f;
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Remaining space = 500 - 100 - 200 = 200, each gets 100 extra
+    // c1 = 100 + 100 = 200, c2 = 200 + 100 = 300
+    EXPECT_NEAR(p1->geometry.width, 200.0f, 2.0f);
+    EXPECT_NEAR(p2->geometry.width, 300.0f, 2.0f);
+    // c2 should always be wider than c1 due to larger basis
+    EXPECT_GT(p2->geometry.width, p1->geometry.width);
+}

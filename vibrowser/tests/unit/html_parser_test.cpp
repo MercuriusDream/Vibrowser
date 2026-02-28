@@ -19097,3 +19097,160 @@ TEST(HtmlParserTest, EmptyDocumentAndWhitespaceOnlyV117) {
     auto ps2 = doc2->find_all_elements("p");
     EXPECT_EQ(ps2.size(), 0u);
 }
+
+// ---------------------------------------------------------------------------
+// V118 Tests: 8 new parser tests covering nested structures, attributes,
+//             text extraction, sibling ordering, and edge cases.
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, NestedListStructureV118) {
+    auto doc = clever::html::parse(
+        "<ul><li>Alpha</li><li>Beta</li><li>Gamma</li></ul>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "Alpha");
+    EXPECT_EQ(lis[1]->text_content(), "Beta");
+    EXPECT_EQ(lis[2]->text_content(), "Gamma");
+}
+
+TEST(HtmlParserTest, TableWithHeaderAndDataCellsV118) {
+    auto doc = clever::html::parse(
+        "<table><tr><th>Name</th><th>Age</th></tr>"
+        "<tr><td>Alice</td><td>30</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "30");
+}
+
+TEST(HtmlParserTest, MultipleAttributesOnSingleElementV118) {
+    auto doc = clever::html::parse(
+        "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener\">Link</a>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    EXPECT_EQ(get_attr_v63(a, "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(a, "rel"), "noopener");
+    EXPECT_EQ(a->text_content(), "Link");
+}
+
+TEST(HtmlParserTest, DeeplyNestedDivsV118) {
+    auto doc = clever::html::parse(
+        "<div><div><div><div><span>Deep</span></div></div></div></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto divs = doc->find_all_elements("div");
+    EXPECT_GE(divs.size(), 4u);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "Deep");
+}
+
+TEST(HtmlParserTest, MixedInlineAndBlockElementsV118) {
+    auto doc = clever::html::parse(
+        "<div><p>Paragraph with <strong>bold</strong> and <em>italic</em> text.</p></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    auto pText = p->text_content();
+    EXPECT_NE(pText.find("Paragraph with"), std::string::npos);
+    EXPECT_NE(pText.find("bold"), std::string::npos);
+    EXPECT_NE(pText.find("italic"), std::string::npos);
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "bold");
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "italic");
+}
+
+TEST(HtmlParserTest, FormElementsWithTypesV118) {
+    auto doc = clever::html::parse(
+        "<form action=\"/submit\" method=\"post\">"
+        "<input type=\"email\" name=\"user_email\"/>"
+        "<textarea name=\"msg\">Hello</textarea>"
+        "<button type=\"submit\">Send</button>"
+        "</form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 1u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "user_email");
+
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(get_attr_v63(textarea, "name"), "msg");
+    EXPECT_EQ(textarea->text_content(), "Hello");
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->text_content(), "Send");
+}
+
+TEST(HtmlParserTest, SiblingParagraphOrderPreservedV118) {
+    auto doc = clever::html::parse(
+        "<div><p>First</p><p>Second</p><p>Third</p></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 3u);
+    EXPECT_EQ(ps[0]->text_content(), "First");
+    EXPECT_EQ(ps[1]->text_content(), "Second");
+    EXPECT_EQ(ps[2]->text_content(), "Third");
+
+    // Verify all are children of the same div
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    size_t pCount = 0;
+    for (const auto& child : div->children) {
+        if (child->tag_name == "p") pCount++;
+    }
+    EXPECT_EQ(pCount, 3u);
+}
+
+TEST(HtmlParserTest, DataAttributesAndBooleanAttrsV118) {
+    auto doc = clever::html::parse(
+        "<div data-id=\"42\" data-role=\"main\" hidden>"
+        "<input type=\"checkbox\" checked disabled/>"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "main");
+    // Boolean attribute 'hidden' should be present (empty string value)
+    EXPECT_EQ(get_attr_v63(div, "hidden"), "");
+
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 1u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "checkbox");
+    EXPECT_EQ(get_attr_v63(inputs[0], "checked"), "");
+    EXPECT_EQ(get_attr_v63(inputs[0], "disabled"), "");
+}

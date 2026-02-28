@@ -31445,3 +31445,261 @@ TEST(JSEngine, ClassStaticAndInheritanceChainV117) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "circle:3|circle:314|rect:12|true|true");
 }
+
+TEST(JSEngine, AsyncAwaitSyncResolutionChainV118) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const r = [];
+        async function double(x) { return x * 2; }
+        async function pipeline(val) {
+            const a = await double(val);
+            const b = await double(a);
+            const c = await double(b);
+            return c;
+        }
+        // Sync resolution: promise resolves immediately in QuickJS
+        const p = pipeline(3);
+        r.push(typeof p);              // "object" (Promise)
+        r.push(p.constructor.name);    // "Promise"
+        // Verify async function returns a promise
+        async function identity(x) { return x; }
+        const q = identity("hello");
+        r.push(q instanceof Promise);
+        // Async arrow
+        const asyncArrow = async (a, b) => a + b;
+        r.push(typeof asyncArrow);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object|Promise|true|function");
+}
+
+TEST(JSEngine, JSONStringifyReplacerAndReviverV118) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const r = [];
+        // Replacer function: filter out strings
+        const obj = {name: "Alice", age: 30, city: "NYC"};
+        const filtered = JSON.stringify(obj, function(key, value) {
+            if (typeof value === "string") return undefined;
+            return value;
+        });
+        r.push(filtered);
+        // Replacer as array: only include specified keys
+        const picked = JSON.stringify(obj, ["name", "age"]);
+        r.push(picked);
+        // Reviver: transform numeric values
+        const parsed = JSON.parse('{"a":1,"b":2,"c":"x"}', function(key, value) {
+            if (typeof value === "number") return value * 10;
+            return value;
+        });
+        r.push(parsed.a + "," + parsed.b + "," + parsed.c);
+        // Space parameter
+        const spaced = JSON.stringify({x: 1}, null, 2);
+        r.push(spaced.indexOf("\n") >= 0);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"age\":30}|{\"name\":\"Alice\",\"age\":30}|10,20,x|true");
+}
+
+TEST(JSEngine, ArrayReduceAndReduceRightAdvancedV118) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const r = [];
+        // reduce: build object from entries
+        const pairs = [["a", 1], ["b", 2], ["c", 3]];
+        const obj = pairs.reduce(function(acc, pair) {
+            acc[pair[0]] = pair[1];
+            return acc;
+        }, {});
+        r.push(JSON.stringify(obj));
+        // reduce: flatten nested arrays (one level)
+        const nested = [[1, 2], [3, 4], [5]];
+        const flat = nested.reduce(function(acc, arr) { return acc.concat(arr); }, []);
+        r.push(flat.join(","));
+        // reduceRight: build string in reverse
+        const words = ["world", " ", "hello"];
+        const sentence = words.reduceRight(function(acc, w) { return acc + w; }, "");
+        r.push(sentence);
+        // reduce with no initial value uses first element
+        const sum = [10, 20, 30].reduce(function(a, b) { return a + b; });
+        r.push(sum);
+        // reduce on single element with no init
+        const single = [42].reduce(function(a, b) { return a + b; });
+        r.push(single);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"a\":1,\"b\":2,\"c\":3}|1,2,3,4,5|hello world|60|42");
+}
+
+TEST(JSEngine, ObjectIsAndTypeofEdgeCasesV118) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const r = [];
+        // Object.is distinguishes +0 from -0
+        r.push(Object.is(0, -0));        // false
+        r.push(0 === -0);                // true (=== doesn't distinguish)
+        // Object.is: NaN is NaN
+        r.push(Object.is(NaN, NaN));     // true
+        r.push(NaN === NaN);             // false
+        // Object.is: same reference
+        r.push(Object.is(null, null));
+        r.push(Object.is(undefined, undefined));
+        r.push(Object.is("abc", "abc"));
+        // typeof edge cases
+        r.push(typeof null);             // "object"
+        r.push(typeof undefined);        // "undefined"
+        r.push(typeof NaN);             // "number"
+        r.push(typeof Infinity);        // "number"
+        r.push(typeof (function(){}));  // "function"
+        r.push(typeof Symbol());        // "symbol"
+        r.push(typeof []);             // "object"
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false|true|true|false|true|true|true|object|undefined|number|number|function|symbol|object");
+}
+
+TEST(JSEngine, TryCatchFinallyPatternsV118) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const r = [];
+        // Basic try-catch-finally execution order
+        let order = "";
+        try {
+            order += "T";
+            throw new Error("boom");
+        } catch (e) {
+            order += "C";
+        } finally {
+            order += "F";
+        }
+        r.push(order);
+        // Finally runs even without error
+        let order2 = "";
+        try {
+            order2 += "T";
+        } catch (e) {
+            order2 += "C";
+        } finally {
+            order2 += "F";
+        }
+        r.push(order2);
+        // Catch receives the error
+        let msg = "";
+        try { throw new TypeError("bad type"); }
+        catch (e) { msg = e.constructor.name + ":" + e.message; }
+        r.push(msg);
+        // Nested try-catch
+        let outer = "";
+        try {
+            try { throw "inner"; }
+            catch (e) { outer += e; }
+            throw "outer";
+        } catch (e) {
+            outer += "+" + e;
+        }
+        r.push(outer);
+        // Finally overrides return in a function
+        function f() {
+            try { return "try"; }
+            finally { return "finally"; }
+        }
+        r.push(f());
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "TCF|TF|TypeError:bad type|inner+outer|finally");
+}
+
+TEST(JSEngine, ArrayFindFindIndexIncludesV118) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const r = [];
+        const nums = [10, 20, 30, 40, 50];
+        // find: returns first matching element
+        r.push(nums.find(function(x) { return x > 25; }));
+        // find: returns undefined if none match
+        r.push(String(nums.find(function(x) { return x > 100; })));
+        // findIndex: returns index of first match
+        r.push(nums.findIndex(function(x) { return x > 25; }));
+        // findIndex: returns -1 if none match
+        r.push(nums.findIndex(function(x) { return x > 100; }));
+        // includes: basic checks
+        r.push(nums.includes(30));
+        r.push(nums.includes(99));
+        // includes with fromIndex
+        r.push(nums.includes(10, 1));   // false: starts at index 1
+        r.push(nums.includes(20, 1));   // true
+        // includes with NaN (special case)
+        r.push([1, NaN, 3].includes(NaN));  // true
+        // indexOf can't find NaN but includes can
+        r.push([1, NaN, 3].indexOf(NaN));   // -1
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30|undefined|2|-1|true|false|false|true|true|-1");
+}
+
+TEST(JSEngine, StringReplaceAllAndMatchPatternsV118) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const r = [];
+        // replaceAll with empty string target
+        r.push("abc".replaceAll("", "-"));
+        // replaceAll multiple occurrences
+        r.push("aabbaabb".replaceAll("aa", "X"));
+        // replaceAll with special chars
+        r.push("$100 + $200".replaceAll("$", "USD"));
+        // String.prototype.match with global regex
+        const matches = "test1 test2 test3".match(/test\d/g);
+        r.push(matches.length);
+        r.push(matches.join(","));
+        // String.prototype.search
+        r.push("hello world".search(/world/));
+        r.push("hello world".search(/xyz/));
+        // String.prototype.startsWith/endsWith with position
+        r.push("hello world".startsWith("world", 6));
+        r.push("hello world".endsWith("hello", 5));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "-a-b-c-|XbbXbb|USD100 + USD200|3|test1,test2,test3|6|-1|true|true");
+}
+
+TEST(JSEngine, InstanceofWithCustomAndBuiltinsV118) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const r = [];
+        // instanceof with class hierarchy
+        class Animal {}
+        class Dog extends Animal {}
+        class Cat extends Animal {}
+        const d = new Dog();
+        r.push(d instanceof Dog);
+        r.push(d instanceof Animal);
+        r.push(d instanceof Cat);
+        // instanceof with builtins
+        r.push([] instanceof Array);
+        r.push([] instanceof Object);
+        r.push(new Map() instanceof Map);
+        r.push(new Set() instanceof Set);
+        r.push(/abc/ instanceof RegExp);
+        r.push(new Error() instanceof Error);
+        r.push(new TypeError() instanceof Error);
+        // Custom Symbol.hasInstance
+        class EvenChecker {
+            static [Symbol.hasInstance](num) {
+                return typeof num === "number" && num % 2 === 0;
+            }
+        }
+        r.push(4 instanceof EvenChecker);
+        r.push(5 instanceof EvenChecker);
+        r.push("hi" instanceof EvenChecker);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|false|true|true|true|true|true|true|true|true|false|false");
+}

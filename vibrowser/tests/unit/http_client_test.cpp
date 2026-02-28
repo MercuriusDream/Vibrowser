@@ -19954,3 +19954,189 @@ TEST(RequestTest, ParseUrlHttpWithExplicitPort8080V117) {
     EXPECT_NE(raw.find("Host: localhost:8080\r\n"), std::string::npos);
     EXPECT_NE(raw.find("GET /api/v1/users HTTP/1.1\r\n"), std::string::npos);
 }
+
+// ===========================================================================
+// V118 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: append then set replaces all appended values
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendThenSetReplacesAllValuesV118) {
+    HeaderMap map;
+    map.append("X-Custom", "first");
+    map.append("X-Custom", "second");
+    map.append("X-Custom", "third");
+    EXPECT_EQ(map.get_all("x-custom").size(), 3u);
+
+    // set() should replace ALL values with just one
+    map.set("X-Custom", "only");
+    EXPECT_EQ(map.get_all("x-custom").size(), 1u);
+    EXPECT_EQ(map.get("x-custom").value(), "only");
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request: serialize HEAD request omits body even if body is set
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadOmitsBodyV118) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.port = 443;
+    req.path = "/status";
+    req.use_tls = true;
+
+    // Attempt to set a body on a HEAD request
+    std::string body_str = "should-not-appear";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("HEAD /status HTTP/1.1\r\n"), std::string::npos);
+    // Host should omit port 443 (standard HTTPS port)
+    EXPECT_NE(result.find("Host: example.com\r\n"), std::string::npos);
+    // The request line must end with double CRLF (no body after headers)
+    auto pos = result.find("\r\n\r\n");
+    EXPECT_NE(pos, std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response: parse 403 Forbidden with JSON body
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse403ForbiddenWithJsonBodyV118) {
+    std::string raw =
+        "HTTP/1.1 403 Forbidden\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 25\r\n"
+        "\r\n"
+        R"({"error":"access_denied"})";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 403);
+    EXPECT_EQ(resp->status_text, "Forbidden");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/json");
+    EXPECT_FALSE(resp->body.empty());
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request: parse_url with HTTPS and query string
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpsWithQueryStringV118) {
+    Request req;
+    req.url = "https://search.example.com/results?q=browser&page=3";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_EQ(req.path, "/results");
+    EXPECT_EQ(req.query, "q=browser&page=3");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Request: serialize POST with multiple custom headers lowercase
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePostMultipleCustomHeadersLowercaseV118) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/submit";
+    req.headers.set("X-Request-Id", "abc-123");
+    req.headers.set("Authorization", "Bearer tok_xyz");
+    req.headers.set("Accept", "application/json");
+
+    std::string body_str = R"({"data":true})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    // Host header keeps capitalization
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
+    // Custom headers stored lowercase
+    EXPECT_NE(result.find("x-request-id: abc-123\r\n"), std::string::npos);
+    EXPECT_NE(result.find("authorization: Bearer tok_xyz\r\n"), std::string::npos);
+    EXPECT_NE(result.find("accept: application/json\r\n"), std::string::npos);
+    // Content-Length auto-added
+    EXPECT_NE(result.find("Content-Length: 13\r\n"), std::string::npos);
+    // Body present
+    EXPECT_NE(result.find(R"({"data":true})"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response: parse 200 with empty body and Content-Length zero
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse200EmptyBodyContentLengthZeroV118) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 0\r\n"
+        "X-Powered-By: vibrowser\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body_as_string(), "");
+    EXPECT_EQ(resp->headers.get("x-powered-by").value(), "vibrowser");
+}
+
+// ---------------------------------------------------------------------------
+// 7. HeaderMap: has returns false after remove
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, HasReturnsFalseAfterRemoveV118) {
+    HeaderMap map;
+    map.set("Cache-Control", "no-cache");
+    map.set("Accept-Language", "en-US");
+    map.set("X-Trace-Id", "trace-001");
+    EXPECT_TRUE(map.has("cache-control"));
+    EXPECT_TRUE(map.has("accept-language"));
+    EXPECT_TRUE(map.has("x-trace-id"));
+
+    map.remove("Accept-Language");
+    EXPECT_FALSE(map.has("accept-language"));
+    EXPECT_EQ(map.get("accept-language"), std::nullopt);
+
+    // Other keys still present
+    EXPECT_TRUE(map.has("cache-control"));
+    EXPECT_TRUE(map.has("x-trace-id"));
+}
+
+// ---------------------------------------------------------------------------
+// 8. Request: serialize PUT with query and standard port 443 omitted
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutQueryPort443OmittedV118) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "store.example.com";
+    req.port = 443;
+    req.path = "/items/55";
+    req.query = "overwrite=true";
+    req.use_tls = true;
+    req.headers.set("Content-Type", "application/json");
+
+    std::string body_str = R"({"price":29.99})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line includes query
+    EXPECT_NE(result.find("PUT /items/55?overwrite=true HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(result.find("Host: store.example.com\r\n"), std::string::npos);
+    // Should NOT contain ":443" in Host
+    EXPECT_EQ(result.find("Host: store.example.com:443"), std::string::npos);
+    // Connection keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+    // Body present
+    EXPECT_NE(result.find(R"({"price":29.99})"), std::string::npos);
+}

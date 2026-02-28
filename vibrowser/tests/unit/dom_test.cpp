@@ -18017,3 +18017,115 @@ TEST(DomTest, SetAttributeIdUpdatesAccessorV117) {
     EXPECT_TRUE(elem.has_attribute("id"));
     EXPECT_EQ(elem.get_attribute("id").value(), "sidebar");
 }
+
+// ---------------------------------------------------------------------------
+// V118 Tests
+// ---------------------------------------------------------------------------
+
+// 1. Removing a child from the middle updates sibling pointers correctly
+TEST(DomNode, RemoveMiddleChildFixesSiblingsV118) {
+    Element parent("ul");
+    auto c1 = std::make_unique<Element>("li");
+    auto c2 = std::make_unique<Element>("li");
+    auto c3 = std::make_unique<Element>("li");
+    Node* p1 = c1.get();
+    Node* p2 = c2.get();
+    Node* p3 = c3.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    parent.append_child(std::move(c3));
+
+    parent.remove_child(*p2);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(p1->next_sibling(), p3);
+    EXPECT_EQ(p3->previous_sibling(), p1);
+    EXPECT_EQ(parent.first_child(), p1);
+    EXPECT_EQ(parent.last_child(), p3);
+}
+
+// 2. insert_before with nullptr reference appends the child
+TEST(DomNode, InsertBeforeNullptrAppendsV118) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    auto b = std::make_unique<Element>("p");
+    Node* pa = a.get();
+    Node* pb = b.get();
+    parent.append_child(std::move(a));
+    parent.insert_before(std::move(b), nullptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), pa);
+    EXPECT_EQ(parent.last_child(), pb);
+}
+
+// 3. Comment node_type is Comment (8)
+TEST(DomComment, NodeTypeIsCommentV118) {
+    Comment c("hello");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    EXPECT_EQ(c.data(), "hello");
+}
+
+// 4. Text node text_content matches data
+TEST(DomText, TextContentMatchesDataV118) {
+    Text t("sample text");
+    EXPECT_EQ(t.data(), "sample text");
+    EXPECT_EQ(t.text_content(), "sample text");
+    t.set_data("changed");
+    EXPECT_EQ(t.data(), "changed");
+    EXPECT_EQ(t.text_content(), "changed");
+}
+
+// 5. Element text_content concatenates text from multiple children
+TEST(DomElement, TextContentConcatenatesChildrenV118) {
+    Element div("div");
+    auto t1 = std::make_unique<Text>("Hello");
+    auto span = std::make_unique<Element>("span");
+    auto t2 = std::make_unique<Text>(" World");
+    span->append_child(std::move(t2));
+    div.append_child(std::move(t1));
+    div.append_child(std::move(span));
+
+    EXPECT_EQ(div.text_content(), "Hello World");
+}
+
+// 6. Overwriting an attribute preserves only latest value
+TEST(DomElement, OverwriteAttributeKeepsLatestV118) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("type", "password");
+    EXPECT_EQ(elem.get_attribute("type").value(), "password");
+    // Only one attribute named "type" should exist
+    size_t count = 0;
+    for (auto& attr : elem.attributes()) {
+        if (attr.name == "type") count++;
+    }
+    EXPECT_EQ(count, 1u);
+}
+
+// 7. append_child returns a reference to the appended node
+TEST(DomNode, AppendChildReturnsRefV118) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("p");
+    child->set_attribute("id", "test-child");
+    Node& ref = parent.append_child(std::move(child));
+    // The returned reference should be the same node we added
+    EXPECT_EQ(ref.node_type(), NodeType::Element);
+    auto* elem_ref = static_cast<Element*>(&ref);
+    EXPECT_EQ(elem_ref->tag_name(), "p");
+    EXPECT_EQ(elem_ref->get_attribute("id").value(), "test-child");
+}
+
+// 8. Parent pointer is set correctly and cleared on remove
+TEST(DomNode, ParentSetAndClearedV118) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Node* raw = child.get();
+    EXPECT_EQ(raw->parent(), nullptr);
+
+    parent.append_child(std::move(child));
+    EXPECT_EQ(raw->parent(), &parent);
+
+    parent.remove_child(*raw);
+    EXPECT_EQ(raw->parent(), nullptr);
+}

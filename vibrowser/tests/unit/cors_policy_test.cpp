@@ -9040,3 +9040,85 @@ TEST(CorsPolicyTest, CorsResponseRejectsOriginMismatchInACAOV117) {
                                       "https://api.example.com/data",
                                       headers3, false));
 }
+
+// ---------------------------------------------------------------------------
+// V118 — 8 new CORS policy edge-case tests
+// ---------------------------------------------------------------------------
+
+TEST(CorsPolicyTest, DataAndBlobOriginsNotEnforceableV118) {
+    // data: origins cannot be enforced
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>hi</h1>"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:"));
+    // blob: origins cannot be enforced
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://app.example/uuid"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:null"));
+}
+
+TEST(CorsPolicyTest, IpAddressOriginsAreEnforceableV118) {
+    // IPv4 address origins ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://127.0.0.1"));
+    // IPv6 bracket origins ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://[::1]"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://[2001:db8::1]"));
+}
+
+TEST(CorsPolicyTest, WssSchemeIsNotCrossOriginV118) {
+    // wss:// is NOT treated as cross-origin (websocket upgrade same-origin)
+    EXPECT_FALSE(is_cross_origin("https://app.example", "wss://app.example/ws"));
+    // ws:// against http should also not be cross-origin
+    EXPECT_FALSE(is_cross_origin("http://app.example", "ws://app.example/ws"));
+}
+
+TEST(CorsPolicyTest, ExplicitPort443NotEnforceableOriginV118) {
+    // Explicit :443 on https origin is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example:443"));
+    // Explicit :80 on http origin is also NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://app.example:80"));
+}
+
+TEST(CorsPolicyTest, EmptyFragmentDoesNotDisqualifyCorsEligibilityV118) {
+    // A URL with an empty fragment (just #) is still eligible
+    // Empty # means no fragment — should still be eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/path#"));
+    // But a URL with actual fragment content is NOT eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/path#section"));
+}
+
+TEST(CorsPolicyTest, DataOriginNormalizeReturnsNulloptNotNullStringV118) {
+    // For a data: document origin, normalize should strip any spoofed header
+    // (data: is not enforceable, so normalize drops the origin entirely)
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://evil.example");
+    normalize_outgoing_origin_header(headers, "data:text/html,hello",
+                                     "https://api.example/data");
+    // data: origin is not enforceable, so header should be removed (nullopt behavior)
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CorsPolicyTest, CrossOriginIpv4VsHostnameDetectionV118) {
+    // Different IP addresses are cross-origin
+    EXPECT_TRUE(is_cross_origin("https://192.168.1.1", "https://192.168.1.2/path"));
+    // Same IP same scheme is NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://127.0.0.1", "https://127.0.0.1/api"));
+    // IP vs hostname is always cross-origin
+    EXPECT_TRUE(is_cross_origin("https://127.0.0.1", "https://localhost/path"));
+}
+
+TEST(CorsPolicyTest, CorsResponseWithOriginFragmentStrippedMatchesV118) {
+    // Origin header in ACAO that has a fragment should be stripped and can still match
+    // Test that ACAO with fragment stripped still allows matching origin
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    // Cross-origin request should succeed with exact match
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/data",
+                                     headers, false));
+
+    // ACAO that includes a fragment should fail (fragments not valid in ACAO)
+    clever::net::HeaderMap headers_with_frag;
+    headers_with_frag.set("Access-Control-Allow-Origin", "https://app.example#frag");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      headers_with_frag, false));
+}

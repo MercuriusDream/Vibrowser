@@ -17593,3 +17593,124 @@ TEST(SerializerTest, RoundTripU64U8U16MixedSequenceV117) {
     EXPECT_EQ(d.read_u32(), 0x77777777u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V118 Tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, BytesFourBytesPatternRoundTripV118) {
+    Serializer s;
+    uint8_t pattern[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    s.write_bytes(pattern, 4);
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 4u);
+    EXPECT_EQ(result[0], 0xDE);
+    EXPECT_EQ(result[1], 0xAD);
+    EXPECT_EQ(result[2], 0xBE);
+    EXPECT_EQ(result[3], 0xEF);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16ThenF64ThenBoolSequenceV118) {
+    Serializer s;
+    s.write_u16(12345);
+    s.write_f64(2.718281828);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 12345u);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828);
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, ThreeEmptyStringsRoundTripV118) {
+    Serializer s;
+    s.write_string("");
+    s.write_string("");
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64ThenBytesThenU8MixV118) {
+    Serializer s;
+    s.write_u64(0xFEDCBA9876543210ull);
+    uint8_t buf[] = {0x01, 0x02, 0x03};
+    s.write_bytes(buf, 3);
+    s.write_u8(0x99);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0xFEDCBA9876543210ull);
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 3u);
+    EXPECT_EQ(bytes[0], 0x01);
+    EXPECT_EQ(bytes[1], 0x02);
+    EXPECT_EQ(bytes[2], 0x03);
+    EXPECT_EQ(d.read_u8(), 0x99);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SubnormalValueRoundTripV118) {
+    Serializer s;
+    double subnormal = 5e-324; // smallest positive subnormal
+    s.write_f64(subnormal);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), subnormal);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringThenBytesThenStringV118) {
+    Serializer s;
+    s.write_string("alpha");
+    uint8_t data[] = {0xAA, 0xBB};
+    s.write_bytes(data, 2);
+    s.write_string("beta");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    auto b = d.read_bytes();
+    EXPECT_EQ(b[0], 0xAA);
+    EXPECT_EQ(b[1], 0xBB);
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, TenU32PowersOfTenV118) {
+    Serializer s;
+    uint32_t vals[10];
+    uint32_t v = 1;
+    for (int i = 0; i < 10; i++) {
+        vals[i] = v;
+        s.write_u32(v);
+        v *= 10;
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; i++) {
+        EXPECT_EQ(d.read_u32(), vals[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolU32F64StringAllTypesV118) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_u32(0xCAFEBABEu);
+    s.write_f64(-0.0);
+    s.write_string("vibrowser");
+    s.write_u8(255);
+    s.write_u16(0);
+    s.write_u64(1);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
+    double neg_zero = d.read_f64();
+    EXPECT_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_EQ(d.read_string(), "vibrowser");
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u64(), 1ull);
+    EXPECT_FALSE(d.has_remaining());
+}
