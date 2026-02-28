@@ -14381,3 +14381,77 @@ TEST(UrlParserTest, UrlV137_4_EmptyFragmentButPresent) {
     EXPECT_TRUE(result2->fragment.empty());
     EXPECT_EQ(result2->path, "/path");
 }
+
+// =============================================================================
+// Round V138 URL Parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV138_1_WindowsDriveLetterInFilePath) {
+    // file: URL with a Windows drive letter should preserve the drive letter
+    // in the path and have an empty host
+    auto result = parse("file:///C:/Users/test");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/C:/Users/test");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+
+    // Also verify with a deeper path
+    auto result2 = parse("file:///D:/Projects/src/main.cpp");
+    ASSERT_TRUE(result2.has_value());
+    EXPECT_EQ(result2->scheme, "file");
+    EXPECT_EQ(result2->path, "/D:/Projects/src/main.cpp");
+}
+
+TEST(UrlParserTest, UrlV138_2_MultipleConsecutiveSlashesInPath) {
+    // Multiple consecutive slashes in the path should be preserved as-is
+    auto result = parse("http://x.com///a//b");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "x.com");
+    EXPECT_EQ(result->path, "///a//b");
+    EXPECT_EQ(result->port, std::nullopt);
+
+    // Verify with even more slashes and a trailing slash
+    auto result2 = parse("https://example.org////foo///bar////");
+    ASSERT_TRUE(result2.has_value());
+    EXPECT_EQ(result2->host, "example.org");
+    EXPECT_EQ(result2->path, "////foo///bar////");
+}
+
+TEST(UrlParserTest, UrlV138_3_PortZeroParsesCorrectly) {
+    // Port 0 is a valid port number (non-default) and should be stored
+    auto result = parse("http://x.com:0/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "x.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+    EXPECT_EQ(result->path, "/path");
+
+    // Port 0 on HTTPS should also be stored (not stripped as default)
+    auto result2 = parse("https://secure.io:0/api");
+    ASSERT_TRUE(result2.has_value());
+    ASSERT_TRUE(result2->port.has_value());
+    EXPECT_EQ(result2->port.value(), 0);
+    EXPECT_EQ(result2->path, "/api");
+}
+
+TEST(UrlParserTest, UrlV138_4_LongPathSegments) {
+    // A URL with 10 path segments should parse correctly, preserving all segments
+    auto result = parse("http://api.example.com/a/b/c/d/e/f/g/h/i/j");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "api.example.com");
+    EXPECT_EQ(result->path, "/a/b/c/d/e/f/g/h/i/j");
+    EXPECT_EQ(result->port, std::nullopt);
+
+    // Verify with query and fragment appended to a long path
+    auto result2 = parse("https://cdn.site.io/v1/api/users/123/orders/456/items/789/details/meta?format=json#top");
+    ASSERT_TRUE(result2.has_value());
+    EXPECT_EQ(result2->path, "/v1/api/users/123/orders/456/items/789/details/meta");
+    EXPECT_EQ(result2->query, "format=json");
+    EXPECT_EQ(result2->fragment, "top");
+}

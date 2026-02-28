@@ -1113,3 +1113,43 @@ TEST(MessagePipeTest, MessagePipeV137_2_BothEndsCloseCleanly) {
     auto recv_b = b.receive();
     EXPECT_FALSE(recv_b.has_value());
 }
+
+// ------------------------------------------------------------------
+// V138: Empty message round-trip
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV138_1_EmptyMessageRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> empty_msg;
+    ASSERT_TRUE(a.send(empty_msg));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_TRUE(received->empty());
+    EXPECT_EQ(received->size(), 0u);
+}
+
+// ------------------------------------------------------------------
+// V138: Send after receiver close returns false
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV138_2_SendAfterReceiverCloseReturnsFalse) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Close the receiver end (b)
+    b.close();
+    EXPECT_FALSE(b.is_open());
+
+    // The sender end (a) should still appear open from its own perspective
+    EXPECT_TRUE(a.is_open());
+
+    // Receive on closed end must return nullopt
+    auto recv = b.receive();
+    EXPECT_FALSE(recv.has_value());
+
+    // Close sender as well and confirm send fails
+    a.close();
+    std::vector<uint8_t> data = {0xAA, 0xBB};
+    EXPECT_FALSE(a.send(data));
+}

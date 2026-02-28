@@ -25267,3 +25267,41 @@ TEST(CSSStyleTest, CssV137_4_WhiteSpaceNowrapV137) {
     cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
     EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
 }
+
+// === V138 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV138_1_ListStyleNoneV138) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "none"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::None);
+}
+
+TEST(PropertyCascadeTest, CursorPointerV138) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(CSSStyleTest, CssV138_3_VerticalAlignMiddleV138) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "middle"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+}
+
+TEST(CSSStyleTest, CssV138_4_BoxSizingBorderBoxV138) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("box-sizing", "border-box"), parent);
+    EXPECT_EQ(style.box_sizing, BoxSizing::BorderBox);
+}

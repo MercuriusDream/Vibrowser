@@ -21132,3 +21132,217 @@ TEST(DomElement, TagNameReturnedUppercaseV137) {
     EXPECT_EQ(elem->tag_name(), "article");
     EXPECT_EQ(elem->node_type(), NodeType::Element);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V138 — 8 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Deep tree (4 levels) text_content concatenates all descendant text
+TEST(DomNode, DeepTreeTextContentConcatenationV138) {
+    // Build: root > level1 > level2 > level3, with text at each level
+    auto root = std::make_unique<Element>("div");
+    root->append_child(std::make_unique<Text>("A"));
+
+    auto level1 = std::make_unique<Element>("section");
+    level1->append_child(std::make_unique<Text>("B"));
+
+    auto level2 = std::make_unique<Element>("article");
+    level2->append_child(std::make_unique<Text>("C"));
+
+    auto level3 = std::make_unique<Element>("span");
+    level3->append_child(std::make_unique<Text>("D"));
+
+    level2->append_child(std::move(level3));
+    level1->append_child(std::move(level2));
+    root->append_child(std::move(level1));
+
+    // text_content should gather text from all 4 levels
+    EXPECT_EQ(root->text_content(), "ABCD");
+}
+
+// 2. Toggle attribute presence: set then remove, verify has_attribute toggles
+TEST(DomElement, ToggleAttributePresenceV138) {
+    Element elem("input");
+
+    // Initially no data-active attribute
+    EXPECT_FALSE(elem.has_attribute("data-active"));
+
+    // Set it
+    elem.set_attribute("data-active", "true");
+    EXPECT_TRUE(elem.has_attribute("data-active"));
+    ASSERT_TRUE(elem.get_attribute("data-active").has_value());
+    EXPECT_EQ(elem.get_attribute("data-active").value(), "true");
+
+    // Remove it
+    elem.remove_attribute("data-active");
+    EXPECT_FALSE(elem.has_attribute("data-active"));
+    EXPECT_FALSE(elem.get_attribute("data-active").has_value());
+
+    // Set again with different value to ensure re-add works
+    elem.set_attribute("data-active", "false");
+    EXPECT_TRUE(elem.has_attribute("data-active"));
+    EXPECT_EQ(elem.get_attribute("data-active").value(), "false");
+}
+
+// 3. Multiple elements with same tag registered by different IDs
+TEST(DomDocument, MultipleElementsSameTagByIdV138) {
+    Document doc;
+
+    auto d1 = doc.create_element("div");
+    auto d2 = doc.create_element("div");
+    auto d3 = doc.create_element("div");
+
+    d1->set_attribute("id", "alpha");
+    d2->set_attribute("id", "beta");
+    d3->set_attribute("id", "gamma");
+
+    Element* p1 = d1.get();
+    Element* p2 = d2.get();
+    Element* p3 = d3.get();
+
+    doc.register_id("alpha", p1);
+    doc.register_id("beta", p2);
+    doc.register_id("gamma", p3);
+
+    doc.append_child(std::move(d1));
+    doc.append_child(std::move(d2));
+    doc.append_child(std::move(d3));
+
+    EXPECT_EQ(doc.get_element_by_id("alpha"), p1);
+    EXPECT_EQ(doc.get_element_by_id("beta"), p2);
+    EXPECT_EQ(doc.get_element_by_id("gamma"), p3);
+    EXPECT_EQ(doc.get_element_by_id("delta"), nullptr);
+}
+
+// 4. Non-cancelable event: prevent_default is a no-op
+TEST(DomEvent, NonCancelableEventPreventDefaultNoOpV138) {
+    // Create a non-cancelable event (bubbles=true, cancelable=false)
+    Event event("scroll", true, false);
+
+    EXPECT_FALSE(event.cancelable());
+    EXPECT_FALSE(event.default_prevented());
+
+    // Calling prevent_default should have no effect
+    event.prevent_default();
+    EXPECT_FALSE(event.default_prevented());
+
+    // Contrast with a cancelable event
+    Event cancelable_event("click", true, true);
+    EXPECT_TRUE(cancelable_event.cancelable());
+    cancelable_event.prevent_default();
+    EXPECT_TRUE(cancelable_event.default_prevented());
+}
+
+// 5. insert_before with nullptr reference appends to end
+TEST(DomNode, InsertBeforeNullRefAppendsV138) {
+    auto parent = std::make_unique<Element>("ul");
+
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    Element* p1 = li1.get();
+    Element* p2 = li2.get();
+    Element* p3 = li3.get();
+
+    // Append first two normally
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+
+    // insert_before with nullptr should append li3 at the end
+    parent->insert_before(std::move(li3), nullptr);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), p1);
+    EXPECT_EQ(parent->last_child(), p3);
+
+    // Verify order: p1 -> p2 -> p3
+    EXPECT_EQ(p1->next_sibling(), p2);
+    EXPECT_EQ(p2->next_sibling(), p3);
+    EXPECT_EQ(p3->next_sibling(), nullptr);
+}
+
+// 6. Set 3 attributes, iterate attributes(), verify all present
+TEST(DomElement, AttributeIterationOrderV138) {
+    Element elem("a");
+    elem.set_attribute("href", "https://example.com");
+    elem.set_attribute("title", "Example");
+    elem.set_attribute("data-index", "42");
+
+    const auto& attrs = elem.attributes();
+    ASSERT_EQ(attrs.size(), 3u);
+
+    // Verify each attribute is present with correct value
+    // Attributes should maintain insertion order
+    EXPECT_EQ(attrs[0].name, "href");
+    EXPECT_EQ(attrs[0].value, "https://example.com");
+    EXPECT_EQ(attrs[1].name, "title");
+    EXPECT_EQ(attrs[1].value, "Example");
+    EXPECT_EQ(attrs[2].name, "data-index");
+    EXPECT_EQ(attrs[2].value, "42");
+}
+
+// 7. Reparent child from parent1 to parent2, verify both trees
+TEST(DomNode, ReparentChildUpdatesPointersV138) {
+    Element parent_a("div");
+    Element parent_b("section");
+
+    auto child = std::make_unique<Element>("p");
+    auto* child_ptr = child.get();
+
+    // Add a sibling to parent_a first
+    auto sibling = std::make_unique<Element>("span");
+    auto* sibling_ptr = sibling.get();
+    parent_a.append_child(std::move(sibling));
+    parent_a.append_child(std::move(child));
+
+    EXPECT_EQ(parent_a.child_count(), 2u);
+    EXPECT_EQ(child_ptr->parent(), &parent_a);
+    EXPECT_EQ(sibling_ptr->next_sibling(), child_ptr);
+
+    // Remove child from parent_a
+    auto recovered = parent_a.remove_child(*child_ptr);
+    EXPECT_EQ(parent_a.child_count(), 1u);
+    EXPECT_EQ(sibling_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(parent_a.first_child(), sibling_ptr);
+    EXPECT_EQ(parent_a.last_child(), sibling_ptr);
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+
+    // Append to parent_b
+    parent_b.append_child(std::move(recovered));
+    EXPECT_EQ(parent_b.child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), &parent_b);
+    EXPECT_EQ(parent_b.first_child(), child_ptr);
+    EXPECT_EQ(parent_b.last_child(), child_ptr);
+}
+
+// 8. ClassList length after add/remove/toggle sequence
+TEST(DomElement, ClassListLengthAfterMultipleOpsV138) {
+    Element elem("div");
+
+    // Add 3 classes
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+
+    // Remove 1
+    elem.class_list().remove("beta");
+    EXPECT_EQ(elem.class_list().length(), 2u);
+    EXPECT_FALSE(elem.class_list().contains("beta"));
+
+    // Toggle 1 off (gamma was present, so toggle removes it)
+    elem.class_list().toggle("gamma");
+    EXPECT_EQ(elem.class_list().length(), 1u);
+    EXPECT_FALSE(elem.class_list().contains("gamma"));
+
+    // Only alpha should remain
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+
+    // Toggle a new one on (delta was absent, so toggle adds it)
+    elem.class_list().toggle("delta");
+    EXPECT_EQ(elem.class_list().length(), 2u);
+    EXPECT_TRUE(elem.class_list().contains("delta"));
+}

@@ -35253,3 +35253,110 @@ TEST(JSEngine, JsV137_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3.14,42");
 }
+
+// === V138 JS Engine Tests ===
+
+TEST(JSEngine, JsV138_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        var sum = arr.reduce(function(acc, val) { return acc + val; }, 0);
+        sum;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, JsV138_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2, c: 3 };
+        var k = Object.keys(obj).join(',');
+        var v = Object.values(obj).join(',');
+        var e = Object.entries(obj).map(function(p) { return p[0] + ':' + p[1]; }).join(',');
+        k + '|' + v + '|' + e;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c|1,2,3|a:1,b:2,c:3");
+}
+
+TEST(JSEngine, JsV138_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var order = [];
+        try {
+            order.push('try');
+            throw new Error('test');
+        } catch (e) {
+            order.push('catch');
+        } finally {
+            order.push('finally');
+        }
+        order.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "try,catch,finally");
+}
+
+TEST(JSEngine, JsV138_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = [1, 2, 3];
+        var b = [4, 5, 6];
+        var c = [...a, ...b];
+        c.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6");
+}
+
+TEST(JSEngine, JsV138_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function sum(...nums) {
+            return nums.reduce(function(a, b) { return a + b; }, 0);
+        }
+        sum(10, 20, 30);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngine, JsV138_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function greet(name, greeting) {
+            if (greeting === undefined) greeting = 'Hello';
+            return greeting + ' ' + name;
+        }
+        greet('World') + '|' + greet('World', 'Hi');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello World|Hi World");
+}
+
+TEST(JSEngine, JsV138_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var key = 'name';
+        var obj = {};
+        obj[key] = 'Alice';
+        obj['age'] = 30;
+        obj.name + ',' + obj.age;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Alice,30");
+}
+
+TEST(JSEngine, JsV138_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function tag(strings, val) {
+            return strings[0] + (val * 2) + strings[1];
+        }
+        var x = 5;
+        tag`Value is ${x} here`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Value is 10 here");
+}

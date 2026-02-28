@@ -715,3 +715,61 @@ TEST(IsURLCodePoint, AtSignIsCodePointV137) {
     std::string path_result = percent_encode("@", true);
     EXPECT_EQ(path_result, "%40");
 }
+
+// =============================================================================
+// Round V138 Percent Encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, SquareBracketsEncodedV138) {
+    // Square brackets [ and ] are not unreserved and not path chars,
+    // so they must be percent-encoded
+    EXPECT_EQ(percent_encode("["), "%5B");
+    EXPECT_EQ(percent_encode("]"), "%5D");
+    EXPECT_EQ(percent_encode("[foo]"), "%5Bfoo%5D");
+    // They are also not URL code points
+    EXPECT_FALSE(is_url_code_point('['));
+    EXPECT_FALSE(is_url_code_point(']'));
+    // Round-trip: decode the encoded form back to original
+    EXPECT_EQ(percent_decode("%5B"), "[");
+    EXPECT_EQ(percent_decode("%5D"), "]");
+}
+
+TEST(PercentDecoding, PartialSequenceAtEndPreservedV138) {
+    // A percent sign followed by only one hex digit at the end of the string
+    // is an incomplete sequence and should be preserved literally
+    EXPECT_EQ(percent_decode("abc%2"), "abc%2");
+    // Also test with just "%" at end
+    EXPECT_EQ(percent_decode("test%"), "test%");
+    // And "%X" where X is a valid hex digit but there's no second digit
+    EXPECT_EQ(percent_decode("hello%A"), "hello%A");
+    // A valid sequence followed by an incomplete one should decode the valid
+    // part and preserve the incomplete part
+    EXPECT_EQ(percent_decode("x%20y%3"), "x y%3");
+}
+
+TEST(PercentEncoding, CurlyBracesEncodedV138) {
+    // Curly braces { and } are not unreserved and not path chars,
+    // so they must be percent-encoded
+    EXPECT_EQ(percent_encode("{"), "%7B");
+    EXPECT_EQ(percent_encode("}"), "%7D");
+    EXPECT_EQ(percent_encode("{key}"), "%7Bkey%7D");
+    // Round-trip through encode then decode
+    std::string original = "template-{id}-{name}";
+    std::string encoded = percent_encode(original);
+    EXPECT_EQ(percent_decode(encoded), original);
+    // Verify the encoded form has the expected percent sequences
+    EXPECT_NE(encoded.find("%7B"), std::string::npos);
+    EXPECT_NE(encoded.find("%7D"), std::string::npos);
+}
+
+TEST(IsURLCodePoint, ExclamationMarkIsCodePointV138) {
+    // '!' (U+0021) is a valid URL code point per the WHATWG URL spec
+    EXPECT_TRUE(is_url_code_point('!'));
+    // Since '!' is a path character, it should NOT be encoded by default
+    EXPECT_EQ(percent_encode("!"), "!");
+    EXPECT_EQ(percent_encode("hello!world"), "hello!world");
+    // With encode_path_chars=true, '!' SHOULD be encoded
+    EXPECT_EQ(percent_encode("!", true), "%21");
+    // Decoding %21 should give back '!'
+    EXPECT_EQ(percent_decode("%21"), "!");
+}

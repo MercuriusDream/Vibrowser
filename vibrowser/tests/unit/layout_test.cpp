@@ -25951,3 +25951,158 @@ TEST(LayoutNodeProps, BorderDefaultZeroV137) {
     EXPECT_FLOAT_EQ(n->geometry.border.bottom, 0.0f);
     EXPECT_FLOAT_EQ(n->geometry.border.left, 0.0f);
 }
+
+// === V138 Layout Tests ===
+
+TEST(LayoutEngineTest, LayoutV138_1) {
+    // Flex with equal flex-grow distributes space evenly
+    auto root = make_flex("div");
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 40.0f;
+    child1->flex_grow = 1.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 40.0f;
+    child2->flex_grow = 1.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Remaining = 600 - 200 = 400, split 1:1 => 200 each
+    // child1 = 100+200 = 300, child2 = 100+200 = 300
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 300.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV138_2) {
+    // Block child width constrained by parent padding
+    auto root = make_block("div");
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 20.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 30.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child should be 800 - 20 - 20 = 760
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 760.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV138_3) {
+    // Flex align-items center positions vertically
+    auto root = make_flex("div");
+    root->specified_height = 200.0f;
+    root->align_items = 2; // center
+
+    auto child = make_block("div");
+    child->specified_width = 80.0f;
+    child->specified_height = 60.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Cross-axis center: (200 - 60) / 2 = 70
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 70.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV138_4) {
+    // Block with zero-width children
+    auto root = make_block("div");
+
+    auto child = make_block("div");
+    child->specified_width = 0.0f;
+    child->specified_height = 25.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 25.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV138_5) {
+    // Flex wrap with multiple lines
+    auto root = make_flex("div");
+    root->flex_wrap = 1; // wrap
+
+    for (int i = 0; i < 4; i++) {
+        auto child = make_block("div");
+        child->specified_width = 300.0f;
+        child->specified_height = 40.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 700.0f, 600.0f);
+
+    // 300+300=600 < 700, so first 2 fit on line 1
+    // next 2 on line 2
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[3]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 80.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV138_6) {
+    // Block height computed from children heights
+    auto root = make_block("div");
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 20.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Root height = 40 + 60 + 20 = 120
+    EXPECT_FLOAT_EQ(root->geometry.height, 120.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV138_7) {
+    // Margin auto horizontal centering in block
+    auto root = make_block("div");
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 50.0f;
+    child->geometry.margin.left = -1.0f;  // auto sentinel
+    child->geometry.margin.right = -1.0f; // auto sentinel
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Remaining = 600 - 200 = 400, split equally = 200 each
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.left, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.right, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 200.0f);
+}
+
+TEST(LayoutNodeProps, PaddingDefaultZeroV138) {
+    auto n = make_block();
+    EXPECT_FLOAT_EQ(n->geometry.padding.top, 0.0f);
+    EXPECT_FLOAT_EQ(n->geometry.padding.right, 0.0f);
+    EXPECT_FLOAT_EQ(n->geometry.padding.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(n->geometry.padding.left, 0.0f);
+}

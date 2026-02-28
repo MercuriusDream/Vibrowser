@@ -23522,3 +23522,185 @@ TEST(HttpClient, ConnectionPoolReleaseAndReacquireV137) {
     // Pool is empty again
     EXPECT_EQ(pool.acquire("v137pool.example.com", 8080), -1);
 }
+
+// ===========================================================================
+// V138 Tests
+// ===========================================================================
+
+// 1. Request serialize GET with fragment stripped — fragment NOT in request line
+TEST(HttpClient, RequestSerializeGetWithFragmentStrippedV138) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://v138docs.example.com/page?key=val#top-section";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "v138docs.example.com");
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.port, 443);
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Fragment must NOT appear in the serialized request
+    EXPECT_EQ(raw.find("#top-section"), std::string::npos);
+    // Path and query should still be present
+    EXPECT_NE(raw.find("/page"), std::string::npos);
+    EXPECT_NE(raw.find("key=val"), std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(raw.find("Host: v138docs.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(raw.find("Host: v138docs.example.com:443"), std::string::npos);
+}
+
+// 2. Response parse 302 redirect with Location header
+TEST(HttpClient, ResponseParse302RedirectWithLocationV138) {
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://v138redirect.example.com/new-page\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+    EXPECT_EQ(resp->status_text, "Found");
+    EXPECT_TRUE(resp->headers.has("Location"));
+    EXPECT_EQ(resp->headers.get("location").value(),
+              "https://v138redirect.example.com/new-page");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// 3. CookieJar ignores malformed cookie string — doesn't crash
+TEST(HttpClient, CookieJarIgnoresMalformedCookieV138) {
+    CookieJar jar;
+
+    // Various malformed cookie strings — none should crash
+    jar.set_from_header("", "v138malformed.example.com");
+    jar.set_from_header(";;;", "v138malformed.example.com");
+    jar.set_from_header("=nokey", "v138malformed.example.com");
+    jar.set_from_header("   ", "v138malformed.example.com");
+
+    // Normal cookie should still work after malformed ones
+    jar.set_from_header("valid=yes", "v138malformed.example.com");
+    std::string hdr = jar.get_cookie_header("v138malformed.example.com", "/", false);
+    EXPECT_NE(hdr.find("valid=yes"), std::string::npos);
+}
+
+// 4. HeaderMap: append 3, then set resets to one — get_all returns 1
+TEST(HttpClient, HeaderMapAppendThenSetResetsToOneV138) {
+    HeaderMap map;
+
+    map.append("X-V138-Multi", "first");
+    map.append("X-V138-Multi", "second");
+    map.append("X-V138-Multi", "third");
+    EXPECT_EQ(map.get_all("X-V138-Multi").size(), 3u);
+
+    // set() should replace all previous values with a single one
+    map.set("X-V138-Multi", "only-one");
+    auto all = map.get_all("X-V138-Multi");
+    EXPECT_EQ(all.size(), 1u);
+    EXPECT_EQ(all[0], "only-one");
+
+    // get() should return the single value
+    EXPECT_EQ(map.get("x-v138-multi").value(), "only-one");
+}
+
+// 5. Request serialize method case — GET serializes as uppercase "GET"
+TEST(HttpClient, RequestSerializeMethodCaseV138) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v138method.example.com";
+    req.port = 80;
+    req.path = "/check";
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Request line must start with uppercase GET
+    EXPECT_NE(raw.find("GET /check HTTP/1.1\r\n"), std::string::npos);
+    // Connection: close must be present
+    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos);
+    // Port 80 should be omitted from Host header
+    EXPECT_NE(raw.find("Host: v138method.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(raw.find("Host: v138method.example.com:80"), std::string::npos);
+
+    // Also verify POST serializes as uppercase
+    Request req2;
+    req2.method = Method::POST;
+    req2.host = "v138method.example.com";
+    req2.port = 80;
+    req2.path = "/submit";
+
+    auto bytes2 = req2.serialize();
+    std::string raw2(bytes2.begin(), bytes2.end());
+    EXPECT_NE(raw2.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+}
+
+// 6. Response parse with empty status text — "HTTP/1.1 200 \r\n"
+TEST(HttpClient, ResponseParseEmptyStatusTextV138) {
+    std::string raw =
+        "HTTP/1.1 200 \r\n"
+        "Content-Length: 4\r\n"
+        "\r\n"
+        "v138";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    // Status text may be empty or whitespace-trimmed
+    EXPECT_EQ(resp->body_as_string(), "v138");
+    EXPECT_EQ(resp->body.size(), 4u);
+}
+
+// 7. CookieJar: cookies on different domains are isolated
+TEST(HttpClient, CookieJarDifferentDomainsIsolatedV138) {
+    CookieJar jar;
+
+    jar.set_from_header("token=abc138", "v138a.example.com");
+    jar.set_from_header("token=def138", "v138b.example.com");
+
+    std::string hdr_a = jar.get_cookie_header("v138a.example.com", "/", false);
+    std::string hdr_b = jar.get_cookie_header("v138b.example.com", "/", false);
+
+    // Each domain should see only its own cookie
+    EXPECT_NE(hdr_a.find("token=abc138"), std::string::npos);
+    EXPECT_EQ(hdr_a.find("token=def138"), std::string::npos);
+
+    EXPECT_NE(hdr_b.find("token=def138"), std::string::npos);
+    EXPECT_EQ(hdr_b.find("token=abc138"), std::string::npos);
+
+    // Completely unrelated domain should have no cookies
+    std::string hdr_c = jar.get_cookie_header("v138c.other.com", "/", false);
+    EXPECT_TRUE(hdr_c.empty());
+}
+
+// 8. ConnectionPool: max_per_host enforced — max=2, release 3, only 2 acquirable
+TEST(HttpClient, ConnectionPoolMaxPerHostEnforcedV138) {
+    ConnectionPool pool(2);  // max 2 per host
+
+    // Release 3 fds to the same host:port
+    pool.release("v138pool.example.com", 9090, 1380);
+    pool.release("v138pool.example.com", 9090, 1381);
+    pool.release("v138pool.example.com", 9090, 1382);
+
+    // Pool should have at most 2 connections
+    EXPECT_EQ(pool.count("v138pool.example.com", 9090), 2u);
+
+    // Acquire both
+    int fd1 = pool.acquire("v138pool.example.com", 9090);
+    int fd2 = pool.acquire("v138pool.example.com", 9090);
+    EXPECT_NE(fd1, -1);
+    EXPECT_NE(fd2, -1);
+
+    // Third acquire should fail — pool is exhausted
+    int fd3 = pool.acquire("v138pool.example.com", 9090);
+    EXPECT_EQ(fd3, -1);
+
+    // Different host should be unaffected
+    pool.release("v138other.example.com", 9090, 1383);
+    EXPECT_EQ(pool.count("v138other.example.com", 9090), 1u);
+    EXPECT_EQ(pool.acquire("v138other.example.com", 9090), 1383);
+}

@@ -1270,3 +1270,106 @@ TEST(MessageChannelTest, MessageChannelV137_3_PayloadPreservesExactBytes) {
             << "payload mismatch at byte index " << i;
     }
 }
+
+// ------------------------------------------------------------------
+// V138: Handler called with correct payload size (100 bytes)
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV138_1_HandlerCalledWithCorrectPayloadSize) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    size_t observed_payload_size = 0;
+    bool handler_invoked = false;
+
+    ch.on(42, [&](const Message& m) {
+        handler_invoked = true;
+        observed_payload_size = m.payload.size();
+    });
+
+    // Build a 100-byte payload
+    std::vector<uint8_t> payload(100, 0xCC);
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 1;
+    msg.payload = payload;
+
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_invoked);
+    EXPECT_EQ(observed_payload_size, 100u);
+}
+
+// ------------------------------------------------------------------
+// V138: Multiple dispatch of the same message
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV138_2_MultipleDispatchSameMessage) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    uint32_t last_request_id = 0;
+
+    ch.on(7, [&](const Message& m) {
+        call_count++;
+        last_request_id = m.request_id;
+    });
+
+    Message msg;
+    msg.type = 7;
+    msg.request_id = 55;
+    msg.payload = {0x01, 0x02};
+
+    // Dispatch the same message twice — handler should fire each time
+    ch.dispatch(msg);
+    ch.dispatch(msg);
+
+    EXPECT_EQ(call_count, 2);
+    EXPECT_EQ(last_request_id, 55u);
+}
+
+// ------------------------------------------------------------------
+// V138: Register handler before and after send
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV138_3_RegisterHandlerBeforeAndAfterSend) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int first_handler_count = 0;
+
+    // Register handler for type 20
+    ch.on(20, [&](const Message&) {
+        first_handler_count++;
+    });
+
+    // Dispatch — handler should fire
+    Message msg;
+    msg.type = 20;
+    msg.request_id = 1;
+    ch.dispatch(msg);
+    EXPECT_EQ(first_handler_count, 1);
+
+    // Dispatch a message with an unregistered type — should not crash
+    Message msg2;
+    msg2.type = 999;
+    msg2.request_id = 2;
+    EXPECT_NO_THROW(ch.dispatch(msg2));
+
+    // Register a second handler for a new type and verify it works
+    int second_handler_count = 0;
+    ch.on(30, [&](const Message&) {
+        second_handler_count++;
+    });
+
+    Message msg3;
+    msg3.type = 30;
+    msg3.request_id = 3;
+    ch.dispatch(msg3);
+    EXPECT_EQ(second_handler_count, 1);
+
+    // Original handler should still work
+    ch.dispatch(msg);
+    EXPECT_EQ(first_handler_count, 2);
+}

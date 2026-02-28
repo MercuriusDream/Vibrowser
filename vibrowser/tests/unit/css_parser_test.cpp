@@ -9977,3 +9977,61 @@ TEST_F(CSSStylesheetTest, ResizeVerticalDeclarationV137) {
     }
     EXPECT_TRUE(found) << "resize declaration not found";
 }
+
+// === V138 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, GapShorthandDeclarationV138) {
+    auto ss = parse_stylesheet(".grid { gap: 10px 20px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "gap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "10px");
+        }
+    }
+    EXPECT_TRUE(found) << "gap shorthand declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, PlaceItemsDeclarationV138) {
+    auto ss = parse_stylesheet(".flex { place-items: start end; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "place-items") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "start");
+        }
+    }
+    EXPECT_TRUE(found) << "place-items declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, PlaceContentDeclarationV138) {
+    auto ss = parse_stylesheet(".grid { place-content: space-around stretch; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "place-content") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "space-around");
+        }
+    }
+    EXPECT_TRUE(found) << "place-content declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, InsetDeclarationV138) {
+    auto ss = parse_stylesheet(".overlay { inset: 0 0 0 0; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "inset") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "0");
+        }
+    }
+    EXPECT_TRUE(found) << "inset declaration not found";
+}

@@ -20093,3 +20093,56 @@ TEST(SerializerTest, SerializerV137_3_MixedU8U16U32U64Sequence) {
     EXPECT_EQ(d.read_u64(), 0xFFFFFFFFFFFFFFFFULL);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V138: I32 negative boundary values round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV138_1_I32NegativeBoundaryValues) {
+    Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::min());  // -2147483648
+    s.write_i32(-1);
+    s.write_i32(std::numeric_limits<int32_t>::max());  // 2147483647
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min());
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V138: I64 negative large round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV138_2_I64NegativeLargeRoundTrip) {
+    Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::min());  // -9223372036854775808
+    s.write_i64(std::numeric_limits<int64_t>::max());  // 9223372036854775807
+    s.write_i64(-9999999999LL);
+    s.write_i64(9999999999LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_EQ(d.read_i64(), -9999999999LL);
+    EXPECT_EQ(d.read_i64(), 9999999999LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V138: Repeat same bool ten times
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV138_3_RepeatSameBoolTenTimes) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_bool(true);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_TRUE(d.read_bool()) << "bool at index " << i << " should be true";
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

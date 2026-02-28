@@ -22413,3 +22413,87 @@ TEST(HtmlParserTest, HtmlV137_8) {
     ASSERT_NE(ns_el, nullptr);
     EXPECT_EQ(ns_el->tag_name, "noscript");
 }
+
+// === V138 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV138_1) {
+    auto doc = clever::html::parse("<html><body><details><summary>Click me</summary><p>Content</p></details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* summary_el = doc->find_element("summary");
+    ASSERT_NE(summary_el, nullptr);
+    EXPECT_EQ(summary_el->tag_name, "summary");
+    EXPECT_EQ(summary_el->text_content(), "Click me");
+}
+
+TEST(HtmlParserTest, HtmlV138_2) {
+    auto doc = clever::html::parse("<html><body><select><optgroup label=\"Group\"><option value=\"1\">One</option></optgroup></select></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* optgroup_el = doc->find_element("optgroup");
+    ASSERT_NE(optgroup_el, nullptr);
+    EXPECT_EQ(optgroup_el->tag_name, "optgroup");
+
+    auto* option_el = doc->find_element("option");
+    ASSERT_NE(option_el, nullptr);
+    EXPECT_EQ(option_el->tag_name, "option");
+    EXPECT_EQ(option_el->text_content(), "One");
+}
+
+TEST(HtmlParserTest, HtmlV138_3) {
+    auto doc = clever::html::parse("<html><body><video><track kind=\"subtitles\" src=\"subs.vtt\" srclang=\"en\"></video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* track_el = doc->find_element("track");
+    ASSERT_NE(track_el, nullptr);
+    EXPECT_EQ(track_el->tag_name, "track");
+}
+
+TEST(HtmlParserTest, HtmlV138_4) {
+    auto doc = clever::html::parse("<html><body><embed type=\"image/png\" src=\"image.png\" width=\"200\" height=\"100\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* embed_el = doc->find_element("embed");
+    ASSERT_NE(embed_el, nullptr);
+    EXPECT_EQ(embed_el->tag_name, "embed");
+}
+
+TEST(HtmlParserTest, HtmlV138_5) {
+    auto doc = clever::html::parse("<html><body><object data=\"movie.swf\" type=\"application/x-shockwave-flash\"><param name=\"quality\" value=\"high\"></object></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* object_el = doc->find_element("object");
+    ASSERT_NE(object_el, nullptr);
+    EXPECT_EQ(object_el->tag_name, "object");
+
+    auto* param_el = doc->find_element("param");
+    ASSERT_NE(param_el, nullptr);
+    EXPECT_EQ(param_el->tag_name, "param");
+}
+
+TEST(HtmlParserTest, HtmlV138_6) {
+    auto doc = clever::html::parse("<html><body><iframe src=\"https://example.com\" width=\"600\" height=\"400\"></iframe></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* iframe_el = doc->find_element("iframe");
+    ASSERT_NE(iframe_el, nullptr);
+    EXPECT_EQ(iframe_el->tag_name, "iframe");
+}
+
+TEST(HtmlParserTest, HtmlV138_7) {
+    auto doc = clever::html::parse("<html><body><p>Line one<br>Line two</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* br_el = doc->find_element("br");
+    ASSERT_NE(br_el, nullptr);
+    EXPECT_EQ(br_el->tag_name, "br");
+}
+
+TEST(HtmlParserTest, HtmlV138_8) {
+    auto doc = clever::html::parse("<html><body><hr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* hr_el = doc->find_element("hr");
+    ASSERT_NE(hr_el, nullptr);
+    EXPECT_EQ(hr_el->tag_name, "hr");
+}
