@@ -13478,3 +13478,51 @@ TEST(CORSPolicyTest, CorsV172_7_HttpsDefaultPortEnforceable) {
 TEST(CORSPolicyTest, CorsV172_8_CrossOriginCaseSensitiveHost) {
     EXPECT_FALSE(is_cross_origin("https://Host.Example", "https://host.example/page"));
 }
+
+// ---------------------------------------------------------------------------
+// V173 tests
+// ---------------------------------------------------------------------------
+
+// 1. http with path is enforceable
+TEST(CORSPolicyTest, CorsV173_1_HttpEnforceableWithPath) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://host.example"));
+}
+
+// 2. https default port 443 same origin
+TEST(CORSPolicyTest, CorsV173_2_SameOriginHttpsDefaultPort) {
+    EXPECT_FALSE(is_cross_origin("https://host.example", "https://host.example:443/page"));
+}
+
+// 3. Totally different scheme, host, port → cross-origin
+TEST(CORSPolicyTest, CorsV173_3_CrossOriginTotallyDifferent) {
+    EXPECT_TRUE(is_cross_origin("http://a.com", "https://b.com/resource"));
+}
+
+// 4. ACAO exact match without trailing slash
+TEST(CORSPolicyTest, CorsV173_4_AcaoExactMatchNoTrailingSlash) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "http://origin.example");
+    EXPECT_TRUE(cors_allows_response("http://origin.example", "http://api.example/data",
+                                      headers, false));
+}
+
+// 5. Different subdomains → should attach origin header
+TEST(CORSPolicyTest, CorsV173_5_ShouldAttachOriginDiffSubdomain) {
+    EXPECT_TRUE(should_attach_origin_header("https://api.example",
+                                            "https://www.example/resource"));
+}
+
+// 6. custom:// scheme is not enforceable
+TEST(CORSPolicyTest, CorsV173_6_CustomSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("custom://app"));
+}
+
+// 7. IPv6 loopback with port is enforceable
+TEST(CORSPolicyTest, CorsV173_7_IPv6LoopbackEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://[::1]:8080"));
+}
+
+// 8. Same scheme/host/port, different paths → same-origin
+TEST(CORSPolicyTest, CorsV173_8_SameOriginIgnoresPath) {
+    EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/other/path"));
+}

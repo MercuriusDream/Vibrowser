@@ -38917,3 +38917,86 @@ TEST(JSEngine, JsV172_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "10,20,30");
 }
+
+// V173_1: Array.isArray returns true/false
+TEST(JSEngine, JsV173_1) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate("Array.isArray([1,2,3]) ? 'true' : 'false'");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "true");
+    auto r2 = engine.evaluate("Array.isArray('hello') ? 'true' : 'false'");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "false");
+}
+
+// V173_2: String.substring extracts portion
+TEST(JSEngine, JsV173_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'Hello World'.substring(0, 5)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello");
+}
+
+// V173_3: Object.hasOwnProperty check
+TEST(JSEngine, JsV173_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {name: 'test', value: 42};
+        '' + obj.hasOwnProperty('name') + ',' + obj.hasOwnProperty('missing');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// V173_4: Array.splice removes and inserts
+TEST(JSEngine, JsV173_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.splice(1, 2, 10, 20);
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,10,20,4,5");
+}
+
+// V173_5: Date.now returns number
+TEST(JSEngine, JsV173_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Date.now()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number");
+}
+
+// V173_6: arrow function returns value
+TEST(JSEngine, JsV173_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var double = x => x * 2;
+        '' + double(7);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "14");
+}
+
+// V173_7: Array.flatMap maps and flattens
+TEST(JSEngine, JsV173_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3];
+        arr.flatMap(x => [x, x * 2]).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,2,4,3,6");
+}
+
+// V173_8: String.match with regex
+TEST(JSEngine, JsV173_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = 'abc123def456'.match(/[0-9]+/g);
+        m.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "123,456");
+}

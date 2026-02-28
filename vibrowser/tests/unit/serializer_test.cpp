@@ -21825,3 +21825,45 @@ TEST(SerializerTest, SerializerV172_3_StringWithSpecialCharsRoundTrip) {
     EXPECT_EQ(result, special);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V173 Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV173_1_F64NegativeZeroRoundTrip) {
+    Serializer s;
+    s.write_f64(-0.0);
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_EQ(val, 0.0);
+    EXPECT_TRUE(std::signbit(val));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV173_2_U32AllBitsSetRoundTrip) {
+    Serializer s;
+    s.write_u32(0xFFFFFFFFu);
+
+    Deserializer d(s.data());
+    uint32_t val = d.read_u32();
+    EXPECT_EQ(val, 0xFFFFFFFFu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV173_3_AlternatingTypesRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_string("alpha");
+    s.write_u32(42u);
+    s.write_bool(false);
+    s.write_string("beta");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_FALSE(d.has_remaining());
+}

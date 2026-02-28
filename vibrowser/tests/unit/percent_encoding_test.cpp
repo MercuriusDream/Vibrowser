@@ -1968,3 +1968,32 @@ TEST(IsURLCodePoint, ColonValidV172) {
     // ':' (U+003A) is a valid URL code point (sub-delimiter)
     EXPECT_TRUE(is_url_code_point(U':'));
 }
+
+// =============================================================================
+// Cycle V173 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, QuestionMarkEncodedV173) {
+    // '?' should be percent-encoded as %3F
+    EXPECT_EQ(percent_encode("?"), "%3F");
+    EXPECT_EQ(percent_encode("a?b"), "a%3Fb");
+    EXPECT_EQ(percent_encode("??"), "%3F%3F");
+}
+
+TEST(PercentDecoding, ConsecutiveEncodedCharsV173) {
+    // Multiple consecutive percent-encoded characters should all decode correctly
+    EXPECT_EQ(percent_decode("%41%42%43"), "ABC");
+    EXPECT_EQ(percent_decode("%61%62%63"), "abc");
+    EXPECT_EQ(percent_decode("x%41%42%43y"), "xABCy");
+}
+
+TEST(PercentEncoding, ForwardSlashEncodedWithPathFlagV173) {
+    // '/' should pass through by default but be encoded as %2F with path flag
+    EXPECT_EQ(percent_encode("/"), "/");
+    EXPECT_EQ(percent_encode("/", true), "%2F");
+    EXPECT_EQ(percent_encode("/a/b", true), "%2Fa%2Fb");
+}
+
+TEST(IsURLCodePoint, SemicolonValidV173) {
+    // ';' (U+003B) is a sub-delimiter and a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U';'));
+}

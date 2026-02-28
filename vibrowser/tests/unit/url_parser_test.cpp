@@ -16089,3 +16089,46 @@ TEST(UrlParserTest, UrlV172_4_FragmentWithSpecialChars) {
     EXPECT_TRUE(result->query.empty());
     EXPECT_EQ(result->fragment, "sec/tion?x");
 }
+
+// =============================================================================
+// Cycle V173 — URL parser tests
+// =============================================================================
+TEST(UrlParserTest, UrlV173_1_WssSchemeParses) {
+    // wss:// WebSocket Secure scheme should parse correctly
+    auto result = parse("wss://ws.example.com/socket");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "wss");
+    EXPECT_EQ(result->host, "ws.example.com");
+    EXPECT_EQ(result->path, "/socket");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV173_2_DoubleSlashPathPreserved) {
+    // Double slashes in path are preserved (not collapsed to single slash)
+    auto result = parse("http://host//double");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "//double");
+}
+
+TEST(UrlParserTest, UrlV173_3_QueryWithPlusSign) {
+    // Plus sign in query string should be preserved as-is (not decoded to space)
+    auto result = parse("http://host/p?q=hello+world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/p");
+    EXPECT_EQ(result->query, "q=hello+world");
+}
+
+TEST(UrlParserTest, UrlV173_4_PortMaxValue65535) {
+    // Port 65535 is the maximum valid port number and should be preserved
+    auto result = parse("http://host:65535/p");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+    EXPECT_EQ(result->path, "/p");
+}

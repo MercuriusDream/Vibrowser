@@ -30106,3 +30106,170 @@ TEST(HttpClient, CookieJarTwoCookiesSameNameDiffPathV172) {
     EXPECT_EQ(shallow.find("token172=beta"), std::string::npos)
         << "Path=/api/v2 should NOT match /api/other";
 }
+
+// ===========================================================================
+// Round 173 — Net Tests (V173)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. GET with no custom headers — just Host + Connection
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetNoCustomHeadersV173) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "plain.v173.test";
+    req.port = 80;
+    req.path = "/status";
+
+    auto raw = req.serialize();
+    std::string result(raw.begin(), raw.end());
+
+    // Request line
+    EXPECT_TRUE(result.find("GET /status HTTP/1.1\r\n") == 0);
+    // Host without port 80
+    EXPECT_TRUE(result.find("Host: plain.v173.test\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: plain.v173.test:80") == std::string::npos);
+    // Connection: close present
+    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    // No custom headers like x-... should appear
+    EXPECT_TRUE(result.find("x-") == std::string::npos)
+        << "No custom headers expected, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. 200 response with a large (500-char) body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithLargeBodyV173) {
+    std::string body(500, 'Z');
+    std::string raw_str = "HTTP/1.1 200 OK\r\n"
+                          "Content-Length: 500\r\n"
+                          "\r\n" + body;
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->body.size(), 500u);
+    EXPECT_EQ(std::string(resp->body.begin(), resp->body.end()), body);
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool: release to 2 hosts, acquire from specific one
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolAcquireSpecificHostV173) {
+    ConnectionPool pool;
+    pool.release("alpha.v173.test", 443, 701);
+    pool.release("beta.v173.test", 443, 702);
+
+    EXPECT_EQ(pool.count("alpha.v173.test", 443), 1u);
+    EXPECT_EQ(pool.count("beta.v173.test", 443), 1u);
+
+    // Acquire from beta only
+    int fd = pool.acquire("beta.v173.test", 443);
+    EXPECT_EQ(fd, 702);
+    EXPECT_EQ(pool.count("beta.v173.test", 443), 0u);
+    // Alpha untouched
+    EXPECT_EQ(pool.count("alpha.v173.test", 443), 1u);
+
+    // Acquire from alpha
+    int fd2 = pool.acquire("alpha.v173.test", 443);
+    EXPECT_EQ(fd2, 701);
+    EXPECT_EQ(pool.count("alpha.v173.test", 443), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: cookie names are case-sensitive ("Token" != "token")
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarCaseSensitiveNameV173) {
+    CookieJar jar;
+    jar.set_from_header("Token=UPPER173; Path=/", "cs.v173.test");
+    jar.set_from_header("token=lower173; Path=/", "cs.v173.test");
+
+    // Both cookies should exist — names are case-sensitive per RFC 6265
+    std::string hdr = jar.get_cookie_header("cs.v173.test", "/", false);
+    EXPECT_NE(hdr.find("Token=UPPER173"), std::string::npos)
+        << "Uppercase 'Token' cookie missing, got: " << hdr;
+    EXPECT_NE(hdr.find("token=lower173"), std::string::npos)
+        << "Lowercase 'token' cookie missing, got: " << hdr;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: set "Content-Type", retrieve via "content-type" (case-insensitive)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapGetCaseInsensitiveV173) {
+    HeaderMap map;
+    map.set("Content-Type", "application/json");
+
+    auto via_lower = map.get("content-type");
+    auto via_upper = map.get("CONTENT-TYPE");
+    auto via_original = map.get("Content-Type");
+
+    ASSERT_TRUE(via_lower.has_value());
+    ASSERT_TRUE(via_upper.has_value());
+    ASSERT_TRUE(via_original.has_value());
+    EXPECT_EQ(via_lower.value(), "application/json");
+    EXPECT_EQ(via_upper.value(), "application/json");
+    EXPECT_EQ(via_original.value(), "application/json");
+}
+
+// ---------------------------------------------------------------------------
+// 6. PUT with no body — serialize should still produce valid request
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePutEmptyBodyV173) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "empty.v173.test";
+    req.port = 443;
+    req.path = "/resource/99";
+
+    auto raw = req.serialize();
+    std::string result(raw.begin(), raw.end());
+
+    EXPECT_TRUE(result.find("PUT /resource/99 HTTP/1.1\r\n") == 0);
+    // Port 443 omitted from Host
+    EXPECT_TRUE(result.find("Host: empty.v173.test\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: empty.v173.test:443") == std::string::npos);
+    // Connection: close
+    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 7. 200 response with Date header — header preserved in parsed output
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithDateHeaderV173) {
+    std::string raw_str = "HTTP/1.1 200 OK\r\n"
+                          "Date: Fri, 28 Feb 2026 12:00:00 GMT\r\n"
+                          "Content-Length: 2\r\n"
+                          "\r\n"
+                          "OK";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_TRUE(resp->headers.has("Date"));
+    EXPECT_EQ(resp->headers.get("Date").value(), "Fri, 28 Feb 2026 12:00:00 GMT");
+    EXPECT_EQ(resp->body.size(), 2u);
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: Max-Age=0 cookie is immediately expired and not returned
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarDeleteWithMaxAgeZeroV173) {
+    CookieJar jar;
+    // Set a valid cookie first
+    jar.set_from_header("keep173=yes; Path=/", "del.v173.test");
+
+    // Set another cookie with Max-Age=0 — it should be expired immediately
+    jar.set_from_header("expired173=gone; Max-Age=0", "del.v173.test");
+
+    std::string hdr = jar.get_cookie_header("del.v173.test", "/", false);
+    // The valid cookie should still be present
+    EXPECT_NE(hdr.find("keep173=yes"), std::string::npos)
+        << "Valid cookie should remain, got: " << hdr;
+    // The Max-Age=0 cookie should NOT appear
+    EXPECT_EQ(hdr.find("expired173=gone"), std::string::npos)
+        << "Max-Age=0 cookie should not appear, got: " << hdr;
+}

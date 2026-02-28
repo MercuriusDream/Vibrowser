@@ -3,6 +3,7 @@
 #include <clever/ipc/message_pipe.h>
 #include <clever/ipc/serializer.h>
 #include <gtest/gtest.h>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -3301,4 +3302,50 @@ TEST(MessageChannelTest, MessageChannelV172_2_SequentialDispatchesV172) {
 
     EXPECT_EQ(count_type1, 5);
     EXPECT_EQ(count_type2, 5);
+}
+
+// ------------------------------------------------------------------
+// V173 MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV173_1_TypeZeroDispatchV173) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    ch.on(0, [&](const Message& msg) {
+        handler_called = true;
+        EXPECT_EQ(msg.type, 0u);
+    });
+
+    Message msg;
+    msg.type = 0;
+    msg.request_id = 1;
+    msg.payload = {};
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+}
+
+TEST(MessageChannelTest, MessageChannelV173_2_TenBytePayloadVerifyV173) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint8_t> expected_payload(10);
+    std::iota(expected_payload.begin(), expected_payload.end(), static_cast<uint8_t>(0));
+
+    bool handler_called = false;
+    ch.on(5, [&](const Message& msg) {
+        handler_called = true;
+        EXPECT_EQ(msg.payload.size(), 10u);
+        EXPECT_EQ(msg.payload, expected_payload);
+    });
+
+    Message msg;
+    msg.type = 5;
+    msg.request_id = 99;
+    msg.payload = expected_payload;
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
 }

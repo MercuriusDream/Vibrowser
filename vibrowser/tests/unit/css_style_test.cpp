@@ -26711,3 +26711,39 @@ TEST(PropertyCascadeTest, DisplayNoneAppliedV172) {
     cascade.apply_declaration(style, make_decl("display", "none"), parent);
     EXPECT_EQ(style.display, Display::None);
 }
+
+TEST(CSSStyleTest, CssV173_1_PaddingRightApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("padding-right", "25px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 25.0f);
+}
+
+TEST(CSSStyleTest, CssV173_2_MarginBottomApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("margin-bottom", "15px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 15.0f);
+}
+
+TEST(PropertyCascadeTest, WhiteSpaceNoWrapAppliedV173) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}
+
+TEST(PropertyCascadeTest, PointerEventsNoneAppliedV173) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("pointer-events", "none"), parent);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+}

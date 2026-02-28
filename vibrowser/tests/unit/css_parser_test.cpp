@@ -11976,3 +11976,59 @@ TEST_F(CSSStylesheetTest, CursorDeclarationV172) {
     }
     EXPECT_TRUE(found) << "cursor declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, PointerEventsDeclarationV173) {
+    auto ss = parse_stylesheet("div { pointer-events: none; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "pointer-events") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "none");
+        }
+    }
+    EXPECT_TRUE(found) << "pointer-events declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, UserSelectDeclarationV173) {
+    auto ss = parse_stylesheet("span { user-select: none; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "user-select") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "none");
+        }
+    }
+    EXPECT_TRUE(found) << "user-select declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OutlineWidthDeclarationV173) {
+    auto ss = parse_stylesheet("input { outline-width: 3px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "outline-width") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "3px");
+        }
+    }
+    EXPECT_TRUE(found) << "outline-width declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OutlineStyleDeclarationV173) {
+    auto ss = parse_stylesheet("button { outline-style: solid; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "outline-style") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "solid");
+        }
+    }
+    EXPECT_TRUE(found) << "outline-style declaration not found";
+}

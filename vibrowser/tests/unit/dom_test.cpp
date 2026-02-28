@@ -25101,3 +25101,87 @@ TEST(DomComment, DataAccessorV172) {
     Comment comment("my comment");
     EXPECT_EQ(comment.data(), "my comment");
 }
+
+// ---------------------------------------------------------------------------
+// V173 tests
+// ---------------------------------------------------------------------------
+
+// 1. Element with no children has empty text_content
+TEST(DomNode, TextContentEmptyForEmptyElementV173) {
+    Element elem("div");
+    EXPECT_EQ(elem.text_content(), "");
+}
+
+// 2. New element has zero attributes initially
+TEST(DomElement, AttributesEmptyInitiallyV173) {
+    Element elem("span");
+    EXPECT_EQ(elem.attributes().size(), 0u);
+}
+
+// 3. Register id, unregister, re-register new elem, verify new elem found
+TEST(DomDocument, UnregisterIdThenReRegisterV173) {
+    Document doc;
+    auto e1 = std::make_unique<Element>("div");
+    Element* e1_ptr = e1.get();
+    doc.register_id("myid", e1_ptr);
+    EXPECT_EQ(doc.get_element_by_id("myid"), e1_ptr);
+
+    doc.unregister_id("myid");
+    EXPECT_EQ(doc.get_element_by_id("myid"), nullptr);
+
+    auto e2 = std::make_unique<Element>("span");
+    Element* e2_ptr = e2.get();
+    doc.register_id("myid", e2_ptr);
+    EXPECT_EQ(doc.get_element_by_id("myid"), e2_ptr);
+}
+
+// 4. Non-cancelable event: prevent_default is a no-op
+TEST(DomEvent, NonCancelablePreventDefaultNoOpV173) {
+    Event evt("load", true, false);
+    evt.prevent_default();
+    EXPECT_FALSE(evt.default_prevented());
+}
+
+// 5. Three children sibling chain verification
+TEST(DomNode, ThreeChildrenSiblingChainV173) {
+    auto parent = std::make_unique<Element>("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    Node* a_ptr = a.get();
+    Node* b_ptr = b.get();
+    Node* c_ptr = c.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+}
+
+// 6. ClassList toggle removes an existing class
+TEST(DomElement, ClassListToggleRemovesV173) {
+    Element elem("div");
+    elem.class_list().add("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+}
+
+// 7. mark_dirty(All) sets Style, Layout, and Paint
+TEST(DomNode, MarkDirtyAllSetsEverythingV173) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+    auto flags = elem.dirty_flags();
+    EXPECT_NE(flags & DirtyFlags::Style,  DirtyFlags::None);
+    EXPECT_NE(flags & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(flags & DirtyFlags::Paint,  DirtyFlags::None);
+}
+
+// 8. Text node has NodeType::Text
+TEST(DomText, NodeTypeIsTextV173) {
+    Text t("x");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}

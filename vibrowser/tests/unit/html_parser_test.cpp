@@ -26933,3 +26933,111 @@ TEST(HtmlParserTest, HtmlV172_8) {
     ASSERT_NE(tmpl, nullptr);
     EXPECT_EQ(tmpl->tag_name, "template");
 }
+
+TEST(HtmlParserTest, HtmlV173_1) {
+    // <dialog> element
+    auto doc = clever::html::parse(
+        "<html><body><dialog>Dialog content</dialog></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+    EXPECT_EQ(dialog->tag_name, "dialog");
+    EXPECT_EQ(dialog->text_content(), "Dialog content");
+}
+
+TEST(HtmlParserTest, HtmlV173_2) {
+    // <data value="42"> element
+    auto doc = clever::html::parse(
+        "<html><body><data value=\"42\">Forty-two</data></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* data = doc->find_element("data");
+    ASSERT_NE(data, nullptr);
+    EXPECT_EQ(data->tag_name, "data");
+    EXPECT_EQ(data->text_content(), "Forty-two");
+    ASSERT_GE(data->attributes.size(), 1u);
+    EXPECT_EQ(data->attributes[0].name, "value");
+    EXPECT_EQ(data->attributes[0].value, "42");
+}
+
+TEST(HtmlParserTest, HtmlV173_3) {
+    // <bdi> bidirectional isolate
+    auto doc = clever::html::parse(
+        "<html><body><p>User: <bdi>username</bdi></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bdi = doc->find_element("bdi");
+    ASSERT_NE(bdi, nullptr);
+    EXPECT_EQ(bdi->tag_name, "bdi");
+    EXPECT_EQ(bdi->text_content(), "username");
+}
+
+TEST(HtmlParserTest, HtmlV173_4) {
+    // <rp> ruby parenthesis
+    auto doc = clever::html::parse(
+        "<html><body><ruby>base<rp>(</rp><rt>annotation</rt><rp>)</rp></ruby></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* rp = doc->find_element("rp");
+    ASSERT_NE(rp, nullptr);
+    EXPECT_EQ(rp->tag_name, "rp");
+}
+
+TEST(HtmlParserTest, HtmlV173_5) {
+    // nested lists <ul><li><ul><li>
+    auto doc = clever::html::parse(
+        "<html><body><ul><li>outer<ul><li>inner</li></ul></li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer_ul = doc->find_element("ul");
+    ASSERT_NE(outer_ul, nullptr);
+    EXPECT_EQ(outer_ul->tag_name, "ul");
+    ASSERT_FALSE(outer_ul->children.empty());
+}
+
+TEST(HtmlParserTest, HtmlV173_6) {
+    // <select><option> elements
+    auto doc = clever::html::parse(
+        "<html><body><select><option value=\"a\">Alpha</option><option value=\"b\">Beta</option></select></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(select->tag_name, "select");
+
+    auto* option = doc->find_element("option");
+    ASSERT_NE(option, nullptr);
+    EXPECT_EQ(option->tag_name, "option");
+    ASSERT_GE(option->attributes.size(), 1u);
+    EXPECT_EQ(option->attributes[0].name, "value");
+    EXPECT_EQ(option->attributes[0].value, "a");
+}
+
+TEST(HtmlParserTest, HtmlV173_7) {
+    // <textarea> element
+    auto doc = clever::html::parse(
+        "<html><body><textarea name=\"msg\">Hello world</textarea></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(textarea->tag_name, "textarea");
+    ASSERT_GE(textarea->attributes.size(), 1u);
+    EXPECT_EQ(textarea->attributes[0].name, "name");
+    EXPECT_EQ(textarea->attributes[0].value, "msg");
+}
+
+TEST(HtmlParserTest, HtmlV173_8) {
+    // <input type="text"> self-closing
+    auto doc = clever::html::parse(
+        "<html><body><input type=\"text\" placeholder=\"Enter\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+    ASSERT_GE(input->attributes.size(), 1u);
+    EXPECT_EQ(input->attributes[0].name, "type");
+    EXPECT_EQ(input->attributes[0].value, "text");
+}
