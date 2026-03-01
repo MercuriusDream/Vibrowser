@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Round 29 agents dispatched — URL double-encoding bug FIXED (Wikipedia CSS)
-**Momentum**: Cycle 1967 — 30+ commits pushed across sessions. 14/14 tests passing. Wikipedia CSS loading fixed.
-**Cycle**: 1967
+**Current Focus**: Round 31 — Popover API, customElements, @scope rules, scroll-driven animations, subgrid
+**Momentum**: Cycle 1968 — 34+ commits pushed. 14/14 tests passing. ComputedStyle crash fixed (stale .o files).
+**Cycle**: 1968
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
@@ -49,11 +49,12 @@ These are known gaps that impact real website rendering:
 | P8 | CSS `color-mix()` improvements | Modern design systems | Low | R30-3 dispatched |
 | P9 | `<video>` / `<audio>` playback | YouTube, media sites | Very High | Not started |
 | P10 | Shadow DOM (custom elements v1) | Web components, lit-html, Shoelace UI | High | Not started |
-| P11 | CSS Subgrid | Complex grid layouts | High | Not started |
-| P12 | Scroll-driven animations | Modern scroll effects | Medium | Not started |
-| P13 | View Transitions API | SPA page transitions | Medium | Not started |
-| P14 | Popover API (`popover` attribute) | Tooltips, dropdowns, menus | Medium | Not started |
-| P15 | CSS `@scope` | Scoped component styling | Medium | Not started |
+| P11 | CSS Subgrid | Complex grid layouts | High | DONE — fields + layout inheritance |
+| P12 | Scroll-driven animations | Modern scroll effects | Medium | DONE — parsing + axis detection |
+| P13 | View Transitions API | SPA page transitions | Medium | DONE — CSS prop + JS stub |
+| P14 | Popover API (`popover` attribute) | Tooltips, dropdowns, menus | Medium | DONE — show/hide/toggle + :popover-open |
+| P15 | CSS `@scope` | Scoped component styling | Medium | DONE — scope boundary matching |
+| P16 | customElements registry | Web Components define/get/whenDefined | Medium | DONE — full registry |
 
 ### Task Backlog (1500 Tasks)
 
