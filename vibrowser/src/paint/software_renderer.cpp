@@ -2209,8 +2209,8 @@ void SoftwareRenderer::apply_clip_path_mask(const Rect& bounds, int clip_type,
                     }
                     break;
                 }
-                case 3: { // inset(top right bottom left)
-                    // values: {top, right, bottom, left}
+                case 3: { // inset(top right bottom left) or inset with rounded corners
+                    // values: {top, right, bottom, left} or {top, right, bottom, left, r-tl, r-tr, r-br, r-bl}
                     float top = (values.size() >= 1) ? values[0] : 0;
                     float right = (values.size() >= 2) ? values[1] : 0;
                     float bottom = (values.size() >= 3) ? values[2] : 0;
@@ -2219,8 +2219,56 @@ void SoftwareRenderer::apply_clip_path_mask(const Rect& bounds, int clip_type,
                     float inset_y0 = bounds.y + top;
                     float inset_x1 = bounds.x + bounds.width - right;
                     float inset_y1 = bounds.y + bounds.height - bottom;
-                    inside = (fx >= inset_x0 && fx <= inset_x1 &&
-                              fy >= inset_y0 && fy <= inset_y1);
+
+                    // Check if rounded corners are present
+                    if (values.size() >= 8) {
+                        // values[4-7] are border-radius for TL, TR, BR, BL
+                        float r_tl = values[4];
+                        float r_tr = values[5];
+                        float r_br = values[6];
+                        float r_bl = values[7];
+
+                        // Simple point-in-rounded-rectangle test
+                        inside = false;
+                        if (fx >= inset_x0 && fx <= inset_x1 && fy >= inset_y0 && fy <= inset_y1) {
+                            // Check which corner we're near
+                            float dx = -1, dy = -1, r = -1;
+
+                            if (fx < inset_x0 + r_tl && fy < inset_y0 + r_tl) {
+                                // Top-left corner
+                                dx = fx - (inset_x0 + r_tl);
+                                dy = fy - (inset_y0 + r_tl);
+                                r = r_tl;
+                            } else if (fx > inset_x1 - r_tr && fy < inset_y0 + r_tr) {
+                                // Top-right corner
+                                dx = fx - (inset_x1 - r_tr);
+                                dy = fy - (inset_y0 + r_tr);
+                                r = r_tr;
+                            } else if (fx > inset_x1 - r_br && fy > inset_y1 - r_br) {
+                                // Bottom-right corner
+                                dx = fx - (inset_x1 - r_br);
+                                dy = fy - (inset_y1 - r_br);
+                                r = r_br;
+                            } else if (fx < inset_x0 + r_bl && fy > inset_y1 - r_bl) {
+                                // Bottom-left corner
+                                dx = fx - (inset_x0 + r_bl);
+                                dy = fy - (inset_y1 - r_bl);
+                                r = r_bl;
+                            } else {
+                                // In main rectangle area (not in corner region)
+                                inside = true;
+                            }
+
+                            // If we're in a corner region, check distance to corner center
+                            if (dx >= -0.1f && dy >= -0.1f && r > 0) {
+                                inside = (dx * dx + dy * dy) <= (r * r);
+                            }
+                        }
+                    } else {
+                        // Non-rounded inset
+                        inside = (fx >= inset_x0 && fx <= inset_x1 &&
+                                  fy >= inset_y0 && fy <= inset_y1);
+                    }
                     break;
                 }
                 case 4: { // polygon(x1 y1 x2 y2 ...)
@@ -2247,6 +2295,14 @@ void SoftwareRenderer::apply_clip_path_mask(const Rect& bounds, int clip_type,
                         }
                     }
                     inside = (crossings % 2) == 1;
+                    break;
+                }
+                case 5: { // path("M0,0 L100,0 L100,100 L0,100 Z")
+                    // Stub: point-in-path test is complex; for now use conservative bounds check
+                    // A complete implementation would parse SVG path data and use winding number algorithm
+                    // For now: assume if clip_path_type is 5, the clip-path is set but treat as full visibility
+                    // This prevents crashes while path clipping is not fully implemented
+                    inside = true;
                     break;
                 }
                 default:

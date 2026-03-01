@@ -4481,7 +4481,9 @@ void Painter::paint_svg_shape(const clever::layout::LayoutNode& node, DisplayLis
 
             // text-anchor: adjust x position based on approximate text width
             if (node.svg_text_anchor != 0) {
-                float approx_w = node.svg_text_content.size() * fs * 0.6f;
+                // Better approximation: use 0.5 for monospace, 0.55 for proportional fonts
+                float char_width_ratio = node.svg_font_family.find("monospace") != std::string::npos ? 0.5f : 0.55f;
+                float approx_w = node.svg_text_content.size() * fs * char_width_ratio;
                 if (node.svg_text_anchor == 1) tx -= approx_w * 0.5f; // middle
                 else if (node.svg_text_anchor == 2) tx -= approx_w;   // end
             }

@@ -4993,11 +4993,48 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                 }
             } else if (val_lower.find("inset(") == 0) {
                 // clip-path: inset(10px), inset(10px 20px), inset(10px 20px 30px 40px)
+                // clip-path: inset(10px 20px round 5px) with optional border-radius
                 auto lp = val_lower.find('(');
                 auto rp = val_lower.rfind(')');
                 if (lp != std::string::npos && rp != std::string::npos && rp > lp) {
                     std::string inner = trim(val_lower.substr(lp + 1, rp - lp - 1));
-                    auto parts = split_whitespace(inner);
+
+                    // Check for "round" keyword for border-radius
+                    std::vector<float> radii;
+                    auto round_pos = inner.find(" round ");
+                    std::string inset_part = inner;
+                    if (round_pos != std::string::npos) {
+                        inset_part = trim(inner.substr(0, round_pos));
+                        std::string radii_part = trim(inner.substr(round_pos + 7)); // 7 = " round ".length()
+
+                        // Parse border-radius values (can be 1-4 values)
+                        auto radii_parts = split_whitespace(radii_part);
+                        auto parse_val = [](const std::string& s) -> float {
+                            try {
+                                if (s.back() == '%') return std::stof(s.substr(0, s.size() - 1));
+                                std::string v = s;
+                                if (v.size() > 2 && v.substr(v.size() - 2) == "px") v = v.substr(0, v.size() - 2);
+                                return std::stof(v);
+                            } catch (...) { return 0.0f; }
+                        };
+
+                        if (radii_parts.size() == 1) {
+                            float r = parse_val(radii_parts[0]);
+                            radii = {r, r, r, r};
+                        } else if (radii_parts.size() == 2) {
+                            float r1 = parse_val(radii_parts[0]);
+                            float r2 = parse_val(radii_parts[1]);
+                            radii = {r1, r2, r1, r2};
+                        } else if (radii_parts.size() == 3) {
+                            radii = {parse_val(radii_parts[0]), parse_val(radii_parts[1]),
+                                     parse_val(radii_parts[2]), parse_val(radii_parts[1])};
+                        } else if (radii_parts.size() >= 4) {
+                            radii = {parse_val(radii_parts[0]), parse_val(radii_parts[1]),
+                                     parse_val(radii_parts[2]), parse_val(radii_parts[3])};
+                        }
+                    }
+
+                    auto parts = split_whitespace(inset_part);
                     float top = 0, right_v = 0, bottom_v = 0, left_v = 0;
                     auto parse_val = [](const std::string& s) -> float {
                         try {
@@ -5025,6 +5062,24 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                     }
                     style.clip_path_type = 3;
                     style.clip_path_values = {top, right_v, bottom_v, left_v};
+                    // Append border-radius values if present (for rounded inset)
+                    style.clip_path_values.insert(style.clip_path_values.end(), radii.begin(), radii.end());
+                }
+            } else if (val_lower.find("path(") == 0) {
+                // clip-path: path("M0,0 L100,0 L100,100 L0,100 Z")
+                auto lp = val_lower.find('(');
+                auto rp = val_lower.rfind(')');
+                if (lp != std::string::npos && rp != std::string::npos && rp > lp) {
+                    std::string inner = trim(val_lower.substr(lp + 1, rp - lp - 1));
+                    // Remove quotes if present
+                    if (inner.size() >= 2) {
+                        if ((inner.front() == '"' && inner.back() == '"') ||
+                            (inner.front() == '\'' && inner.back() == '\'')) {
+                            inner = inner.substr(1, inner.size() - 2);
+                        }
+                    }
+                    style.clip_path_type = 5; // path type
+                    style.clip_path_path_data = inner;
                 }
             }
         } else if (d.property == "shape-outside") {
@@ -10704,13 +10759,15 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         // Parse fill color from HTML attribute
         std::string fill_str = get_attr(node, "fill");
         if (!fill_str.empty() && fill_str != "none") {
-            // Check for gradient reference: fill="url(#gradientId)"
+            // Check for gradient/pattern reference: fill="url(#gradientId)" or fill="url(#patternId)"
             if (fill_str.substr(0, 4) == "url(" && fill_str.back() == ')') {
                 std::string ref = fill_str.substr(4, fill_str.size() - 5);
                 while (!ref.empty() && ref.front() == ' ') ref.erase(ref.begin());
                 while (!ref.empty() && ref.back() == ' ') ref.pop_back();
                 if (!ref.empty() && ref.front() == '#') ref = ref.substr(1);
+                // For now, store in gradient_id; pattern handling can differentiate if needed
                 layout_node->svg_fill_gradient_id = ref;
+                layout_node->svg_fill_pattern_id = ref; // Also store as pattern reference
             } else {
                 auto fill_c = clever::css::parse_color(fill_str);
                 if (fill_c) {
@@ -10800,6 +10857,15 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     if (val_lower == "miter") layout_node->svg_stroke_linejoin = 0;
                     else if (val_lower == "round") layout_node->svg_stroke_linejoin = 1;
                     else if (val_lower == "bevel") layout_node->svg_stroke_linejoin = 2;
+                } else if (d.property == "mask") {
+                    // Parse mask="url(#maskId)"
+                    if (val_lower.substr(0, 4) == "url(" && val_lower.back() == ')') {
+                        std::string ref = val_lower.substr(4, val_lower.size() - 5);
+                        while (!ref.empty() && ref.front() == ' ') ref.erase(ref.begin());
+                        while (!ref.empty() && ref.back() == ' ') ref.pop_back();
+                        if (!ref.empty() && ref.front() == '#') ref = ref.substr(1);
+                        layout_node->svg_mask_id = ref;
+                    }
                 }
             }
         }

@@ -98,6 +98,8 @@ struct LayoutNode {
     };
     std::map<std::string, SvgGradient> svg_gradient_defs; // keyed by id
     std::string svg_fill_gradient_id; // if fill="url(#id)", the gradient reference
+    std::string svg_fill_pattern_id;  // if fill="url(#patternId)", the pattern reference
+    std::string svg_mask_id;          // if mask="url(#maskId)", the mask reference
     float svg_text_x = 0;         // SVG <text> x position
     float svg_text_y = 0;         // SVG <text> y position
     float svg_text_dx = 0;        // SVG <text> dx offset
