@@ -24,6 +24,20 @@ struct StickyElementInfo {
     int pixel_height;      // height in pixels
 };
 
+// Info about a position:fixed element extracted after layout + render.
+// Fixed elements are positioned relative to the viewport and must not
+// move when the page scrolls. We extract their rendered pixels and
+// composite them at their viewport-relative position during drawRect.
+struct FixedElementInfo {
+    // Viewport-relative position in renderer pixel coords
+    float viewport_x;      // X position in viewport (renderer pixels)
+    float viewport_y;      // Y position in viewport (renderer pixels)
+    // Pixel data for the fixed element's region (RGBA, row-major)
+    std::vector<uint8_t> pixels;
+    int pixel_width;       // width in pixels
+    int pixel_height;      // height in pixels
+};
+
 // Pixel-based CSS transition: crossfade between old and new rendered state.
 // Stored per-element region, keyed by element id.
 struct PixelTransition {
@@ -119,6 +133,7 @@ struct PixelTransition {
 - (void)updateTextRegions:(const std::vector<clever::paint::PaintCommand>&)commands;
 - (void)updateSelectionColors:(uint32_t)color bg:(uint32_t)bgColor;
 - (void)updateStickyElements:(std::vector<StickyElementInfo>)elements;
+- (void)updateFixedElements:(std::vector<FixedElementInfo>)elements;
 - (void)updateFormSubmitRegions:(const std::vector<clever::paint::FormSubmitRegion>&)regions;
 - (void)updateFormData:(const std::vector<clever::paint::FormData>&)forms;
 - (void)updateDetailsToggleRegions:(const std::vector<clever::paint::DetailsToggleRegion>&)regions;

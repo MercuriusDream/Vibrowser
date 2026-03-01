@@ -2259,25 +2259,28 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         parent_has_ellipsis = (node.parent->text_overflow == 1);
     }
 
-    // white-space: pre-wrap (3) / pre-line (4) / break-spaces (5) — render explicit newlines
+    // white-space: pre (2) / pre-wrap (3) / pre-line (4) / break-spaces (5) — render explicit newlines.
+    // For pre mode, split on \n and draw each line separately using the node's line_height
+    // (instead of delegating to CoreText which uses a hardcoded 1.2x multiplier).
     bool prewrap_handled = false;
     if (node.is_text && !text_to_render.empty() &&
-        (node.white_space == 3 || node.white_space == 4 || node.white_space == 5) &&
+        (node.white_space == 2 || node.white_space == 3 ||
+         node.white_space == 4 || node.white_space == 5) &&
         text_to_render.find('\n') != std::string::npos) {
         float line_h = node.font_size * node.line_height;
         float draw_y = text_y;
         size_t start = 0;
-        while (start < text_to_render.size()) {
+        while (start <= text_to_render.size()) {
             size_t nl = text_to_render.find('\n', start);
             std::string line;
             if (nl == std::string::npos) {
                 line = text_to_render.substr(start);
-                start = text_to_render.size();
+                start = text_to_render.size() + 1; // signal end of iteration
             } else {
                 line = text_to_render.substr(start, nl - start);
                 start = nl + 1;
             }
-            // pre-line collapses spaces within lines; pre-wrap preserves them
+            // pre-line (4) collapses spaces within lines but preserves newlines
             if (node.white_space == 4 && !line.empty()) {
                 std::string collapsed;
                 bool prev_space = false;
@@ -2292,11 +2295,13 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
                 line = collapsed;
             }
             if (!line.empty()) {
+                // Pass node.tab_size so the renderer expands \t correctly per CSS tab-size
                 list.draw_text(line, text_x, draw_y, effective_font_size, {r, g, b, a},
                                node.font_family, eff_weight, eff_italic,
-                               node.letter_spacing);
+                               node.letter_spacing, node.word_spacing, node.tab_size);
             }
             draw_y += line_h;
+            if (start > text_to_render.size()) break;
         }
         prewrap_handled = true;
     }

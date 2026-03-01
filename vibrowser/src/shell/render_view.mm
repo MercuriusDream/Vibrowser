@@ -88,6 +88,10 @@ struct TextRegion {
     std::vector<StickyElementInfo> _stickyElements;
     std::vector<CGImageRef> _stickyImages; // pre-created CGImages for each sticky element
 
+    // Fixed element overlays for position:fixed (viewport-relative, not scrolled)
+    std::vector<FixedElementInfo> _fixedElements;
+    std::vector<CGImageRef> _fixedImages; // pre-created CGImages for each fixed element
+
     // Form submission data
     std::vector<clever::paint::FormSubmitRegion> _formSubmitRegions;
     std::vector<clever::paint::FormData> _formData;
@@ -311,6 +315,39 @@ struct TextRegion {
     CGColorSpaceRelease(colorSpace);
 }
 
+- (void)updateFixedElements:(std::vector<FixedElementInfo>)elements {
+    // Release old CGImages for fixed elements
+    for (auto img : _fixedImages) {
+        if (img) CGImageRelease(img);
+    }
+    _fixedImages.clear();
+    _fixedElements = std::move(elements);
+
+    // Pre-create CGImages for each fixed element from their pixel data
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    for (auto& elem : _fixedElements) {
+        if (elem.pixels.empty() || elem.pixel_width <= 0 || elem.pixel_height <= 0) {
+            _fixedImages.push_back(nullptr);
+            continue;
+        }
+        CGContextRef ctx = CGBitmapContextCreate(
+            elem.pixels.data(),
+            elem.pixel_width, elem.pixel_height,
+            8, elem.pixel_width * 4,
+            colorSpace,
+            static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast) | kCGBitmapByteOrder32Big
+        );
+        if (ctx) {
+            _fixedImages.push_back(CGBitmapContextCreateImage(ctx));
+            CGContextRelease(ctx);
+        } else {
+            _fixedImages.push_back(nullptr);
+        }
+    }
+    CGColorSpaceRelease(colorSpace);
+    [self setNeedsDisplay:YES];
+}
+
 - (void)clearContent {
     [self stopSmoothScrollAnimation];
     if (_cgImage) { CGImageRelease(_cgImage); _cgImage = NULL; }
@@ -329,6 +366,11 @@ struct TextRegion {
     }
     _stickyImages.clear();
     _stickyElements.clear();
+    for (auto img : _fixedImages) {
+        if (img) CGImageRelease(img);
+    }
+    _fixedImages.clear();
+    _fixedElements.clear();
     _formSubmitRegions.clear();
     _formData.clear();
     _detailsToggleRegions.clear();
@@ -436,6 +478,29 @@ struct TextRegion {
         CGContextTranslateCTM(cgctx, draw_x, draw_y + draw_h);
         CGContextScaleCTM(cgctx, 1.0, -1.0);
         CGContextDrawImage(cgctx, CGRectMake(0, 0, draw_w, draw_h), _stickyImages[i]);
+        CGContextRestoreGState(cgctx);
+    }
+
+    // Draw position:fixed overlays.
+    // Fixed elements are positioned relative to the viewport and must never
+    // scroll with the page. Composite them at their viewport-relative coordinates,
+    // ignoring the current scroll offset entirely.
+    for (size_t i = 0; i < _fixedElements.size(); i++) {
+        if (i >= _fixedImages.size() || !_fixedImages[i]) continue;
+        auto& felem = _fixedElements[i];
+
+        // Fixed elements sit at viewport-relative pixel positions.
+        // Convert from renderer pixels to logical view points; no scroll subtracted.
+        CGFloat fx = (felem.viewport_x / _backingScale) * _pageScale;
+        CGFloat fy = (felem.viewport_y / _backingScale) * _pageScale;
+        CGFloat fw = (felem.pixel_width / _backingScale) * _pageScale;
+        CGFloat fh = (felem.pixel_height / _backingScale) * _pageScale;
+
+        // Draw with the same flip transform as the main image.
+        CGContextSaveGState(cgctx);
+        CGContextTranslateCTM(cgctx, fx, fy + fh);
+        CGContextScaleCTM(cgctx, 1.0, -1.0);
+        CGContextDrawImage(cgctx, CGRectMake(0, 0, fw, fh), _fixedImages[i]);
         CGContextRestoreGState(cgctx);
     }
 

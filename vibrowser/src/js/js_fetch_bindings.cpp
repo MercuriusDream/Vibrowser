@@ -35,8 +35,10 @@ namespace clever::js {
 
 namespace {
 
-// Forward declaration (defined later in this file)
+// Forward declarations (defined later in this file)
 static std::string url_decode_value(const std::string& s);
+static void parse_headers_to_map(JSContext* ctx, JSValueConst headers_val,
+                                  std::map<std::string, std::string>& out_map);
 
 // =========================================================================
 // XMLHttpRequest class ID
@@ -834,7 +836,9 @@ struct ResponseState {
     std::string body;
     std::map<std::string, std::string> headers;
     std::string url;
-    bool ok = false; // status 200-299
+    bool ok = false;         // status 200-299
+    bool redirected = false; // true if at least one redirect was followed
+    std::string type = "basic"; // "basic", "cors", "opaque", "error", "default"
 };
 
 static ResponseState* get_response_state(JSContext* /*ctx*/, JSValueConst this_val) {
@@ -878,8 +882,16 @@ static JSValue js_response_get_url(JSContext* ctx, JSValueConst this_val) {
     return JS_NewString(ctx, state->url.c_str());
 }
 
-static JSValue js_response_get_type(JSContext* ctx, JSValueConst /*this_val*/) {
-    return JS_NewString(ctx, "basic");
+static JSValue js_response_get_type(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_response_state(ctx, this_val);
+    if (!state) return JS_NewString(ctx, "error");
+    return JS_NewString(ctx, state->type.c_str());
+}
+
+static JSValue js_response_get_redirected(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_response_state(ctx, this_val);
+    if (!state) return JS_FALSE;
+    return state->redirected ? JS_TRUE : JS_FALSE;
 }
 
 static JSValue js_response_get_body_used(JSContext* /*ctx*/, JSValueConst /*this_val*/) {
@@ -961,6 +973,8 @@ static JSValue js_response_clone(JSContext* ctx, JSValueConst this_val,
     new_state->headers = state->headers;
     new_state->url = state->url;
     new_state->ok = state->ok;
+    new_state->redirected = state->redirected;
+    new_state->type = state->type;
     JS_SetOpaque(obj, new_state);
 
     return obj;
@@ -1348,6 +1362,7 @@ static const JSCFunctionListEntry response_proto_funcs[] = {
     JS_CGETSET_DEF("statusText", js_response_get_status_text, nullptr),
     JS_CGETSET_DEF("url", js_response_get_url, nullptr),
     JS_CGETSET_DEF("type", js_response_get_type, nullptr),
+    JS_CGETSET_DEF("redirected", js_response_get_redirected, nullptr),
     JS_CGETSET_DEF("bodyUsed", js_response_get_body_used, nullptr),
     JS_CGETSET_DEF("headers", js_response_get_headers, nullptr),
     JS_CGETSET_DEF("body", js_response_get_body, nullptr),
@@ -1365,19 +1380,60 @@ static const JSCFunctionListEntry response_proto_funcs[] = {
 // Response JS constructor: new Response(body?, init?)
 // =========================================================================
 
-static JSValue js_response_constructor(JSContext* ctx, JSValueConst /*new_target*/,
+static JSValue js_response_constructor(JSContext* ctx, JSValueConst new_target,
                                         int argc, JSValueConst* argv) {
-    JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(response_class_id));
+    JSValue proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+    if (JS_IsException(proto)) return JS_EXCEPTION;
+    JSValue obj = JS_NewObjectProtoClass(ctx, proto, response_class_id);
+    JS_FreeValue(ctx, proto);
     if (JS_IsException(obj)) return obj;
 
     auto* state = new ResponseState();
 
-    // body (optional string)
-    if (argc >= 1 && JS_IsString(argv[0])) {
-        const char* body_cstr = JS_ToCString(ctx, argv[0]);
-        if (body_cstr) {
-            state->body = body_cstr;
-            JS_FreeCString(ctx, body_cstr);
+    // body: string, ArrayBuffer, TypedArray, or null/undefined
+    if (argc >= 1 && !JS_IsNull(argv[0]) && !JS_IsUndefined(argv[0])) {
+        if (JS_IsString(argv[0])) {
+            const char* body_cstr = JS_ToCString(ctx, argv[0]);
+            if (body_cstr) {
+                state->body = body_cstr;
+                JS_FreeCString(ctx, body_cstr);
+            }
+        } else if (JS_IsObject(argv[0])) {
+            // Try TypedArray path first (.buffer/.byteOffset/.byteLength)
+            bool read_ok = false;
+            JSValue ab_prop = JS_GetPropertyStr(ctx, argv[0], "buffer");
+            if (JS_IsObject(ab_prop)) {
+                size_t bl2 = 0;
+                uint8_t* buf2 = JS_GetArrayBuffer(ctx, &bl2, ab_prop);
+                if (buf2) {
+                    JSValue byte_offset_val = JS_GetPropertyStr(ctx, argv[0], "byteOffset");
+                    JSValue byte_length_val = JS_GetPropertyStr(ctx, argv[0], "byteLength");
+                    int32_t byte_offset = 0, typed_len = static_cast<int32_t>(bl2);
+                    JS_ToInt32(ctx, &byte_offset, byte_offset_val);
+                    JS_ToInt32(ctx, &typed_len, byte_length_val);
+                    JS_FreeValue(ctx, byte_offset_val);
+                    JS_FreeValue(ctx, byte_length_val);
+                    if (byte_offset >= 0 && typed_len >= 0 &&
+                        static_cast<size_t>(byte_offset + typed_len) <= bl2) {
+                        state->body.assign(
+                            reinterpret_cast<const char*>(buf2 + byte_offset),
+                            static_cast<size_t>(typed_len));
+                        read_ok = true;
+                    }
+                }
+            }
+            JS_FreeValue(ctx, ab_prop);
+
+            if (!read_ok) {
+                // Try direct ArrayBuffer
+                size_t byte_length = 0;
+                uint8_t* buf = JS_GetArrayBuffer(ctx, &byte_length, argv[0]);
+                if (buf) {
+                    state->body.assign(reinterpret_cast<const char*>(buf), byte_length);
+                } else {
+                    JS_FreeValue(ctx, JS_GetException(ctx)); // clear any exception
+                }
+            }
         }
     }
 
@@ -1385,6 +1441,7 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst /*new_target
     state->status = 200;
     state->status_text = "OK";
     state->ok = true;
+    state->type = "default";
 
     if (argc >= 2 && JS_IsObject(argv[1])) {
         JSValue status_val = JS_GetPropertyStr(ctx, argv[1], "status");
@@ -1405,22 +1462,7 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst /*new_target
 
         JSValue headers_val = JS_GetPropertyStr(ctx, argv[1], "headers");
         if (JS_IsObject(headers_val)) {
-            JSPropertyEnum* tab = nullptr;
-            uint32_t len = 0;
-            if (JS_GetOwnPropertyNames(ctx, &tab, &len, headers_val,
-                                         JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) == 0) {
-                for (uint32_t i = 0; i < len; i++) {
-                    const char* key = JS_AtomToCString(ctx, tab[i].atom);
-                    JSValue val = JS_GetProperty(ctx, headers_val, tab[i].atom);
-                    const char* val_str = JS_ToCString(ctx, val);
-                    if (key && val_str) state->headers[key] = val_str;
-                    if (val_str) JS_FreeCString(ctx, val_str);
-                    if (key) JS_FreeCString(ctx, key);
-                    JS_FreeValue(ctx, val);
-                    JS_FreeAtom(ctx, tab[i].atom);
-                }
-                js_free(ctx, tab);
-            }
+            parse_headers_to_map(ctx, headers_val, state->headers);
         }
         JS_FreeValue(ctx, headers_val);
     }
@@ -1435,20 +1477,80 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst /*new_target
 
 static JSValue create_response_object(JSContext* ctx,
                                        const clever::net::Response& resp,
-                                       const std::string& request_url) {
+                                       const std::string& request_url,
+                                       const std::string& response_type = "basic",
+                                       bool cors_filtered = false) {
     JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(response_class_id));
     if (JS_IsException(obj)) return obj;
 
     auto* state = new ResponseState();
     state->status = resp.status;
     state->status_text = resp.status_text;
-    state->body = resp.body_as_string();
     state->url = resp.url.empty() ? request_url : resp.url;
     state->ok = (resp.status >= 200 && resp.status <= 299);
+    state->redirected = resp.was_redirected;
+    state->type = response_type;
 
-    // Copy headers
-    for (const auto& [name, value] : resp.headers) {
-        state->headers[name] = value;
+    if (response_type == "opaque") {
+        // Opaque responses expose no status, headers, or body
+        state->status = 0;
+        state->status_text = "";
+        state->ok = false;
+        state->body = "";
+    } else {
+        state->body = resp.body_as_string();
+
+        if (cors_filtered) {
+            // CORS responses: only expose safelisted headers plus
+            // those in Access-Control-Expose-Headers
+            static const std::vector<std::string> cors_safe = {
+                "cache-control", "content-language", "content-length",
+                "content-type", "expires", "last-modified", "pragma"
+            };
+            std::string expose_list;
+            auto eh = resp.headers.get("access-control-expose-headers");
+            if (eh.has_value()) {
+                expose_list = *eh;
+                for (auto& c : expose_list) {
+                    if (c >= 'A' && c <= 'Z') c += ('a' - 'A');
+                }
+            }
+            bool expose_all = (expose_list == "*");
+
+            for (const auto& [name, value] : resp.headers) {
+                std::string lower = name;
+                for (auto& c : lower) {
+                    if (c >= 'A' && c <= 'Z') c += ('a' - 'A');
+                }
+                bool expose = false;
+                if (expose_all) {
+                    expose = true;
+                } else {
+                    for (const auto& s : cors_safe) {
+                        if (lower == s) { expose = true; break; }
+                    }
+                    if (!expose && !expose_list.empty()) {
+                        size_t pos = 0;
+                        while (pos < expose_list.size()) {
+                            size_t comma = expose_list.find(',', pos);
+                            if (comma == std::string::npos) comma = expose_list.size();
+                            std::string tok = expose_list.substr(pos, comma - pos);
+                            size_t ts = tok.find_first_not_of(" \t");
+                            size_t te = tok.find_last_not_of(" \t");
+                            if (ts != std::string::npos) tok = tok.substr(ts, te - ts + 1);
+                            if (tok == lower) { expose = true; break; }
+                            pos = comma + 1;
+                        }
+                    }
+                }
+                if (expose) state->headers[lower] = value;
+            }
+        } else {
+            // basic/default: expose all headers
+            for (const auto& [name, value] : resp.headers) {
+                state->headers[name] = value;
+            }
+        }
     }
 
     JS_SetOpaque(obj, state);
@@ -1544,126 +1646,448 @@ static std::string formdata_to_urlencoded(const std::vector<std::pair<std::strin
 }
 
 // =========================================================================
+// Helper: parse headers from a JS object or Headers instance into a map
+// =========================================================================
+
+static void parse_headers_to_map(JSContext* ctx, JSValueConst headers_val,
+                                  std::map<std::string, std::string>& out_map) {
+    if (!JS_IsObject(headers_val)) return;
+
+    // Try .entries() first (works for Headers instances and plain objects)
+    JSValue entries_fn = JS_GetPropertyStr(ctx, headers_val, "entries");
+    if (JS_IsFunction(ctx, entries_fn)) {
+        JSValue entries = JS_Call(ctx, entries_fn, headers_val, 0, nullptr);
+        if (JS_IsArray(ctx, entries)) {
+            JSValue len_val = JS_GetPropertyStr(ctx, entries, "length");
+            int32_t len = 0; JS_ToInt32(ctx, &len, len_val);
+            JS_FreeValue(ctx, len_val);
+            for (int32_t i = 0; i < len; i++) {
+                JSValue pair = JS_GetPropertyUint32(ctx, entries, static_cast<uint32_t>(i));
+                if (JS_IsArray(ctx, pair)) {
+                    JSValue kv = JS_GetPropertyUint32(ctx, pair, 0);
+                    JSValue vv = JS_GetPropertyUint32(ctx, pair, 1);
+                    const char* k2 = JS_ToCString(ctx, kv);
+                    const char* v2 = JS_ToCString(ctx, vv);
+                    if (k2 && v2) {
+                        std::string lower_k = k2;
+                        for (auto& c : lower_k) {
+                            if (c >= 'A' && c <= 'Z') c += ('a' - 'A');
+                        }
+                        out_map[lower_k] = v2;
+                    }
+                    if (k2) JS_FreeCString(ctx, k2);
+                    if (v2) JS_FreeCString(ctx, v2);
+                    JS_FreeValue(ctx, kv);
+                    JS_FreeValue(ctx, vv);
+                }
+                JS_FreeValue(ctx, pair);
+            }
+        }
+        JS_FreeValue(ctx, entries);
+        JS_FreeValue(ctx, entries_fn);
+    } else {
+        JS_FreeValue(ctx, entries_fn);
+        // Fallback: enumerate own string properties
+        JSPropertyEnum* tab = nullptr;
+        uint32_t len = 0;
+        if (JS_GetOwnPropertyNames(ctx, &tab, &len, headers_val,
+                                     JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) == 0) {
+            for (uint32_t i = 0; i < len; i++) {
+                JSValue key = JS_AtomToString(ctx, tab[i].atom);
+                JSValue val = JS_GetProperty(ctx, headers_val, tab[i].atom);
+                const char* key_str = JS_ToCString(ctx, key);
+                const char* val_str = JS_ToCString(ctx, val);
+                if (key_str && val_str) {
+                    std::string lower_k = key_str;
+                    for (auto& c : lower_k) {
+                        if (c >= 'A' && c <= 'Z') c += ('a' - 'A');
+                    }
+                    out_map[lower_k] = val_str;
+                }
+                if (key_str) JS_FreeCString(ctx, key_str);
+                if (val_str) JS_FreeCString(ctx, val_str);
+                JS_FreeValue(ctx, key);
+                JS_FreeValue(ctx, val);
+                JS_FreeAtom(ctx, tab[i].atom);
+            }
+            js_free(ctx, tab);
+        }
+    }
+}
+
+// =========================================================================
+// Request class -- new Request(url, init?)
+// =========================================================================
+
+static JSClassID request_class_id = 0;
+
+struct RequestState {
+    std::string url;
+    std::string method = "GET";
+    std::map<std::string, std::string> headers;
+    std::string body;
+    std::string mode = "cors";
+    std::string credentials = "same-origin";
+    std::string cache = "default";
+    std::string redirect = "follow";
+    std::string referrer = "about:client";
+    std::string referrer_policy;
+    std::string integrity;
+};
+
+static RequestState* get_request_state(JSValueConst this_val) {
+    return static_cast<RequestState*>(JS_GetOpaque(this_val, request_class_id));
+}
+
+static void js_request_finalizer(JSRuntime* /*rt*/, JSValue val) {
+    auto* state = static_cast<RequestState*>(JS_GetOpaque(val, request_class_id));
+    delete state;
+}
+
+static JSClassDef request_class_def = {
+    "Request",
+    js_request_finalizer,
+    nullptr, nullptr, nullptr
+};
+
+static JSValue js_request_get_url(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NewString(ctx, "");
+    return JS_NewString(ctx, state->url.c_str());
+}
+static JSValue js_request_get_method(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NewString(ctx, "GET");
+    return JS_NewString(ctx, state->method.c_str());
+}
+static JSValue js_request_get_mode(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NewString(ctx, "cors");
+    return JS_NewString(ctx, state->mode.c_str());
+}
+static JSValue js_request_get_credentials(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NewString(ctx, "same-origin");
+    return JS_NewString(ctx, state->credentials.c_str());
+}
+static JSValue js_request_get_cache(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NewString(ctx, "default");
+    return JS_NewString(ctx, state->cache.c_str());
+}
+static JSValue js_request_get_redirect(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NewString(ctx, "follow");
+    return JS_NewString(ctx, state->redirect.c_str());
+}
+static JSValue js_request_get_referrer(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NewString(ctx, "about:client");
+    return JS_NewString(ctx, state->referrer.c_str());
+}
+static JSValue js_request_get_referrer_policy(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NewString(ctx, "");
+    return JS_NewString(ctx, state->referrer_policy.c_str());
+}
+static JSValue js_request_get_integrity(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NewString(ctx, "");
+    return JS_NewString(ctx, state->integrity.c_str());
+}
+static JSValue js_request_get_body_used(JSContext* /*ctx*/, JSValueConst /*this_val*/) {
+    return JS_FALSE;
+}
+static JSValue js_request_get_headers(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_NULL;
+    return create_headers_object(ctx, state->headers);
+}
+// _isRequest: used by fetch() to detect Request objects
+static JSValue js_request_get_is_request(JSContext* /*ctx*/, JSValueConst /*this_val*/) {
+    return JS_TRUE;
+}
+// _body: used by fetch() to extract body string
+static JSValue js_request_get_body_internal(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_request_state(this_val);
+    if (!state || state->body.empty()) return JS_UNDEFINED;
+    return JS_NewString(ctx, state->body.c_str());
+}
+
+static JSValue js_request_clone(JSContext* ctx, JSValueConst this_val,
+                                 int /*argc*/, JSValueConst* /*argv*/) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_ThrowTypeError(ctx, "Invalid Request object");
+    JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(request_class_id));
+    if (JS_IsException(obj)) return obj;
+    auto* ns = new RequestState(*state);
+    JS_SetOpaque(obj, ns);
+    return obj;
+}
+
+static JSValue js_request_text(JSContext* ctx, JSValueConst this_val,
+                                int /*argc*/, JSValueConst* /*argv*/) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_ThrowTypeError(ctx, "Invalid Request object");
+    JSValue rf[2];
+    JSValue p = JS_NewPromiseCapability(ctx, rf);
+    if (JS_IsException(p)) return p;
+    JSValue t = JS_NewString(ctx, state->body.c_str());
+    JSValue r = JS_Call(ctx, rf[0], JS_UNDEFINED, 1, &t);
+    JS_FreeValue(ctx, r); JS_FreeValue(ctx, t);
+    JS_FreeValue(ctx, rf[0]); JS_FreeValue(ctx, rf[1]);
+    return p;
+}
+
+static JSValue js_request_json(JSContext* ctx, JSValueConst this_val,
+                                int /*argc*/, JSValueConst* /*argv*/) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_ThrowTypeError(ctx, "Invalid Request object");
+    JSValue rf[2];
+    JSValue p = JS_NewPromiseCapability(ctx, rf);
+    if (JS_IsException(p)) return p;
+    JSValue parsed = JS_ParseJSON(ctx, state->body.c_str(), state->body.size(), "<json>");
+    if (JS_IsException(parsed)) {
+        JSValue err = JS_GetException(ctx);
+        JSValue r = JS_Call(ctx, rf[1], JS_UNDEFINED, 1, &err);
+        JS_FreeValue(ctx, r); JS_FreeValue(ctx, err);
+    } else {
+        JSValue r = JS_Call(ctx, rf[0], JS_UNDEFINED, 1, &parsed);
+        JS_FreeValue(ctx, r);
+    }
+    JS_FreeValue(ctx, parsed);
+    JS_FreeValue(ctx, rf[0]); JS_FreeValue(ctx, rf[1]);
+    return p;
+}
+
+static JSValue js_request_array_buffer(JSContext* ctx, JSValueConst this_val,
+                                        int /*argc*/, JSValueConst* /*argv*/) {
+    auto* state = get_request_state(this_val);
+    if (!state) return JS_ThrowTypeError(ctx, "Invalid Request object");
+    JSValue rf[2];
+    JSValue p = JS_NewPromiseCapability(ctx, rf);
+    if (JS_IsException(p)) return p;
+    JSValue ab = JS_NewArrayBufferCopy(ctx,
+        reinterpret_cast<const uint8_t*>(state->body.data()), state->body.size());
+    JSValue r = JS_Call(ctx, rf[0], JS_UNDEFINED, 1, &ab);
+    JS_FreeValue(ctx, r); JS_FreeValue(ctx, ab);
+    JS_FreeValue(ctx, rf[0]); JS_FreeValue(ctx, rf[1]);
+    return p;
+}
+
+static const JSCFunctionListEntry request_proto_funcs[] = {
+    JS_CGETSET_DEF("url", js_request_get_url, nullptr),
+    JS_CGETSET_DEF("method", js_request_get_method, nullptr),
+    JS_CGETSET_DEF("mode", js_request_get_mode, nullptr),
+    JS_CGETSET_DEF("credentials", js_request_get_credentials, nullptr),
+    JS_CGETSET_DEF("cache", js_request_get_cache, nullptr),
+    JS_CGETSET_DEF("redirect", js_request_get_redirect, nullptr),
+    JS_CGETSET_DEF("referrer", js_request_get_referrer, nullptr),
+    JS_CGETSET_DEF("referrerPolicy", js_request_get_referrer_policy, nullptr),
+    JS_CGETSET_DEF("integrity", js_request_get_integrity, nullptr),
+    JS_CGETSET_DEF("bodyUsed", js_request_get_body_used, nullptr),
+    JS_CGETSET_DEF("headers", js_request_get_headers, nullptr),
+    JS_CGETSET_DEF("_isRequest", js_request_get_is_request, nullptr),
+    JS_CGETSET_DEF("_body", js_request_get_body_internal, nullptr),
+    JS_CFUNC_DEF("clone", 0, js_request_clone),
+    JS_CFUNC_DEF("text", 0, js_request_text),
+    JS_CFUNC_DEF("json", 0, js_request_json),
+    JS_CFUNC_DEF("arrayBuffer", 0, js_request_array_buffer),
+};
+
+static JSValue js_request_constructor(JSContext* ctx, JSValueConst new_target,
+                                       int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_ThrowTypeError(ctx, "Request requires a URL argument");
+    JSValue proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+    if (JS_IsException(proto)) return JS_EXCEPTION;
+    JSValue obj = JS_NewObjectProtoClass(ctx, proto, request_class_id);
+    JS_FreeValue(ctx, proto);
+    if (JS_IsException(obj)) return obj;
+
+    auto* state = new RequestState();
+
+    if (JS_IsObject(argv[0])) {
+        JSValue marker = JS_GetPropertyStr(ctx, argv[0], "_isRequest");
+        bool is_req = (JS_ToBool(ctx, marker) > 0);
+        JS_FreeValue(ctx, marker);
+        if (is_req) {
+            auto* src = get_request_state(argv[0]);
+            if (src) *state = *src;
+        } else {
+            const char* u = JS_ToCString(ctx, argv[0]);
+            if (u) { state->url = u; JS_FreeCString(ctx, u); }
+        }
+    } else {
+        const char* u = JS_ToCString(ctx, argv[0]);
+        if (u) { state->url = u; JS_FreeCString(ctx, u); }
+    }
+
+    if (argc >= 2 && JS_IsObject(argv[1])) {
+        auto get_str = [&](const char* prop, std::string& out) {
+            JSValue v = JS_GetPropertyStr(ctx, argv[1], prop);
+            if (JS_IsString(v)) {
+                const char* s = JS_ToCString(ctx, v);
+                if (s) { out = s; JS_FreeCString(ctx, s); }
+            }
+            JS_FreeValue(ctx, v);
+        };
+        get_str("method", state->method);
+        get_str("mode", state->mode);
+        get_str("credentials", state->credentials);
+        get_str("cache", state->cache);
+        get_str("redirect", state->redirect);
+        get_str("referrer", state->referrer);
+        get_str("referrerPolicy", state->referrer_policy);
+        get_str("integrity", state->integrity);
+
+        JSValue body_val = JS_GetPropertyStr(ctx, argv[1], "body");
+        if (JS_IsString(body_val)) {
+            const char* b = JS_ToCString(ctx, body_val);
+            if (b) { state->body = b; JS_FreeCString(ctx, b); }
+        }
+        JS_FreeValue(ctx, body_val);
+
+        JSValue hdrs_val = JS_GetPropertyStr(ctx, argv[1], "headers");
+        if (JS_IsObject(hdrs_val)) parse_headers_to_map(ctx, hdrs_val, state->headers);
+        JS_FreeValue(ctx, hdrs_val);
+    }
+
+    JS_SetOpaque(obj, state);
+    return obj;
+}
+
+// =========================================================================
+// Headers constructor: new Headers(init?)
+// =========================================================================
+
+static JSValue js_headers_constructor(JSContext* ctx, JSValueConst new_target,
+                                       int argc, JSValueConst* argv) {
+    JSValue proto = JS_GetPropertyStr(ctx, new_target, "prototype");
+    if (JS_IsException(proto)) return JS_EXCEPTION;
+    JSValue obj = JS_NewObjectProtoClass(ctx, proto, headers_class_id);
+    JS_FreeValue(ctx, proto);
+    if (JS_IsException(obj)) return obj;
+    auto* state = new HeadersState();
+    if (argc >= 1 && JS_IsObject(argv[0])) {
+        parse_headers_to_map(ctx, argv[0], state->headers);
+    }
+    JS_SetOpaque(obj, state);
+    return obj;
+}
+
+// =========================================================================
 // Global fetch(url, options?) -> Promise<Response>
 // =========================================================================
 
 static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
                                 int argc, JSValueConst* argv) {
-    if (argc < 1) {
-        return JS_ThrowTypeError(ctx, "fetch requires a URL argument");
-    }
+    if (argc < 1) return JS_ThrowTypeError(ctx, "fetch requires a URL argument");
 
-    // Accept string or URL object (via .href property or toString)
-    const char* url_cstr = JS_ToCString(ctx, argv[0]);
-    if (!url_cstr) return JS_EXCEPTION;
-    std::string url_str(url_cstr);
-    JS_FreeCString(ctx, url_cstr);
-
-    // Parse options if provided
+    std::string url_str;
     std::string method = "GET";
     std::map<std::string, std::string> req_headers;
     std::string body;
     FetchCredentialsMode credentials_mode = FetchCredentialsMode::SameOrigin;
+    std::string fetch_mode = "cors";
+
+    // Check if argv[0] is a Request object
+    bool first_is_request = false;
+    if (JS_IsObject(argv[0])) {
+        JSValue marker = JS_GetPropertyStr(ctx, argv[0], "_isRequest");
+        first_is_request = (JS_ToBool(ctx, marker) > 0);
+        JS_FreeValue(ctx, marker);
+    }
+
+    if (first_is_request) {
+        auto get_str = [&](const char* prop) -> std::string {
+            JSValue v = JS_GetPropertyStr(ctx, argv[0], prop);
+            std::string r;
+            const char* s = JS_ToCString(ctx, v);
+            if (s) { r = s; JS_FreeCString(ctx, s); }
+            JS_FreeValue(ctx, v);
+            return r;
+        };
+        url_str = get_str("url");
+        method = get_str("method");
+        fetch_mode = get_str("mode");
+        std::string cred = get_str("credentials");
+        if (cred == "omit") credentials_mode = FetchCredentialsMode::Omit;
+        else if (cred == "include") credentials_mode = FetchCredentialsMode::Include;
+        else credentials_mode = FetchCredentialsMode::SameOrigin;
+
+        JSValue hdrs_val = JS_GetPropertyStr(ctx, argv[0], "headers");
+        if (JS_IsObject(hdrs_val)) parse_headers_to_map(ctx, hdrs_val, req_headers);
+        JS_FreeValue(ctx, hdrs_val);
+
+        JSValue body_val = JS_GetPropertyStr(ctx, argv[0], "_body");
+        if (JS_IsString(body_val)) {
+            const char* b = JS_ToCString(ctx, body_val);
+            if (b) { body = b; JS_FreeCString(ctx, b); }
+        }
+        JS_FreeValue(ctx, body_val);
+    } else {
+        const char* url_cstr = JS_ToCString(ctx, argv[0]);
+        if (!url_cstr) return JS_EXCEPTION;
+        url_str = url_cstr;
+        JS_FreeCString(ctx, url_cstr);
+    }
+
+    if (url_str.empty()) return JS_ThrowTypeError(ctx, "fetch: URL must not be empty");
 
     if (argc >= 2 && JS_IsObject(argv[1])) {
         // method
         JSValue method_val = JS_GetPropertyStr(ctx, argv[1], "method");
         if (JS_IsString(method_val)) {
             const char* m = JS_ToCString(ctx, method_val);
-            if (m) {
-                method = m;
-                JS_FreeCString(ctx, m);
-            }
+            if (m) { method = m; JS_FreeCString(ctx, m); }
         }
         JS_FreeValue(ctx, method_val);
 
-        // headers - support object with string values
+        // headers
         JSValue headers_val = JS_GetPropertyStr(ctx, argv[1], "headers");
         if (JS_IsObject(headers_val)) {
-            JSPropertyEnum* tab = nullptr;
-            uint32_t len = 0;
-            if (JS_GetOwnPropertyNames(ctx, &tab, &len, headers_val,
-                                         JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) == 0) {
-                for (uint32_t i = 0; i < len; i++) {
-                    JSValue key = JS_AtomToString(ctx, tab[i].atom);
-                    JSValue val = JS_GetProperty(ctx, headers_val, tab[i].atom);
-
-                    const char* key_str = JS_ToCString(ctx, key);
-                    const char* val_str = JS_ToCString(ctx, val);
-
-                    if (key_str && val_str) {
-                        req_headers[key_str] = val_str;
-                    }
-
-                    if (key_str) JS_FreeCString(ctx, key_str);
-                    if (val_str) JS_FreeCString(ctx, val_str);
-                    JS_FreeValue(ctx, key);
-                    JS_FreeValue(ctx, val);
-                }
-                JS_FreePropertyEnum(ctx, tab, len);
-            }
+            parse_headers_to_map(ctx, headers_val, req_headers);
         }
         JS_FreeValue(ctx, headers_val);
 
-        // body — support string, FormData, URLSearchParams
+        // body -- support string, FormData, URLSearchParams
         JSValue body_val = JS_GetPropertyStr(ctx, argv[1], "body");
         if (JS_IsString(body_val)) {
             const char* b = JS_ToCString(ctx, body_val);
-            if (b) {
-                body = b;
-                JS_FreeCString(ctx, b);
-            }
+            if (b) { body = b; JS_FreeCString(ctx, b); }
         } else if (JS_IsObject(body_val)) {
-            // Check if it's a FormData instance (has opaque data with formdata_class_id)
             auto* fd_state = static_cast<FormDataState*>(
                 JS_GetOpaque(body_val, formdata_class_id));
             if (fd_state) {
-                // Serialize as multipart/form-data
                 std::string boundary;
                 body = formdata_to_multipart(fd_state->entries, boundary);
-                // Set Content-Type header if not already set (overwrite)
                 if (req_headers.find("content-type") == req_headers.end() &&
                     req_headers.find("Content-Type") == req_headers.end()) {
-                    req_headers["Content-Type"] =
-                        "multipart/form-data; boundary=" + boundary;
+                    req_headers["Content-Type"] = "multipart/form-data; boundary=" + boundary;
                 }
             } else {
-                // Check if it's a URLSearchParams-like object (has _params array and toString)
                 JSValue to_str_fn = JS_GetPropertyStr(ctx, body_val, "toString");
                 JSValue params_val = JS_GetPropertyStr(ctx, body_val, "_params");
                 bool is_usp = JS_IsArray(ctx, params_val);
                 JS_FreeValue(ctx, params_val);
-
                 if (is_usp && JS_IsFunction(ctx, to_str_fn)) {
-                    // Serialize URLSearchParams via toString()
                     JSValue serialized = JS_Call(ctx, to_str_fn, body_val, 0, nullptr);
                     if (JS_IsString(serialized)) {
                         const char* s = JS_ToCString(ctx, serialized);
-                        if (s) {
-                            body = s;
-                            JS_FreeCString(ctx, s);
-                        }
+                        if (s) { body = s; JS_FreeCString(ctx, s); }
                     }
                     JS_FreeValue(ctx, serialized);
-                    // Set Content-Type header if not already set
                     if (req_headers.find("content-type") == req_headers.end() &&
                         req_headers.find("Content-Type") == req_headers.end()) {
-                        req_headers["Content-Type"] =
-                            "application/x-www-form-urlencoded";
+                        req_headers["Content-Type"] = "application/x-www-form-urlencoded";
                     }
-                } else {
-                    // Fallback: try JSON.stringify or toString
-                    if (JS_IsFunction(ctx, to_str_fn)) {
-                        JSValue str_val = JS_Call(ctx, to_str_fn, body_val, 0, nullptr);
-                        if (JS_IsString(str_val)) {
-                            const char* s = JS_ToCString(ctx, str_val);
-                            if (s) {
-                                body = s;
-                                JS_FreeCString(ctx, s);
-                            }
-                        }
-                        JS_FreeValue(ctx, str_val);
+                } else if (JS_IsFunction(ctx, to_str_fn)) {
+                    JSValue str_val = JS_Call(ctx, to_str_fn, body_val, 0, nullptr);
+                    if (JS_IsString(str_val)) {
+                        const char* s = JS_ToCString(ctx, str_val);
+                        if (s) { body = s; JS_FreeCString(ctx, s); }
                     }
+                    JS_FreeValue(ctx, str_val);
                 }
                 JS_FreeValue(ctx, to_str_fn);
             }
@@ -1676,30 +2100,32 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
             const char* credentials_cstr = JS_ToCString(ctx, credentials_val);
             if (credentials_cstr) {
                 std::string credentials = credentials_cstr;
-                if (credentials == "omit") {
-                    credentials_mode = FetchCredentialsMode::Omit;
-                } else if (credentials == "include") {
-                    credentials_mode = FetchCredentialsMode::Include;
-                } else {
-                    credentials_mode = FetchCredentialsMode::SameOrigin;
-                }
+                if (credentials == "omit") credentials_mode = FetchCredentialsMode::Omit;
+                else if (credentials == "include") credentials_mode = FetchCredentialsMode::Include;
+                else credentials_mode = FetchCredentialsMode::SameOrigin;
                 JS_FreeCString(ctx, credentials_cstr);
             }
         }
         JS_FreeValue(ctx, credentials_val);
 
-        // signal (AbortSignal) — check if already aborted before making request
+        // mode
+        JSValue mode_val = JS_GetPropertyStr(ctx, argv[1], "mode");
+        if (JS_IsString(mode_val)) {
+            const char* mode_cstr = JS_ToCString(ctx, mode_val);
+            if (mode_cstr) { fetch_mode = mode_cstr; JS_FreeCString(ctx, mode_cstr); }
+        }
+        JS_FreeValue(ctx, mode_val);
+
+        // signal (AbortSignal) -- check if already aborted before making request
         JSValue signal_val = JS_GetPropertyStr(ctx, argv[1], "signal");
         if (JS_IsObject(signal_val)) {
             JSValue aborted_val = JS_GetPropertyStr(ctx, signal_val, "aborted");
             bool already_aborted = JS_ToBool(ctx, aborted_val) > 0;
             JS_FreeValue(ctx, aborted_val);
             if (already_aborted) {
-                // Fetch aborted before it started — reject with AbortError
                 JSValue resolving_funcs[2];
                 JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
                 if (!JS_IsException(promise)) {
-                    // Build a DOMException-like AbortError from the signal.reason
                     JSValue reason_val = JS_GetPropertyStr(ctx, signal_val, "reason");
                     JSValue err_to_reject = JS_IsUndefined(reason_val)
                         ? JS_NewError(ctx)
@@ -1755,7 +2181,6 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
 
     cors::normalize_outgoing_origin_header(req.headers, document_origin, url_str);
 
-    // Attach cookies from shared cookie jar
     if (should_send_cookies) {
         auto& jar = clever::net::CookieJar::shared();
         std::string cookies = jar.get_cookie_header(req.host, req.path, req.use_tls);
@@ -1770,7 +2195,6 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
     if (enforce_cors_request_policy && !request_url_eligible) {
         cors_blocked = true;
     } else {
-        // Perform synchronous HTTP request
         clever::net::HttpClient client;
         client.set_timeout(std::chrono::seconds(30));
         resp = client.fetch(req);
@@ -1785,7 +2209,6 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
         }
     }
 
-    // Store Set-Cookie from response
     if (resp.has_value() && should_send_cookies) {
         auto set_cookie = resp->headers.get("set-cookie");
         if (set_cookie.has_value()) {
@@ -1794,16 +2217,31 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
         }
     }
 
-    // Create the Promise
+    // Determine response type based on mode and cross-origin status
+    std::string response_type;
+    bool cors_filter_headers = false;
+    if (fetch_mode == "no-cors") {
+        response_type = cross_origin ? "opaque" : "basic";
+    } else if (fetch_mode == "same-origin") {
+        response_type = "basic";
+    } else {
+        // cors mode (default)
+        if (cross_origin) {
+            response_type = "cors";
+            cors_filter_headers = true;
+        } else {
+            response_type = "basic";
+        }
+    }
+
     JSValue resolving_funcs[2];
     JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
     if (JS_IsException(promise)) return promise;
 
     if (resp.has_value()) {
-        // Create Response object and resolve
-        JSValue response_obj = create_response_object(ctx, *resp, url_str);
+        JSValue response_obj = create_response_object(ctx, *resp, url_str,
+                                                       response_type, cors_filter_headers);
         if (JS_IsException(response_obj)) {
-            // Reject with the exception
             JSValue err = JS_GetException(ctx);
             JSValue ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, &err);
             JS_FreeValue(ctx, ret);
@@ -1814,7 +2252,6 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
         }
         JS_FreeValue(ctx, response_obj);
     } else {
-        // Network error: reject the promise with a TypeError
         JSValue err = JS_NewError(ctx);
         if (cors_blocked) {
             JS_SetPropertyStr(ctx, err, "message",
@@ -3375,7 +3812,30 @@ void install_fetch_bindings(JSContext* ctx) {
     JSValue headers_proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, headers_proto, headers_proto_funcs,
                                 sizeof(headers_proto_funcs) / sizeof(headers_proto_funcs[0]));
+
+    JSValue headers_ctor = JS_NewCFunction2(ctx, js_headers_constructor,
+                                             "Headers", 0,
+                                             JS_CFUNC_constructor, 0);
+    JS_SetConstructor(ctx, headers_ctor, headers_proto);
     JS_SetClassProto(ctx, headers_class_id, headers_proto);
+
+    // ---- Register Request class ----
+    if (request_class_id == 0) {
+        JS_NewClassID(&request_class_id);
+    }
+    if (!JS_IsRegisteredClass(rt, request_class_id)) {
+        JS_NewClass(rt, request_class_id, &request_class_def);
+    }
+
+    JSValue request_proto = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, request_proto, request_proto_funcs,
+                                sizeof(request_proto_funcs) / sizeof(request_proto_funcs[0]));
+
+    JSValue request_ctor = JS_NewCFunction2(ctx, js_request_constructor,
+                                             "Request", 1,
+                                             JS_CFUNC_constructor, 0);
+    JS_SetConstructor(ctx, request_ctor, request_proto);
+    JS_SetClassProto(ctx, request_class_id, request_proto);
 
     // ---- Register Response class ----
     if (response_class_id == 0) {
@@ -3449,6 +3909,8 @@ void install_fetch_bindings(JSContext* ctx) {
     JS_SetPropertyStr(ctx, global, "WebSocket", ws_ctor);
     JS_SetPropertyStr(ctx, global, "FormData", formdata_ctor);
     JS_SetPropertyStr(ctx, global, "Response", response_ctor);
+    JS_SetPropertyStr(ctx, global, "Request", request_ctor);
+    JS_SetPropertyStr(ctx, global, "Headers", headers_ctor);
     JS_FreeValue(ctx, global);
 
     // ------------------------------------------------------------------

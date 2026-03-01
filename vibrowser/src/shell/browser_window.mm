@@ -1625,6 +1625,79 @@ static std::string build_shell_message_html(const std::string& page_title,
         }
         [tab.renderView updateStickyElements:std::move(stickyElements)];
 
+        // Collect position:fixed elements from the layout tree.
+        // Fixed elements are positioned relative to the viewport (not the document),
+        // so their geometry.x/y in the rendered buffer are already at the correct
+        // viewport-relative pixel positions. We extract their pixel regions so
+        // RenderView can composite them at those fixed positions during scroll,
+        // rather than letting them scroll with the main page image.
+        std::vector<FixedElementInfo> fixedElements;
+        if (result.root && result.renderer) {
+            const auto& pixels = result.renderer->pixels();
+            int rw = result.renderer->width();
+            int rh_px = result.renderer->height();
+
+            // The painter paints fixed elements with offset (0,0), so their
+            // geometry.x/y is already viewport-relative (set by layout_engine
+            // with viewport as the containing block). We don't need to accumulate
+            // parent offsets for fixed elements.
+            std::function<void(const clever::layout::LayoutNode&, float, float)> collectFixed;
+            collectFixed = [&](const clever::layout::LayoutNode& n, float parent_abs_x, float parent_abs_y) {
+                const auto& g = n.geometry;
+
+                if (n.position_type == 3) {
+                    // position:fixed — geometry.x/y is viewport-relative because:
+                    // 1. Layout engine uses viewport as containing block (ox=0, oy=0)
+                    // 2. Painter paints fixed children with offset (0,0)
+                    // So the pixel in the buffer is at exactly g.x, g.y.
+                    float border_box_w = g.border_box_width();
+                    float border_box_h = g.border_box_height();
+                    float vp_x = g.x;
+                    float vp_y = g.y;
+
+                    FixedElementInfo info;
+                    info.viewport_x = vp_x;
+                    info.viewport_y = vp_y;
+
+                    int px_x = std::max(0, static_cast<int>(vp_x));
+                    int px_y = std::max(0, static_cast<int>(vp_y));
+                    int px_w = std::min(static_cast<int>(border_box_w), rw - px_x);
+                    int px_h = std::min(static_cast<int>(border_box_h), rh_px - px_y);
+
+                    if (px_w > 0 && px_h > 0) {
+                        info.pixel_width = px_w;
+                        info.pixel_height = px_h;
+                        info.pixels.resize(static_cast<size_t>(px_w) * px_h * 4);
+                        for (int row = 0; row < px_h; row++) {
+                            int src_offset = ((px_y + row) * rw + px_x) * 4;
+                            int dst_offset = row * px_w * 4;
+                            if (src_offset + px_w * 4 <= static_cast<int>(pixels.size())) {
+                                std::memcpy(info.pixels.data() + dst_offset,
+                                            pixels.data() + src_offset,
+                                            static_cast<size_t>(px_w) * 4);
+                            }
+                        }
+                        fixedElements.push_back(std::move(info));
+                    }
+                    // Don't recurse into fixed elements' children — they are
+                    // included in the parent's pixel region already.
+                    return;
+                }
+
+                // Recurse into children (non-fixed subtrees) accumulating offsets
+                float abs_x = parent_abs_x + g.x;
+                float abs_y = parent_abs_y + g.y;
+                float child_x = abs_x + g.border.left + g.padding.left;
+                float child_y = abs_y + g.border.top + g.padding.top;
+                for (auto& c : n.children) {
+                    collectFixed(*c, child_x, child_y);
+                }
+            };
+
+            collectFixed(*result.root, 0, 0);
+        }
+        [tab.renderView updateFixedElements:std::move(fixedElements)];
+
         // Store layout root for CSS transition property access
         [tab layoutRoot] = std::move(result.root);
 

@@ -2728,22 +2728,41 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
     std::vector<FlexLine> lines;
 
     if (node.flex_wrap != 0 && !items.empty() && has_definite_main_size) {
-        // Wrap mode: start new line when items exceed main_size
+        // Wrap mode: start new line when items exceed main_size.
+        // Use each item's outer hypothetical main size (basis + padding + border + margins)
+        // per CSS Flexbox spec §9.3 when deciding where to break lines.
         FlexLine current_line;
         current_line.start = 0;
-        float line_basis = 0;
+        float line_basis = 0; // sum of outer sizes + gaps placed so far on this line
         for (size_t i = 0; i < items.size(); i++) {
-            float item_size = items[i].basis;
-            if (i > current_line.start && line_basis + item_size > main_size) {
+            auto* ch = items[i].child;
+            // Outer hypothetical main size = basis + padding + border + non-auto margins
+            float outer_size = items[i].basis;
+            if (is_row) {
+                outer_size += ch->geometry.padding.left + ch->geometry.padding.right
+                            + ch->geometry.border.left + ch->geometry.border.right;
+                if (!is_margin_auto(ch->geometry.margin.left))  outer_size += ch->geometry.margin.left;
+                if (!is_margin_auto(ch->geometry.margin.right)) outer_size += ch->geometry.margin.right;
+            } else {
+                outer_size += ch->geometry.padding.top + ch->geometry.padding.bottom
+                            + ch->geometry.border.top + ch->geometry.border.bottom;
+                if (!is_margin_auto(ch->geometry.margin.top))    outer_size += ch->geometry.margin.top;
+                if (!is_margin_auto(ch->geometry.margin.bottom)) outer_size += ch->geometry.margin.bottom;
+            }
+            // When adding this item to an existing line also account for
+            // the gap between the previous item and this one.
+            float gap_before = (i > current_line.start) ? main_gap : 0.0f;
+            if (i > current_line.start && line_basis + gap_before + outer_size > main_size) {
+                // Item doesn't fit; close the current line and start a new one.
                 current_line.end = i;
                 current_line.total_basis = line_basis;
                 lines.push_back(current_line);
                 current_line = {};
                 current_line.start = i;
                 line_basis = 0;
+                gap_before = 0.0f;
             }
-            line_basis += item_size;
-            if (i > current_line.start) line_basis += main_gap;
+            line_basis += gap_before + outer_size;
         }
         current_line.end = items.size();
         current_line.total_basis = line_basis;
@@ -3142,14 +3161,32 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
         node.geometry.height = node.specified_height;
     } else {
         if (is_row) {
+            // For row flex, the container height = sum of line cross sizes + cross gaps.
+            // cross_cursor has already accumulated this value.
             node.geometry.height = cross_cursor;
         } else {
-            float total_main = 0;
-            for (auto& item : items) {
-                total_main += item.basis;
+            // For column flex, the container height = the tallest single column
+            // (the max per-line main-axis extent). With a single line this equals
+            // the sum of all item bases + gaps; with multiple lines we take the max.
+            if (lines.size() == 1) {
+                float col_h = 0;
+                for (size_t i = lines[0].start; i < lines[0].end; i++) {
+                    col_h += items[i].basis;
+                }
+                size_t n = lines[0].end - lines[0].start;
+                if (n > 1) col_h += main_gap * static_cast<float>(n - 1);
+                node.geometry.height = col_h;
+            } else {
+                float max_col_h = 0;
+                for (auto& ln : lines) {
+                    float col_h = 0;
+                    for (size_t i = ln.start; i < ln.end; i++) col_h += items[i].basis;
+                    size_t n = ln.end - ln.start;
+                    if (n > 1) col_h += main_gap * static_cast<float>(n - 1);
+                    if (col_h > max_col_h) max_col_h = col_h;
+                }
+                node.geometry.height = max_col_h;
             }
-            total_main += total_gap;
-            node.geometry.height = total_main;
         }
     }
 
@@ -3170,37 +3207,66 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
     node.geometry.height = std::max(node.geometry.height, node.min_height);
     node.geometry.height = std::min(node.geometry.height, node.max_height);
 
-    // align-content: distribute extra cross-axis space between flex lines (multi-line)
-    if (lines.size() > 1 && node.align_content != 0 && is_row && node.specified_height >= 0) {
+    // align-content: distribute extra cross-axis space between flex lines (multi-line).
+    // Works for both row flex (cross axis = vertical) and column flex (cross axis = horizontal).
+    if (lines.size() > 1 && node.align_content != 0) {
+        // Determine available cross size for the container.
+        float container_cross = 0;
+        if (is_row) {
+            // Use the final computed height (after min/max clamping) as the cross size.
+            container_cross = node.geometry.height;
+        } else {
+            container_cross = containing_width;
+        }
         float total_line_cross = 0;
-        for (auto& line : lines) total_line_cross += line.max_cross;
+        for (auto& ln : lines) total_line_cross += ln.max_cross;
         float total_cross_gap = cross_gap * static_cast<float>(lines.size() - 1);
-        float extra = node.specified_height - total_line_cross - total_cross_gap;
+        float extra = container_cross - total_line_cross - total_cross_gap;
         if (extra > 0) {
             float offset = 0;
-            float gap = 0;
+            float add_gap = 0;
             size_t n_lines = lines.size();
             switch (node.align_content) {
-                case 1: offset = extra; break; // end
+                case 1: offset = extra; break; // flex-end
                 case 2: offset = extra / 2.0f; break; // center
-                case 3: // stretch — divide extra evenly among lines
+                case 3: { // stretch — expand each line's cross size equally and reposition
+                    float per_line = extra / static_cast<float>(n_lines);
+                    float shift = 0;
+                    for (size_t li = 0; li < lines.size(); li++) {
+                        lines[li].max_cross += per_line;
+                        if (shift != 0) {
+                            for (size_t i = lines[li].start; i < lines[li].end; i++) {
+                                if (is_row) items[i].child->geometry.y += shift;
+                                else        items[i].child->geometry.x += shift;
+                            }
+                        }
+                        shift += per_line;
+                    }
                     break;
+                }
                 case 4: // space-between
-                    if (n_lines > 1) gap = extra / static_cast<float>(n_lines - 1);
+                    if (n_lines > 1) add_gap = extra / static_cast<float>(n_lines - 1);
                     break;
                 case 5: // space-around
-                    gap = extra / static_cast<float>(n_lines);
-                    offset = gap / 2.0f;
+                    add_gap = extra / static_cast<float>(n_lines);
+                    offset = add_gap / 2.0f;
+                    break;
+                case 6: // space-evenly
+                    add_gap = extra / static_cast<float>(n_lines + 1);
+                    offset = add_gap;
                     break;
                 default: break;
             }
-            // Shift all items in each line by accumulated offset
-            float cumulative = offset;
-            for (size_t li = 0; li < lines.size(); li++) {
-                if (li > 0) cumulative += gap;
-                if (cumulative != 0) {
-                    for (size_t i = lines[li].start; i < lines[li].end; i++) {
-                        items[i].child->geometry.y += cumulative;
+            // Shift all items in each line by accumulated offset (stretch handled above)
+            if (node.align_content != 3) {
+                float cumulative = offset;
+                for (size_t li = 0; li < lines.size(); li++) {
+                    if (li > 0) cumulative += add_gap;
+                    if (cumulative != 0) {
+                        for (size_t i = lines[li].start; i < lines[li].end; i++) {
+                            if (is_row) items[i].child->geometry.y += cumulative;
+                            else        items[i].child->geometry.x += cumulative;
+                        }
                     }
                 }
             }
@@ -3527,18 +3593,31 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     };
 
     // -----------------------------------------------------------------------
-    // Helper: tokenize a track template, keeping minmax() as single tokens
+    // Helper: tokenize a track template, keeping minmax() as single tokens.
+    // Optional named_lines map captures [name] bracket annotations.
+    // Named lines before track N are stored with index N (0-based).
     // -----------------------------------------------------------------------
-    auto tokenize_tracks = [](const std::string& s) -> std::vector<std::string> {
+    auto tokenize_tracks = [](const std::string& s,
+        std::unordered_map<std::string, std::vector<int>>* named_lines = nullptr
+    ) -> std::vector<std::string> {
         std::vector<std::string> tokens;
         size_t ti = 0;
         while (ti < s.size()) {
             while (ti < s.size() && s[ti] == ' ') ti++;
             if (ti >= s.size()) break;
-            // Skip named grid lines in brackets: [name] [name2]
+            // Named grid lines in brackets: [name1 name2]
             if (s[ti] == '[') {
                 size_t end_bracket = s.find(']', ti);
                 if (end_bracket != std::string::npos) {
+                    if (named_lines) {
+                        int line_idx = static_cast<int>(tokens.size());
+                        std::string names_str = s.substr(ti + 1, end_bracket - ti - 1);
+                        std::istringstream nss(names_str);
+                        std::string nm;
+                        while (nss >> nm) {
+                            (*named_lines)[nm].push_back(line_idx);
+                        }
+                    }
                     ti = end_bracket + 1;
                 } else {
                     ti++;
@@ -3578,6 +3657,10 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     // -----------------------------------------------------------------------
     // TrackSpec: describes a single grid track (column or row)
     // -----------------------------------------------------------------------
+    // Named line maps — populated when parsing grid-template-columns/rows
+    std::unordered_map<std::string, std::vector<int>> col_named_lines;
+    std::unordered_map<std::string, std::vector<int>> row_named_lines;
+
     struct TrackSpec { float value; bool is_fr; float min_value; };
 
     // -----------------------------------------------------------------------
@@ -3681,7 +3764,7 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     std::string cols = node.grid_template_columns;
     if (!cols.empty()) {
         std::string expanded = expand_repeat(cols, content_w);
-        auto tokens = tokenize_tracks(expanded);
+        auto tokens = tokenize_tracks(expanded, &col_named_lines);
         auto specs = parse_track_specs(tokens, content_w);
         col_widths = resolve_tracks(specs, content_w, col_gap);
     }
@@ -3721,7 +3804,7 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     std::string rows_tmpl = node.grid_template_rows;
     if (!rows_tmpl.empty()) {
         std::string expanded = expand_repeat(rows_tmpl, 0);
-        auto tokens = tokenize_tracks(expanded);
+        auto tokens = tokenize_tracks(expanded, &row_named_lines);
         row_specs = parse_track_specs(tokens, 0);
     }
 
@@ -3740,12 +3823,50 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     }
 
     // -----------------------------------------------------------------------
+    // Helper: resolve a single line token to 1-based line number.
+    // Supports integers, negative integers, and named lines.
+    // Returns -1 for "auto" or unresolvable tokens.
+    // -----------------------------------------------------------------------
+    auto resolve_line_token = [](
+        const std::string& tok,
+        int max_tracks,
+        const std::unordered_map<std::string, std::vector<int>>& named_lines
+    ) -> int {
+        if (tok.empty() || tok == "auto") return -1;
+        bool looks_numeric = !tok.empty();
+        size_t si = (tok[0] == '-' || tok[0] == '+') ? 1u : 0u;
+        for (size_t i = si; i < tok.size(); i++) {
+            if (!std::isdigit(static_cast<unsigned char>(tok[i]))) { looks_numeric = false; break; }
+        }
+        if (looks_numeric && tok.size() > si) {
+            try {
+                int line = std::stoi(tok);
+                if (line < 0) {
+                    line = max_tracks + 1 + line + 1;
+                    if (line < 1) line = 1;
+                }
+                return line; // 1-based
+            } catch (...) {}
+        }
+        auto it = named_lines.find(tok);
+        if (it != named_lines.end() && !it->second.empty()) {
+            return it->second[0] + 1; // stored as 0-based track index
+        }
+        return -1;
+    };
+
+    // -----------------------------------------------------------------------
     // Helper: parse a grid-column or grid-row value into (start_line, span)
     // Returns {-1, 1} if auto-placement should be used.
-    // Supports: "N", "N / M", "N / span M", "span M / N", "span M"
+    // Supports: "N", "N / M", "N / span M", "span M / N", "span M",
+    //           named lines: "header-start", "header-start / header-end"
     // Grid lines are 1-based; returned start is 0-based index.
     // -----------------------------------------------------------------------
-    auto parse_line_spec = [](const std::string& spec, int max_tracks) -> std::pair<int, int> {
+    auto parse_line_spec = [&resolve_line_token](
+        const std::string& spec,
+        int max_tracks,
+        const std::unordered_map<std::string, std::vector<int>>& named_lines
+    ) -> std::pair<int, int> {
         if (spec.empty()) return {-1, 1};
 
         auto slash = spec.find('/');
@@ -3760,45 +3881,40 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             // Handle "span N" in end position: e.g. "1 / span 2"
             if (end_str.size() > 5 && end_str.substr(0, 5) == "span ") {
                 int span_val = 1;
-                try { span_val = std::stoi(end_str.substr(5)); } catch (...) {}
+                try { span_val = std::stoi(end_str.substr(5)); } catch (...) { span_val = 1; }
                 if (span_val < 1) span_val = 1;
                 if (start_str == "auto") return {-1, span_val};
-                try {
-                    int start = std::stoi(start_str);
-                    if (start >= 1) return {start - 1, span_val};
-                } catch (...) {}
+                int start_line = resolve_line_token(start_str, max_tracks, named_lines);
+                if (start_line >= 1) return {start_line - 1, span_val};
                 return {-1, span_val};
             }
 
             // Handle "span N" in start position: e.g. "span 2 / 4"
             if (start_str.size() > 5 && start_str.substr(0, 5) == "span ") {
                 int span_val = 1;
-                try { span_val = std::stoi(start_str.substr(5)); } catch (...) {}
+                try { span_val = std::stoi(start_str.substr(5)); } catch (...) { span_val = 1; }
                 if (span_val < 1) span_val = 1;
-                try {
-                    int end_line = std::stoi(end_str);
-                    if (end_line >= 1) {
-                        int s = end_line - 1 - span_val;
-                        if (s < 0) s = 0;
-                        return {s, span_val};
-                    }
-                } catch (...) {}
+                int end_line = resolve_line_token(end_str, max_tracks, named_lines);
+                if (end_line >= 1) {
+                    int s = end_line - 1 - span_val;
+                    if (s < 0) s = 0;
+                    return {s, span_val};
+                }
                 return {-1, span_val};
             }
 
-            // Normal "start / end" (both line numbers, 1-based)
+            // Normal "start / end" — both may be numeric, named, or "auto"
             if (start_str == "auto" && end_str == "auto") return {-1, 1};
-            try {
-                int start = (start_str == "auto") ? -1 : std::stoi(start_str);
-                int end_line = (end_str == "auto") ? -1 : std::stoi(end_str);
-                // Handle negative line numbers (count from end)
-                if (start < 0 && start != -1) start = max_tracks + 1 + start + 1;
-                if (end_line < 0 && end_line != -1) end_line = max_tracks + 1 + end_line + 1;
-                if (start >= 1 && end_line > start) {
-                    return {start - 1, end_line - start};
-                }
-                if (start >= 1 && end_line == -1) return {start - 1, 1};
-            } catch (...) {}
+            int start_line = resolve_line_token(start_str, max_tracks, named_lines);
+            int end_line   = resolve_line_token(end_str,   max_tracks, named_lines);
+            if (start_line >= 1 && end_line > start_line) {
+                return {start_line - 1, end_line - start_line};
+            }
+            if (start_line >= 1 && end_line == -1) return {start_line - 1, 1};
+            if (start_line == -1 && end_line >= 2) {
+                // auto start, explicit end: CSS places item ending at end_line with span=1
+                return {end_line - 2, 1};
+            }
             return {-1, 1};
         }
 
@@ -3810,56 +3926,122 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         }
 
         if (spec != "auto") {
-            try {
-                int line = std::stoi(spec);
-                if (line >= 1) return {line - 1, 1};
-            } catch (...) {}
+            int line = resolve_line_token(spec, max_tracks, named_lines);
+            if (line >= 1) return {line - 1, 1};
         }
         return {-1, 1};
     };
 
     // -----------------------------------------------------------------------
     // Step 4: Parse grid-template-areas
+    // CSS spec: value is a sequence of quoted row strings, e.g.:
+    //   "header header header" "sidebar main main" "footer footer footer"
+    // Also handles single-quoted strings and unquoted slash-separated rows
+    // (produced by the grid-template shorthand parser).
+    // After building area_map:
+    //   - Named area boundary lines are injected as named lines so that
+    //     grid-column: header-start / header-end resolves correctly.
+    //   - If the areas grid defines more columns/rows than the explicit
+    //     template, implicit tracks are added to fill the gaps.
     // -----------------------------------------------------------------------
     struct AreaRect { int row_start; int col_start; int row_end; int col_end; };
     std::unordered_map<std::string, AreaRect> area_map;
     if (!node.grid_template_areas.empty()) {
         std::vector<std::vector<std::string>> area_grid;
         std::string areas = node.grid_template_areas;
-        size_t qpos = 0;
-        while (qpos < areas.size()) {
-            size_t q1 = areas.find('"', qpos);
-            if (q1 == std::string::npos) q1 = areas.find('\'', qpos);
-            if (q1 == std::string::npos) break;
-            char q_char = areas[q1];
-            size_t q2 = areas.find(q_char, q1 + 1);
-            if (q2 == std::string::npos) break;
-            std::string row_str = areas.substr(q1 + 1, q2 - q1 - 1);
-            std::vector<std::string> row_cells;
-            std::istringstream rss(row_str);
-            std::string cell;
-            while (rss >> cell) {
-                row_cells.push_back(cell);
+        bool found_quote = (areas.find('"') != std::string::npos ||
+                            areas.find('\'') != std::string::npos);
+        if (found_quote) {
+            // Quoted-string format (normal CSS syntax)
+            size_t qpos = 0;
+            while (qpos < areas.size()) {
+                size_t q1 = areas.find('"', qpos);
+                size_t q1s = areas.find('\'', qpos);
+                if (q1 == std::string::npos) q1 = q1s;
+                else if (q1s != std::string::npos && q1s < q1) q1 = q1s;
+                if (q1 == std::string::npos) break;
+                char q_char = areas[q1];
+                size_t q2 = areas.find(q_char, q1 + 1);
+                if (q2 == std::string::npos) break;
+                std::string row_str = areas.substr(q1 + 1, q2 - q1 - 1);
+                std::vector<std::string> row_cells;
+                std::istringstream rss(row_str);
+                std::string cell;
+                while (rss >> cell) { row_cells.push_back(cell); }
+                if (!row_cells.empty()) area_grid.push_back(std::move(row_cells));
+                qpos = q2 + 1;
             }
-            area_grid.push_back(std::move(row_cells));
-            qpos = q2 + 1;
+        } else {
+            // Unquoted fallback: rows separated by '/'
+            std::istringstream iss(areas);
+            std::string row_part;
+            while (std::getline(iss, row_part, '/')) {
+                while (!row_part.empty() && row_part.front() == ' ') row_part.erase(row_part.begin());
+                while (!row_part.empty() && row_part.back() == ' ')  row_part.pop_back();
+                if (row_part.empty()) continue;
+                std::vector<std::string> row_cells;
+                std::istringstream rss(row_part);
+                std::string cell;
+                while (rss >> cell) { row_cells.push_back(cell); }
+                if (!row_cells.empty()) area_grid.push_back(std::move(row_cells));
+            }
         }
 
         // Build area_map: for each named area, find its bounding rectangle
         for (int r = 0; r < static_cast<int>(area_grid.size()); r++) {
             for (int c = 0; c < static_cast<int>(area_grid[r].size()); c++) {
                 const auto& name = area_grid[r][c];
-                if (name == ".") continue; // '.' means empty cell
+                if (name == ".") continue; // '.' = intentionally empty cell
                 auto it = area_map.find(name);
                 if (it == area_map.end()) {
                     area_map[name] = {r, c, r + 1, c + 1};
                 } else {
                     it->second.row_start = std::min(it->second.row_start, r);
                     it->second.col_start = std::min(it->second.col_start, c);
-                    it->second.row_end = std::max(it->second.row_end, r + 1);
-                    it->second.col_end = std::max(it->second.col_end, c + 1);
+                    it->second.row_end   = std::max(it->second.row_end,   r + 1);
+                    it->second.col_end   = std::max(it->second.col_end,   c + 1);
                 }
             }
+        }
+
+        // Compute dimensions from the area grid
+        int area_num_cols = 0;
+        int area_num_rows = static_cast<int>(area_grid.size());
+        for (const auto& row : area_grid) {
+            area_num_cols = std::max(area_num_cols, static_cast<int>(row.size()));
+        }
+
+        // Expand column template if areas need more columns than declared
+        if (area_num_cols > num_cols) {
+            int extra = area_num_cols - num_cols;
+            float total_existing = 0;
+            for (float w : col_widths) total_existing += w;
+            float gaps_existing = num_cols > 1 ? (num_cols - 1) * col_gap : 0;
+            float remaining = content_w - total_existing - gaps_existing;
+            float extra_gaps = extra > 1 ? (extra - 1) * col_gap : 0;
+            if (num_cols > 0) extra_gaps += col_gap;
+            float extra_w = (remaining - extra_gaps) / static_cast<float>(extra);
+            if (extra_w < 0) extra_w = 0;
+            for (int i = 0; i < extra; i++) col_widths.push_back(extra_w);
+            num_cols = static_cast<int>(col_widths.size());
+        }
+
+        // Expand row template if areas need more rows than declared
+        if (area_num_rows > static_cast<int>(row_specs.size())) {
+            int extra = area_num_rows - static_cast<int>(row_specs.size());
+            for (int i = 0; i < extra; i++) {
+                row_specs.push_back({0.0f, false, 0.0f}); // auto-sized implicit row
+            }
+        }
+
+        // Inject named lines for area boundaries so grid-column/row: <name>-start/end works
+        for (const auto& kv : area_map) {
+            const std::string& nm = kv.first;
+            const auto& ar = kv.second;
+            col_named_lines[nm + "-start"].push_back(ar.col_start);
+            col_named_lines[nm + "-end"].push_back(ar.col_end);
+            row_named_lines[nm + "-start"].push_back(ar.row_start);
+            row_named_lines[nm + "-end"].push_back(ar.row_end);
         }
     }
 
@@ -3945,13 +4127,13 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             }
         }
 
-        auto col_result = parse_line_spec(child->grid_column, num_cols);
+        auto col_result = parse_line_spec(child->grid_column, num_cols, col_named_lines);
         pl.col_start = col_result.first;
         pl.col_span = col_result.second;
 
         int est_rows = static_cast<int>(row_specs.size());
         if (est_rows < 1) est_rows = static_cast<int>((grid_items.size() + num_cols - 1) / num_cols);
-        auto row_result = parse_line_spec(child->grid_row, est_rows);
+        auto row_result = parse_line_spec(child->grid_row, est_rows, row_named_lines);
         pl.row_start = row_result.first;
         pl.row_span = row_result.second;
     }
