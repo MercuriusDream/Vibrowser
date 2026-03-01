@@ -37,6 +37,7 @@
 #include <cstdlib>
 #include <functional>
 #include <future>
+#include <iomanip>
 #include <limits>
 #include <mutex>
 #include <optional>
@@ -45,6 +46,11 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+
+// Forward declaration: consume_pending_post_submission from js_window.cpp
+namespace clever::js {
+bool consume_pending_post_submission(std::string& out_body, std::string& out_content_type);
+} // namespace clever::js
 
 namespace clever::paint {
 
@@ -6439,6 +6445,12 @@ std::optional<clever::net::Response> fetch_with_redirects(
 
     auto& jar = clever::net::CookieJar::shared();
     std::string current_url = url;
+
+    // Check for pending POST form submission data (only on first iteration)
+    std::string pending_post_body;
+    std::string pending_post_content_type;
+    bool has_pending_post = clever::js::consume_pending_post_submission(pending_post_body, pending_post_content_type);
+
     for (int i = 0; i < 5; i++) {
         clever::net::Request req;
         req.url = current_url;
@@ -6447,6 +6459,15 @@ std::optional<clever::net::Response> fetch_with_redirects(
         req.headers.set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Vibrowser/0.7.0 Safari/537.36");
         req.headers.set("Accept", accept);
         req.headers.set("Connection", "keep-alive");
+
+        // If this is the first request and we have pending POST data, use it
+        if (i == 0 && has_pending_post && !pending_post_body.empty()) {
+            req.method = clever::net::Method::POST;
+            req.body = std::vector<uint8_t>(pending_post_body.begin(), pending_post_body.end());
+            if (!pending_post_content_type.empty()) {
+                req.headers.set("Content-Type", pending_post_content_type);
+            }
+        }
 
         // Attach cookies
         std::string cookies = jar.get_cookie_header(req.host, req.path, req.use_tls);
@@ -6633,6 +6654,163 @@ static void image_cache_store(const std::string& url, const DecodedImage& image)
     }
     s_image_cache_order.push_back(url);
     image_cache_evict_locked();
+}
+
+// Helper: add SVG style attributes (fill, stroke, opacity) to SVG string
+static void add_svg_style_attrs(std::ostringstream& svg, const clever::layout::LayoutNode& node) {
+    // fill color
+    if (!node.svg_fill_none) {
+        uint32_t c = node.svg_fill_color;
+        svg << " fill=\"#" << std::hex << std::setfill('0')
+            << std::setw(6) << (c & 0xFFFFFFu) << std::dec << "\"";
+    } else {
+        svg << " fill=\"none\"";
+    }
+
+    // stroke color
+    if (!node.svg_stroke_none) {
+        uint32_t c = node.svg_stroke_color;
+        svg << " stroke=\"#" << std::hex << std::setfill('0')
+            << std::setw(6) << (c & 0xFFFFFFu) << std::dec << "\"";
+    }
+
+    // opacity
+    if (node.svg_fill_opacity < 1.0f) {
+        svg << " fill-opacity=\"" << node.svg_fill_opacity << "\"";
+    }
+    if (node.svg_stroke_opacity < 1.0f) {
+        svg << " stroke-opacity=\"" << node.svg_stroke_opacity << "\"";
+    }
+}
+
+// Serialize parsed inline SVG nodes back to SVG XML string
+static std::string serialize_svg_node(const clever::layout::LayoutNode& node) {
+    if (!node.is_svg) return "";
+
+    std::ostringstream svg;
+
+    if (node.svg_type == 0 && !node.is_svg_group) {
+        // SVG container root element
+        svg << "<svg";
+        if (node.geometry.width > 0 && node.geometry.height > 0) {
+            svg << " width=\"" << static_cast<int>(node.geometry.width) << "\"";
+            svg << " height=\"" << static_cast<int>(node.geometry.height) << "\"";
+        } else {
+            svg << " width=\"300\" height=\"150\"";
+        }
+
+        if (node.svg_has_viewbox) {
+            svg << " viewBox=\"" << node.svg_viewbox_x << " " << node.svg_viewbox_y
+                << " " << node.svg_viewbox_w << " " << node.svg_viewbox_h << "\"";
+        }
+        svg << " xmlns=\"http://www.w3.org/2000/svg\">";
+
+        // Serialize children
+        for (const auto& child : node.children) {
+            svg << serialize_svg_node(*child);
+        }
+
+        svg << "</svg>";
+    }
+    else if (node.is_svg_group) {
+        // Group element
+        svg << "<g";
+        if (node.svg_transform_tx != 0 || node.svg_transform_ty != 0 ||
+            node.svg_transform_sx != 1 || node.svg_transform_sy != 1 ||
+            node.svg_transform_rotate != 0) {
+            svg << " transform=\"";
+            if (node.svg_transform_tx != 0 || node.svg_transform_ty != 0) {
+                svg << "translate(" << node.svg_transform_tx << " " << node.svg_transform_ty << ")";
+            }
+            if (node.svg_transform_rotate != 0) {
+                svg << " rotate(" << node.svg_transform_rotate << ")";
+            }
+            svg << "\"";
+        }
+        svg << ">";
+
+        for (const auto& child : node.children) {
+            svg << serialize_svg_node(*child);
+        }
+
+        svg << "</g>";
+    }
+    else if (node.svg_type == 1) {
+        // rect
+        if (node.svg_attrs.size() >= 5) {
+            svg << "<rect x=\"" << node.svg_attrs[0] << "\" y=\"" << node.svg_attrs[1]
+                << "\" width=\"" << node.svg_attrs[2] << "\" height=\"" << node.svg_attrs[3] << "\"";
+            add_svg_style_attrs(svg, node);
+            svg << "/>";
+        }
+    }
+    else if (node.svg_type == 2) {
+        // circle
+        if (node.svg_attrs.size() >= 3) {
+            svg << "<circle cx=\"" << node.svg_attrs[0] << "\" cy=\"" << node.svg_attrs[1]
+                << "\" r=\"" << node.svg_attrs[2] << "\"";
+            add_svg_style_attrs(svg, node);
+            svg << "/>";
+        }
+    }
+    else if (node.svg_type == 3) {
+        // ellipse
+        if (node.svg_attrs.size() >= 4) {
+            svg << "<ellipse cx=\"" << node.svg_attrs[0] << "\" cy=\"" << node.svg_attrs[1]
+                << "\" rx=\"" << node.svg_attrs[2] << "\" ry=\"" << node.svg_attrs[3] << "\"";
+            add_svg_style_attrs(svg, node);
+            svg << "/>";
+        }
+    }
+    else if (node.svg_type == 4) {
+        // line
+        if (node.svg_attrs.size() >= 4) {
+            svg << "<line x1=\"" << node.svg_attrs[0] << "\" y1=\"" << node.svg_attrs[1]
+                << "\" x2=\"" << node.svg_attrs[2] << "\" y2=\"" << node.svg_attrs[3] << "\"";
+            add_svg_style_attrs(svg, node);
+            svg << "/>";
+        }
+    }
+    else if (node.svg_type == 5) {
+        // path
+        svg << "<path d=\"" << node.svg_path_d << "\"";
+        add_svg_style_attrs(svg, node);
+        svg << "/>";
+    }
+    else if (node.svg_type == 7) {
+        // polygon
+        svg << "<polygon points=\"";
+        for (size_t i = 0; i < node.svg_points.size(); i++) {
+            if (i > 0) svg << " ";
+            svg << node.svg_points[i].first << "," << node.svg_points[i].second;
+        }
+        svg << "\"";
+        add_svg_style_attrs(svg, node);
+        svg << "/>";
+    }
+    else if (node.svg_type == 8) {
+        // polyline
+        svg << "<polyline points=\"";
+        for (size_t i = 0; i < node.svg_points.size(); i++) {
+            if (i > 0) svg << " ";
+            svg << node.svg_points[i].first << "," << node.svg_points[i].second;
+        }
+        svg << "\"";
+        add_svg_style_attrs(svg, node);
+        svg << "/>";
+    }
+    else if (node.svg_type == 6) {
+        // text
+        svg << "<text x=\"" << node.svg_text_x << "\" y=\"" << node.svg_text_y << "\"";
+        if (node.svg_font_size > 0) {
+            svg << " font-size=\"" << node.svg_font_size << "\"";
+        }
+        svg << ">";
+        svg << node.svg_text_content;
+        svg << "</text>";
+    }
+
+    return svg.str();
 }
 
 // Rasterize SVG data to RGBA pixels using nanosvg
