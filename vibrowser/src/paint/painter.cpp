@@ -2265,7 +2265,10 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         (overflow_parent->overflow == 1 || overflow_parent->overflow_indicator_right || overflow_parent->overflow_indicator_bottom)) {
         static TextRenderer s_text_measurer;
         const std::string ellipsis_str = "\xE2\x80\xA6"; // U+2026 HORIZONTAL ELLIPSIS
-        const float container_width = overflow_parent->geometry.width;
+        const float container_width = std::max(
+            0.0f,
+            node.geometry.width - node.geometry.padding.left - node.geometry.padding.right -
+                node.geometry.border.left - node.geometry.border.right);
         const int text_overflow_mode = overflow_parent->text_overflow;
 
         auto utf8_char_len = [](unsigned char lead) -> size_t {
@@ -2326,7 +2329,8 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
 
                 // The fade region starts at container_end - fade_len.
                 float parent_abs_x = abs_x - node.geometry.x; // approximate parent's abs_x
-                fade_region_x = parent_abs_x + container_width - fade_len;
+                fade_region_x = parent_abs_x + node.geometry.padding.left + node.geometry.border.left +
+                               container_width - fade_len;
                 fade_region_y = abs_y;
                 fade_region_w = fade_len;
                 fade_region_h = effective_font_size * node.line_height;
@@ -4919,9 +4923,9 @@ void Painter::paint_select_element(const clever::layout::LayoutNode& node, Displ
     // — skip dropdown text and arrow
     bool is_listbox = node.select_is_multiple || node.select_visible_rows > 1;
     if (is_listbox) {
-        return; // background and border are drawn; children handle their own painting
     }
 
+    if (!is_listbox) {
     // Draw the selected option text on the left side
     if (!node.select_display_text.empty()) {
         float text_x = abs_x + geom.border.left + geom.padding.left;
@@ -4969,6 +4973,7 @@ void Painter::paint_select_element(const clever::layout::LayoutNode& node, Displ
         float px = chev_x + chev_w - frac * (chev_w / 2.0f) - 1.5f;
         float py = chev_top + static_cast<float>(i);
         list.fill_rect({px, py, 1.5f, 1.0f}, arrow_color);
+    }
     }
 
     // Register a clickable region for the dropdown if there are options
