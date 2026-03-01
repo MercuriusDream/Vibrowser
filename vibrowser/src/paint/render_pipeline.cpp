@@ -11491,6 +11491,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (td_valign == "middle") layout_node->vertical_align = 2; // middle
         else if (td_valign == "bottom") layout_node->vertical_align = 3; // bottom
         else if (td_valign == "top") layout_node->vertical_align = 1; // top
+        // Legacy HTML nowrap attribute on <td>/<th>
+        std::string td_nowrap = get_attr(node, "nowrap");
+        if (!td_nowrap.empty()) {
+            style.white_space = clever::css::WhiteSpace::NoWrap;
+            layout_node->white_space = 1;
+        }
         // Legacy HTML width attribute on <td>/<th>
         std::string td_w = get_attr(node, "width");
         if (!td_w.empty()) {
