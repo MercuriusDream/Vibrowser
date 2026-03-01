@@ -1119,21 +1119,24 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     // normal flow children. Per CSS spec, a new stacking context is created when:
     // - Root element (<html>)
     // - Positioned (abs/rel/fixed/sticky) with z-index != auto
-    // - fixed and sticky (always create stacking context)
+    // - Flex/grid item with z-index != auto
     // - opacity < 1
     // - Has CSS transforms
     // - Has CSS filters
     // - mix-blend-mode != normal
     // - isolation: isolate
     // - will-change specifying opacity, transform, or filter
-    // - Flex/grid child with z-index != 0
-    auto creates_stacking_context = [](const clever::layout::LayoutNode& child) -> bool {
+    const bool parent_is_flex_grid = (node.display == clever::layout::DisplayType::Flex ||
+                                     node.display == clever::layout::DisplayType::InlineFlex ||
+                                     node.display == clever::layout::DisplayType::Grid ||
+                                     node.display == clever::layout::DisplayType::InlineGrid);
+    auto creates_stacking_context = [&](const clever::layout::LayoutNode& child) -> bool {
         // Root element
         if (child.tag_name == "html" || child.tag_name == "HTML") return true;
         // Positioned element with explicit z-index (including explicit 0)
         if (!clever::layout::is_z_index_auto(child.z_index) && child.position_type >= 1) return true;
-        // Fixed and sticky always create stacking context
-        if (child.position_type == 3 || child.position_type == 4) return true;
+        // Flex/grid item with explicit z-index creates a stacking context.
+        if (!clever::layout::is_z_index_auto(child.z_index) && parent_is_flex_grid) return true;
         // Opacity < 1
         if (child.opacity < 1.0f) return true;
         // CSS transforms
