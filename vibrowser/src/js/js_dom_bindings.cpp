@@ -18315,6 +18315,14 @@ if (typeof queueMicrotask === 'undefined') {
     {
         const char* anim_src = R"JS(
 (function() {
+    // Initialize global animation registry
+    if (!globalThis._animationRegistry) {
+        globalThis._animationRegistry = new WeakMap();
+    }
+    if (!globalThis._allAnimations) {
+        globalThis._allAnimations = new Set();
+    }
+
     // Animation constructor — used by 'new Animation(effect, timeline)'
     // The element.animate() method is implemented natively in C++ and
     // returns an object with these same properties/methods.
@@ -18413,35 +18421,101 @@ if (typeof queueMicrotask === 'undefined') {
     if (typeof document !== 'undefined' && !document.timeline) {
         document.timeline = new DocumentTimeline();
     }
-    if (typeof document !== 'undefined' && !document.getAnimations) {
-        document.getAnimations = function() { return []; };
+
+    // Element.getAnimations() - query registry for element-specific animations
+    if (typeof Element !== 'undefined' && Element.prototype) {
+        Element.prototype.getAnimations = function() {
+            var registry = globalThis._animationRegistry;
+            if (!registry || !registry.has(this)) return [];
+            var anims = registry.get(this);
+            return Array.isArray(anims) ? anims.slice() : [];
+        };
     }
 
-    // Patch element.animate to fire onfinish callbacks properly.
+    // document.getAnimations() - return all running animations
+    if (typeof document !== 'undefined') {
+        document.getAnimations = function() {
+            var allAnims = globalThis._allAnimations;
+            return allAnims ? Array.from(allAnims) : [];
+        };
+    }
+
+    // Patch element.animate to manage animation registry and fire callbacks properly.
     // The native C++ implementation applies styles immediately and returns
-    // an Animation-like object. We wrap it here to ensure onfinish fires.
+    // an Animation-like object. We wrap it here to ensure proper state tracking.
     if (typeof Element !== 'undefined' && Element.prototype &&
         typeof Element.prototype.animate === 'function') {
         var _native_animate = Element.prototype.animate;
         Element.prototype.animate = function(keyframes, options) {
             var anim = _native_animate.call(this, keyframes, options);
             if (!anim) return anim;
-            // Parse duration for scheduling onfinish
+
+            // Generate unique animation ID
+            var animId = '_anim_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            anim.id = animId;
+
+            // Parse duration and delay
             var duration = 0;
+            var delay = 0;
             if (typeof options === 'number') {
                 duration = options;
             } else if (options && typeof options === 'object') {
                 duration = options.duration || 0;
+                delay = options.delay || 0;
             }
-            // Schedule onfinish callback after duration (treated as immediate
-            // by flush_ready_timers since we're synchronous)
-            var delay = (options && options.delay) || 0;
-            var totalDelay = (duration || 0) + (delay || 0);
+
+            // Enhance animation state tracking
+            anim.playState = 'running';
+            anim.currentTime = 0;
+            anim._startTime = performance.now();
+            anim._duration = duration;
+            anim._delay = delay;
+            anim._target = this;
+
+            // Register in global animation registry (per-element)
+            var registry = globalThis._animationRegistry;
+            if (registry) {
+                var elemAnims = registry.get(this) || [];
+                elemAnims.push(anim);
+                registry.set(this, elemAnims);
+            }
+
+            // Register in all animations set
+            var allAnims = globalThis._allAnimations;
+            if (allAnims) {
+                allAnims.add(anim);
+            }
+
+            // Schedule animation completion callback and promise resolution
+            var totalDelay = duration + delay;
+            var self = this;
             setTimeout(function() {
-                if (typeof anim.onfinish === 'function') {
-                    try { anim.onfinish({ type: 'finish', target: anim }); } catch(e) {}
+                if (anim && anim.playState === 'running') {
+                    anim.playState = 'finished';
+                    anim.currentTime = duration;
+
+                    // Fire onfinish callback
+                    if (typeof anim.onfinish === 'function') {
+                        try { anim.onfinish({ type: 'finish', target: anim }); } catch(e) {}
+                    }
+
+                    // Resolve finished promise
+                    if (anim._finishResolve) {
+                        try { anim._finishResolve(anim); } catch(e) {}
+                    }
+
+                    // Cleanup from registry
+                    if (registry && registry.has(self)) {
+                        var anims = registry.get(self) || [];
+                        var idx = anims.indexOf(anim);
+                        if (idx >= 0) anims.splice(idx, 1);
+                    }
+                    if (allAnims) {
+                        allAnims.delete(anim);
+                    }
                 }
             }, totalDelay);
+
             return anim;
         };
     }
