@@ -84,4 +84,16 @@ void set_current_script(JSContext* ctx, clever::html::SimpleNode* script_elem);
 // Call this to flush any queued mutations (after DOM operations complete).
 void fire_mutation_observers(JSContext* ctx);
 
+// Returns true if JS requested a programmatic viewport scroll (scrollIntoView,
+// window.scrollTo, etc.) since the last call to clear_pending_scroll().
+// If true, *scroll_x and *scroll_y are set to the requested position in page pixels.
+bool get_pending_scroll(JSContext* ctx, double* scroll_x, double* scroll_y);
+
+// Clear the pending scroll request after the browser shell has applied it.
+void clear_pending_scroll(JSContext* ctx);
+
+// Record a programmatic viewport scroll request from window.scrollTo/scrollBy.
+// The browser shell reads this via get_pending_scroll() after JS event dispatch.
+void set_pending_scroll(JSContext* ctx, double scroll_x, double scroll_y);
+
 } // namespace clever::js

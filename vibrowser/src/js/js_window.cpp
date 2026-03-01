@@ -1,6 +1,7 @@
 #include <clever/js/js_window.h>
 #include <clever/js/js_web_storage.h>
 #include <clever/js/js_workers.h>
+#include <clever/js/js_dom_bindings.h>
 
 extern "C" {
 #include <quickjs.h>
@@ -1370,8 +1371,12 @@ static JSValue js_window_scroll_to(JSContext* ctx, JSValueConst /*this_val*/,
     double next_x = current_x;
     double next_y = current_y;
     js_read_scroll_args(ctx, argc, argv, current_x, current_y, false, &next_x, &next_y);
+    if (next_x < 0.0) next_x = 0.0;
+    if (next_y < 0.0) next_y = 0.0;
     js_write_window_scroll_state(ctx, global, next_x, next_y);
     JS_FreeValue(ctx, global);
+    // Signal the browser shell to update the viewport scroll position
+    clever::js::set_pending_scroll(ctx, next_x, next_y);
     return JS_UNDEFINED;
 }
 
@@ -1383,8 +1388,12 @@ static JSValue js_window_scroll_by(JSContext* ctx, JSValueConst /*this_val*/,
     double next_x = current_x;
     double next_y = current_y;
     js_read_scroll_args(ctx, argc, argv, current_x, current_y, true, &next_x, &next_y);
+    if (next_x < 0.0) next_x = 0.0;
+    if (next_y < 0.0) next_y = 0.0;
     js_write_window_scroll_state(ctx, global, next_x, next_y);
     JS_FreeValue(ctx, global);
+    // Signal the browser shell to update the viewport scroll position
+    clever::js::set_pending_scroll(ctx, next_x, next_y);
     return JS_UNDEFINED;
 }
 

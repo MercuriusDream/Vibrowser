@@ -11884,6 +11884,15 @@ static bool evaluate_media_feature(const std::string& expr, int vw, int vh) {
     if (feature == "orientation") {
         return (value == "landscape") ? (vw >= vh) : (vw < vh);
     }
+    if (feature == "forced-colors") return (value == "none");
+    if (feature == "prefers-transparency") return (value == "no-preference");
+    if (feature == "inverted-colors") return (value == "none");
+    if (feature == "scripting") return (value == "enabled");
+    if (feature == "prefers-reduced-data") return (value == "no-preference");
+    if (feature == "overflow-block") return (value == "scroll");
+    if (feature == "overflow-inline") return (value == "scroll");
+    if (feature == "dynamic-range") return (value == "standard");
+    if (feature == "video-dynamic-range") return (value == "standard");
 
     // Unknown features default to not matching (strict)
     return false;

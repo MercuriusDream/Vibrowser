@@ -232,6 +232,12 @@ struct DOMState {
 
     // Focus tracking: pointer to the currently focused SimpleNode (may be nullptr)
     clever::html::SimpleNode* focused_element = nullptr;
+
+    // Pending programmatic scroll request from JS (scrollIntoView, window.scrollTo, etc.)
+    // The browser shell reads these after JS execution to update the viewport scroll position.
+    bool has_pending_scroll = false;
+    double pending_scroll_x = 0.0;
+    double pending_scroll_y = 0.0;
 };
 
 struct URLState {
@@ -4947,10 +4953,105 @@ static JSValue js_domparser_constructor(JSContext* ctx,
 // and doesn't have live scrolling or focus management, these are safe no-ops.
 // =========================================================================
 
-static JSValue js_element_scroll_into_view(JSContext* /*ctx*/,
-                                            JSValueConst /*this_val*/,
-                                            int /*argc*/,
-                                            JSValueConst* /*argv*/) {
+static JSValue js_element_scroll_into_view(JSContext* ctx,
+                                            JSValueConst this_val,
+                                            int argc,
+                                            JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node) return JS_UNDEFINED;
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_UNDEFINED;
+
+    // Look up the element's layout geometry
+    auto it = state->layout_geometry.find(static_cast<void*>(node));
+    if (it == state->layout_geometry.end()) return JS_UNDEFINED;
+
+    const auto& lr = it->second;
+    float elem_y = lr.abs_border_y;
+    float elem_h = lr.height + lr.border_top + lr.border_bottom;
+    float viewport_h = static_cast<float>(state->viewport_height);
+
+    // Parse the argument:
+    // scrollIntoView()           -> align to top (default, same as true)
+    // scrollIntoView(true)       -> align to top
+    // scrollIntoView(false)      -> align to bottom
+    // scrollIntoView({block: 'start'|'center'|'end'|'nearest'})
+    enum class Block { Start, Center, End, Nearest };
+    Block block = Block::Start;
+
+    if (argc > 0) {
+        if (JS_IsBool(argv[0])) {
+            block = JS_ToBool(ctx, argv[0]) ? Block::Start : Block::End;
+        } else if (JS_IsObject(argv[0])) {
+            JSValue block_val = JS_GetPropertyStr(ctx, argv[0], "block");
+            if (JS_IsString(block_val)) {
+                const char* block_str = JS_ToCString(ctx, block_val);
+                if (block_str) {
+                    std::string bs(block_str);
+                    JS_FreeCString(ctx, block_str);
+                    if (bs == "center")  block = Block::Center;
+                    else if (bs == "end")     block = Block::End;
+                    else if (bs == "nearest") block = Block::Nearest;
+                    else block = Block::Start; // "start" or default
+                }
+            }
+            JS_FreeValue(ctx, block_val);
+        }
+    }
+
+    // Read current scroll position from window globals
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue cur_sy_val = JS_GetPropertyStr(ctx, global, "scrollY");
+    double current_scroll_y = 0.0;
+    if (JS_IsNumber(cur_sy_val)) JS_ToFloat64(ctx, &current_scroll_y, cur_sy_val);
+    JS_FreeValue(ctx, cur_sy_val);
+    JSValue cur_sx_val = JS_GetPropertyStr(ctx, global, "scrollX");
+    double current_scroll_x = 0.0;
+    if (JS_IsNumber(cur_sx_val)) JS_ToFloat64(ctx, &current_scroll_x, cur_sx_val);
+    JS_FreeValue(ctx, cur_sx_val);
+
+    // Compute target scroll Y based on block alignment
+    double target_y = current_scroll_y;
+    switch (block) {
+        case Block::Start:
+            target_y = static_cast<double>(elem_y);
+            break;
+        case Block::Center:
+            target_y = static_cast<double>(elem_y + elem_h / 2.0f - viewport_h / 2.0f);
+            break;
+        case Block::End:
+            target_y = static_cast<double>(elem_y + elem_h - viewport_h);
+            break;
+        case Block::Nearest: {
+            double vis_top = current_scroll_y;
+            double vis_bottom = current_scroll_y + viewport_h;
+            double elem_top = static_cast<double>(elem_y);
+            double elem_bottom = static_cast<double>(elem_y + elem_h);
+            if (elem_top < vis_top)
+                target_y = elem_top; // element above viewport: scroll up
+            else if (elem_bottom > vis_bottom)
+                target_y = elem_bottom - viewport_h; // element below: scroll down
+            else
+                target_y = current_scroll_y; // already fully visible
+            break;
+        }
+    }
+
+    // Clamp to non-negative values
+    if (target_y < 0.0) target_y = 0.0;
+
+    // Update window.scrollY/scrollX properties
+    JS_SetPropertyStr(ctx, global, "scrollY", JS_NewFloat64(ctx, target_y));
+    JS_SetPropertyStr(ctx, global, "pageYOffset", JS_NewFloat64(ctx, target_y));
+    JS_SetPropertyStr(ctx, global, "scrollX", JS_NewFloat64(ctx, current_scroll_x));
+    JS_SetPropertyStr(ctx, global, "pageXOffset", JS_NewFloat64(ctx, current_scroll_x));
+    JS_FreeValue(ctx, global);
+
+    // Record the pending scroll so the browser shell can update the viewport
+    state->has_pending_scroll = true;
+    state->pending_scroll_y = target_y;
+    state->pending_scroll_x = current_scroll_x;
+
     return JS_UNDEFINED;
 }
 
@@ -14819,6 +14920,319 @@ void install_dom_bindings(JSContext* ctx,
     // by JS, and is also in the owned_nodes list. We leave it there;
     // it's harmless.
 
+    // ---- HTML5 Form Validation API ----
+    // Per-element custom validity message storage (keyed by a unique per-element marker)
+    var __customValidityMap = {};
+    var __customValidityCounter = 0;
+    function __getCustomValidityKey(el) {
+        var k = el.__customValidityKey;
+        if (!k) {
+            k = '__cvk' + (++__customValidityCounter);
+            el.__customValidityKey = k;
+        }
+        return k;
+    }
+
+    // Helper: is this a submittable element that participates in constraint validation?
+    function __isSubmittable(el) {
+        var tag = (el.__getTagName ? el.__getTagName() : '').toLowerCase();
+        return tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'button';
+    }
+
+    // Helper: is element barred from constraint validation?
+    // (disabled, hidden/button/reset/image input types, button with button/reset type)
+    function __isBarred(el) {
+        if (el.hasAttribute('disabled')) return true;
+        var tag = (el.__getTagName ? el.__getTagName() : '').toLowerCase();
+        if (tag === 'input') {
+            var t = (el.getAttribute('type') || 'text').toLowerCase();
+            if (t === 'hidden' || t === 'button' || t === 'reset' || t === 'image') return true;
+        }
+        if (tag === 'button') {
+            var bt = (el.getAttribute('type') || 'submit').toLowerCase();
+            if (bt === 'button' || bt === 'reset') return true;
+        }
+        return false;
+    }
+
+    // Helper: validate email format (RFC 5322 simplified)
+    function __isValidEmail(val) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+    }
+
+    // Helper: validate URL format (must have scheme://rest)
+    function __isValidURL(val) {
+        if (!val) return false;
+        return /^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\/.+/.test(val);
+    }
+
+    // Compute full ValidityState for an element
+    function __computeValidity(el) {
+        var tag = (el.__getTagName ? el.__getTagName() : '').toLowerCase();
+        var val = el.getAttribute('value') || '';
+        var customMsg = __customValidityMap[el.__customValidityKey] || '';
+
+        var valueMissing = false;
+        var typeMismatch = false;
+        var patternMismatch = false;
+        var tooShort = false;
+        var tooLong = false;
+        var rangeUnderflow = false;
+        var rangeOverflow = false;
+        var stepMismatch = false;
+        var badInput = false;
+        var customError = customMsg.length > 0;
+
+        if (tag === 'input') {
+            var inputType = (el.getAttribute('type') || 'text').toLowerCase();
+            var inputRequired = el.hasAttribute('required');
+
+            // valueMissing: required field is empty
+            if (inputRequired) {
+                if (inputType === 'checkbox' || inputType === 'radio') {
+                    valueMissing = !el.hasAttribute('checked');
+                } else {
+                    valueMissing = (val.trim() === '');
+                }
+            }
+
+            // typeMismatch: value doesn't match declared type
+            if (val !== '') {
+                if (inputType === 'email') {
+                    typeMismatch = !__isValidEmail(val);
+                } else if (inputType === 'url') {
+                    typeMismatch = !__isValidURL(val);
+                } else if (inputType === 'number' || inputType === 'range') {
+                    typeMismatch = isNaN(parseFloat(val)) || !isFinite(parseFloat(val));
+                }
+            }
+
+            // patternMismatch: value doesn't match the pattern attribute regex
+            var patternAttr = el.getAttribute('pattern');
+            if (patternAttr && val !== '') {
+                try {
+                    var patRe = new RegExp('^(?:' + patternAttr + ')$');
+                    patternMismatch = !patRe.test(val);
+                } catch(patE) {
+                    // invalid pattern — treat as no mismatch
+                }
+            }
+
+            // tooShort / tooLong (minlength / maxlength)
+            if (inputType !== 'number' && inputType !== 'range' &&
+                inputType !== 'checkbox' && inputType !== 'radio' &&
+                inputType !== 'file') {
+                var minLenAttr = el.getAttribute('minlength');
+                var maxLenAttr = el.getAttribute('maxlength');
+                if (minLenAttr !== null && val.length > 0) {
+                    var minLenNum = parseInt(minLenAttr, 10);
+                    if (!isNaN(minLenNum) && val.length < minLenNum) tooShort = true;
+                }
+                if (maxLenAttr !== null) {
+                    var maxLenNum = parseInt(maxLenAttr, 10);
+                    if (!isNaN(maxLenNum) && val.length > maxLenNum) tooLong = true;
+                }
+            }
+
+            // rangeUnderflow / rangeOverflow / stepMismatch for numeric inputs
+            if (inputType === 'number' || inputType === 'range') {
+                var numVal = parseFloat(val);
+                if (!isNaN(numVal)) {
+                    var minAttr = el.getAttribute('min');
+                    var maxAttr = el.getAttribute('max');
+                    if (minAttr !== null) {
+                        var minNum = parseFloat(minAttr);
+                        if (!isNaN(minNum) && numVal < minNum) rangeUnderflow = true;
+                    }
+                    if (maxAttr !== null) {
+                        var maxNum = parseFloat(maxAttr);
+                        if (!isNaN(maxNum) && numVal > maxNum) rangeOverflow = true;
+                    }
+                    var stepAttr = el.getAttribute('step');
+                    if (stepAttr && stepAttr !== 'any') {
+                        var step = parseFloat(stepAttr);
+                        var stepBase = parseFloat(el.getAttribute('min') || '0') || 0;
+                        if (!isNaN(step) && step > 0) {
+                            var remainder = (numVal - stepBase) % step;
+                            // allow small floating point tolerance
+                            if (Math.abs(remainder) > 1e-10 && Math.abs(remainder - step) > 1e-10) {
+                                stepMismatch = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+        } else if (tag === 'textarea') {
+            var taRequired = el.hasAttribute('required');
+            if (taRequired && (val.trim() === '')) valueMissing = true;
+
+            var taMinLen = el.getAttribute('minlength');
+            var taMaxLen = el.getAttribute('maxlength');
+            if (taMinLen !== null && val.length > 0) {
+                var taMinLenNum = parseInt(taMinLen, 10);
+                if (!isNaN(taMinLenNum) && val.length < taMinLenNum) tooShort = true;
+            }
+            if (taMaxLen !== null) {
+                var taMaxLenNum = parseInt(taMaxLen, 10);
+                if (!isNaN(taMaxLenNum) && val.length > taMaxLenNum) tooLong = true;
+            }
+
+        } else if (tag === 'select') {
+            var selRequired = el.hasAttribute('required');
+            if (selRequired) {
+                var selIdxAttr = el.getAttribute('data-selected-index');
+                var selIdx = selIdxAttr !== null ? parseInt(selIdxAttr, 10) : -1;
+                valueMissing = (selIdx < 0);
+            }
+        }
+
+        var valid = !valueMissing && !typeMismatch && !patternMismatch &&
+                    !tooShort && !tooLong && !rangeUnderflow && !rangeOverflow &&
+                    !stepMismatch && !badInput && !customError;
+
+        return {
+            valid: valid,
+            valueMissing: valueMissing,
+            typeMismatch: typeMismatch,
+            patternMismatch: patternMismatch,
+            tooShort: tooShort,
+            tooLong: tooLong,
+            rangeUnderflow: rangeUnderflow,
+            rangeOverflow: rangeOverflow,
+            stepMismatch: stepMismatch,
+            badInput: badInput,
+            customError: customError
+        };
+    }
+
+    // Build a human-readable validation message from a ValidityState
+    function __buildValidationMessage(el, vs, customMsg) {
+        if (customMsg) return customMsg;
+        if (vs.valueMissing) return 'Please fill out this field.';
+        if (vs.typeMismatch) {
+            var vmType = (el.getAttribute('type') || 'text').toLowerCase();
+            if (vmType === 'email') return 'Please enter a valid email address.';
+            if (vmType === 'url') return 'Please enter a valid URL.';
+            return 'Please enter a valid value.';
+        }
+        if (vs.patternMismatch) return 'Please match the requested format.';
+        if (vs.tooShort) {
+            return 'Please lengthen this text to ' + (el.getAttribute('minlength') || '0') + ' characters or more.';
+        }
+        if (vs.tooLong) {
+            return 'Please shorten this text to ' + (el.getAttribute('maxlength') || '0') + ' characters or less.';
+        }
+        if (vs.rangeUnderflow) {
+            return 'Value must be greater than or equal to ' + (el.getAttribute('min') || '0') + '.';
+        }
+        if (vs.rangeOverflow) {
+            return 'Value must be less than or equal to ' + (el.getAttribute('max') || '0') + '.';
+        }
+        if (vs.stepMismatch) return 'Please enter a valid value (step mismatch).';
+        if (vs.badInput) return 'Please enter a valid value.';
+        return '';
+    }
+
+    // Helper: fire an 'invalid' event on an element (bubbles: false, cancelable: true)
+    function __fireInvalidEvent(el) {
+        try {
+            var evt = document.createEvent('Event');
+            if (evt && evt.initEvent) {
+                evt.initEvent('invalid', false, true);
+                el.dispatchEvent(evt);
+            }
+        } catch(fireE) {}
+    }
+
+    // element.checkValidity() — returns true if element satisfies all constraints.
+    // For <form> elements, validates all descendant form controls.
+    // Fires 'invalid' event on each failing control.
+    proto.checkValidity = function() {
+        var cvTag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+        if (cvTag === 'form') {
+            // Gather all descendant submittable form controls
+            var formControls = [];
+            try {
+                var formAll = this.querySelectorAll('input, select, textarea, button');
+                if (formAll) {
+                    for (var fi = 0; fi < formAll.length; fi++) {
+                        formControls.push(formAll[fi]);
+                    }
+                }
+            } catch(qsE) {}
+            var formAllValid = true;
+            for (var fj = 0; fj < formControls.length; fj++) {
+                var fctrl = formControls[fj];
+                if (!__isSubmittable(fctrl) || __isBarred(fctrl)) continue;
+                __getCustomValidityKey(fctrl);
+                var fstate = __computeValidity(fctrl);
+                if (!fstate.valid) {
+                    __fireInvalidEvent(fctrl);
+                    formAllValid = false;
+                }
+            }
+            return formAllValid;
+        }
+        // Non-form submittable elements
+        if (!__isSubmittable(this)) return true;
+        if (__isBarred(this)) return true;
+        __getCustomValidityKey(this);
+        var cvState = __computeValidity(this);
+        if (!cvState.valid) {
+            __fireInvalidEvent(this);
+            return false;
+        }
+        return true;
+    };
+
+    // element.reportValidity() — same as checkValidity (UI feedback not yet implemented)
+    proto.reportValidity = function() {
+        return this.checkValidity();
+    };
+
+    // element.validity — returns a ValidityState-like object
+    Object.defineProperty(proto, 'validity', {
+        get: function() {
+            if (!__isSubmittable(this)) {
+                return { valid: true, valueMissing: false, typeMismatch: false,
+                         patternMismatch: false, tooShort: false, tooLong: false,
+                         rangeUnderflow: false, rangeOverflow: false,
+                         stepMismatch: false, badInput: false, customError: false };
+            }
+            __getCustomValidityKey(this);
+            return __computeValidity(this);
+        },
+        configurable: true
+    });
+
+    // element.setCustomValidity(message) — stores custom message; non-empty makes element invalid
+    proto.setCustomValidity = function(msg) {
+        var k = __getCustomValidityKey(this);
+        __customValidityMap[k] = (msg === null || msg === undefined) ? '' : String(msg);
+    };
+
+    // element.validationMessage — returns localized validation message or ''
+    Object.defineProperty(proto, 'validationMessage', {
+        get: function() {
+            if (!__isSubmittable(this) || __isBarred(this)) return '';
+            __getCustomValidityKey(this);
+            var vmCustom = __customValidityMap[this.__customValidityKey] || '';
+            var vmState = __computeValidity(this);
+            if (vmState.valid) return '';
+            return __buildValidationMessage(this, vmState, vmCustom);
+        },
+        configurable: true
+    });
+
+    // element.willValidate — true if element is a submittable element not barred from validation
+    Object.defineProperty(proto, 'willValidate', {
+        get: function() {
+            return __isSubmittable(this) && !__isBarred(this);
+        },
+        configurable: true
+    });
+
     // ---- URL prototype getters ----
     if (typeof URL !== 'undefined' && URL.prototype) {
         Object.defineProperty(URL.prototype, 'href', {
@@ -17349,6 +17763,32 @@ void fire_mutation_observers(JSContext* ctx) {
     flush_mutation_observers(ctx, state);
 }
 
+bool get_pending_scroll(JSContext* ctx, double* scroll_x, double* scroll_y) {
+    auto* state = get_dom_state(ctx);
+    if (!state || !state->has_pending_scroll) return false;
+    if (scroll_x) *scroll_x = state->pending_scroll_x;
+    if (scroll_y) *scroll_y = state->pending_scroll_y;
+    return true;
+}
+
+void clear_pending_scroll(JSContext* ctx) {
+    auto* state = get_dom_state(ctx);
+    if (state) {
+        state->has_pending_scroll = false;
+        state->pending_scroll_x = 0.0;
+        state->pending_scroll_y = 0.0;
+    }
+}
+
+void set_pending_scroll(JSContext* ctx, double scroll_x, double scroll_y) {
+    auto* state = get_dom_state(ctx);
+    if (state) {
+        state->has_pending_scroll = true;
+        state->pending_scroll_x = scroll_x;
+        state->pending_scroll_y = scroll_y;
+    }
+}
+
 // =========================================================================
 // Event dispatch
 // =========================================================================
@@ -17968,6 +18408,27 @@ void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h)
                     JS_NewFloat64(ctx, ratio));
                 JS_SetPropertyStr(ctx, entry, "isIntersecting",
                     JS_NewBool(ctx, is_intersecting));
+
+                // time — DOMHighResTimeStamp via performance.now()
+                {
+                    JSValue global_obj = JS_GetGlobalObject(ctx);
+                    JSValue perf = JS_GetPropertyStr(ctx, global_obj, "performance");
+                    double ts = 0.0;
+                    if (!JS_IsUndefined(perf) && !JS_IsException(perf)) {
+                        JSValue now_fn = JS_GetPropertyStr(ctx, perf, "now");
+                        if (JS_IsFunction(ctx, now_fn)) {
+                            JSValue now_val = JS_Call(ctx, now_fn, perf, 0, nullptr);
+                            if (!JS_IsException(now_val)) {
+                                JS_ToFloat64(ctx, &ts, now_val);
+                            }
+                            JS_FreeValue(ctx, now_val);
+                        }
+                        JS_FreeValue(ctx, now_fn);
+                    }
+                    JS_FreeValue(ctx, perf);
+                    JS_FreeValue(ctx, global_obj);
+                    JS_SetPropertyStr(ctx, entry, "time", JS_NewFloat64(ctx, ts));
+                }
 
                 // target — wrap the SimpleNode as an element proxy
                 JS_SetPropertyStr(ctx, entry, "target", wrap_element(ctx, elem));

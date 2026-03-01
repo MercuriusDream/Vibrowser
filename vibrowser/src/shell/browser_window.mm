@@ -1390,6 +1390,22 @@ static std::string build_shell_message_html(const std::string& page_title,
     [self doRender:htmlStr];
 }
 
+// Apply any pending programmatic scroll (from window.scrollTo / element.scrollIntoView)
+// to the render view. Call this after JS event dispatch completes.
+// NOTE: Do NOT call this after doRender; use the inline pending scroll capture pattern instead
+// because doRender replaces the JS engine.
+- (void)applyPendingScrollForTab:(BrowserTab*)tab {
+    if (!tab) return;
+    auto& jsEngine = [tab jsEngine];
+    if (!jsEngine || !jsEngine->context()) return;
+    double scroll_x = 0.0, scroll_y = 0.0;
+    if (clever::js::get_pending_scroll(jsEngine->context(), &scroll_x, &scroll_y)) {
+        CGFloat viewY = [tab.renderView viewOffsetForRendererY:static_cast<CGFloat>(scroll_y)];
+        tab.renderView.scrollOffset = viewY;
+        clever::js::clear_pending_scroll(jsEngine->context());
+    }
+}
+
 - (void)doRender:(const std::string&)html {
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
@@ -1471,6 +1487,16 @@ static std::string build_shell_message_html(const std::string& page_title,
                 "globalThis.outerWidth=" + logicalWidth + ";"
                 "globalThis.outerHeight=" + logicalHeight + ";";
             jsEngine->evaluate(syncWindowMetrics, "<vibrowser-window-metrics>");
+
+            // Apply any pending programmatic scroll from page scripts (scrollIntoView,
+            // window.scrollTo called in DOMContentLoaded or inline scripts).
+            // This runs AFTER fragment scroll so scrollIntoView can override it.
+            double pendScrollX = 0.0, pendScrollY = 0.0;
+            if (clever::js::get_pending_scroll(jsEngine->context(), &pendScrollX, &pendScrollY)) {
+                tab.renderView.scrollOffset =
+                    [tab.renderView viewOffsetForRendererY:static_cast<CGFloat>(pendScrollY)];
+                clever::js::clear_pending_scroll(jsEngine->context());
+            }
         }
 
         // Extract overscroll-behavior and scroll-behavior from the html/body element
@@ -2731,9 +2757,27 @@ static std::string build_shell_message_html(const std::string& page_title,
         }
     }
 
+    // Capture any pending programmatic scroll BEFORE re-render replaces the JS engine
+    bool hasPendingScroll = false;
+    double pendingScrollX = 0.0, pendingScrollY = 0.0;
+    hasPendingScroll = clever::js::get_pending_scroll(
+        jsEngine->context(), &pendingScrollX, &pendingScrollY);
+
     // Re-render if JS modified the DOM or if we toggled a form control
     if (formControlToggled || clever::js::dom_was_modified(jsEngine->context())) {
         [self doRender:[tab currentHTML]];
+    }
+
+    // Apply any pending programmatic scroll (scrollIntoView / window.scrollTo).
+    // Captured before doRender because doRender replaces the JS engine.
+    if (hasPendingScroll) {
+        CGFloat viewY = [tab.renderView viewOffsetForRendererY:static_cast<CGFloat>(pendingScrollY)];
+        tab.renderView.scrollOffset = viewY;
+        // Clear from current engine too (in case doRender was skipped and engine is same)
+        auto& curEngine = [tab jsEngine];
+        if (curEngine && curEngine->context()) {
+            clever::js::clear_pending_scroll(curEngine->context());
+        }
     }
 
     return prevented ? YES : NO;
@@ -2971,6 +3015,9 @@ static std::string build_shell_message_html(const std::string& page_title,
     // Track last hover position for re-establishing after re-render
     _lastHoverX = x;
     _lastHoverY = y;
+
+    // Apply any pending programmatic scroll triggered by mousemove/hover handlers
+    [self applyPendingScrollForTab:tab];
 
     if (!_pageUsesHoverState && !domModifiedByHover) {
         return;
@@ -3230,6 +3277,9 @@ do_render:
 
     bool prevented = clever::js::dispatch_keyboard_event(
         jsEngine->context(), target, evtType, init);
+
+    // Apply any pending programmatic scroll triggered by keyboard event handlers
+    [self applyPendingScrollForTab:tab];
 
     return prevented ? YES : NO;
 }
