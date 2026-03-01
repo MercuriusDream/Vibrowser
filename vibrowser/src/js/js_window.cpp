@@ -71,6 +71,43 @@ const std::pair<std::string, std::string>* get_blob_data(const std::string& url)
     return &it->second;
 }
 
+// =========================================================================
+// POST form submission storage — thread-local pending form data
+// =========================================================================
+
+thread_local std::string g_pending_post_body;
+thread_local std::string g_pending_post_content_type;
+
+// Public accessor: consume pending POST data and clear it
+bool consume_pending_post_submission(std::string& out_body, std::string& out_content_type) {
+    if (g_pending_post_body.empty()) return false;
+    out_body = std::move(g_pending_post_body);
+    out_content_type = std::move(g_pending_post_content_type);
+    g_pending_post_body.clear();
+    g_pending_post_content_type.clear();
+    return true;
+}
+
+// Native C++ function to store pending form submission data
+static JSValue js_window_set_pending_form_submission(JSContext* ctx, JSValueConst /*this_val*/,
+                                                      int argc, JSValueConst* argv) {
+    if (argc < 2) return JS_UNDEFINED;
+
+    const char* body_cstr = JS_ToCString(ctx, argv[0]);
+    const char* enctype_cstr = JS_ToCString(ctx, argv[1]);
+
+    if (body_cstr) {
+        g_pending_post_body = body_cstr;
+        JS_FreeCString(ctx, body_cstr);
+    }
+    if (enctype_cstr) {
+        g_pending_post_content_type = enctype_cstr;
+        JS_FreeCString(ctx, enctype_cstr);
+    }
+
+    return JS_UNDEFINED;
+}
+
 // C++ native implementation of URL.createObjectURL(blob).
 // Reads blob._parts (array of string parts) and blob.type (MIME type),
 // assembles the data, stores it in the registry, and returns the blob: URL.
@@ -3594,6 +3631,12 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         // captured a reference to it.
         JS_FreeValue(ctx, location);
     }
+
+    // ---- window.__setPendingFormSubmission (internal POST form support) ----
+    // This native function is called by the location.href setter when a POST form is submitted.
+    // It stores the form body and content-type for the fetch pipeline to use.
+    JS_SetPropertyStr(ctx, global, "__setPendingFormSubmission",
+        JS_NewCFunction(ctx, js_window_set_pending_form_submission, "__setPendingFormSubmission", 2));
 
     // ---- window.navigator ----
     JSValue navigator = JS_NewObject(ctx);

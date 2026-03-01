@@ -87,6 +87,7 @@ struct LayoutNode {
     float svg_use_x = 0;        // x position offset for <use>
     float svg_use_y = 0;        // y position offset for <use>
     std::string svg_text_content;  // SVG <text> element text content
+    std::string svg_content;     // Serialized SVG XML string for inline SVG containers
 
     // SVG gradient definitions (stored on SVG container <svg> node)
     struct SvgGradient {
