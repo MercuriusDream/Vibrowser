@@ -3885,7 +3885,7 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                     while (!max_str.empty() && max_str.back() == ' ') max_str.pop_back();
 
                     float min_val = 0;
-                    bool min_is_content = false;
+                    [[maybe_unused]] bool min_is_content = false;
                     if (min_str == "min-content") {
                         min_is_content = true;
                     } else if (min_str == "max-content") {
@@ -4516,49 +4516,65 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             if (pl.col_start >= 0) {
                 // Column is fixed, find first available row
                 int search_row = dense_flow ? 0 : auto_cursor_row;
-                for (int r = search_row; r < search_row + 100000; r++) {
-                    ensure_rows(r + pl.row_span);
-                    if (can_place(r, pl.col_start, pl.row_span, pl.col_span)) {
-                        pl.row_start = r;
-                        break;
+                if (pl.col_span > dyn_num_cols) {
+                    pl.col_start = 0;
+                    pl.row_start = search_row;
+                } else {
+                    if (pl.col_start + pl.col_span > dyn_num_cols) {
+                        pl.col_start = std::max(0, dyn_num_cols - pl.col_span);
+                    }
+                    for (int r = search_row;; r++) {
+                        ensure_rows(r + pl.row_span);
+                        if (can_place(r, pl.col_start, pl.row_span, pl.col_span)) {
+                            pl.row_start = r;
+                            break;
+                        }
                     }
                 }
-                if (pl.row_start < 0) { pl.row_start = 0; }
             }
             // If item has a fixed row but needs auto column:
             else if (pl.row_start >= 0) {
-                int search_col = dense_flow ? 0 : 0; // always search from 0 for row-fixed items
+                int search_col = dense_flow ? 0 : auto_cursor_col;
+                bool placed = false;
                 for (int c = search_col; c < dyn_num_cols; c++) {
                     if (can_place(pl.row_start, c, pl.row_span, pl.col_span)) {
                         pl.col_start = c;
+                        placed = true;
                         break;
                     }
                 }
-                if (pl.col_start < 0) pl.col_start = 0;
+                if (!placed) {
+                    pl.col_start = std::max(0, dyn_num_cols - pl.col_span);
+                }
             }
             // Full auto-placement
             else {
                 int search_row = dense_flow ? 0 : auto_cursor_row;
                 int search_col = dense_flow ? 0 : auto_cursor_col;
-                bool placed = false;
-                for (int r = search_row; !placed; r++) {
-                    ensure_rows(r + pl.row_span);
-                    int c_start = (r == search_row) ? search_col : 0;
-                    for (int c = c_start; c + pl.col_span <= dyn_num_cols; c++) {
-                        if (can_place(r, c, pl.row_span, pl.col_span)) {
-                            pl.row_start = r;
-                            pl.col_start = c;
-                            placed = true;
-                            break;
+                if (pl.col_span > dyn_num_cols) {
+                    pl.row_start = search_row;
+                    pl.col_start = 0;
+                } else {
+                    bool placed = false;
+                    for (int r = search_row; !placed; r++) {
+                        ensure_rows(r + pl.row_span);
+                        int c_start = (r == search_row) ? search_col : 0;
+                        if (c_start < 0) c_start = 0;
+                        for (int c = c_start; c < dyn_num_cols; c++) {
+                            if (can_place(r, c, pl.row_span, pl.col_span)) {
+                                pl.row_start = r;
+                                pl.col_start = c;
+                                placed = true;
+                                break;
+                            }
                         }
-                    }
-                    if (r > search_row + 10000) {
-                        pl.row_start = search_row; pl.col_start = 0; placed = true;
                     }
                 }
             }
 
             // Validate column bounds
+            if (pl.row_start < 0) pl.row_start = 0;
+            if (pl.col_start < 0) pl.col_start = 0;
             if (pl.col_start + pl.col_span > dyn_num_cols) {
                 pl.col_start = std::max(0, dyn_num_cols - pl.col_span);
             }
@@ -4568,10 +4584,11 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             // Advance cursor (only in non-dense mode)
             if (!dense_flow) {
                 auto_cursor_col = pl.col_start + pl.col_span;
-                auto_cursor_row = pl.row_start;
                 if (auto_cursor_col >= dyn_num_cols) {
                     auto_cursor_col = 0;
                     auto_cursor_row++;
+                } else {
+                    auto_cursor_row = pl.row_start;
                 }
             }
         } else {
@@ -4579,28 +4596,32 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             // If item has a fixed row but needs auto column:
             if (pl.row_start >= 0) {
                 int search_col = dense_flow ? 0 : auto_cursor_col;
+                bool placed = false;
                 for (int c = search_col; ; c++) {
                     while (c + pl.col_span > dyn_num_cols) add_implicit_col();
                     if (can_place(pl.row_start, c, pl.row_span, pl.col_span)) {
                         pl.col_start = c;
+                        placed = true;
                         break;
                     }
-                    if (c > search_col + 10000) { pl.col_start = 0; break; }
+                }
+                if (!placed) {
+                    pl.col_start = search_col;
                 }
             }
             // If item has a fixed column but needs auto row:
             else if (pl.col_start >= 0) {
-                int max_rows = static_cast<int>(occupied.size()) / dyn_num_cols;
+                while (pl.col_start + pl.col_span > dyn_num_cols) {
+                    add_implicit_col();
+                }
                 int search_row = dense_flow ? 0 : auto_cursor_row;
-                for (int r = search_row; r < search_row + 100000; r++) {
+                for (int r = search_row;; r++) {
                     ensure_rows(r + pl.row_span);
                     if (can_place(r, pl.col_start, pl.row_span, pl.col_span)) {
                         pl.row_start = r;
                         break;
                     }
-                    (void)max_rows;
                 }
-                if (pl.row_start < 0) pl.row_start = 0;
             }
             // Full auto-placement (column flow)
             else {
@@ -4610,8 +4631,8 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                 for (int c = search_col; !placed; c++) {
                     while (c + pl.col_span > dyn_num_cols) add_implicit_col();
                     int r_start = (c == search_col) ? search_row : 0;
-                    int max_rows = static_cast<int>(occupied.size()) / dyn_num_cols;
-                    for (int r = r_start; r < r_start + max_rows + pl.row_span + 1; r++) {
+                    if (r_start < 0) r_start = 0;
+                    for (int r = r_start;; r++) {
                         ensure_rows(r + pl.row_span);
                         if (can_place(r, c, pl.row_span, pl.col_span)) {
                             pl.row_start = r;
@@ -4620,13 +4641,12 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                             break;
                         }
                     }
-                    if (c > search_col + 10000) {
-                        pl.row_start = 0; pl.col_start = 0; placed = true;
-                    }
                 }
             }
 
             // Validate column bounds
+            if (pl.row_start < 0) pl.row_start = 0;
+            if (pl.col_start < 0) pl.col_start = 0;
             if (pl.col_start + pl.col_span > dyn_num_cols) {
                 pl.col_start = std::max(0, dyn_num_cols - pl.col_span);
             }
