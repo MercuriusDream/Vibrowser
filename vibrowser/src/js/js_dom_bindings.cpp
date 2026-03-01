@@ -31,6 +31,8 @@ namespace clever::js {
 
 namespace {
 
+thread_local std::string g_navigator_clipboard_text;
+
 // =========================================================================
 // Class IDs for custom JS objects
 // =========================================================================
@@ -16074,6 +16076,73 @@ void install_dom_bindings(JSContext* ctx,
             JS_NewString(ctx, "20030107"));
         // navigator.clipboard (stub)
         JSValue clipboard = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, clipboard, "writeText",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int argc, JSValueConst* argv) -> JSValue {
+                if (argc >= 1) {
+                    JSValue text = JS_ToString(c, argv[0]);
+                    if (!JS_IsException(text)) {
+                        const char* text_bytes = JS_ToCString(c, text);
+                        if (text_bytes) {
+                            g_navigator_clipboard_text = text_bytes;
+                            JS_FreeCString(c, text_bytes);
+                        }
+                        JS_FreeValue(c, text);
+                    } else {
+                        JSValue exc = JS_GetException(c);
+                        JS_FreeValue(c, exc);
+                    }
+                } else {
+                    g_navigator_clipboard_text.clear();
+                }
+
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) return promise;
+                JSValue resolved = JS_UNDEFINED;
+                JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &resolved);
+                JS_FreeValue(c, r);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                return promise;
+            }, "writeText", 1));
+        JS_SetPropertyStr(ctx, clipboard, "readText",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) return promise;
+                JSValue value = JS_NewString(c, g_navigator_clipboard_text.c_str());
+                JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &value);
+                JS_FreeValue(c, value);
+                JS_FreeValue(c, r);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                return promise;
+            }, "readText", 0));
+        JS_SetPropertyStr(ctx, clipboard, "write",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) return promise;
+                JSValue resolved = JS_UNDEFINED;
+                JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &resolved);
+                JS_FreeValue(c, r);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                return promise;
+            }, "write", 1));
+        JS_SetPropertyStr(ctx, clipboard, "read",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) return promise;
+                JSValue value = JS_NewArray(c);
+                JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &value);
+                JS_FreeValue(c, value);
+                JS_FreeValue(c, r);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                return promise;
+            }, "read", 0));
         JS_SetPropertyStr(ctx, nav, "clipboard", clipboard);
         // navigator.mediaDevices (stub)
         JSValue media_devices = JS_NewObject(ctx);
@@ -16186,6 +16255,50 @@ void install_dom_bindings(JSContext* ctx,
         }
         // navigator.permissions (stub)
         JSValue perms = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, perms, "query",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int argc, JSValueConst* argv) -> JSValue {
+                std::string name;
+                if (argc >= 1 && JS_IsObject(argv[0])) {
+                    JSValue maybe_name = JS_GetPropertyStr(c, argv[0], "name");
+                    if (!JS_IsException(maybe_name)) {
+                        const char* name_bytes = JS_ToCString(c, maybe_name);
+                        if (name_bytes) {
+                            name = name_bytes;
+                            JS_FreeCString(c, name_bytes);
+                        }
+                    } else {
+                        JSValue exc = JS_GetException(c);
+                        JS_FreeValue(c, exc);
+                    }
+                    JS_FreeValue(c, maybe_name);
+                }
+
+                const char* state = "prompt";
+                if (name == "clipboard-read" || name == "clipboard-write" || name == "notifications") {
+                    state = "granted";
+                } else if (name == "geolocation" || name == "camera" || name == "microphone") {
+                    state = "denied";
+                }
+
+                JSValue status = JS_NewObject(c);
+                JS_SetPropertyStr(c, status, "state", JS_NewString(c, state));
+                JS_SetPropertyStr(c, status, "onchange", JS_NULL);
+                JS_SetPropertyStr(c, status, "name", JS_NewString(c, name.c_str()));
+
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) {
+                    JS_FreeValue(c, status);
+                    return promise;
+                }
+
+                JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &status);
+                JS_FreeValue(c, status);
+                JS_FreeValue(c, r);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                return promise;
+            }, "query", 1));
         JS_SetPropertyStr(ctx, nav, "permissions", perms);
 
         JS_SetPropertyStr(ctx, global, "navigator", nav);
