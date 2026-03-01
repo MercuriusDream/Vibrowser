@@ -13,6 +13,7 @@ extern "C" {
 #include <cstdio>
 #include <cstring>
 #include <cctype>
+#include <ctime>
 #include <map>
 #include <mutex>
 #include <string>
@@ -3007,6 +3008,417 @@ static JSValue js_css_supports(JSContext* ctx, JSValueConst /*this_val*/,
 }
 
 // =========================================================================
+// Intl constructors and format helpers
+// =========================================================================
+
+struct IntlIntOption {
+    bool has_value = false;
+    int value = 0;
+};
+
+static IntlIntOption js_intl_get_int_option(JSContext* ctx, JSValueConst obj,
+                                           const char* prop, int min_value,
+                                           int max_value) {
+    IntlIntOption result;
+    if (!JS_IsObject(obj)) return result;
+
+    JSValue prop_val = JS_GetPropertyStr(ctx, obj, prop);
+    if (JS_IsNumber(prop_val)) {
+        int parsed = 0;
+        if (JS_ToInt32(ctx, &parsed, prop_val) == 0 &&
+            parsed >= min_value && parsed <= max_value) {
+            result.has_value = true;
+            result.value = parsed;
+        }
+    }
+    JS_FreeValue(ctx, prop_val);
+    return result;
+}
+
+static std::string js_intl_get_string_option(JSContext* ctx, JSValueConst obj,
+                                            const char* prop,
+                                            const std::string& fallback) {
+    std::string result = fallback;
+    if (!JS_IsObject(obj)) return result;
+
+    JSValue prop_val = JS_GetPropertyStr(ctx, obj, prop);
+    if (JS_IsString(prop_val)) {
+        const char* s = JS_ToCString(ctx, prop_val);
+        if (s) {
+            result = s;
+            JS_FreeCString(ctx, s);
+        }
+    }
+    JS_FreeValue(ctx, prop_val);
+    return result;
+}
+
+static const char* js_intl_currency_symbol(const std::string& currency_code) {
+    if (currency_code == "USD") return "$";
+    if (currency_code == "EUR") return "€";
+    if (currency_code == "GBP") return "£";
+    if (currency_code == "JPY") return "¥";
+    if (currency_code == "CNY") return "¥";
+    if (currency_code == "KRW") return "₩";
+    if (currency_code == "INR") return "₹";
+    if (currency_code == "CAD" || currency_code == "AUD") return "$";
+    return "";
+}
+
+static JSValue js_intl_number_format_format(JSContext* ctx, JSValueConst this_val,
+                                           int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_ThrowTypeError(ctx, "NumberFormat.format requires 1 argument");
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Invalid NumberFormat receiver");
+
+    double value = 0.0;
+    if (JS_ToFloat64(ctx, &value, argv[0]) != 0) return JS_EXCEPTION;
+
+    if (!std::isfinite(value)) {
+        return JS_NewString(ctx, "NaN");
+    }
+
+    std::string style = js_intl_get_string_option(ctx, this_val, "style", "decimal");
+    if (style != "decimal" && style != "currency" && style != "percent") {
+        style = "decimal";
+    }
+
+    std::string currency = js_intl_get_string_option(
+        ctx, this_val, "currency", style == "currency" ? "USD" : "");
+    for (auto& ch : currency) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+
+    IntlIntOption min_opt = js_intl_get_int_option(
+        ctx, this_val, "minimumFractionDigits", 0, 20);
+    IntlIntOption max_opt = js_intl_get_int_option(
+        ctx, this_val, "maximumFractionDigits", 0, 20);
+
+    int minimum_digits = min_opt.has_value ? min_opt.value : -1;
+    int maximum_digits = max_opt.has_value ? max_opt.value : -1;
+
+    if (style == "currency") {
+        if (minimum_digits < 0) minimum_digits = 2;
+        if (maximum_digits < 0) maximum_digits = 2;
+    } else if (style == "percent") {
+        if (minimum_digits < 0) minimum_digits = 0;
+        if (maximum_digits < 0) maximum_digits = 0;
+    } else {
+        if (minimum_digits < 0) minimum_digits = 0;
+        if (maximum_digits < 0) maximum_digits = 3;
+    }
+
+    if (maximum_digits < minimum_digits) maximum_digits = minimum_digits;
+    double scaled_value = value;
+    if (style == "percent") scaled_value *= 100.0;
+
+    char formatted_value[128];
+    std::snprintf(formatted_value, sizeof(formatted_value), "%.*f",
+                  maximum_digits, scaled_value);
+
+    std::string result(formatted_value);
+    size_t dot = result.find('.');
+    if (dot != std::string::npos && result.size() > dot + static_cast<size_t>(minimum_digits + 1)) {
+        size_t end = result.size();
+        while (end > dot + static_cast<size_t>(minimum_digits + 1) &&
+               end > dot + 1 &&
+               result[end - 1] == '0') {
+            --end;
+        }
+        if (end == dot + 1) {
+            result.resize(dot);
+        } else {
+            result.resize(end);
+            if (end == dot + 1) {
+                result.resize(dot);
+            }
+        }
+    }
+
+    if (style == "currency" && !currency.empty()) {
+        return JS_NewString(ctx, (std::string(js_intl_currency_symbol(currency)) + result).c_str());
+    }
+
+    if (style == "percent") {
+        return JS_NewString(ctx, (result + "%").c_str());
+    }
+
+    return JS_NewString(ctx, result.c_str());
+}
+
+static JSValue js_intl_number_format_constructor(JSContext* ctx, JSValueConst /*new_target*/,
+                                                 int argc, JSValueConst* argv) {
+    std::string locale = "en-US";
+    if (argc >= 1 && !JS_IsUndefined(argv[0]) && !JS_IsNull(argv[0])) {
+        const char* locale_cstr = JS_ToCString(ctx, argv[0]);
+        if (!locale_cstr) return JS_EXCEPTION;
+        locale = locale_cstr;
+        JS_FreeCString(ctx, locale_cstr);
+    }
+    if (argc >= 2 && !JS_IsUndefined(argv[1]) && !JS_IsNull(argv[1]) &&
+        !JS_IsObject(argv[1])) {
+        return JS_ThrowTypeError(ctx,
+            "Intl.NumberFormat options must be an object");
+    }
+
+    JSValue options = (argc >= 2 && JS_IsObject(argv[1])) ? argv[1] : JS_UNDEFINED;
+
+    std::string style = js_intl_get_string_option(ctx, options, "style", "decimal");
+    if (style != "decimal" && style != "currency" && style != "percent") {
+        style = "decimal";
+    }
+    std::string currency = js_intl_get_string_option(
+        ctx, options, "currency", style == "currency" ? "USD" : "");
+    for (auto& ch : currency) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+
+    IntlIntOption min_opt = js_intl_get_int_option(
+        ctx, options, "minimumFractionDigits", 0, 20);
+    IntlIntOption max_opt = js_intl_get_int_option(
+        ctx, options, "maximumFractionDigits", 0, 20);
+
+    int min_digits = min_opt.has_value ? min_opt.value : -1;
+    int max_digits = max_opt.has_value ? max_opt.value : -1;
+
+    if (style == "currency") {
+        if (min_digits < 0) min_digits = 2;
+        if (max_digits < 0) max_digits = 2;
+    } else if (style == "percent") {
+        if (min_digits < 0) min_digits = 0;
+        if (max_digits < 0) max_digits = 0;
+    } else {
+        if (min_digits < 0) min_digits = 0;
+        if (max_digits < 0) max_digits = 3;
+    }
+    if (max_digits < min_digits) max_digits = min_digits;
+
+    JSValue formatter = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, formatter, "locale", JS_NewString(ctx, locale.c_str()));
+    JS_SetPropertyStr(ctx, formatter, "style", JS_NewString(ctx, style.c_str()));
+    JS_SetPropertyStr(ctx, formatter, "currency", JS_NewString(ctx, currency.c_str()));
+    JS_SetPropertyStr(ctx, formatter, "minimumFractionDigits", JS_NewInt32(ctx, min_digits));
+    JS_SetPropertyStr(ctx, formatter, "maximumFractionDigits", JS_NewInt32(ctx, max_digits));
+    JS_SetPropertyStr(ctx, formatter, "format",
+        JS_NewCFunction(ctx, js_intl_number_format_format, "format", 1));
+    return formatter;
+}
+
+static JSValue js_intl_date_time_format_format(JSContext* ctx, JSValueConst this_val,
+                                              int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_ThrowTypeError(ctx, "DateTimeFormat.format requires 1 argument");
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Invalid DateTimeFormat receiver");
+
+    // Accept Date objects (via valueOf) or numbers as timestamps
+    double timestamp_ms = 0.0;
+    if (JS_IsObject(argv[0])) {
+        // Try calling valueOf() to get the timestamp from a Date object
+        JSAtom valueOf_atom = JS_NewAtom(ctx, "valueOf");
+        JSValue vo = JS_Invoke(ctx, argv[0], valueOf_atom, 0, nullptr);
+        JS_FreeAtom(ctx, valueOf_atom);
+        if (JS_IsException(vo)) return JS_EXCEPTION;
+        if (JS_ToFloat64(ctx, &timestamp_ms, vo) != 0) { JS_FreeValue(ctx, vo); return JS_EXCEPTION; }
+        JS_FreeValue(ctx, vo);
+    } else if (JS_ToFloat64(ctx, &timestamp_ms, argv[0]) != 0) {
+        return JS_EXCEPTION;
+    }
+
+    if (!std::isfinite(timestamp_ms)) {
+        return JS_NewString(ctx, "Invalid Date");
+    }
+
+    time_t timestamp_seconds = static_cast<time_t>(timestamp_ms / 1000.0);
+    std::tm* gm = std::gmtime(&timestamp_seconds);
+    if (!gm) return JS_NewString(ctx, "Invalid Date");
+    std::tm tm_copy = *gm;
+
+    char ctime_buf[64] = {};
+    const char* ctime_result = std::ctime(&timestamp_seconds);
+    if (ctime_result) {
+        std::strncpy(ctime_buf, ctime_result, sizeof(ctime_buf) - 1);
+    }
+
+    std::string year = js_intl_get_string_option(
+        ctx, this_val, "year", "numeric");
+    std::string month = js_intl_get_string_option(
+        ctx, this_val, "month", "numeric");
+    std::string day = js_intl_get_string_option(
+        ctx, this_val, "day", "numeric");
+    std::string hour = js_intl_get_string_option(
+        ctx, this_val, "hour", "numeric");
+    std::string minute = js_intl_get_string_option(
+        ctx, this_val, "minute", "numeric");
+    std::string second = js_intl_get_string_option(
+        ctx, this_val, "second", "numeric");
+
+    auto add_piece = [](std::string& pattern, const std::string& value,
+                        const char* spec2, const char* spec4) {
+        if (value == "2-digit") pattern += spec2;
+        else if (value == "numeric") pattern += spec4;
+    };
+
+    std::string date_pattern;
+    std::string time_pattern;
+    add_piece(date_pattern, year, "%y", "%Y");
+    add_piece(date_pattern, month, "%m", "%m");
+    add_piece(date_pattern, day, "%d", "%d");
+    add_piece(time_pattern, hour, "%H", "%H");
+    add_piece(time_pattern, minute, "%M", "%M");
+    add_piece(time_pattern, second, "%S", "%S");
+
+    if (date_pattern.empty() && time_pattern.empty()) {
+        if (ctime_buf[0] != '\0') {
+            size_t len = std::strlen(ctime_buf);
+            if (len > 0 && ctime_buf[len - 1] == '\n') ctime_buf[len - 1] = '\0';
+            return JS_NewString(ctx, ctime_buf);
+        }
+        return JS_NewString(ctx, "");
+    }
+
+    char date_buf[128] = {};
+    char time_buf[128] = {};
+    std::string formatted;
+
+    if (!date_pattern.empty()) {
+        std::string date_sep_pattern;
+        for (size_t i = 0; i < date_pattern.size(); ++i) {
+            if (date_pattern[i] == '%') {
+                date_sep_pattern += date_pattern.substr(i, 2);
+                ++i;
+                if (i + 1 < date_pattern.size()) date_sep_pattern += '-';
+            }
+        }
+        if (!date_sep_pattern.empty() &&
+            date_sep_pattern.back() == '-') date_sep_pattern.pop_back();
+        if (date_sep_pattern.empty()) date_sep_pattern = date_pattern;
+        std::strftime(date_buf, sizeof(date_buf), date_sep_pattern.c_str(), &tm_copy);
+        formatted += date_buf;
+    }
+
+    if (!time_pattern.empty()) {
+        std::string time_sep_pattern;
+        for (size_t i = 0; i < time_pattern.size(); ++i) {
+            if (time_pattern[i] == '%') {
+                time_sep_pattern += time_pattern.substr(i, 2);
+                ++i;
+                if (i + 1 < time_pattern.size()) time_sep_pattern += ':';
+            }
+        }
+        if (!time_sep_pattern.empty() &&
+            time_sep_pattern.back() == ':') time_sep_pattern.pop_back();
+        if (time_sep_pattern.empty()) time_sep_pattern = time_pattern;
+        std::strftime(time_buf, sizeof(time_buf), time_sep_pattern.c_str(), &tm_copy);
+        if (!formatted.empty()) formatted += " ";
+        formatted += time_buf;
+    }
+
+    return JS_NewString(ctx, formatted.c_str());
+}
+
+static JSValue js_intl_date_time_format_constructor(JSContext* ctx, JSValueConst /*new_target*/,
+                                                    int argc, JSValueConst* argv) {
+    std::string locale = "en-US";
+    if (argc >= 1 && !JS_IsUndefined(argv[0]) && !JS_IsNull(argv[0])) {
+        const char* locale_cstr = JS_ToCString(ctx, argv[0]);
+        if (!locale_cstr) return JS_EXCEPTION;
+        locale = locale_cstr;
+        JS_FreeCString(ctx, locale_cstr);
+    }
+
+    if (argc >= 2 && !JS_IsUndefined(argv[1]) && !JS_IsNull(argv[1]) &&
+        !JS_IsObject(argv[1])) {
+        return JS_ThrowTypeError(ctx,
+            "Intl.DateTimeFormat options must be an object");
+    }
+
+    JSValue options = (argc >= 2 && JS_IsObject(argv[1])) ? argv[1] : JS_UNDEFINED;
+
+    JSValue formatter = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, formatter, "locale", JS_NewString(ctx, locale.c_str()));
+    JS_SetPropertyStr(ctx, formatter, "year",
+        JS_NewString(ctx, js_intl_get_string_option(ctx, options, "year", "numeric").c_str()));
+    JS_SetPropertyStr(ctx, formatter, "month",
+        JS_NewString(ctx, js_intl_get_string_option(ctx, options, "month", "numeric").c_str()));
+    JS_SetPropertyStr(ctx, formatter, "day",
+        JS_NewString(ctx, js_intl_get_string_option(ctx, options, "day", "numeric").c_str()));
+    JS_SetPropertyStr(ctx, formatter, "hour",
+        JS_NewString(ctx, js_intl_get_string_option(ctx, options, "hour", "numeric").c_str()));
+    JS_SetPropertyStr(ctx, formatter, "minute",
+        JS_NewString(ctx, js_intl_get_string_option(ctx, options, "minute", "numeric").c_str()));
+    JS_SetPropertyStr(ctx, formatter, "second",
+        JS_NewString(ctx, js_intl_get_string_option(ctx, options, "second", "numeric").c_str()));
+    JS_SetPropertyStr(ctx, formatter, "format",
+        JS_NewCFunction(ctx, js_intl_date_time_format_format, "format", 1));
+    return formatter;
+}
+
+static JSValue js_intl_collator_compare(JSContext* ctx, JSValueConst this_val,
+                                       int argc, JSValueConst* argv) {
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Invalid Collator receiver");
+    if (argc < 2) return JS_ThrowTypeError(ctx, "Intl.Collator.compare requires 2 arguments");
+
+    const char* a = JS_ToCString(ctx, argv[0]);
+    if (!a) return JS_EXCEPTION;
+    const char* b = JS_ToCString(ctx, argv[1]);
+    if (!b) {
+        JS_FreeCString(ctx, a);
+        return JS_EXCEPTION;
+    }
+
+    int cmp = std::strcoll(a, b);
+    JS_FreeCString(ctx, a);
+    JS_FreeCString(ctx, b);
+
+    if (cmp < 0) return JS_NewInt32(ctx, -1);
+    if (cmp > 0) return JS_NewInt32(ctx, 1);
+    return JS_NewInt32(ctx, 0);
+}
+
+static JSValue js_intl_collator_constructor(JSContext* ctx, JSValueConst /*new_target*/,
+                                           int argc, JSValueConst* argv) {
+    std::string locale = "en-US";
+    if (argc >= 1 && !JS_IsUndefined(argv[0]) && !JS_IsNull(argv[0])) {
+        const char* locale_cstr = JS_ToCString(ctx, argv[0]);
+        if (!locale_cstr) return JS_EXCEPTION;
+        locale = locale_cstr;
+        JS_FreeCString(ctx, locale_cstr);
+    }
+
+    JSValue collator = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, collator, "locale", JS_NewString(ctx, locale.c_str()));
+    JS_SetPropertyStr(ctx, collator, "compare",
+        JS_NewCFunction(ctx, js_intl_collator_compare, "compare", 2));
+    return collator;
+}
+
+static JSValue js_intl_plural_rules_select(JSContext* ctx, JSValueConst this_val,
+                                          int argc, JSValueConst* argv) {
+    if (!JS_IsObject(this_val))
+        return JS_ThrowTypeError(ctx, "Invalid PluralRules receiver");
+    if (argc < 1) return JS_ThrowTypeError(ctx, "Intl.PluralRules.select requires 1 argument");
+
+    double value = 0.0;
+    if (JS_ToFloat64(ctx, &value, argv[0]) != 0) return JS_EXCEPTION;
+
+    return JS_NewString(ctx, value == 1.0 ? "one" : "other");
+}
+
+static JSValue js_intl_plural_rules_constructor(JSContext* ctx, JSValueConst /*new_target*/,
+                                               int argc, JSValueConst* argv) {
+    std::string locale = "en-US";
+    if (argc >= 1 && !JS_IsUndefined(argv[0]) && !JS_IsNull(argv[0])) {
+        const char* locale_cstr = JS_ToCString(ctx, argv[0]);
+        if (!locale_cstr) return JS_EXCEPTION;
+        locale = locale_cstr;
+        JS_FreeCString(ctx, locale_cstr);
+    }
+
+    JSValue rules = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, rules, "locale", JS_NewString(ctx, locale.c_str()));
+    JS_SetPropertyStr(ctx, rules, "select",
+        JS_NewCFunction(ctx, js_intl_plural_rules_select, "select", 1));
+    return rules;
+}
+
+// =========================================================================
 // TextEncoder class (Encoding API)
 // =========================================================================
 
@@ -3908,6 +4320,22 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, css_obj, "supports",
         JS_NewCFunction(ctx, js_css_supports, "supports", 1));
     JS_SetPropertyStr(ctx, global, "CSS", css_obj);
+
+    // ---- Intl constructors (NumberFormat / DateTimeFormat / Collator / PluralRules) ----
+    JSValue intl_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, intl_obj, "NumberFormat",
+        JS_NewCFunction2(ctx, js_intl_number_format_constructor,
+                         "NumberFormat", 0, JS_CFUNC_constructor, 0));
+    JS_SetPropertyStr(ctx, intl_obj, "DateTimeFormat",
+        JS_NewCFunction2(ctx, js_intl_date_time_format_constructor,
+                         "DateTimeFormat", 0, JS_CFUNC_constructor, 0));
+    JS_SetPropertyStr(ctx, intl_obj, "Collator",
+        JS_NewCFunction2(ctx, js_intl_collator_constructor,
+                         "Collator", 0, JS_CFUNC_constructor, 0));
+    JS_SetPropertyStr(ctx, intl_obj, "PluralRules",
+        JS_NewCFunction2(ctx, js_intl_plural_rules_constructor,
+                         "PluralRules", 0, JS_CFUNC_constructor, 0));
+    JS_SetPropertyStr(ctx, global, "Intl", intl_obj);
 
     JS_FreeValue(ctx, global);
 
