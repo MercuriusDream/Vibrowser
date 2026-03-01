@@ -926,6 +926,114 @@ std::optional<Color> parse_color(const std::string& input) {
         return count;
     };
 
+    // Helper: linear sRGB conversion (used globally)
+    auto srgb_to_linear = [](float c) -> float {
+        if (c <= 0.04045f) return c / 12.92f;
+        return std::pow((c + 0.055f) / 1.055f, 2.4f);
+    };
+
+    // Helper: sRGB to HSL conversion
+    auto srgb_to_hsl = [](float r, float g, float b) -> std::tuple<float, float, float> {
+        float max_c = std::max({r, g, b});
+        float min_c = std::min({r, g, b});
+        float delta = max_c - min_c;
+
+        float h = 0.0f, s = 0.0f, l = (max_c + min_c) / 2.0f;
+        if (delta != 0.0f) {
+            s = (l > 0.5f) ? (delta / (2.0f - max_c - min_c)) : (delta / (max_c + min_c));
+            if (max_c == r) {
+                h = (g - b) / delta;
+                if (g < b) h += 6.0f;
+            } else if (max_c == g) {
+                h = (b - r) / delta + 2.0f;
+            } else {
+                h = (r - g) / delta + 4.0f;
+            }
+            h *= 60.0f;
+        }
+        return std::make_tuple(h, s, l);
+    };
+
+    // Helper: HSL to sRGB conversion
+    auto hsl_to_srgb = [](float h, float s, float l) -> std::tuple<float, float, float> {
+        float h_norm = std::fmod(h, 360.0f);
+        if (h_norm < 0.0f) h_norm += 360.0f;
+        h_norm /= 360.0f;
+
+        auto hue2rgb = [](float p, float q, float t) -> float {
+            if (t < 0.0f) t += 1.0f;
+            if (t > 1.0f) t -= 1.0f;
+            if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
+            if (t < 1.0f / 2.0f) return q;
+            if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
+            return p;
+        };
+
+        float r, g, b;
+        if (s == 0.0f) {
+            r = g = b = l;
+        } else {
+            float q = l < 0.5f ? l * (1.0f + s) : l + s - l * s;
+            float p = 2.0f * l - q;
+            r = hue2rgb(p, q, h_norm + 1.0f / 3.0f);
+            g = hue2rgb(p, q, h_norm);
+            b = hue2rgb(p, q, h_norm - 1.0f / 3.0f);
+        }
+        return std::make_tuple(r, g, b);
+    };
+
+    // Helper: sRGB to OKLab conversion
+    auto srgb_to_oklab = [&](float r, float g, float b) -> std::tuple<float, float, float> {
+        float r_lin = srgb_to_linear(r);
+        float g_lin = srgb_to_linear(g);
+        float b_lin = srgb_to_linear(b);
+
+        float l_val = 0.4122214708f * r_lin + 0.5363325363f * g_lin + 0.0514459929f * b_lin;
+        float m_val = 0.2119034982f * r_lin + 0.6806995451f * g_lin + 0.1073969566f * b_lin;
+        float s_val = 0.0883024619f * r_lin + 0.0817845529f * g_lin + 0.8943868922f * b_lin;
+
+        float l_cbrt = std::cbrt(l_val);
+        float m_cbrt = std::cbrt(m_val);
+        float s_cbrt = std::cbrt(s_val);
+
+        float L = 0.2104542553f * l_cbrt + 0.7936177850f * m_cbrt - 0.0040720468f * s_cbrt;
+        float a = 1.9779984951f * l_cbrt - 2.4285922050f * m_cbrt + 0.4505937099f * s_cbrt;
+        float b_out = 0.0259040371f * l_cbrt + 0.7827717662f * m_cbrt - 0.8086757660f * s_cbrt;
+        return std::make_tuple(L, a, b_out);
+    };
+
+    // Helper: OKLab to sRGB conversion
+    auto oklab_to_srgb = [&](float L, float a, float b_in) -> std::tuple<float, float, float> {
+        float l_ = L + 0.3963377774f * a + 0.2158037573f * b_in;
+        float m_ = L - 0.1055613458f * a - 0.0638541728f * b_in;
+        float s_ = L - 0.0894841775f * a - 1.2914855480f * b_in;
+
+        float l3 = l_ * l_ * l_;
+        float m3 = m_ * m_ * m_;
+        float s3 = s_ * s_ * s_;
+
+        float r = 4.0767416621f * l3 - 3.3077115913f * m3 + 0.2309699292f * s3;
+        float g = -1.2684380046f * l3 + 2.6097574011f * m3 - 0.3413193965f * s3;
+        float b = -0.0041960863f * l3 - 0.7034186147f * m3 + 1.7076147010f * s3;
+        return std::make_tuple(r, g, b);
+    };
+
+    // Helper: sRGB to OKLCh conversion
+    auto srgb_to_oklch = [&](float r, float g, float b) -> std::tuple<float, float, float> {
+        auto [L, a, b_out] = srgb_to_oklab(r, g, b);
+        float C = std::sqrt(a * a + b_out * b_out);
+        float h = std::fmod(std::atan2(b_out, a) * 180.0f / 3.14159265f + 360.0f, 360.0f);
+        return std::make_tuple(L, C, h);
+    };
+
+    // Helper: OKLCh to sRGB conversion
+    auto oklch_to_srgb = [&](float L, float C, float h) -> std::tuple<float, float, float> {
+        float h_rad = h * 3.14159265f / 180.0f;
+        float a = C * std::cos(h_rad);
+        float b_in = C * std::sin(h_rad);
+        return oklab_to_srgb(L, a, b_in);
+    };
+
     // rgb() and rgba() functions (including relative color syntax)
     if (value.substr(0, 4) == "rgb(" || value.substr(0, 5) == "rgba(") {
         auto args = extract_func_args(value);
@@ -1363,15 +1471,50 @@ std::optional<Color> parse_color(const std::string& input) {
             };
         }
 
-        float vals[4] = {0, 0, 0, 1.0f};
-        int count = parse_func_values(*args, vals, 4);
-        if (count < 3) return std::nullopt;
+        // Parse oklch values, handling percentages for L
+        std::string cleaned = *args;
+        for (auto& c : cleaned) {
+            if (c == '/') c = ' ';
+            if (c == ',') c = ' ';
+        }
 
-        float L = std::clamp(vals[0], 0.0f, 1.0f);
-        float C = std::clamp(vals[1], 0.0f, 0.4f);
-        float h = std::fmod(vals[2], 360.0f);
-        if (h < 0) h += 360.0f;
-        float alpha = (count >= 4) ? std::clamp(vals[3], 0.0f, 1.0f) : 1.0f;
+        std::istringstream iss(cleaned);
+        std::string l_str, c_str, h_str, a_str;
+        iss >> l_str >> c_str >> h_str >> a_str;
+
+        float L = 0.0f, C = 0.0f, h = 0.0f, alpha = 1.0f;
+
+        try {
+            if (l_str.find('%') != std::string::npos) {
+                L = std::stof(l_str.substr(0, l_str.find('%'))) / 100.0f;
+            } else {
+                L = std::stof(l_str);
+            }
+            L = std::clamp(L, 0.0f, 1.0f);
+
+            if (c_str.find('%') != std::string::npos) {
+                C = std::stof(c_str.substr(0, c_str.find('%'))) / 100.0f * 0.4f;
+            } else {
+                C = std::stof(c_str);
+            }
+            C = std::clamp(C, 0.0f, 0.4f);
+
+            if (!h_str.empty()) {
+                h = std::stof(h_str);
+                h = std::fmod(h, 360.0f);
+                if (h < 0) h += 360.0f;
+            }
+
+            if (!a_str.empty()) {
+                alpha = std::stof(a_str);
+                if (a_str.find('%') != std::string::npos) {
+                    alpha = alpha / 100.0f;
+                }
+                alpha = std::clamp(alpha, 0.0f, 1.0f);
+            }
+        } catch (...) {
+            return std::nullopt;
+        }
 
         // OKLCh → OKLab
         float h_rad = h * 3.14159265f / 180.0f;
@@ -1929,20 +2072,17 @@ std::optional<Color> parse_color(const std::string& input) {
         }
         if (parts.size() < 3) return std::nullopt;
 
-        // parts[0] is the color space (srgb, oklch, oklab, lab, hsl)
+        // parts[0] is the color space (srgb, oklch, oklab, hsl)
         // parts[1] is color1 + optional percentage
         // parts[2] is color2 + optional percentage
-        // Interpolation happens in the requested color space
 
         auto parse_color_with_pct = [](const std::string& s) -> std::pair<std::optional<Color>, float> {
             std::string trimmed = s;
-            // Remove leading/trailing whitespace
             auto start = trimmed.find_first_not_of(" \t");
             auto end = trimmed.find_last_not_of(" \t");
             if (start == std::string::npos) return {std::nullopt, 50.0f};
             trimmed = trimmed.substr(start, end - start + 1);
 
-            // Check for trailing percentage
             float pct = -1;
             auto pct_pos = trimmed.rfind('%');
             if (pct_pos != std::string::npos) {
@@ -1964,7 +2104,6 @@ std::optional<Color> parse_color(const std::string& input) {
 
         if (!c1 || !c2) return std::nullopt;
 
-        // Resolve percentages (default: 50% each)
         if (pct1 < 0 && pct2 < 0) { pct1 = 50; pct2 = 50; }
         else if (pct1 < 0) { pct1 = 100 - pct2; }
         else if (pct2 < 0) { pct2 = 100 - pct1; }
@@ -1974,12 +2113,64 @@ std::optional<Color> parse_color(const std::string& input) {
         float p1 = pct1 / total;
         float p2 = pct2 / total;
 
-        return Color{
-            static_cast<uint8_t>(std::clamp(c1->r * p1 + c2->r * p2, 0.0f, 255.0f)),
-            static_cast<uint8_t>(std::clamp(c1->g * p1 + c2->g * p2, 0.0f, 255.0f)),
-            static_cast<uint8_t>(std::clamp(c1->b * p1 + c2->b * p2, 0.0f, 255.0f)),
-            static_cast<uint8_t>(std::clamp(c1->a * p1 + c2->a * p2, 0.0f, 255.0f))
-        };
+        std::string colorspace = to_lower(parts[0]);
+        if (colorspace == "in srgb" || colorspace == "srgb") {
+            return Color{
+                static_cast<uint8_t>(std::clamp(c1->r * p1 + c2->r * p2, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(c1->g * p1 + c2->g * p2, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(c1->b * p1 + c2->b * p2, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(c1->a * p1 + c2->a * p2, 0.0f, 255.0f))
+            };
+        } else if (colorspace == "in hsl" || colorspace == "hsl") {
+            float r1 = c1->r / 255.0f, g1 = c1->g / 255.0f, b1 = c1->b / 255.0f;
+            float r2 = c2->r / 255.0f, g2 = c2->g / 255.0f, b2 = c2->b / 255.0f;
+            auto [h1, s1, l1] = srgb_to_hsl(r1, g1, b1);
+            auto [h2, s2, l2] = srgb_to_hsl(r2, g2, b2);
+            float h_mix = h1 * p1 + h2 * p2;
+            float s_mix = s1 * p1 + s2 * p2;
+            float l_mix = l1 * p1 + l2 * p2;
+            auto [r_out, g_out, b_out] = hsl_to_srgb(h_mix, s_mix, l_mix);
+            float a_out = c1->a * p1 + c2->a * p2;
+            return Color{
+                static_cast<uint8_t>(std::clamp(r_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(g_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(b_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(a_out, 0.0f, 255.0f))
+            };
+        } else if (colorspace == "in oklch" || colorspace == "oklch") {
+            float r1 = c1->r / 255.0f, g1 = c1->g / 255.0f, b1 = c1->b / 255.0f;
+            float r2 = c2->r / 255.0f, g2 = c2->g / 255.0f, b2 = c2->b / 255.0f;
+            auto [L1, C1, h1] = srgb_to_oklch(r1, g1, b1);
+            auto [L2, C2, h2] = srgb_to_oklch(r2, g2, b2);
+            float L_mix = L1 * p1 + L2 * p2;
+            float C_mix = C1 * p1 + C2 * p2;
+            float h_mix = h1 * p1 + h2 * p2;
+            auto [r_out, g_out, b_out] = oklch_to_srgb(L_mix, C_mix, h_mix);
+            float a_out = c1->a * p1 + c2->a * p2;
+            return Color{
+                static_cast<uint8_t>(std::clamp(r_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(g_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(b_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(a_out, 0.0f, 255.0f))
+            };
+        } else if (colorspace == "in oklab" || colorspace == "oklab") {
+            float r1 = c1->r / 255.0f, g1 = c1->g / 255.0f, b1 = c1->b / 255.0f;
+            float r2 = c2->r / 255.0f, g2 = c2->g / 255.0f, b2 = c2->b / 255.0f;
+            auto [L1, a1, b1_out] = srgb_to_oklab(r1, g1, b1);
+            auto [L2, a2, b2_out] = srgb_to_oklab(r2, g2, b2);
+            float L_mix = L1 * p1 + L2 * p2;
+            float a_mix = a1 * p1 + a2 * p2;
+            float b_mix = b1_out * p1 + b2_out * p2;
+            auto [r_out, g_out, b_out] = oklab_to_srgb(L_mix, a_mix, b_mix);
+            float a_out = c1->a * p1 + c2->a * p2;
+            return Color{
+                static_cast<uint8_t>(std::clamp(r_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(g_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(b_out * 255.0f, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(a_out, 0.0f, 255.0f))
+            };
+        }
+        return std::nullopt;
     }
 
     // light-dark() function — CSS Color Level 5

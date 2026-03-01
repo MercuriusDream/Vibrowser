@@ -3572,11 +3572,15 @@ TEST(CSSStyleCascade, EllipticalBorderRadiusTwoValues) {
     PropertyCascade cascade;
     cascade.apply_declaration(style,
         make_decl("border-radius", "10px / 5px"), parent);
-    // Averaged: (10+5)/2 = 7.5 for all corners
-    EXPECT_FLOAT_EQ(style.border_radius_tl, 7.5f);
-    EXPECT_FLOAT_EQ(style.border_radius_tr, 7.5f);
-    EXPECT_FLOAT_EQ(style.border_radius_br, 7.5f);
-    EXPECT_FLOAT_EQ(style.border_radius_bl, 7.5f);
+    // Now stores separate x/y radii: horizontal=10px, vertical=5px
+    EXPECT_FLOAT_EQ(style.border_radius_tl_x, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tl_y, 5.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tr_x, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tr_y, 5.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_br_x, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_br_y, 5.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_bl_x, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_bl_y, 5.0f);
 }
 
 TEST(CSSStyleCascade, EllipticalBorderRadiusFourSlashFour) {
@@ -3585,11 +3589,16 @@ TEST(CSSStyleCascade, EllipticalBorderRadiusFourSlashFour) {
     PropertyCascade cascade;
     cascade.apply_declaration(style,
         make_decl("border-radius", "10px 20px 30px 40px / 5px 10px 15px 20px"), parent);
-    // TL: (10+5)/2=7.5, TR: (20+10)/2=15, BR: (30+15)/2=22.5, BL: (40+20)/2=30
-    EXPECT_FLOAT_EQ(style.border_radius_tl, 7.5f);
-    EXPECT_FLOAT_EQ(style.border_radius_tr, 15.0f);
-    EXPECT_FLOAT_EQ(style.border_radius_br, 22.5f);
-    EXPECT_FLOAT_EQ(style.border_radius_bl, 30.0f);
+    // Now stores separate x/y radii
+    // TL: x=10, y=5; TR: x=20, y=10; BR: x=30, y=15; BL: x=40, y=20
+    EXPECT_FLOAT_EQ(style.border_radius_tl_x, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tl_y, 5.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tr_x, 20.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tr_y, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_br_x, 30.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_br_y, 15.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_bl_x, 40.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_bl_y, 20.0f);
 }
 
 TEST(CSSStyleCascade, GradientStopPositions) {

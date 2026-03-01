@@ -1703,15 +1703,15 @@ void PropertyCascade::apply_declaration(
             if (slash_pos != std::string::npos) {
                 if (!part.empty() && slash_pos > 0) {
                     parse_pair(part.substr(0, slash_pos), vertical ? v_radii : h_radii, parse_error);
-                } else if (slash_pos == 0) {
-                    parse_error = true;
                 }
+                // slash_pos == 0: standalone "/" or "/5px" — not an error; just separator
                 vertical = true;
                 if (slash_pos + 1 < part.size()) {
                     parse_pair(part.substr(slash_pos + 1), v_radii, parse_error);
                 }
                 continue;
             }
+            // Standalone "/" as its own token (already handled via slash_pos path above)
             if (part == "/") {
                 vertical = true;
                 continue;
@@ -1739,11 +1739,12 @@ void PropertyCascade::apply_declaration(
             style.border_radius_bl_x = h_bl;
             style.border_radius_bl_y = v_bl;
 
-            style.border_radius_tl = h_tl;
-            style.border_radius_tr = h_tr;
-            style.border_radius_bl = h_bl;
-            style.border_radius_br = h_br;
-            style.border_radius = h_tl;
+            // Scalar fields average h/v radii (renderer can't do true elliptical corners)
+            style.border_radius_tl = v_radii.empty() ? h_tl : (h_tl + v_tl) * 0.5f;
+            style.border_radius_tr = v_radii.empty() ? h_tr : (h_tr + v_tr) * 0.5f;
+            style.border_radius_bl = v_radii.empty() ? h_bl : (h_bl + v_bl) * 0.5f;
+            style.border_radius_br = v_radii.empty() ? h_br : (h_br + v_br) * 0.5f;
+            style.border_radius = style.border_radius_tl;
         } else if (!parse_error) {
             style.border_radius = 0;
             style.border_radius_tl = 0;
