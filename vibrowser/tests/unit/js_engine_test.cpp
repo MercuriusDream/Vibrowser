@@ -7155,7 +7155,7 @@ TEST(JSWindow, WindowPrompt) {
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 1024, 768);
     auto result = engine.evaluate("window.prompt('Enter name:')");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
-    EXPECT_EQ(result, "");
+    EXPECT_EQ(result, "null");
 }
 
 // ============================================================================
