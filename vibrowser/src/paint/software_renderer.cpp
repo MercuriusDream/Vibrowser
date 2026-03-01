@@ -1912,12 +1912,13 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
 void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blur_radius,
                                                      float offset_x, float offset_y,
                                                      uint32_t shadow_color) {
-    int radius = static_cast<int>(blur_radius);
-    if (radius < 0) radius = 0;
-    if (radius > 50) radius = 50;
+    float radius = blur_radius;
+    if (radius < 0.0f) radius = 0.0f;
+    if (radius > 50.0f) radius = 50.0f;
 
     // Expanded region to include shadow offset + blur
-    int margin = radius + static_cast<int>(std::max(std::abs(offset_x), std::abs(offset_y))) + 2;
+    int margin = static_cast<int>(std::ceil(radius))
+                 + static_cast<int>(std::max(std::abs(offset_x), std::abs(offset_y))) + 2;
     int ex0 = std::max(0, static_cast<int>(std::floor(bounds.x)) - margin);
     int ey0 = std::max(0, static_cast<int>(std::floor(bounds.y)) - margin);
     int ex1 = std::min(width_, static_cast<int>(std::ceil(bounds.x + bounds.width)) + margin);
@@ -1956,30 +1957,44 @@ void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blu
     }
 
     // Step 2: Blur the alpha channel if blur_radius > 0
-    if (radius > 0) {
-        std::vector<uint8_t> temp(ew * eh, 0);
-        // Horizontal pass
-        for (int py = 0; py < eh; py++) {
-            for (int px = 0; px < ew; px++) {
-                int sum = 0, count = 0;
-                for (int kx = -radius; kx <= radius; kx++) {
-                    int sx = std::clamp(px + kx, 0, ew - 1);
-                    sum += shadow_alpha[py * ew + sx];
-                    count++;
+    if (radius > 0.0f) {
+        int kernel_radius = 0;
+        std::vector<float> kernel = make_gaussian_kernel(radius, kernel_radius);
+
+        if (!kernel.empty()) {
+            int x0 = 0;
+            int y0 = 0;
+            int x1 = x0 + ew;
+            int y1 = y0 + eh;
+            int rw = x1 - x0;
+            int rh = y1 - y0;
+            std::vector<float> temp(ew * eh, 0.0f);
+
+            // Horizontal pass
+            for (int py = y0; py < y1; py++) {
+                for (int px = x0; px < x1; px++) {
+                    float sum = 0.0f;
+                    for (int kx = -kernel_radius; kx <= kernel_radius; kx++) {
+                        int sx = x0 + reflect_coordinate((px - x0) + kx, rw);
+                        float w = kernel[kx + kernel_radius];
+                        sum += static_cast<float>(shadow_alpha[(py - y0) * rw + (sx - x0)]) * w;
+                    }
+                    temp[(py - y0) * rw + (px - x0)] = sum;
                 }
-                temp[py * ew + px] = static_cast<uint8_t>(sum / count);
             }
-        }
-        // Vertical pass
-        for (int py = 0; py < eh; py++) {
-            for (int px = 0; px < ew; px++) {
-                int sum = 0, count = 0;
-                for (int ky = -radius; ky <= radius; ky++) {
-                    int sy = std::clamp(py + ky, 0, eh - 1);
-                    sum += temp[sy * ew + px];
-                    count++;
+
+            // Vertical pass
+            for (int py = y0; py < y1; py++) {
+                for (int px = x0; px < x1; px++) {
+                    float sum = 0.0f;
+                    for (int ky = -kernel_radius; ky <= kernel_radius; ky++) {
+                        int sy = y0 + reflect_coordinate((py - y0) + ky, rh);
+                        float w = kernel[ky + kernel_radius];
+                        sum += temp[(sy - y0) * rw + (px - x0)] * w;
+                    }
+                    shadow_alpha[(py - y0) * ew + (px - x0)] =
+                        static_cast<uint8_t>(std::lround(std::clamp(sum, 0.0f, 255.0f)));
                 }
-                shadow_alpha[py * ew + px] = static_cast<uint8_t>(sum / count);
             }
         }
     }
