@@ -7121,6 +7121,38 @@ std::optional<clever::net::Response> fetch_with_redirects(
 }
 
 // Fetch a CSS stylesheet from a URL
+// Extract CSS from a MediaWiki ResourceLoader JavaScript wrapper.
+// Format: mw.loader.impl(function(){return["module@ver",null,{"css":"CSS_HERE"}]});
+// The CSS value is a JSON string with standard escape sequences.
+static std::string extract_css_from_mw_module(const std::string& js) {
+    const std::string marker = "\"css\":\"";
+    size_t pos = js.find(marker);
+    if (pos == std::string::npos) return "";
+    pos += marker.size();
+
+    std::string css;
+    css.reserve(js.size() - pos);
+    while (pos < js.size()) {
+        char c = js[pos++];
+        if (c == '"') break; // End of JSON string
+        if (c == '\\' && pos < js.size()) {
+            char next = js[pos++];
+            switch (next) {
+                case 'n': css += '\n'; break;
+                case 't': css += '\t'; break;
+                case 'r': css += '\r'; break;
+                case '"': css += '"'; break;
+                case '\\': css += '\\'; break;
+                case '/': css += '/'; break;
+                default: css += next; break;
+            }
+        } else {
+            css += c;
+        }
+    }
+    return css;
+}
+
 std::string fetch_css(const std::string& url, std::string* final_url = nullptr) {
     auto response = fetch_with_redirects(url, "text/css, */*", 5, final_url);
     if (!response || response->status < 200 || response->status >= 300) {
@@ -7129,18 +7161,32 @@ std::string fetch_css(const std::string& url, std::string* final_url = nullptr) 
 
     const std::string body = response->body_as_string();
     auto content_type = response->headers.get("content-type");
+    bool is_js = false;
     if (content_type.has_value()) {
         const std::string ct = to_lower(*content_type);
-        if (ct.find("text/css") == std::string::npos &&
-            ct.find("application/x-css") == std::string::npos &&
-            ct.find("text/plain") == std::string::npos) {
-            return "";
+        bool is_css = ct.find("text/css") != std::string::npos ||
+                      ct.find("application/x-css") != std::string::npos ||
+                      ct.find("text/plain") != std::string::npos;
+        is_js = ct.find("text/javascript") != std::string::npos ||
+                ct.find("application/javascript") != std::string::npos ||
+                ct.find("application/x-javascript") != std::string::npos;
+        if (!is_css && !is_js) {
+            return ""; // Not CSS or JS — skip
         }
     }
 
     const std::string probe = to_lower(trim(body.substr(0, std::min<size_t>(body.size(), 256))));
     if (probe.rfind("<!doctype html", 0) == 0 || probe.rfind("<html", 0) == 0) {
         return "";
+    }
+
+    // MediaWiki ResourceLoader delivers CSS embedded in JavaScript.
+    // Try to extract CSS from the JS wrapper before returning body.
+    if (is_js || body.find("mw.loader") != std::string::npos) {
+        std::string extracted = extract_css_from_mw_module(body);
+        if (!extracted.empty()) return extracted;
+        // Pure JS with no CSS — return empty
+        if (is_js) return "";
     }
 
     return body;

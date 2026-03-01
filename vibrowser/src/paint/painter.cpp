@@ -2,6 +2,7 @@
 #include <clever/layout/box.h>
 #include <clever/css/style/style_resolver.h>
 #include <clever/paint/text_renderer.h>
+#include <clever/paint/image_fetch.h>
 #include <nanosvg.h>
 #include <nanosvgrast.h>
 #include <algorithm>
@@ -5070,6 +5071,27 @@ void Painter::paint_ruby_annotation(const clever::layout::LayoutNode& node, Disp
 
 void Painter::paint_list_marker(const clever::layout::LayoutNode& node, DisplayList& list,
                                  float abs_x, float abs_y) {
+    if (!node.list_style_image.empty()) {
+        float marker_font_size = (node.marker_font_size > 0) ? node.marker_font_size : node.font_size;
+        float marker_width = marker_font_size * 0.8f;
+        auto marker_img = fetch_image_for_js(node.list_style_image);
+        if (marker_img.success() && marker_width > 0 && marker_img.width > 0 && marker_img.height > 0) {
+            auto img = std::make_shared<ImageData>();
+            img->pixels = *marker_img.pixels;
+            img->width = marker_img.width;
+            img->height = marker_img.height;
+
+            float marker_height = marker_width * static_cast<float>(marker_img.height) /
+                                 static_cast<float>(marker_img.width);
+            float marker_x = (node.list_style_position == 1)
+                ? abs_x + 2.0f
+                : abs_x - marker_width - 8.0f;
+            float marker_y = abs_y + marker_font_size * 0.35f - (marker_height * 0.5f);
+            list.draw_image({marker_x, marker_y, marker_width, marker_height}, std::move(img));
+            return;
+        }
+    }
+
     if (node.list_style_type == 9) return; // None
 
     // Use ::marker color if set, otherwise fall back to text color
