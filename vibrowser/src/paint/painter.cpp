@@ -2974,6 +2974,25 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
             }
         }
 
+        // Map font_variant_caps to OpenType feature tags
+        // 1=small-caps, 2=all-small-caps, 3=petite-caps, 4=all-petite-caps, 5=unicase, 6=titling-caps
+        if (node.font_variant_caps != 0) {
+            const char* tag = nullptr;
+            switch (node.font_variant_caps) {
+                case 1: tag = "\"smcp\" 1"; break;
+                case 2: tag = "\"smcp\" 1, \"c2sc\" 1"; break;
+                case 3: tag = "\"pcap\" 1"; break;
+                case 4: tag = "\"pcap\" 1, \"c2pc\" 1"; break;
+                case 5: tag = "\"unic\" 1"; break;
+                case 6: tag = "\"titl\" 1"; break;
+                default: break;
+            }
+            if (tag) {
+                if (!effective_features.empty()) effective_features += ", ";
+                effective_features += tag;
+            }
+        }
+
         // Map font_variant_ligatures to OpenType feature tags
         // 0=normal (default, ligatures on), 1=none (all off), 2=common-ligatures,
         // 3=no-common-ligatures, 4=discretionary-ligatures, 5=no-discretionary-ligatures
@@ -2993,6 +3012,59 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
             // no-discretionary-ligatures: explicitly disable
             if (!effective_features.empty()) effective_features += ", ";
             effective_features += "\"dlig\" 0";
+        }
+
+        // Map font_variant_east_asian to OpenType feature tags
+        if (node.font_variant_east_asian != 0) {
+            const char* tag = nullptr;
+            switch (node.font_variant_east_asian) {
+                case 1: tag = "\"jp78\" 1"; break;
+                case 2: tag = "\"jp83\" 1"; break;
+                case 3: tag = "\"jp90\" 1"; break;
+                case 4: tag = "\"jp04\" 1"; break;
+                case 5: tag = "\"smpl\" 1"; break;
+                case 6: tag = "\"trad\" 1"; break;
+                case 7: tag = "\"fwid\" 1"; break;
+                case 8: tag = "\"pwid\" 1"; break;
+                case 9: tag = "\"ruby\" 1"; break;
+                default: break;
+            }
+            if (tag) {
+                if (!effective_features.empty()) effective_features += ", ";
+                effective_features += tag;
+            }
+        }
+
+        // Map font_variant_position to OpenType feature tags
+        if (node.font_variant_position != 0) {
+            const char* tag = nullptr;
+            switch (node.font_variant_position) {
+                case 1: tag = "\"subs\" 1"; break;
+                case 2: tag = "\"sups\" 1"; break;
+                default: break;
+            }
+            if (tag) {
+                if (!effective_features.empty()) effective_features += ", ";
+                effective_features += tag;
+            }
+        }
+
+        // Map font_variant_alternates to OpenType feature tags
+        if (node.font_variant_alternates != 0) {
+            const char* tag = nullptr;
+            switch (node.font_variant_alternates) {
+                case 1: tag = "\"hist\" 1"; break;
+                case 2: tag = "\"swsh\" 1"; break;
+                case 3: tag = "\"ornm\" 1"; break;
+                case 4: tag = "\"nalt\" 1"; break;
+                case 5: tag = "\"salt\" 1"; break;
+                case 6: tag = "\"calt\" 1"; break;
+                default: break;
+            }
+            if (tag) {
+                if (!effective_features.empty()) effective_features += ", ";
+                effective_features += tag;
+            }
         }
 
         // Build effective font variations from font_variation_settings + font_stretch
