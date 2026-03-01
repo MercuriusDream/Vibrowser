@@ -5212,6 +5212,26 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         }
     }
 
+    if (node.table_cellpadding < 0.0f) {
+        node.table_cellpadding = 1.0f;
+    }
+
+    if (node.table_cellpadding >= 0.0f) {
+        float cp = node.table_cellpadding;
+        for (auto* row : rows) {
+            for (auto& cell_ptr : row->children) {
+                if (cell_ptr->display == DisplayType::None || cell_ptr->mode == LayoutMode::None) continue;
+                if (cell_ptr->position_type == 2 || cell_ptr->position_type == 3) continue;
+                std::string tn = cell_ptr->tag_name;
+                std::transform(tn.begin(), tn.end(), tn.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (tn == "td" || tn == "th") {
+                    cell_ptr->geometry.padding = {cp, cp, cp, cp};
+                }
+            }
+        }
+    }
+
     // ---- Build cell occupancy grid for rowspan support ----
     // Grid tracks which (row, col) slots are occupied by a rowspanned cell
     // from a previous row. Value: pointer to the cell that occupies that slot (or nullptr).

@@ -11141,6 +11141,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (!cp.empty()) {
             try { layout_node->table_cellpadding = std::stof(cp); } catch (...) {}
         }
+        if (tag_lower == "table" && layout_node->table_cellpadding < 0.0f) {
+            layout_node->table_cellpadding = 1.0f;
+        }
         // Legacy HTML cellspacing attribute (sets border-spacing between cells)
         std::string cs = get_attr(node, "cellspacing");
         if (!cs.empty()) {
