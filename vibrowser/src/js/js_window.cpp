@@ -3595,6 +3595,353 @@ static JSValue js_intl_plural_rules_constructor(JSContext* ctx, JSValueConst /*n
 }
 
 // =========================================================================
+// Intl.ListFormat — format lists with conjunctions/disjunctions
+// =========================================================================
+
+static JSValue js_intl_list_format_format(JSContext* ctx, JSValueConst this_val,
+                                          int argc, JSValueConst* argv) {
+    if (argc < 1 || !JS_IsArray(ctx, argv[0]))
+        return JS_ThrowTypeError(ctx, "ListFormat.format requires an array");
+
+    std::string type_str = js_intl_get_string_option(ctx, this_val, "type", "conjunction");
+    std::string style_str = js_intl_get_string_option(ctx, this_val, "style", "long");
+
+    JSValue length_val = JS_GetPropertyStr(ctx, argv[0], "length");
+    int32_t len = 0;
+    JS_ToInt32(ctx, &len, length_val);
+    JS_FreeValue(ctx, length_val);
+
+    std::vector<std::string> items;
+    for (int32_t i = 0; i < len; i++) {
+        JSValue elem = JS_GetPropertyUint32(ctx, argv[0], i);
+        const char* s = JS_ToCString(ctx, elem);
+        if (s) { items.push_back(s); JS_FreeCString(ctx, s); }
+        JS_FreeValue(ctx, elem);
+    }
+
+    if (items.empty()) return JS_NewString(ctx, "");
+    if (items.size() == 1) return JS_NewString(ctx, items[0].c_str());
+
+    std::string conjunction = (type_str == "disjunction") ? "or" : "and";
+    if (style_str == "narrow" && type_str == "unit") conjunction = ",";
+
+    std::string result;
+    for (size_t i = 0; i < items.size(); i++) {
+        if (i > 0) {
+            if (i == items.size() - 1) {
+                if (style_str == "narrow")
+                    result += ", " + items[i];
+                else
+                    result += ", " + conjunction + " " + items[i];
+            } else {
+                result += ", " + items[i];
+            }
+        } else {
+            result = items[i];
+        }
+    }
+    return JS_NewString(ctx, result.c_str());
+}
+
+static JSValue js_intl_list_format_constructor(JSContext* ctx, JSValueConst /*new_target*/,
+                                               int argc, JSValueConst* argv) {
+    std::string locale = "en-US";
+    if (argc >= 1 && JS_IsString(argv[0])) {
+        const char* s = JS_ToCString(ctx, argv[0]);
+        if (s) { locale = s; JS_FreeCString(ctx, s); }
+    }
+    JSValue options = (argc >= 2 && JS_IsObject(argv[1])) ? argv[1] : JS_UNDEFINED;
+
+    JSValue fmt = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, fmt, "locale", JS_NewString(ctx, locale.c_str()));
+    std::string type_val = "conjunction";
+    std::string style_val = "long";
+    if (JS_IsObject(options)) {
+        type_val = js_intl_get_string_option(ctx, options, "type", "conjunction");
+        style_val = js_intl_get_string_option(ctx, options, "style", "long");
+    }
+    JS_SetPropertyStr(ctx, fmt, "type", JS_NewString(ctx, type_val.c_str()));
+    JS_SetPropertyStr(ctx, fmt, "style", JS_NewString(ctx, style_val.c_str()));
+    JS_SetPropertyStr(ctx, fmt, "format",
+        JS_NewCFunction(ctx, js_intl_list_format_format, "format", 1));
+    return fmt;
+}
+
+// =========================================================================
+// Intl.RelativeTimeFormat — "3 days ago", "in 2 hours"
+// =========================================================================
+
+static JSValue js_intl_relative_time_format_format(JSContext* ctx, JSValueConst this_val,
+                                                   int argc, JSValueConst* argv) {
+    if (argc < 2) return JS_ThrowTypeError(ctx, "RelativeTimeFormat.format requires value and unit");
+
+    double value = 0;
+    JS_ToFloat64(ctx, &value, argv[0]);
+    const char* unit_cstr = JS_ToCString(ctx, argv[1]);
+    std::string unit = unit_cstr ? unit_cstr : "second";
+    if (unit_cstr) JS_FreeCString(ctx, unit_cstr);
+
+    // Normalize plural units
+    if (unit.back() == 's' && unit.size() > 1) unit.pop_back();
+
+    std::string numeric = js_intl_get_string_option(ctx, this_val, "numeric", "always");
+    int abs_val = static_cast<int>(std::abs(value));
+
+    std::string unit_str = unit;
+    if (abs_val != 1) unit_str += "s";
+
+    std::string result;
+    if (numeric == "auto" && abs_val == 0) {
+        if (unit == "day") result = "today";
+        else if (unit == "year") result = "this year";
+        else if (unit == "month") result = "this month";
+        else if (unit == "week") result = "this week";
+        else if (unit == "hour") result = "this hour";
+        else if (unit == "minute") result = "this minute";
+        else result = "now";
+    } else if (numeric == "auto" && abs_val == 1 && value < 0) {
+        if (unit == "day") result = "yesterday";
+        else if (unit == "year") result = "last year";
+        else if (unit == "month") result = "last month";
+        else if (unit == "week") result = "last week";
+        else result = std::to_string(abs_val) + " " + unit_str + " ago";
+    } else if (numeric == "auto" && abs_val == 1 && value > 0) {
+        if (unit == "day") result = "tomorrow";
+        else if (unit == "year") result = "next year";
+        else if (unit == "month") result = "next month";
+        else if (unit == "week") result = "next week";
+        else result = "in " + std::to_string(abs_val) + " " + unit_str;
+    } else if (value < 0) {
+        result = std::to_string(abs_val) + " " + unit_str + " ago";
+    } else {
+        result = "in " + std::to_string(abs_val) + " " + unit_str;
+    }
+
+    return JS_NewString(ctx, result.c_str());
+}
+
+static JSValue js_intl_relative_time_format_constructor(JSContext* ctx, JSValueConst /*new_target*/,
+                                                        int argc, JSValueConst* argv) {
+    std::string locale = "en-US";
+    if (argc >= 1 && JS_IsString(argv[0])) {
+        const char* s = JS_ToCString(ctx, argv[0]);
+        if (s) { locale = s; JS_FreeCString(ctx, s); }
+    }
+    JSValue options = (argc >= 2 && JS_IsObject(argv[1])) ? argv[1] : JS_UNDEFINED;
+
+    JSValue fmt = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, fmt, "locale", JS_NewString(ctx, locale.c_str()));
+    std::string numeric_val = "always";
+    std::string style_val = "long";
+    if (JS_IsObject(options)) {
+        numeric_val = js_intl_get_string_option(ctx, options, "numeric", "always");
+        style_val = js_intl_get_string_option(ctx, options, "style", "long");
+    }
+    JS_SetPropertyStr(ctx, fmt, "numeric", JS_NewString(ctx, numeric_val.c_str()));
+    JS_SetPropertyStr(ctx, fmt, "style", JS_NewString(ctx, style_val.c_str()));
+    JS_SetPropertyStr(ctx, fmt, "format",
+        JS_NewCFunction(ctx, js_intl_relative_time_format_format, "format", 2));
+    return fmt;
+}
+
+// =========================================================================
+// Intl.DisplayNames — display names for languages, regions, scripts, currencies
+// =========================================================================
+
+static JSValue js_intl_display_names_of(JSContext* ctx, JSValueConst this_val,
+                                        int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_ThrowTypeError(ctx, "DisplayNames.of requires a code argument");
+
+    const char* code_cstr = JS_ToCString(ctx, argv[0]);
+    std::string code = code_cstr ? code_cstr : "";
+    if (code_cstr) JS_FreeCString(ctx, code_cstr);
+
+    std::string type_str = js_intl_get_string_option(ctx, this_val, "type", "language");
+
+    // Basic lookup tables for common codes
+    if (type_str == "language") {
+        static const std::map<std::string, std::string> langs = {
+            {"en", "English"}, {"es", "Spanish"}, {"fr", "French"}, {"de", "German"},
+            {"ja", "Japanese"}, {"ko", "Korean"}, {"zh", "Chinese"}, {"pt", "Portuguese"},
+            {"ru", "Russian"}, {"it", "Italian"}, {"ar", "Arabic"}, {"hi", "Hindi"},
+            {"nl", "Dutch"}, {"sv", "Swedish"}, {"pl", "Polish"}, {"tr", "Turkish"},
+            {"th", "Thai"}, {"vi", "Vietnamese"}, {"uk", "Ukrainian"}, {"cs", "Czech"},
+            {"en-US", "American English"}, {"en-GB", "British English"},
+            {"zh-Hans", "Simplified Chinese"}, {"zh-Hant", "Traditional Chinese"},
+            {"pt-BR", "Brazilian Portuguese"},
+        };
+        auto it = langs.find(code);
+        if (it != langs.end()) return JS_NewString(ctx, it->second.c_str());
+    } else if (type_str == "region") {
+        static const std::map<std::string, std::string> regions = {
+            {"US", "United States"}, {"GB", "United Kingdom"}, {"DE", "Germany"},
+            {"FR", "France"}, {"JP", "Japan"}, {"KR", "South Korea"}, {"CN", "China"},
+            {"CA", "Canada"}, {"AU", "Australia"}, {"BR", "Brazil"}, {"IN", "India"},
+            {"IT", "Italy"}, {"ES", "Spain"}, {"MX", "Mexico"}, {"RU", "Russia"},
+        };
+        auto it = regions.find(code);
+        if (it != regions.end()) return JS_NewString(ctx, it->second.c_str());
+    } else if (type_str == "currency") {
+        static const std::map<std::string, std::string> currencies = {
+            {"USD", "US Dollar"}, {"EUR", "Euro"}, {"GBP", "British Pound"},
+            {"JPY", "Japanese Yen"}, {"KRW", "South Korean Won"}, {"CNY", "Chinese Yuan"},
+            {"CAD", "Canadian Dollar"}, {"AUD", "Australian Dollar"}, {"CHF", "Swiss Franc"},
+            {"BRL", "Brazilian Real"}, {"INR", "Indian Rupee"}, {"MXN", "Mexican Peso"},
+        };
+        auto it = currencies.find(code);
+        if (it != currencies.end()) return JS_NewString(ctx, it->second.c_str());
+    } else if (type_str == "script") {
+        static const std::map<std::string, std::string> scripts = {
+            {"Latn", "Latin"}, {"Cyrl", "Cyrillic"}, {"Arab", "Arabic"},
+            {"Hans", "Simplified"}, {"Hant", "Traditional"}, {"Kana", "Katakana"},
+            {"Hang", "Hangul"}, {"Deva", "Devanagari"}, {"Thai", "Thai"},
+        };
+        auto it = scripts.find(code);
+        if (it != scripts.end()) return JS_NewString(ctx, it->second.c_str());
+    }
+
+    return JS_NewString(ctx, code.c_str());
+}
+
+static JSValue js_intl_display_names_constructor(JSContext* ctx, JSValueConst /*new_target*/,
+                                                 int argc, JSValueConst* argv) {
+    std::string locale = "en-US";
+    if (argc >= 1 && JS_IsString(argv[0])) {
+        const char* s = JS_ToCString(ctx, argv[0]);
+        if (s) { locale = s; JS_FreeCString(ctx, s); }
+    }
+    JSValue options = (argc >= 2 && JS_IsObject(argv[1])) ? argv[1] : JS_UNDEFINED;
+
+    JSValue fmt = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, fmt, "locale", JS_NewString(ctx, locale.c_str()));
+    std::string type_val = "language";
+    if (JS_IsObject(options)) {
+        type_val = js_intl_get_string_option(ctx, options, "type", "language");
+    }
+    JS_SetPropertyStr(ctx, fmt, "type", JS_NewString(ctx, type_val.c_str()));
+    JS_SetPropertyStr(ctx, fmt, "of",
+        JS_NewCFunction(ctx, js_intl_display_names_of, "of", 1));
+    return fmt;
+}
+
+// =========================================================================
+// Intl.Segmenter — text segmentation (grapheme, word, sentence)
+// =========================================================================
+
+static JSValue js_intl_segmenter_segment(JSContext* ctx, JSValueConst this_val,
+                                         int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_ThrowTypeError(ctx, "Segmenter.segment requires a string");
+
+    const char* str = JS_ToCString(ctx, argv[0]);
+    if (!str) return JS_UNDEFINED;
+    std::string input(str);
+    JS_FreeCString(ctx, str);
+
+    std::string granularity = js_intl_get_string_option(ctx, this_val, "granularity", "grapheme");
+
+    JSValue segments = JS_NewArray(ctx);
+    uint32_t idx = 0;
+
+    if (granularity == "word") {
+        // Simple word boundary segmentation
+        size_t start = 0;
+        bool in_word = false;
+        for (size_t i = 0; i <= input.size(); i++) {
+            bool is_word_char = (i < input.size()) &&
+                (std::isalnum(static_cast<unsigned char>(input[i])) || input[i] == '\'');
+            if (is_word_char && !in_word) { start = i; in_word = true; }
+            else if (!is_word_char && in_word) {
+                JSValue seg = JS_NewObject(ctx);
+                JS_SetPropertyStr(ctx, seg, "segment",
+                    JS_NewStringLen(ctx, input.c_str() + start, i - start));
+                JS_SetPropertyStr(ctx, seg, "index", JS_NewInt32(ctx, static_cast<int>(start)));
+                JS_SetPropertyStr(ctx, seg, "isWordLike", JS_TRUE);
+                JS_SetPropertyUint32(ctx, segments, idx++, seg);
+                in_word = false;
+                // Add non-word segment
+                start = i;
+            }
+            if (!is_word_char && i < input.size()) {
+                size_t ns = i;
+                while (i < input.size() && !std::isalnum(static_cast<unsigned char>(input[i])) && input[i] != '\'')
+                    i++;
+                JSValue seg = JS_NewObject(ctx);
+                JS_SetPropertyStr(ctx, seg, "segment",
+                    JS_NewStringLen(ctx, input.c_str() + ns, i - ns));
+                JS_SetPropertyStr(ctx, seg, "index", JS_NewInt32(ctx, static_cast<int>(ns)));
+                JS_SetPropertyStr(ctx, seg, "isWordLike", JS_FALSE);
+                JS_SetPropertyUint32(ctx, segments, idx++, seg);
+                if (i < input.size()) { start = i; in_word = true; }
+            }
+        }
+    } else if (granularity == "sentence") {
+        // Simple sentence segmentation on .!?
+        size_t start = 0;
+        for (size_t i = 0; i < input.size(); i++) {
+            if (input[i] == '.' || input[i] == '!' || input[i] == '?') {
+                size_t end = i + 1;
+                while (end < input.size() && input[end] == ' ') end++;
+                JSValue seg = JS_NewObject(ctx);
+                JS_SetPropertyStr(ctx, seg, "segment",
+                    JS_NewStringLen(ctx, input.c_str() + start, end - start));
+                JS_SetPropertyStr(ctx, seg, "index", JS_NewInt32(ctx, static_cast<int>(start)));
+                JS_SetPropertyUint32(ctx, segments, idx++, seg);
+                start = end;
+                i = end - 1;
+            }
+        }
+        if (start < input.size()) {
+            JSValue seg = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, seg, "segment",
+                JS_NewStringLen(ctx, input.c_str() + start, input.size() - start));
+            JS_SetPropertyStr(ctx, seg, "index", JS_NewInt32(ctx, static_cast<int>(start)));
+            JS_SetPropertyUint32(ctx, segments, idx++, seg);
+        }
+    } else {
+        // Grapheme: each character (simplified — proper grapheme clusters need ICU)
+        size_t i = 0;
+        while (i < input.size()) {
+            size_t char_len = 1;
+            unsigned char c = static_cast<unsigned char>(input[i]);
+            if (c >= 0xF0) char_len = 4;
+            else if (c >= 0xE0) char_len = 3;
+            else if (c >= 0xC0) char_len = 2;
+            if (i + char_len > input.size()) char_len = input.size() - i;
+
+            JSValue seg = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, seg, "segment",
+                JS_NewStringLen(ctx, input.c_str() + i, char_len));
+            JS_SetPropertyStr(ctx, seg, "index", JS_NewInt32(ctx, static_cast<int>(i)));
+            JS_SetPropertyUint32(ctx, segments, idx++, seg);
+            i += char_len;
+        }
+    }
+
+    return segments;
+}
+
+static JSValue js_intl_segmenter_constructor(JSContext* ctx, JSValueConst /*new_target*/,
+                                             int argc, JSValueConst* argv) {
+    std::string locale = "en-US";
+    if (argc >= 1 && JS_IsString(argv[0])) {
+        const char* s = JS_ToCString(ctx, argv[0]);
+        if (s) { locale = s; JS_FreeCString(ctx, s); }
+    }
+    JSValue options = (argc >= 2 && JS_IsObject(argv[1])) ? argv[1] : JS_UNDEFINED;
+
+    JSValue fmt = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, fmt, "locale", JS_NewString(ctx, locale.c_str()));
+    std::string gran = "grapheme";
+    if (JS_IsObject(options)) {
+        gran = js_intl_get_string_option(ctx, options, "granularity", "grapheme");
+    }
+    JS_SetPropertyStr(ctx, fmt, "granularity", JS_NewString(ctx, gran.c_str()));
+    JS_SetPropertyStr(ctx, fmt, "segment",
+        JS_NewCFunction(ctx, js_intl_segmenter_segment, "segment", 1));
+    return fmt;
+}
+
+// =========================================================================
 // TextEncoder class (Encoding API)
 // =========================================================================
 
@@ -4557,6 +4904,18 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, intl_obj, "PluralRules",
         JS_NewCFunction2(ctx, js_intl_plural_rules_constructor,
                          "PluralRules", 0, JS_CFUNC_constructor, 0));
+    JS_SetPropertyStr(ctx, intl_obj, "ListFormat",
+        JS_NewCFunction2(ctx, js_intl_list_format_constructor,
+                         "ListFormat", 0, JS_CFUNC_constructor, 0));
+    JS_SetPropertyStr(ctx, intl_obj, "RelativeTimeFormat",
+        JS_NewCFunction2(ctx, js_intl_relative_time_format_constructor,
+                         "RelativeTimeFormat", 0, JS_CFUNC_constructor, 0));
+    JS_SetPropertyStr(ctx, intl_obj, "DisplayNames",
+        JS_NewCFunction2(ctx, js_intl_display_names_constructor,
+                         "DisplayNames", 0, JS_CFUNC_constructor, 0));
+    JS_SetPropertyStr(ctx, intl_obj, "Segmenter",
+        JS_NewCFunction2(ctx, js_intl_segmenter_constructor,
+                         "Segmenter", 0, JS_CFUNC_constructor, 0));
     JS_SetPropertyStr(ctx, global, "Intl", intl_obj);
 
     JS_FreeValue(ctx, global);
