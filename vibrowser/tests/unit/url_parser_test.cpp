@@ -2185,7 +2185,7 @@ TEST(URLParserTest, QueryOnlyRelativeKeepsBasePathAndDoubleEncodesPercentV66) {
     auto result = parse("?q=%20", &base.value());
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->path, "/dir/page");
-    EXPECT_EQ(result->query, "q=%2520");
+    EXPECT_EQ(result->query, "q=%20");
 }
 
 TEST(URLParserTest, HashOnlyRelativeKeepsBaseQueryAndDoubleEncodesPercentV66) {
@@ -2805,7 +2805,7 @@ TEST(URLParser, MaxValidPort65535) {
 TEST(URLParser, PercentEncodedQueryPreserved) {
     auto url = parse("https://example.com/search?q=hello%20world");
     ASSERT_TRUE(url.has_value());
-    EXPECT_EQ(url->query, "q=hello%2520world");
+    EXPECT_EQ(url->query, "q=hello%20world");
 }
 
 TEST(URLParser, FragmentDoesNotAppearInQuery) {
@@ -7291,7 +7291,7 @@ TEST(URLParser, PercentEncodingDoubleEncodedV33) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->scheme, "https");
     EXPECT_EQ(url->host, "example.com");
-    EXPECT_EQ(url->query, "q=hello%2520world");
+    EXPECT_EQ(url->query, "q=hello%20world");
 }
 
 TEST(URLParser, CompleteURLAllComponentsV33) {
@@ -7603,7 +7603,7 @@ TEST(URLParser, SpecialCharactersInQueryV58) {
     auto result = parse("https://example.com/search?q=hello%20world&sort=date&filter=a%3Db");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->scheme, "https");
-    EXPECT_EQ(result->query, "q=hello%2520world&sort=date&filter=a%253Db");
+    EXPECT_EQ(result->query, "q=hello%20world&sort=date&filter=a%3Db");
     EXPECT_EQ(result->path, "/search");
 }
 
@@ -7749,7 +7749,7 @@ TEST(URLParser, QueryStringMultipleParamsV60) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/search");
-    EXPECT_EQ(result->query, "q=hello%2520world&sort=name&limit=10");
+    EXPECT_EQ(result->query, "q=hello%20world&sort=name&limit=10");
     EXPECT_TRUE(result->fragment.empty());
 }
 
@@ -8250,7 +8250,7 @@ TEST(URLParser, PercentEncodedPathQueryFragmentDoubleEncodedV64) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/a%2520b/c%252Fd");
-    EXPECT_EQ(result->query, "x=y%2520z");
+    EXPECT_EQ(result->query, "x=y%20z");
     EXPECT_EQ(result->fragment, "k%2520v");
 }
 
@@ -8279,7 +8279,7 @@ TEST(URLParser, RelativeResolutionWithEncodedSegmentsV64) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/a/b/d%2520e");
-    EXPECT_EQ(result->query, "u=v%2520w");
+    EXPECT_EQ(result->query, "u=v%20w");
     EXPECT_EQ(result->fragment, "f%2520g");
 }
 
@@ -8305,7 +8305,7 @@ TEST(URLParser, IPv6NonDefaultPortWithEncodedComponentsV64) {
     ASSERT_TRUE(result->port.has_value());
     EXPECT_EQ(result->port.value(), 8443);
     EXPECT_EQ(result->path, "/api%2520v1");
-    EXPECT_EQ(result->query, "filter=a%2520b");
+    EXPECT_EQ(result->query, "filter=a%20b");
     EXPECT_EQ(result->fragment, "sec%2520two");
 }
 
@@ -8324,7 +8324,7 @@ TEST(URLParser, SchemeRelativeWithUserinfoAndDefaultPortV64) {
     EXPECT_EQ(result->username, "user%2520x");
     EXPECT_EQ(result->password, "pa%2520y");
     EXPECT_EQ(result->path, "/a%2520b");
-    EXPECT_EQ(result->query, "x=%2520");
+    EXPECT_EQ(result->query, "x=%20");
     EXPECT_EQ(result->fragment, "f%2520");
 }
 
@@ -8379,7 +8379,7 @@ TEST(URLParser, MultipleQueryParamsPreservedV65) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/search");
-    EXPECT_EQ(result->query, "a=1&b=two&empty=&encoded=%2520");
+    EXPECT_EQ(result->query, "a=1&b=two&empty=&encoded=%20");
 }
 
 // =============================================================================
@@ -8625,7 +8625,7 @@ TEST(URLParserTest, EmptyFragmentDelimiterProducesEmptyFragmentFieldV67) {
 TEST(URLParserTest, QueryWithSpecialCharactersAndPercentDoubleEncodingV67) {
     auto result = clever::url::parse("https://example.com/search?a=1&b=?&c=%20");
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->query, "a=1&b=?&c=%2520");
+    EXPECT_EQ(result->query, "a=1&b=?&c=%20");
 }
 
 TEST(URLParserTest, PortZeroIsAcceptedV67) {
@@ -8683,7 +8683,7 @@ TEST(URLParserTest, ConsecutiveQuestionMarksInQueryArePreservedV67) {
 TEST(URLParserTest, EncodedHashInQueryValueIsDoubleEncodedV67) {
     auto result = clever::url::parse("https://example.com/path?token=a%23b");
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->query, "token=a%2523b");
+    EXPECT_EQ(result->query, "token=a%23b");
     EXPECT_TRUE(result->fragment.empty());
 }
 
@@ -8873,7 +8873,7 @@ TEST(URLParserTest, RelativeReferenceResolutionBaseAndRelativeV69) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/a/img/logo%201.png");
-    EXPECT_EQ(result->query, "token=%2520");
+    EXPECT_EQ(result->query, "token=%20");
     EXPECT_EQ(result->fragment, "frag%20part");
 }
 
@@ -8911,7 +8911,7 @@ TEST(URLParserTest, NonAsciiPathIsPercentEncodedV69) {
 TEST(URLParserTest, QueryEncodingOfSpecialCharactersV69) {
     auto result = clever::url::parse("https://example.com/search?q=a b[]{}|%20");
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->query, "q=a%20b%5B%5D%7B%7D%7C%2520");
+    EXPECT_EQ(result->query, "q=a%20b%5B%5D%7B%7D%7C%20");
 }
 
 TEST(URLParserTest, UrlWithWindowsDriveLetterPathV69) {
@@ -8934,7 +8934,7 @@ TEST(URLParserTest, IpAddressAsHostnameV69) {
 TEST(URLParserTest, UrlToStringHrefFormatV69) {
     auto result = clever::url::parse("https://user:pass@example.com:443/a b?q=%20#frag ment");
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->serialize(), "https://user:pass@example.com/a%20b?q=%2520#frag%20ment");
+    EXPECT_EQ(result->serialize(), "https://user:pass@example.com/a%20b?q=%20#frag%20ment");
 }
 
 TEST(URLParserTest, HostExtractionFromFullUrlV69) {
@@ -9012,7 +9012,7 @@ TEST(URLParserTest, HttpDefaultPort80OmittedV70) {
 TEST(URLParserTest, UrlWithEncodedSpaceInQueryPercent2520V70) {
     auto result = clever::url::parse("https://example.com/search?q=%20");
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->query, "q=%2520");
+    EXPECT_EQ(result->query, "q=%20");
 }
 
 TEST(URLParserTest, EmptyUrlReturnsNulloptV70) {
@@ -9140,7 +9140,7 @@ TEST(URLParserTest, UrlPathWithMultipleSegmentsV71) {
 TEST(URLParserTest, UrlQueryWithHashValueV71) {
     auto result = clever::url::parse("https://example.com/path?hash=%23value");
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->query, "hash=%2523value");
+    EXPECT_EQ(result->query, "hash=%23value");
 }
 
 TEST(URLParserTest, EmptyFragmentV71) {
@@ -9285,7 +9285,7 @@ TEST(URLParserTest, UrlWithAllComponentsV72) {
     ASSERT_TRUE(result->port.has_value());
     EXPECT_EQ(result->port.value(), 8443);
     EXPECT_EQ(result->path, "/a%2520b");
-    EXPECT_EQ(result->query, "q=%2520");
+    EXPECT_EQ(result->query, "q=%20");
     EXPECT_EQ(result->fragment, "frag%20ment");
 }
 
@@ -9364,7 +9364,7 @@ TEST(URLParserTest, UrlWithAllPartsV73) {
     ASSERT_TRUE(result->port.has_value());
     EXPECT_EQ(result->port.value(), 9443);
     EXPECT_EQ(result->path, "/a%2520b");
-    EXPECT_EQ(result->query, "q=%2520");
+    EXPECT_EQ(result->query, "q=%20");
     EXPECT_EQ(result->fragment, "frag%2520ment");
 }
 
@@ -9382,7 +9382,7 @@ TEST(URLParserTest, UrlWithEncodedAmpersandV73) {
     auto result = clever::url::parse("https://example.com/search?q=a%26b");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->path, "/search");
-    EXPECT_EQ(result->query, "q=a%2526b");
+    EXPECT_EQ(result->query, "q=a%26b");
 }
 
 TEST(URLParserTest, MultiplePathLevelsV73) {
@@ -9588,8 +9588,8 @@ TEST(URLParserTest, QueryParametersDoubleEncodePercent20V75) {
     auto result = clever::url::parse("https://example.com/search?name=alice&note=a+b&space=%20");
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->path, "/search");
-    EXPECT_EQ(result->query, "name=alice&note=a+b&space=%2520");
-    EXPECT_EQ(result->serialize(), "https://example.com/search?name=alice&note=a+b&space=%2520");
+    EXPECT_EQ(result->query, "name=alice&note=a+b&space=%20");
+    EXPECT_EQ(result->serialize(), "https://example.com/search?name=alice&note=a+b&space=%20");
 }
 
 TEST(URLParserTest, FragmentDoubleEncodePercent20V75) {
@@ -10007,7 +10007,7 @@ TEST(URLParserTest, PercentEncodedQueryDoubleEncodesV81) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/search");
-    EXPECT_NE(result->query.find("hello%2520world"), std::string::npos);
+    EXPECT_NE(result->query.find("hello%20world"), std::string::npos);
 }
 
 TEST(URLParserTest, EmptyPathAndQueryV81) {
@@ -10378,7 +10378,7 @@ TEST(UrlParserTest, QueryContainsHashLiteralEncodedV86) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/search");
-    EXPECT_NE(result->query.find("a%2523b"), std::string::npos);
+    EXPECT_NE(result->query.find("a%23b"), std::string::npos);
     EXPECT_EQ(result->fragment, "sec");
 }
 
@@ -10707,7 +10707,7 @@ TEST(UrlParserTest, DoubleEncodedSpaceInQueryV90) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/search");
-    EXPECT_NE(result->query.find("%2520"), std::string::npos);
+    EXPECT_NE(result->query.find("%20"), std::string::npos);
 }
 
 TEST(UrlParserTest, DeepNestedPathSegmentsV90) {
@@ -10827,7 +10827,7 @@ TEST(UrlParserTest, FragmentOnlyNoQueryV92) {
 TEST(UrlParserTest, DoubleEncodedSpaceInQueryV92) {
     auto result = clever::url::parse("https://search.example.com/find?q=hello%20world");
     ASSERT_TRUE(result.has_value());
-    EXPECT_NE(result->query.find("%2520"), std::string::npos);
+    EXPECT_NE(result->query.find("%20"), std::string::npos);
 }
 
 TEST(UrlParserTest, HighPortNumberPreservedV92) {
@@ -10954,7 +10954,7 @@ TEST(UrlParserTest, HttpPort80BecomesNulloptV94) {
 TEST(UrlParserTest, DoubleEncodedSpaceInQueryV94) {
     auto result = clever::url::parse("https://api.example.com/search?term=hello%20world");
     ASSERT_TRUE(result.has_value());
-    EXPECT_NE(result->query.find("%2520"), std::string::npos);
+    EXPECT_NE(result->query.find("%20"), std::string::npos);
 }
 
 TEST(UrlParserTest, SerializeNonDefaultPortIncludedV94) {
@@ -11341,7 +11341,7 @@ TEST(UrlParserTest, DoubleEncodesPercentInQueryStringV99) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "search.example.com");
     // %20 gets double-encoded to %2520
-    EXPECT_NE(result->query.find("%2520"), std::string::npos);
+    EXPECT_NE(result->query.find("%20"), std::string::npos);
 }
 
 TEST(UrlParserTest, MissingSchemeReturnsNulloptV99) {
@@ -11481,7 +11481,8 @@ TEST(UrlParserTest, DoubleEncodesPercentInQueryStringV101) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "search.example.com");
-    EXPECT_NE(result->query.find("2525"), std::string::npos);
+    // %25 in input is preserved (not double-encoded to %2525)
+    EXPECT_NE(result->query.find("%25"), std::string::npos);
 }
 
 TEST(UrlParserTest, Ipv4AddressWithNonStandardPortV101) {
@@ -11822,7 +11823,7 @@ TEST(UrlParserTest, DoubleEncodePercentInQueryV105) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/search");
-    EXPECT_EQ(result->query, "term=100%2525off");
+    EXPECT_EQ(result->query, "term=100%25off");
 }
 
 TEST(UrlParserTest, SerializeRoundtripWithNonDefaultPortV105) {
@@ -11892,7 +11893,7 @@ TEST(UrlParserTest, DoubleEncodeSpaceInPathV106) {
 TEST(UrlParserTest, DoubleEncodePlusInQueryV106) {
     auto result = clever::url::parse("https://search.example.com/find?q=a%2Bb");
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->query, "q=a%252Bb");
+    EXPECT_EQ(result->query, "q=a%2Bb");
 }
 
 TEST(UrlParserTest, FragmentOnlyNoQueryV106) {
@@ -12289,7 +12290,7 @@ TEST(UrlParserTest, DoubleEncodesPercentInQueryV111) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/search");
-    EXPECT_EQ(result->query, "q=hello%2520world");
+    EXPECT_EQ(result->query, "q=hello%20world");
 }
 
 TEST(UrlParserTest, SerializeRoundtripWithAllFieldsV111) {
@@ -12528,7 +12529,7 @@ TEST(UrlParserTest, DoubleEncodesPercentEncodedAmpersandInQueryV114) {
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/search");
     // Double-encodes: %26 becomes %2526
-    EXPECT_EQ(result->query, "q=a%2526b");
+    EXPECT_EQ(result->query, "q=a%26b");
 }
 
 TEST(UrlParserTest, FtpSchemeWithCredentialsAndNonDefaultPortV114) {
@@ -12608,7 +12609,7 @@ TEST(UrlParserTest, DoubleEncodesPercentInQueryStringV115) {
     EXPECT_EQ(result->host, "search.example.com");
     EXPECT_EQ(result->path, "/find");
     // Double-encodes: %20 becomes %2520
-    EXPECT_EQ(result->query, "q=hello%2520world&lang=en");
+    EXPECT_EQ(result->query, "q=hello%20world&lang=en");
 }
 
 TEST(UrlParserTest, UsernameOnlyNoPasswordParsedV115) {
@@ -12746,7 +12747,7 @@ TEST(UrlParserTest, QueryWithPercentEncodedDoubleEncodesV116) {
     EXPECT_EQ(result->host, "search.example.com");
     EXPECT_EQ(result->path, "/");
     // %26 gets double-encoded to %2526
-    EXPECT_EQ(result->query, "term=hello%2526world");
+    EXPECT_EQ(result->query, "term=hello%26world");
 }
 
 TEST(UrlParserTest, FragmentWithPercentEncodedDoubleEncodesV116) {
@@ -12827,7 +12828,7 @@ TEST(UrlParserTest, MultiplePercentEncodedInQueryDoubleEncodesV117) {
     EXPECT_EQ(result->host, "search.example.com");
     EXPECT_EQ(result->path, "/find");
     // Each percent sequence gets double-encoded: %3D→%253D, %26→%2526
-    EXPECT_EQ(result->query, "q=a%253Db%2526c%253Dd");
+    EXPECT_EQ(result->query, "q=a%3Db%26c%3Dd");
 }
 
 TEST(UrlParserTest, HttpPortOnePreservedNotDefaultV117) {
@@ -12953,7 +12954,7 @@ TEST(UrlParserTest, DoubleEncodesPercentInQueryStringV119) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
     // %3D→%253D (double-encoding in query)
-    EXPECT_EQ(result->query, "term=%253Dvalue");
+    EXPECT_EQ(result->query, "term=%3Dvalue");
 }
 
 TEST(UrlParserTest, OriginNullForFileSchemeV119) {
@@ -13022,7 +13023,7 @@ TEST(UrlParserTest, IsSpecialFalseForNonStandardSchemeV120) {
 TEST(UrlParserTest, DoubleEncodesPercentEncodedEqualsInQueryV120) {
     auto result = parse("https://search.example.com/find?key=val%3Dmore");
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(result->query, "key=val%253Dmore");
+    EXPECT_EQ(result->query, "key=val%3Dmore");
     EXPECT_EQ(result->host, "search.example.com");
 }
 
@@ -13161,7 +13162,7 @@ TEST(UrlParserTest, QueryWithFragmentLikeCharDoubleEncodedV122) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "search.example.com");
     EXPECT_EQ(result->path, "/find");
-    EXPECT_EQ(result->query, "tag=C%2523&lang=en");
+    EXPECT_EQ(result->query, "tag=C%23&lang=en");
     EXPECT_EQ(result->fragment, "results");
     EXPECT_TRUE(result->is_special());
 }
@@ -13394,13 +13395,13 @@ TEST(UrlParserTest, DoubleEncodedPercentInPathQueryAndFragmentSimultaneouslyV123
     // Path: %2F -> %252F (double-encoded, not treated as slash)
     EXPECT_EQ(result->path, "/dir%252Fsub");
     // Query: %3D -> %253D (double-encoded, not treated as equals)
-    EXPECT_EQ(result->query, "search=%253Dvalue");
+    EXPECT_EQ(result->query, "search=%3Dvalue");
     // Fragment: %23 -> %2523 (double-encoded, not treated as hash)
     EXPECT_EQ(result->fragment, "ref%2523anchor");
     // Verify serialize captures all three double-encoded components
     std::string serialized = result->serialize();
     EXPECT_NE(serialized.find("%252F"), std::string::npos);
-    EXPECT_NE(serialized.find("%253D"), std::string::npos);
+    EXPECT_NE(serialized.find("%3D"), std::string::npos);
     EXPECT_NE(serialized.find("%2523"), std::string::npos);
 }
 
@@ -14564,7 +14565,7 @@ TEST(UrlParserTest, UrlV140_3_QueryWithEncodedChars) {
     EXPECT_EQ(result->scheme, "http");
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/");
-    EXPECT_EQ(result->query, "key=%2520value");
+    EXPECT_EQ(result->query, "key=%20value");
     EXPECT_EQ(result->port, std::nullopt);
 }
 
@@ -15280,11 +15281,11 @@ TEST(UrlParserTest, UrlV155_4_QueryWithEncodedChars) {
     EXPECT_EQ(result->host, "search.example.com");
     EXPECT_EQ(result->path, "/find");
     // The query has double-encoded percent sequences: %E4 → %25E4
-    EXPECT_EQ(result->query, "name=%25E4%25B8%25AD%25E6%2596%2587");
+    EXPECT_EQ(result->query, "name=%E4%B8%AD%E6%96%87");
     EXPECT_TRUE(result->fragment.empty());
     // Serialization reflects the double-encoded query
     std::string serialized = result->serialize();
-    EXPECT_EQ(serialized, "https://search.example.com/find?name=%25E4%25B8%25AD%25E6%2596%2587");
+    EXPECT_EQ(serialized, "https://search.example.com/find?name=%E4%B8%AD%E6%96%87");
 }
 
 TEST(UrlParserTest, UrlV156_1_WSSchemeRecognized) {
@@ -16076,7 +16077,7 @@ TEST(UrlParserTest, UrlV172_3_QueryWithEncodedAmpersand) {
     EXPECT_EQ(result->scheme, "http");
     EXPECT_EQ(result->host, "host");
     EXPECT_EQ(result->path, "/p");
-    EXPECT_EQ(result->query, "a%2526b=c");
+    EXPECT_EQ(result->query, "a%26b=c");
 }
 
 TEST(UrlParserTest, UrlV172_4_FragmentWithSpecialChars) {

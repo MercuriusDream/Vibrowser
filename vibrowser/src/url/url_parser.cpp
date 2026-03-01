@@ -45,6 +45,10 @@ bool is_ascii_alphanumeric(char c) {
     return is_ascii_alpha(c) || is_ascii_digit(c);
 }
 
+bool is_ascii_hex(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+}
+
 // Strip leading and trailing C0 control characters and spaces
 std::string_view trim_input(std::string_view input) {
     size_t start = 0;
@@ -104,12 +108,20 @@ std::string percent_encode_path(std::string_view input) {
     return percent_encode(input, false);
 }
 
-// Percent-encode for query strings
+// Percent-encode for query strings (preserves existing %XX sequences)
 std::string percent_encode_query(std::string_view input) {
     std::string result;
     result.reserve(input.size());
-    for (unsigned char c : input) {
-        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+    for (size_t i = 0; i < input.size(); ++i) {
+        unsigned char c = input[i];
+        // Preserve existing percent-encoded sequences
+        if (c == '%' && i + 2 < input.size() &&
+            is_ascii_hex(input[i + 1]) && is_ascii_hex(input[i + 2])) {
+            result += input[i];
+            result += input[i + 1];
+            result += input[i + 2];
+            i += 2;
+        } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
             (c >= '0' && c <= '9') ||
             c == '-' || c == '.' || c == '_' || c == '~' ||
             c == '!' || c == '$' || c == '&' || c == '\'' ||
