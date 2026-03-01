@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Round 31 — Popover API, customElements, @scope rules, scroll-driven animations, subgrid
-**Momentum**: Cycle 1968 — 34+ commits pushed. 14/14 tests passing. ComputedStyle crash fixed (stale .o files).
-**Cycle**: 1968
+**Current Focus**: Round 32 complete — container queries, table spacing, :has() improvements, view transitions
+**Momentum**: Cycle 1969 — 40+ commits pushed. 14/14 tests passing. 15/19 priority gaps DONE.
+**Cycle**: 1969
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
@@ -40,15 +40,18 @@ These are known gaps that impact real website rendering:
 | # | Feature | Impact | Effort | Status |
 |---|---------|--------|--------|--------|
 | P1 | Service Workers — full install/activate lifecycle | PWAs, offline-first sites, push notifications | High | Stubs only |
-| P2 | HTML `<dialog>` — showModal(), close(), returnValue, ::backdrop | Modal dialogs on every modern site | Medium | R30-1 dispatched |
+| P2 | HTML `<dialog>` — showModal(), close(), returnValue, ::backdrop | Modal dialogs on every modern site | Medium | DONE — R30-1 |
 | P3 | WebGL (Canvas getContext("webgl")) | 3D graphics, data viz (Three.js, D3 WebGL) | Very High | Not started |
-| P4 | CSS `text-wrap: balance` | Headlines on news/blog sites | Medium | R30-2 dispatched |
-| P5 | CSS logical properties (margin-inline, padding-block, etc.) | Wikipedia, every modern CSS framework | Medium | R30-4 dispatched |
-| P6 | CSS `gap` in flexbox | Nearly every modern layout | Medium | R30-5 dispatched |
-| P7 | CSS `clamp()`/`min()`/`max()` functions | Responsive typography, fluid layouts | Medium | R30-6 dispatched |
-| P8 | CSS `color-mix()` improvements | Modern design systems | Low | R30-3 dispatched |
+| P4 | CSS `text-wrap: balance` | Headlines on news/blog sites | Medium | DONE — R30-2 |
+| P5 | CSS logical properties (margin-inline, padding-block, etc.) | Wikipedia, every modern CSS framework | Medium | DONE — R30-4 |
+| P6 | CSS `gap` in flexbox | Nearly every modern layout | Medium | DONE — already existed |
+| P7 | CSS `clamp()`/`min()`/`max()` functions | Responsive typography, fluid layouts | Medium | DONE — already existed |
+| P8 | CSS `color-mix()` improvements | Modern design systems | Low | DONE — already existed |
 | P9 | `<video>` / `<audio>` playback | YouTube, media sites | Very High | Not started |
-| P10 | Shadow DOM (custom elements v1) | Web components, lit-html, Shoelace UI | High | Not started |
+| P10 | Shadow DOM + customElements v1 | Web components, lit-html, Shoelace UI | High | DONE — attachShadow + customElements.define |
+| P17 | CSS container queries (@container) | Responsive component design | High | DONE — R32-2 |
+| P18 | :has() combinator improvements | Modern CSS selectors | Medium | DONE — R32-3 |
+| P19 | Table cellpadding defaults | HTML table rendering | Low | DONE — R32-1 |
 | P11 | CSS Subgrid | Complex grid layouts | High | DONE — fields + layout inheritance |
 | P12 | Scroll-driven animations | Modern scroll effects | Medium | DONE — parsing + axis detection |
 | P13 | View Transitions API | SPA page transitions | Medium | DONE — CSS prop + JS stub |
