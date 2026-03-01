@@ -1206,6 +1206,43 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
             }
         }
         JS_FreeValue(ctx, credentials_val);
+
+        // signal (AbortSignal) — check if already aborted before making request
+        JSValue signal_val = JS_GetPropertyStr(ctx, argv[1], "signal");
+        if (JS_IsObject(signal_val)) {
+            JSValue aborted_val = JS_GetPropertyStr(ctx, signal_val, "aborted");
+            bool already_aborted = JS_ToBool(ctx, aborted_val) > 0;
+            JS_FreeValue(ctx, aborted_val);
+            if (already_aborted) {
+                // Fetch aborted before it started — reject with AbortError
+                JSValue resolving_funcs[2];
+                JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
+                if (!JS_IsException(promise)) {
+                    // Build a DOMException-like AbortError from the signal.reason
+                    JSValue reason_val = JS_GetPropertyStr(ctx, signal_val, "reason");
+                    JSValue err_to_reject = JS_IsUndefined(reason_val)
+                        ? JS_NewError(ctx)
+                        : JS_DupValue(ctx, reason_val);
+                    JS_FreeValue(ctx, reason_val);
+                    if (JS_IsUndefined(err_to_reject) || !JS_IsObject(err_to_reject)) {
+                        JS_FreeValue(ctx, err_to_reject);
+                        err_to_reject = JS_NewError(ctx);
+                        JS_SetPropertyStr(ctx, err_to_reject, "message",
+                            JS_NewString(ctx, "The operation was aborted."));
+                        JS_SetPropertyStr(ctx, err_to_reject, "name",
+                            JS_NewString(ctx, "AbortError"));
+                    }
+                    JSValue ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, &err_to_reject);
+                    JS_FreeValue(ctx, ret);
+                    JS_FreeValue(ctx, err_to_reject);
+                    JS_FreeValue(ctx, resolving_funcs[0]);
+                    JS_FreeValue(ctx, resolving_funcs[1]);
+                }
+                JS_FreeValue(ctx, signal_val);
+                return promise;
+            }
+        }
+        JS_FreeValue(ctx, signal_val);
     }
 
     // Build the Request

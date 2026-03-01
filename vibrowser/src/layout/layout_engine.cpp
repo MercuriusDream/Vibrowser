@@ -1924,6 +1924,8 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
         // words via its count_lines_at_width lambda, so overflow-wrap text
         // correctly enters that path rather than the character-level path.
         bool can_break_word = (child->word_break == 1);
+        // hyphens: 0=none (never hyphenate), 1=manual (only at &shy;), 2=auto (break + add hyphen)
+        bool auto_hyphens = (child->hyphens == 2);
 
         // word-break: keep-all (value 2) prevents ALL word breaking — text
         // stays on a single line unless explicit line breaks exist (like nowrap
@@ -1932,6 +1934,11 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
         bool keep_all = (child->word_break == 2);
         bool overflow_wrap_break_word = (child->overflow_wrap == 1 && !can_break_word);
         bool overflow_wrap_anywhere = (child->overflow_wrap == 2 && !can_break_word);
+        // hyphens: auto allows word-breaking with added hyphen character
+        // Treat as overflow-wrap: break-word for layout measurement purposes
+        if (auto_hyphens && !can_break_word) {
+            overflow_wrap_break_word = true;
+        }
 
         // Determine if wrapping is suppressed by white-space on the parent node.
         // white_space: 0=normal (wrap), 1=nowrap (no wrap), 2=pre (no wrap),
@@ -2210,7 +2217,12 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
     }
 
     // Apply text-align adjustment (including text-align-last for final line)
-    if ((node.text_align != 0 || node.text_align_last != 0) && containing_width > 0) {
+    // direction: 0=ltr, 1=rtl — RTL flips default alignment from left to right
+    bool is_rtl = (node.direction == 1);
+    int effective_text_align = node.text_align;
+    // If text-align is "start" (0/left), RTL makes it right-aligned
+    if (is_rtl && effective_text_align == 0) effective_text_align = 2; // right
+    if ((effective_text_align != 0 || node.text_align_last != 0) && containing_width > 0) {
         for (size_t li = 0; li < lines.size(); li++) {
             auto& line = lines[li];
             float extra = containing_width - line.width;
@@ -2221,7 +2233,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
             // Determine effective alignment for this line.
             // text_align_last: 0=auto, 1=left/start, 2=right/end, 3=center, 4=justify
             // For the last line, text_align_last overrides text_align when non-auto.
-            int eff_align = node.text_align; // 0=left, 1=center, 2=right, 3=justify
+            int eff_align = effective_text_align; // 0=left, 1=center, 2=right, 3=justify
             if (is_last_line && node.text_align_last != 0) {
                 // Map text_align_last values to the text_align integer scheme:
                 // text_align_last 1=left -> 0, 2=right -> 2, 3=center -> 1, 4=justify -> 3

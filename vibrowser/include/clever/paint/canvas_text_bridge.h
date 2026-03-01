@@ -60,4 +60,28 @@ float canvas_measure_text(const std::string& text,
                           int font_weight,
                           bool font_italic);
 
+// Render text outlines (stroke) into an RGBA pixel buffer using CoreText.
+//
+// Parameters are the same as canvas_render_text except:
+//   stroke_color  : ARGB color packed as uint32_t for the stroke outline
+//   line_width    : Stroke width in points
+//
+// Uses kCGTextStroke drawing mode so only the glyph outlines are painted.
+// Returns the actual rendered text width in pixels.
+float canvas_render_text_stroke(const std::string& text,
+                                float x, float y,
+                                float font_size,
+                                const std::string& font_family,
+                                int font_weight,
+                                bool font_italic,
+                                uint32_t stroke_color,
+                                float global_alpha,
+                                int text_align,
+                                int text_baseline,
+                                float line_width,
+                                uint8_t* buffer,
+                                int buf_width,
+                                int buf_height,
+                                float max_width = 0.0f);
+
 } // namespace clever::paint

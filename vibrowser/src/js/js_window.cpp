@@ -292,17 +292,41 @@ static JSValue js_cancel_animation_frame(JSContext* ctx, JSValueConst /*this_val
 }
 
 // =========================================================================
-// queueMicrotask(fn) -- execute fn immediately (synchronous engine)
+// queueMicrotask(fn) -- schedule a microtask via JS_EnqueueJob
 // =========================================================================
+
+// Job function: called by the QuickJS job queue with the callback as argv[0].
+static JSValue microtask_job(JSContext* ctx, int argc, JSValueConst* argv) {
+    if (argc < 1 || !JS_IsFunction(ctx, argv[0])) return JS_UNDEFINED;
+    JSValue ret = JS_Call(ctx, argv[0], JS_UNDEFINED, 0, nullptr);
+    if (JS_IsException(ret)) {
+        // Unhandled exception in microtask: print to console and clear.
+        JSValue exc = JS_GetException(ctx);
+        const char* str = JS_ToCString(ctx, exc);
+        if (str) {
+            fprintf(stderr, "[queueMicrotask] Uncaught: %s\n", str);
+            JS_FreeCString(ctx, str);
+        }
+        JS_FreeValue(ctx, exc);
+        return JS_UNDEFINED;
+    }
+    JS_FreeValue(ctx, ret);
+    return JS_UNDEFINED;
+}
 
 static JSValue js_queue_microtask(JSContext* ctx, JSValueConst /*this_val*/,
                                    int argc, JSValueConst* argv) {
     if (argc < 1 || !JS_IsFunction(ctx, argv[0]))
         return JS_ThrowTypeError(ctx, "queueMicrotask requires a function argument");
 
-    // Execute immediately in our synchronous engine
-    JSValue ret = JS_Call(ctx, argv[0], JS_UNDEFINED, 0, nullptr);
-    JS_FreeValue(ctx, ret);
+    // Use JS_EnqueueJob so the callback runs after the current synchronous
+    // task completes (i.e., after the current JS_Eval / JS_Call returns) but
+    // before the next macrotask — matching the spec's microtask checkpoint.
+    if (JS_EnqueueJob(ctx, microtask_job, 1, argv) < 0) {
+        // Fallback: run immediately if enqueue fails (memory pressure etc.)
+        JSValue ret = JS_Call(ctx, argv[0], JS_UNDEFINED, 0, nullptr);
+        JS_FreeValue(ctx, ret);
+    }
     return JS_UNDEFINED;
 }
 
@@ -809,126 +833,8 @@ static JSValue js_computed_style_get_property_value(JSContext* ctx,
 // window.getComputedStyle(element [, pseudoElement])
 // =========================================================================
 
-static JSValue js_window_get_computed_style(JSContext* ctx, JSValueConst /*this_val*/,
-                                            int argc, JSValueConst* argv) {
-    if (argc < 1 || !JS_IsObject(argv[0])) return JS_NULL;
-
-    JSValue style_obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, style_obj, "getPropertyValue",
-        JS_NewCFunction(ctx, js_computed_style_get_property_value, "getPropertyValue", 1));
-    JS_SetPropertyStr(ctx, style_obj, "length", JS_NewInt32(ctx, 0));
-
-    std::map<std::string, std::string> props = parse_style_attribute(
-        read_element_inline_style(ctx, argv[0]));
-    expand_box_shorthand(props, "margin",
-                         "margin-top", "margin-right", "margin-bottom", "margin-left");
-    expand_box_shorthand(props, "padding",
-                         "padding-top", "padding-right", "padding-bottom", "padding-left");
-    expand_box_shorthand(props, "border-width",
-                         "border-top-width", "border-right-width",
-                         "border-bottom-width", "border-left-width");
-
-    std::map<std::string, std::string> computed = props;
-    auto ensure_default = [&computed](const char* key, const char* value) {
-        if (computed.find(key) == computed.end()) computed[key] = value;
-    };
-
-    if (computed.find("display") == computed.end()) {
-        computed["display"] = infer_default_display(ctx, argv[0]);
-    }
-    ensure_default("position", "static");
-    ensure_default("color", "");
-    if (computed.find("background-color") == computed.end()) {
-        auto bg_it = computed.find("background");
-        if (bg_it != computed.end()) {
-            computed["background-color"] = bg_it->second;
-        } else {
-            computed["background-color"] = "rgba(0, 0, 0, 0)";
-        }
-    }
-    ensure_default("font-size", "16px");
-    ensure_default("font-family", "");
-    ensure_default("margin-top", "0px");
-    ensure_default("margin-right", "0px");
-    ensure_default("margin-bottom", "0px");
-    ensure_default("margin-left", "0px");
-    ensure_default("padding-top", "0px");
-    ensure_default("padding-right", "0px");
-    ensure_default("padding-bottom", "0px");
-    ensure_default("padding-left", "0px");
-    ensure_default("border-top-width", "0px");
-    ensure_default("border-right-width", "0px");
-    ensure_default("border-bottom-width", "0px");
-    ensure_default("border-left-width", "0px");
-    ensure_default("border-top-style", "none");
-    ensure_default("border-right-style", "none");
-    ensure_default("border-bottom-style", "none");
-    ensure_default("border-left-style", "none");
-    ensure_default("border-top-color", "currentcolor");
-    ensure_default("border-right-color", "currentcolor");
-    ensure_default("border-bottom-color", "currentcolor");
-    ensure_default("border-left-color", "currentcolor");
-    ensure_default("opacity", "1");
-    ensure_default("visibility", "visible");
-    ensure_default("overflow", "visible");
-    ensure_default("float", "none");
-    ensure_default("clear", "none");
-    ensure_default("z-index", "auto");
-    ensure_default("text-align", "start");
-    ensure_default("line-height", "normal");
-    ensure_default("text-decoration", "none");
-
-    // Only use layout dimensions if width/height are not explicitly set in style.
-    // getBoundingClientRect returns border-box dimensions; getComputedStyle should
-    // return content-box width (without padding/border) for box-sizing: content-box.
-    if (computed.find("width") == computed.end() || computed.find("height") == computed.end()) {
-        double layout_width = 0.0;
-        double layout_height = 0.0;
-        bool has_layout_size = read_element_layout_size(ctx, argv[0], &layout_width, &layout_height);
-        if (has_layout_size) {
-            if (computed.find("width") == computed.end())
-                computed["width"] = format_px(layout_width);
-            if (computed.find("height") == computed.end())
-                computed["height"] = format_px(layout_height);
-        } else {
-            ensure_default("width", "auto");
-            ensure_default("height", "auto");
-        }
-    }
-
-    // Common shorthands frequently read by frameworks.
-    if (computed.find("border-width") == computed.end()) {
-        computed["border-width"] = computed["border-top-width"];
-    }
-    if (computed.find("border-style") == computed.end()) {
-        computed["border-style"] = computed["border-top-style"];
-    }
-    if (computed.find("border-color") == computed.end()) {
-        computed["border-color"] = computed["border-top-color"];
-    }
-    if (computed.find("border") == computed.end()) {
-        computed["border"] = computed["border-width"] + " " +
-                             computed["border-style"] + " " +
-                             computed["border-color"];
-    }
-    if (computed.find("margin") == computed.end()) {
-        computed["margin"] = computed["margin-top"] + " " +
-                             computed["margin-right"] + " " +
-                             computed["margin-bottom"] + " " +
-                             computed["margin-left"];
-    }
-    if (computed.find("padding") == computed.end()) {
-        computed["padding"] = computed["padding-top"] + " " +
-                              computed["padding-right"] + " " +
-                              computed["padding-bottom"] + " " +
-                              computed["padding-left"];
-    }
-
-    for (const auto& [name, value] : computed) {
-        set_computed_style_property(ctx, style_obj, name, value);
-    }
-    return style_obj;
-}
+// js_window_get_computed_style was removed: getComputedStyle is now
+// installed by install_dom_bindings() with full LayoutRect-backed CSS values.
 
 static int read_viewport_dimension(JSContext* ctx, const char* name, int fallback) {
     JSValue global = JS_GetGlobalObject(ctx);
@@ -2605,9 +2511,9 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, global, "matchMedia",
         JS_NewCFunction(ctx, js_window_match_media, "matchMedia", 1));
 
-    // ---- getComputedStyle ----
-    JS_SetPropertyStr(ctx, global, "getComputedStyle",
-        JS_NewCFunction(ctx, js_window_get_computed_style, "getComputedStyle", 2));
+    // getComputedStyle is installed by install_dom_bindings (js_dom_bindings.cpp) where
+    // it has access to the full DOMState/LayoutRect cache for accurate CSS values.
+    // Do NOT override it here.
 
     // ---- queueMicrotask ----
     JS_SetPropertyStr(ctx, global, "queueMicrotask",

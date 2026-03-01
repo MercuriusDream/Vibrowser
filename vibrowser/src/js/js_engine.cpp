@@ -405,6 +405,16 @@ std::string JSEngine::evaluate(const std::string& code, const std::string& filen
     }
 
     JS_FreeValue(ctx_, result);
+
+    // Drain any microtasks enqueued during script evaluation
+    // (e.g. queueMicrotask callbacks, Promise .then handlers)
+    {
+        JSContext* ctx_job = nullptr;
+        while (JS_ExecutePendingJob(rt_, &ctx_job) > 0) {
+            // drain
+        }
+    }
+
     return result_str;
 }
 
@@ -491,6 +501,15 @@ std::string JSEngine::evaluate_module(const std::string& code,
     }
 
     JS_FreeValue(ctx_, eval_result);
+
+    // Drain any microtasks enqueued during module evaluation
+    {
+        JSContext* ctx_job = nullptr;
+        while (JS_ExecutePendingJob(rt_, &ctx_job) > 0) {
+            // drain
+        }
+    }
+
     return result_str;
 }
 

@@ -418,6 +418,209 @@ float canvas_render_text(const std::string& text,
 }
 
 // ---------------------------------------------------------------------------
+// canvas_render_text_stroke  — stroke-only text rendering
+// ---------------------------------------------------------------------------
+float canvas_render_text_stroke(const std::string& text,
+                                float x, float y,
+                                float font_size,
+                                const std::string& font_family,
+                                int font_weight,
+                                bool font_italic,
+                                uint32_t stroke_color,  // ARGB
+                                float global_alpha,
+                                int text_align,
+                                int text_baseline,
+                                float line_width,
+                                uint8_t* buffer,
+                                int buf_width,
+                                int buf_height,
+                                float max_width) {
+    if (text.empty() || !buffer || buf_width <= 0 || buf_height <= 0) return 0.0f;
+    if (font_size < 1.0f) font_size = 1.0f;
+    if (line_width < 0.1f) line_width = 1.0f;
+
+    // ------------------------------------------------------------------
+    // 1. Create the CTFont
+    // ------------------------------------------------------------------
+    CTFontRef font = create_ctfont(font_family, font_size, font_weight, font_italic);
+    if (!font) return 0.0f;
+
+    // ------------------------------------------------------------------
+    // 2. Build stroke color from ARGB stroke_color + global_alpha
+    // ------------------------------------------------------------------
+    CGFloat cr = static_cast<CGFloat>((stroke_color >> 16) & 0xFF) / 255.0;
+    CGFloat cg = static_cast<CGFloat>((stroke_color >> 8)  & 0xFF) / 255.0;
+    CGFloat cb = static_cast<CGFloat>( stroke_color        & 0xFF) / 255.0;
+    CGFloat ca = static_cast<CGFloat>((stroke_color >> 24) & 0xFF) / 255.0
+                 * static_cast<CGFloat>(global_alpha);
+
+    CGColorSpaceRef colorspace = CGColorSpaceCreateDeviceRGB();
+    CGFloat components[4] = {cr, cg, cb, ca};
+    CGColorRef cg_color = CGColorCreate(colorspace, components);
+
+    // ------------------------------------------------------------------
+    // 3. Measure text width for text-align adjustment
+    // ------------------------------------------------------------------
+    float text_width = ct_measure_width(text, font);
+
+    float scale_x = 1.0f;
+    if (max_width > 0.0f && text_width > max_width && text_width > 0.0f) {
+        scale_x = max_width / text_width;
+        text_width = max_width;
+    }
+
+    // ------------------------------------------------------------------
+    // 4. Compute draw_x based on textAlign
+    // ------------------------------------------------------------------
+    float draw_x = x;
+    switch (text_align) {
+        case 1: draw_x = x - text_width * 0.5f; break;   // center
+        case 2: // right
+        case 3: // end
+            draw_x = x - text_width; break;
+        default: break; // start / left
+    }
+
+    // ------------------------------------------------------------------
+    // 5. Compute baseline_y (canvas top-left coords)
+    // ------------------------------------------------------------------
+    CGFloat ct_ascent  = CTFontGetAscent(font);
+    CGFloat ct_descent = CTFontGetDescent(font);
+
+    float baseline_y;
+    switch (text_baseline) {
+        case 1:  // top
+        case 2:  // hanging
+            baseline_y = y + static_cast<float>(ct_ascent);
+            break;
+        case 3:  // middle
+            baseline_y = y + static_cast<float>(ct_ascent - (ct_ascent + ct_descent) * 0.5f);
+            break;
+        case 4:  // ideographic
+        case 5:  // bottom
+            baseline_y = y - static_cast<float>(ct_descent);
+            break;
+        default: // 0 = alphabetic
+            baseline_y = y;
+            break;
+    }
+
+    // ------------------------------------------------------------------
+    // 6. Build attributed string — use stroke color as foreground so that
+    //    kCGTextStroke picks it up correctly.
+    // ------------------------------------------------------------------
+    CFStringRef cf_str = CFStringCreateWithBytes(
+        kCFAllocatorDefault,
+        reinterpret_cast<const UInt8*>(text.data()),
+        static_cast<CFIndex>(text.size()),
+        kCFStringEncodingUTF8, false);
+
+    if (!cf_str) {
+        CGColorRelease(cg_color);
+        CGColorSpaceRelease(colorspace);
+        CFRelease(font);
+        return text_width;
+    }
+
+    // kCTStrokeColorAttributeName controls the outline color when using
+    // kCGTextStroke.  kCTForegroundColorAttributeName is included so that
+    // if the mode is ever switched to kCGTextFillStroke we get consistent color.
+    const void* attr_keys[] = {
+        kCTFontAttributeName,
+        kCTForegroundColorAttributeName,
+        kCTStrokeColorAttributeName,
+        kCTStrokeWidthAttributeName
+    };
+    // Stroke width in CoreText is expressed as a percentage of the font size.
+    // Positive values stroke without fill; we compute the ratio here.
+    CGFloat ct_stroke_pct = (static_cast<CGFloat>(line_width) / static_cast<CGFloat>(font_size)) * 100.0;
+    CFNumberRef stroke_width_num = CFNumberCreate(kCFAllocatorDefault,
+                                                   kCFNumberCGFloatType,
+                                                   &ct_stroke_pct);
+    const void* attr_vals[] = {font, cg_color, cg_color, stroke_width_num};
+    CFDictionaryRef attrs = CFDictionaryCreate(
+        kCFAllocatorDefault, attr_keys, attr_vals, 4,
+        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFRelease(stroke_width_num);
+
+    CFAttributedStringRef attr_str =
+        CFAttributedStringCreate(kCFAllocatorDefault, cf_str, attrs);
+    CFRelease(attrs);
+    CFRelease(cf_str);
+
+    if (!attr_str) {
+        CGColorRelease(cg_color);
+        CGColorSpaceRelease(colorspace);
+        CFRelease(font);
+        return text_width;
+    }
+
+    CTLineRef line = CTLineCreateWithAttributedString(attr_str);
+    CFRelease(attr_str);
+
+    if (!line) {
+        CGColorRelease(cg_color);
+        CGColorSpaceRelease(colorspace);
+        CFRelease(font);
+        return text_width;
+    }
+
+    // ------------------------------------------------------------------
+    // 7. Create CGBitmapContext and draw with kCGTextStroke
+    // ------------------------------------------------------------------
+    CGContextRef cg_ctx = CGBitmapContextCreate(
+        buffer,
+        static_cast<size_t>(buf_width),
+        static_cast<size_t>(buf_height),
+        8,
+        static_cast<size_t>(buf_width) * 4,
+        colorspace,
+        kCGImageAlphaPremultipliedLast);
+
+    if (!cg_ctx) {
+        CFRelease(line);
+        CGColorRelease(cg_color);
+        CGColorSpaceRelease(colorspace);
+        CFRelease(font);
+        return text_width;
+    }
+
+    CGContextSetTextMatrix(cg_ctx, CGAffineTransformIdentity);
+    // kCGTextStroke draws only the glyph outlines using the current stroke color.
+    CGContextSetTextDrawingMode(cg_ctx, kCGTextStroke);
+    CGContextSetStrokeColorWithColor(cg_ctx, cg_color);
+    CGContextSetLineWidth(cg_ctx, static_cast<CGFloat>(line_width));
+    CGContextSetShouldAntialias(cg_ctx, true);
+    CGContextSetAllowsAntialiasing(cg_ctx, true);
+    CGContextSetShouldSmoothFonts(cg_ctx, true);
+    CGContextSetAllowsFontSmoothing(cg_ctx, true);
+
+    // Canvas top-left baseline → CG bottom-left baseline
+    CGFloat cg_baseline_x = static_cast<CGFloat>(draw_x);
+    CGFloat cg_baseline_y = static_cast<CGFloat>(buf_height) - static_cast<CGFloat>(baseline_y);
+
+    if (scale_x != 1.0f) {
+        CGContextSaveGState(cg_ctx);
+        CGContextTranslateCTM(cg_ctx, cg_baseline_x, cg_baseline_y);
+        CGContextScaleCTM(cg_ctx, static_cast<CGFloat>(scale_x), 1.0);
+        CGContextSetTextPosition(cg_ctx, 0, 0);
+        CTLineDraw(line, cg_ctx);
+        CGContextRestoreGState(cg_ctx);
+    } else {
+        CGContextSetTextPosition(cg_ctx, cg_baseline_x, cg_baseline_y);
+        CTLineDraw(line, cg_ctx);
+    }
+
+    CGContextRelease(cg_ctx);
+    CFRelease(line);
+    CGColorRelease(cg_color);
+    CGColorSpaceRelease(colorspace);
+    CFRelease(font);
+
+    return text_width;
+}
+
+// ---------------------------------------------------------------------------
 // canvas_measure_text
 // ---------------------------------------------------------------------------
 float canvas_measure_text(const std::string& text,

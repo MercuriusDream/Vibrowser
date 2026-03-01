@@ -74,12 +74,14 @@ struct DOMState {
     // document.cookie storage: name -> value
     std::map<std::string, std::string> cookies;
 
-    // Layout geometry cache: SimpleNode* -> absolute position box geometry
+    // Layout geometry cache: SimpleNode* -> absolute position box geometry + computed style
     struct LayoutRect {
         float x = 0, y = 0, width = 0, height = 0;
         float border_left = 0, border_top = 0, border_right = 0, border_bottom = 0;
         float padding_left = 0, padding_top = 0, padding_right = 0, padding_bottom = 0;
         float margin_left = 0, margin_top = 0, margin_right = 0, margin_bottom = 0;
+        // Absolute border-box origin (top-left of border edge, in page coordinates)
+        float abs_border_x = 0, abs_border_y = 0;
         // Scroll container data
         float scroll_top = 0, scroll_left = 0;
         float scroll_content_width = 0, scroll_content_height = 0;
@@ -87,6 +89,92 @@ struct DOMState {
         // Hit-testing flags
         int pointer_events = 0;         // 0=auto, 1=none
         bool visibility_hidden = false; // CSS visibility:hidden
+        // CSS position_type: 0=static, 1=relative, 2=absolute, 3=fixed, 4=sticky
+        int position_type = 0;
+        // Parent DOM node for offsetParent traversal
+        void* parent_dom_node = nullptr;
+
+        // ---- Computed CSS style properties (from LayoutNode) ----
+        // Display / flow
+        int display_type = 0;        // 0=block,1=inline,2=inline-block,3=flex,4=inline-flex,5=none,6=list-item,7=table,8=table-row,9=table-cell,10=grid,11=inline-grid
+        int float_type = 0;          // 0=none, 1=left, 2=right
+        int clear_type = 0;          // 0=none, 1=left, 2=right, 3=both
+        bool border_box = false;     // box-sizing: true=border-box, false=content-box
+
+        // Sizing constraints (px; -1 = auto/not set)
+        float specified_width = -1;
+        float specified_height = -1;
+        float min_width_val = 0;
+        float max_width_val = 1e9f;
+        float min_height_val = 0;
+        float max_height_val = 1e9f;
+
+        // Typography
+        float font_size = 16.0f;
+        int font_weight = 400;
+        bool font_italic = false;
+        std::string font_family;
+        float line_height_px = 0;          // 0 = "normal"
+        float line_height_unitless = 1.2f; // factor when line_height_px == 0
+
+        // Colors (ARGB uint32_t)
+        uint32_t color = 0xFF000000;
+        uint32_t background_color = 0x00000000;
+
+        // Background
+        std::string bg_image_url;
+        int gradient_type = 0;       // 0=none, 1=linear, 2=radial
+
+        // Visual
+        float opacity_val = 1.0f;
+        int overflow_x_val = 0;      // 0=visible, 1=hidden, 2=scroll, 3=auto
+        int overflow_y_val = 0;
+        int z_index_val = 0;
+        bool z_index_auto = true;
+
+        // Text properties
+        int text_align_val = 0;      // 0=left, 1=center, 2=right, 3=justify
+        int text_decoration_bits = 0; // 1=underline, 2=overline, 4=line-through
+        int white_space_val = 0;     // 0=normal, 1=nowrap, 2=pre, 3=pre-wrap, 4=pre-line, 5=break-spaces
+        int word_break_val = 0;      // 0=normal, 1=break-all, 2=keep-all
+        int overflow_wrap_val = 0;   // 0=normal, 1=break-word, 2=anywhere
+        int text_transform_val = 0;  // 0=none, 1=capitalize, 2=uppercase, 3=lowercase
+        int text_overflow_val = 0;   // 0=clip, 1=ellipsis
+
+        // Flex properties
+        float flex_grow = 0;
+        float flex_shrink = 1;
+        float flex_basis = -1;       // -1 = auto
+        int flex_direction = 0;      // 0=row, 1=row-reverse, 2=column, 3=column-reverse
+        int flex_wrap_val = 0;       // 0=nowrap, 1=wrap, 2=wrap-reverse
+        int justify_content_val = 0; // 0=flex-start,1=flex-end,2=center,3=space-between,4=space-around,5=space-evenly
+        int align_items_val = 4;     // 0=flex-start,1=flex-end,2=center,3=baseline,4=stretch
+        int align_self_val = -1;     // -1=auto, 0-4 same as align_items
+
+        // Border radius (px)
+        float border_radius_tl = 0;
+        float border_radius_tr = 0;
+        float border_radius_bl = 0;
+        float border_radius_br = 0;
+
+        // Border styles per side: 0=none, 1=solid, 2=dashed, 3=dotted, 4=double
+        int border_style_top = 0;
+        int border_style_right = 0;
+        int border_style_bottom = 0;
+        int border_style_left = 0;
+
+        // Border colors per side (ARGB)
+        uint32_t border_color_top = 0xFF000000;
+        uint32_t border_color_right = 0xFF000000;
+        uint32_t border_color_bottom = 0xFF000000;
+        uint32_t border_color_left = 0xFF000000;
+
+        // CSS Transforms (copied from LayoutNode)
+        std::vector<clever::css::Transform> transforms;
+
+        // Cursor / pointer-events / user-select
+        int cursor_val = 0;          // 0=auto, 1=default, 2=pointer, 3=text, 4=move, 5=not-allowed
+        int user_select_val = 0;     // 0=auto, 1=none, 2=text, 3=all
     };
     std::unordered_map<void*, LayoutRect> layout_geometry;
 
@@ -1663,6 +1751,94 @@ static JSValue js_element_classlist_contains(JSContext* ctx,
     return JS_FALSE;
 }
 
+// --- classList additional helpers ---
+
+// __classListReplace(oldClass, newClass): atomic replace, returns bool
+static JSValue js_element_classlist_replace(JSContext* ctx, JSValueConst this_val,
+                                             int argc, JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node || argc < 2) return JS_FALSE;
+
+    const char* old_cstr = JS_ToCString(ctx, argv[0]);
+    const char* new_cstr = JS_ToCString(ctx, argv[1]);
+    if (!old_cstr || !new_cstr) {
+        if (old_cstr) JS_FreeCString(ctx, old_cstr);
+        if (new_cstr) JS_FreeCString(ctx, new_cstr);
+        return JS_FALSE;
+    }
+    std::string old_cls(old_cstr);
+    std::string new_cls(new_cstr);
+    JS_FreeCString(ctx, old_cstr);
+    JS_FreeCString(ctx, new_cstr);
+
+    std::string classes = get_attr(*node, "class");
+    bool found = false;
+    std::string result;
+    size_t pos = 0;
+    while (pos < classes.size()) {
+        size_t end = classes.find(' ', pos);
+        if (end == std::string::npos) end = classes.size();
+        std::string token = classes.substr(pos, end - pos);
+        if (!token.empty()) {
+            if (token == old_cls && !found) {
+                // Replace old with new (only first occurrence)
+                found = true;
+                if (!result.empty()) result += " ";
+                result += new_cls;
+            } else if (token != new_cls || !found) {
+                // Keep other tokens; avoid duplicating new_cls if already inserted
+                if (!result.empty()) result += " ";
+                result += token;
+            }
+        }
+        pos = end + 1;
+    }
+    if (!found) return JS_FALSE;
+    set_attr(*node, "class", result);
+    auto* state = get_dom_state(ctx);
+    if (state) state->modified = true;
+    return JS_TRUE;
+}
+
+// __classListGetAll(): returns a JS Array of all class tokens (live from attribute)
+static JSValue js_element_classlist_get_all(JSContext* ctx, JSValueConst this_val,
+                                             int /*argc*/, JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    JSValue arr = JS_NewArray(ctx);
+    if (!node) return arr;
+
+    std::string classes = get_attr(*node, "class");
+    uint32_t idx = 0;
+    size_t pos = 0;
+    while (pos < classes.size()) {
+        size_t end = classes.find(' ', pos);
+        if (end == std::string::npos) end = classes.size();
+        if (end > pos) {
+            std::string token = classes.substr(pos, end - pos);
+            if (!token.empty()) {
+                JS_SetPropertyUint32(ctx, arr, idx++, JS_NewString(ctx, token.c_str()));
+            }
+        }
+        pos = end + 1;
+    }
+    return arr;
+}
+
+// --- element.id setter ---
+static JSValue js_element_set_id(JSContext* ctx, JSValueConst this_val,
+                                  int argc, JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node || argc < 1) return JS_UNDEFINED;
+    const char* str = JS_ToCString(ctx, argv[0]);
+    if (str) {
+        set_attr(*node, "id", str);
+        JS_FreeCString(ctx, str);
+        auto* state = get_dom_state(ctx);
+        if (state) state->modified = true;
+    }
+    return JS_UNDEFINED;
+}
+
 // --- dataset helper methods ---
 // __datasetGet(key), __datasetSet(key, value), __datasetHas(key)
 // maps key "foo" to attribute "data-foo", camelCase "fooBar" to "data-foo-bar"
@@ -2642,13 +2818,43 @@ static JSValue js_document_set_cookie(JSContext* ctx, JSValueConst /*this_val*/,
 }
 
 // =========================================================================
+// Helper: build a plain DOMRect object from {x, y, width, height}.
+//
+// top/right/bottom/left are derived from x/y/width/height per spec.
+// toJSON() is added for structured serialization.
+// =========================================================================
+
+static JSValue make_dom_rect(JSContext* ctx, double x, double y,
+                              double w, double h) {
+    JSValue rect = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, rect, "x",      JS_NewFloat64(ctx, x));
+    JS_SetPropertyStr(ctx, rect, "y",      JS_NewFloat64(ctx, y));
+    JS_SetPropertyStr(ctx, rect, "width",  JS_NewFloat64(ctx, w));
+    JS_SetPropertyStr(ctx, rect, "height", JS_NewFloat64(ctx, h));
+    JS_SetPropertyStr(ctx, rect, "top",    JS_NewFloat64(ctx, y));
+    JS_SetPropertyStr(ctx, rect, "left",   JS_NewFloat64(ctx, x));
+    JS_SetPropertyStr(ctx, rect, "right",  JS_NewFloat64(ctx, x + w));
+    JS_SetPropertyStr(ctx, rect, "bottom", JS_NewFloat64(ctx, y + h));
+    static const char* to_json_src =
+        "(function() { return { x: this.x, y: this.y, "
+        "width: this.width, height: this.height, "
+        "top: this.top, right: this.right, "
+        "bottom: this.bottom, left: this.left }; })";
+    JSValue to_json_fn = JS_Eval(ctx, to_json_src,
+                                  std::strlen(to_json_src),
+                                  "<dom-rect>", JS_EVAL_TYPE_GLOBAL);
+    JS_SetPropertyStr(ctx, rect, "toJSON", to_json_fn);
+    return rect;
+}
+
+// =========================================================================
 // element.getBoundingClientRect()
 //
-// Returns a DOMRect-like object with {x, y, width, height, top, right,
-// bottom, left} representing the element's border box in viewport
-// coordinates.  When layout geometry has been populated via
-// populate_layout_geometry(), returns real computed values.
-// Otherwise falls back to zeros.
+// Returns a DOMRect object with {x, y, width, height, top, right, bottom,
+// left} representing the element's border box in viewport coordinates.
+// Viewport coordinates = page coordinates minus the current scroll offset.
+// When layout geometry has been populated via populate_layout_geometry(),
+// returns real computed values.  Otherwise falls back to zeros.
 // =========================================================================
 
 static JSValue js_element_get_bounding_client_rect(JSContext* ctx,
@@ -2658,78 +2864,122 @@ static JSValue js_element_get_bounding_client_rect(JSContext* ctx,
     auto* node = unwrap_element(ctx, this_val);
     auto* state = get_dom_state(ctx);
 
-    JSValue rect = JS_NewObject(ctx);
-
-    float x = 0, y = 0, w = 0, h = 0;
+    double x = 0, y = 0, w = 0, h = 0;
     if (node && state) {
         auto it = state->layout_geometry.find(node);
         if (it != state->layout_geometry.end()) {
             auto& lr = it->second;
-            // getBoundingClientRect returns the border box position and size.
-            // LayoutRect.x/y stores the content-box origin (after border+padding),
-            // so subtract border+padding to get the border-box origin.
-            x = lr.x - lr.padding_left - lr.border_left;
-            y = lr.y - lr.padding_top - lr.border_top;
-            w = lr.border_left + lr.padding_left + lr.width + lr.padding_right + lr.border_right;
-            h = lr.border_top + lr.padding_top + lr.height + lr.padding_bottom + lr.border_bottom;
+            // abs_border_x/y is the absolute page-coordinate position of
+            // the border-box top-left edge (precomputed by populate_layout_geometry).
+            x = static_cast<double>(lr.abs_border_x);
+            y = static_cast<double>(lr.abs_border_y);
+            w = static_cast<double>(lr.border_left + lr.padding_left +
+                                    lr.width +
+                                    lr.padding_right + lr.border_right);
+            h = static_cast<double>(lr.border_top + lr.padding_top +
+                                    lr.height +
+                                    lr.padding_bottom + lr.border_bottom);
         }
     }
 
-    JS_SetPropertyStr(ctx, rect, "x", JS_NewFloat64(ctx, x));
-    JS_SetPropertyStr(ctx, rect, "y", JS_NewFloat64(ctx, y));
-    JS_SetPropertyStr(ctx, rect, "top", JS_NewFloat64(ctx, y));
-    JS_SetPropertyStr(ctx, rect, "left", JS_NewFloat64(ctx, x));
-    JS_SetPropertyStr(ctx, rect, "bottom", JS_NewFloat64(ctx, y + h));
-    JS_SetPropertyStr(ctx, rect, "right", JS_NewFloat64(ctx, x + w));
-    JS_SetPropertyStr(ctx, rect, "width", JS_NewFloat64(ctx, w));
-    JS_SetPropertyStr(ctx, rect, "height", JS_NewFloat64(ctx, h));
+    // Subtract viewport scroll offset so result is in viewport coordinates
+    // (CSSOM View spec: getBoundingClientRect is viewport-relative).
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue sx_val = JS_GetPropertyStr(ctx, global, "scrollX");
+    JSValue sy_val = JS_GetPropertyStr(ctx, global, "scrollY");
+    double sx = 0, sy = 0;
+    JS_ToFloat64(ctx, &sx, sx_val);
+    JS_ToFloat64(ctx, &sy, sy_val);
+    JS_FreeValue(ctx, sx_val);
+    JS_FreeValue(ctx, sy_val);
+    JS_FreeValue(ctx, global);
+    x -= sx;
+    y -= sy;
 
-    // DOMRect.toJSON() -- required by the spec for structured serialization
-    JSValue to_json_fn = JS_Eval(ctx,
-        "(function() { return { x: this.x, y: this.y, width: this.width, "
-        "height: this.height, top: this.top, right: this.right, "
-        "bottom: this.bottom, left: this.left }; })",
-        strlen("(function() { return { x: this.x, y: this.y, width: this.width, "
-        "height: this.height, top: this.top, right: this.right, "
-        "bottom: this.bottom, left: this.left }; })"),
-        "<dom>", JS_EVAL_TYPE_GLOBAL);
-    JS_SetPropertyStr(ctx, rect, "toJSON", to_json_fn);
-
-    return rect;
+    return make_dom_rect(ctx, x, y, w, h);
 }
 
 // =========================================================================
 // element.getClientRects()
 //
-// Returns an array containing a single DOMRect (the same as
-// getBoundingClientRect) for block-level elements.  Inline elements can
-// span multiple lines and would return multiple rects, but for now we
-// simplify to one rect.
+// Returns an array-like object (DOMRectList) containing DOMRect entries for
+// each CSS box of the element.  For block-level elements this is a single
+// rect equal to getBoundingClientRect().  The returned object has:
+//   .length, [i], and .item(i)
+// matching the DOMRectList interface.
 // =========================================================================
 
 static JSValue js_element_get_client_rects(JSContext* ctx,
                                             JSValueConst this_val,
                                             int /*argc*/,
                                             JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    auto* state = get_dom_state(ctx);
+
+    // Build a JS Array; wrap it into a DOMRectList-compatible object via
+    // DOMRectList constructor if it has been registered.
     JSValue arr = JS_NewArray(ctx);
-    JSValue rect = js_element_get_bounding_client_rect(ctx, this_val, 0, nullptr);
+    uint32_t count = 0;
 
-    // Only add a rect if the element has non-zero dimensions
-    double w = 0;
-    JSValue w_val = JS_GetPropertyStr(ctx, rect, "width");
-    JS_ToFloat64(ctx, &w, w_val);
-    JS_FreeValue(ctx, w_val);
-    double h = 0;
-    JSValue h_val = JS_GetPropertyStr(ctx, rect, "height");
-    JS_ToFloat64(ctx, &h, h_val);
-    JS_FreeValue(ctx, h_val);
+    if (node && state) {
+        auto it = state->layout_geometry.find(node);
+        if (it != state->layout_geometry.end()) {
+            auto& lr = it->second;
+            double x = static_cast<double>(lr.abs_border_x);
+            double y = static_cast<double>(lr.abs_border_y);
+            double w = static_cast<double>(lr.border_left + lr.padding_left +
+                                           lr.width +
+                                           lr.padding_right + lr.border_right);
+            double h = static_cast<double>(lr.border_top + lr.padding_top +
+                                           lr.height +
+                                           lr.padding_bottom + lr.border_bottom);
 
-    if (w > 0 || h > 0) {
-        JS_SetPropertyUint32(ctx, arr, 0, rect);
-    } else {
-        JS_FreeValue(ctx, rect);
+            // Subtract viewport scroll (same as getBoundingClientRect)
+            JSValue global = JS_GetGlobalObject(ctx);
+            JSValue sx_v = JS_GetPropertyStr(ctx, global, "scrollX");
+            JSValue sy_v = JS_GetPropertyStr(ctx, global, "scrollY");
+            double sx = 0, sy = 0;
+            JS_ToFloat64(ctx, &sx, sx_v);
+            JS_ToFloat64(ctx, &sy, sy_v);
+            JS_FreeValue(ctx, sx_v);
+            JS_FreeValue(ctx, sy_v);
+            JS_FreeValue(ctx, global);
+            x -= sx;
+            y -= sy;
+
+            if (w > 0 || h > 0) {
+                JS_SetPropertyUint32(ctx, arr, count++,
+                                     make_dom_rect(ctx, x, y, w, h));
+            }
+        }
     }
 
+    // Try to wrap the array as a DOMRectList (registered in JS)
+    JSValue global2 = JS_GetGlobalObject(ctx);
+    JSValue DRLCtor = JS_GetPropertyStr(ctx, global2, "DOMRectList");
+    JS_FreeValue(ctx, global2);
+    if (JS_IsFunction(ctx, DRLCtor)) {
+        JSValue list = JS_CallConstructor(ctx, DRLCtor, 1, &arr);
+        JS_FreeValue(ctx, DRLCtor);
+        JS_FreeValue(ctx, arr);
+        if (!JS_IsException(list)) return list;
+        JS_FreeValue(ctx, list);
+        // Fall through and return plain array on error
+        arr = JS_NewArray(ctx);
+        return arr;
+    }
+    JS_FreeValue(ctx, DRLCtor);
+
+    // Fallback: add .item() method to the plain array
+    static const char* item_src = "(function(arr) { "
+        "arr.item = function(i) { return (i >= 0 && i < arr.length) ? arr[i] : null; }; })";
+    JSValue item_fn = JS_Eval(ctx, item_src, std::strlen(item_src),
+                               "<client-rects-item>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsFunction(ctx, item_fn)) {
+        JSValue ret = JS_Call(ctx, item_fn, JS_UNDEFINED, 1, &arr);
+        JS_FreeValue(ctx, ret);
+    }
+    JS_FreeValue(ctx, item_fn);
     return arr;
 }
 
@@ -2789,15 +3039,32 @@ static JSValue js_element_dimension_getter(JSContext* ctx,
     // clientWidth/clientHeight = padding box (padding + content, no border)
     float client_w = lr.padding_left + lr.width + lr.padding_right;
     float client_h = lr.padding_top + lr.height + lr.padding_bottom;
-    // Border-box origin (top-left of border edge)
-    float border_box_x = lr.x - lr.padding_left - lr.border_left;
-    float border_box_y = lr.y - lr.padding_top - lr.border_top;
 
     switch (magic) {
         case 0: return JS_NewFloat64(ctx, border_box_w);     // offsetWidth
         case 1: return JS_NewFloat64(ctx, border_box_h);     // offsetHeight
-        case 2: return JS_NewFloat64(ctx, border_box_y);     // offsetTop
-        case 3: return JS_NewFloat64(ctx, border_box_x);     // offsetLeft
+        case 2: {
+            // offsetTop = distance from border-box top to offsetParent border-box top
+            float parent_border_y = 0;
+            if (lr.parent_dom_node) {
+                auto pit = state->layout_geometry.find(lr.parent_dom_node);
+                if (pit != state->layout_geometry.end()) {
+                    parent_border_y = pit->second.abs_border_y;
+                }
+            }
+            return JS_NewFloat64(ctx, lr.abs_border_y - parent_border_y);  // offsetTop
+        }
+        case 3: {
+            // offsetLeft = distance from border-box left to offsetParent border-box left
+            float parent_border_x = 0;
+            if (lr.parent_dom_node) {
+                auto pit = state->layout_geometry.find(lr.parent_dom_node);
+                if (pit != state->layout_geometry.end()) {
+                    parent_border_x = pit->second.abs_border_x;
+                }
+            }
+            return JS_NewFloat64(ctx, lr.abs_border_x - parent_border_x);  // offsetLeft
+        }
         case 4: {
             // scrollWidth: max of client width and scroll content width
             float sw = lr.is_scroll_container && lr.scroll_content_width > client_w
@@ -2881,6 +3148,466 @@ static std::string format_px(float v) {
 }
 
 // getPropertyValue for computed-style objects: checks layout_geometry first
+// =========================================================================
+// Helpers for getComputedStyle value formatting
+// =========================================================================
+
+// Format ARGB uint32_t as "rgb(r, g, b)" or "rgba(r, g, b, a/255)"
+static std::string format_color_argb(uint32_t argb) {
+    uint8_t a = (argb >> 24) & 0xFF;
+    uint8_t r = (argb >> 16) & 0xFF;
+    uint8_t g = (argb >>  8) & 0xFF;
+    uint8_t b = (argb >>  0) & 0xFF;
+    char buf[64];
+    if (a == 255) {
+        std::snprintf(buf, sizeof(buf), "rgb(%d, %d, %d)", r, g, b);
+    } else if (a == 0) {
+        std::snprintf(buf, sizeof(buf), "rgba(%d, %d, %d, 0)", r, g, b);
+    } else {
+        std::snprintf(buf, sizeof(buf), "rgba(%d, %d, %d, %.3f)",
+                      r, g, b, static_cast<double>(a) / 255.0);
+    }
+    return buf;
+}
+
+// Map display_type int to CSS string
+static const char* display_type_to_css(int dt) {
+    switch (dt) {
+        case 0:  return "block";
+        case 1:  return "inline";
+        case 2:  return "inline-block";
+        case 3:  return "flex";
+        case 4:  return "inline-flex";
+        case 5:  return "none";
+        case 6:  return "list-item";
+        case 7:  return "table";
+        case 8:  return "table-row";
+        case 9:  return "table-cell";
+        case 10: return "grid";
+        case 11: return "inline-grid";
+        default: return "block";
+    }
+}
+
+// Map position_type int to CSS string
+static const char* position_type_to_css(int pt) {
+    switch (pt) {
+        case 0: return "static";
+        case 1: return "relative";
+        case 2: return "absolute";
+        case 3: return "fixed";
+        case 4: return "sticky";
+        default: return "static";
+    }
+}
+
+// Map float_type int to CSS string
+static const char* float_type_to_css(int ft) {
+    switch (ft) {
+        case 0: return "none";
+        case 1: return "left";
+        case 2: return "right";
+        default: return "none";
+    }
+}
+
+// Map clear_type int to CSS string
+static const char* clear_type_to_css(int ct) {
+    switch (ct) {
+        case 0: return "none";
+        case 1: return "left";
+        case 2: return "right";
+        case 3: return "both";
+        default: return "none";
+    }
+}
+
+// Map overflow int to CSS string (0=visible, 1=hidden, 2=scroll, 3=auto)
+static const char* overflow_to_css(int ov) {
+    switch (ov) {
+        case 0: return "visible";
+        case 1: return "hidden";
+        case 2: return "scroll";
+        case 3: return "auto";
+        default: return "visible";
+    }
+}
+
+// Map text_align int to CSS string
+static const char* text_align_to_css(int ta) {
+    switch (ta) {
+        case 0: return "left";
+        case 1: return "center";
+        case 2: return "right";
+        case 3: return "justify";
+        default: return "left";
+    }
+}
+
+// Map white_space int to CSS string
+static const char* white_space_to_css(int ws) {
+    switch (ws) {
+        case 0: return "normal";
+        case 1: return "nowrap";
+        case 2: return "pre";
+        case 3: return "pre-wrap";
+        case 4: return "pre-line";
+        case 5: return "break-spaces";
+        default: return "normal";
+    }
+}
+
+// Map word_break int to CSS string
+static const char* word_break_to_css(int wb) {
+    switch (wb) {
+        case 0: return "normal";
+        case 1: return "break-all";
+        case 2: return "keep-all";
+        default: return "normal";
+    }
+}
+
+// Map overflow_wrap int to CSS string
+static const char* overflow_wrap_to_css(int ow) {
+    switch (ow) {
+        case 0: return "normal";
+        case 1: return "break-word";
+        case 2: return "anywhere";
+        default: return "normal";
+    }
+}
+
+// Map text_transform int to CSS string
+static const char* text_transform_to_css(int tt) {
+    switch (tt) {
+        case 0: return "none";
+        case 1: return "capitalize";
+        case 2: return "uppercase";
+        case 3: return "lowercase";
+        default: return "none";
+    }
+}
+
+// Map flex_direction int to CSS string
+static const char* flex_direction_to_css(int fd) {
+    switch (fd) {
+        case 0: return "row";
+        case 1: return "row-reverse";
+        case 2: return "column";
+        case 3: return "column-reverse";
+        default: return "row";
+    }
+}
+
+// Map flex_wrap int to CSS string
+static const char* flex_wrap_to_css(int fw) {
+    switch (fw) {
+        case 0: return "nowrap";
+        case 1: return "wrap";
+        case 2: return "wrap-reverse";
+        default: return "nowrap";
+    }
+}
+
+// Map justify_content int to CSS string
+static const char* justify_content_to_css(int jc) {
+    switch (jc) {
+        case 0: return "flex-start";
+        case 1: return "flex-end";
+        case 2: return "center";
+        case 3: return "space-between";
+        case 4: return "space-around";
+        case 5: return "space-evenly";
+        default: return "flex-start";
+    }
+}
+
+// Map align_items / align_self int to CSS string
+static const char* align_items_to_css(int ai) {
+    switch (ai) {
+        case 0: return "flex-start";
+        case 1: return "flex-end";
+        case 2: return "center";
+        case 3: return "baseline";
+        case 4: return "stretch";
+        default: return "stretch";
+    }
+}
+
+// Map border_style int to CSS string
+static const char* border_style_to_css(int bs) {
+    switch (bs) {
+        case 0: return "none";
+        case 1: return "solid";
+        case 2: return "dashed";
+        case 3: return "dotted";
+        case 4: return "double";
+        default: return "none";
+    }
+}
+
+// Map cursor int to CSS string
+static const char* cursor_to_css(int c) {
+    switch (c) {
+        case 0: return "auto";
+        case 1: return "default";
+        case 2: return "pointer";
+        case 3: return "text";
+        case 4: return "move";
+        case 5: return "not-allowed";
+        default: return "auto";
+    }
+}
+
+// Map user_select int to CSS string
+static const char* user_select_to_css(int us) {
+    switch (us) {
+        case 0: return "auto";
+        case 1: return "none";
+        case 2: return "text";
+        case 3: return "all";
+        default: return "auto";
+    }
+}
+
+// Build text-decoration string from bitmask
+static std::string text_decoration_to_css(int bits) {
+    if (bits == 0) return "none";
+    std::string result;
+    if (bits & 1) result += "underline ";
+    if (bits & 2) result += "overline ";
+    if (bits & 4) result += "line-through ";
+    if (!result.empty() && result.back() == ' ') result.pop_back();
+    return result;
+}
+
+// Build transform CSS string from vector of Transform structs
+static std::string transforms_to_css(const std::vector<clever::css::Transform>& transforms) {
+    if (transforms.empty()) return "none";
+    std::string result;
+    for (const auto& t : transforms) {
+        char buf[128];
+        switch (t.type) {
+            case clever::css::TransformType::Translate:
+                std::snprintf(buf, sizeof(buf), "translate(%gpx, %gpx) ",
+                              static_cast<double>(t.x), static_cast<double>(t.y));
+                break;
+            case clever::css::TransformType::Rotate:
+                std::snprintf(buf, sizeof(buf), "rotate(%gdeg) ",
+                              static_cast<double>(t.angle));
+                break;
+            case clever::css::TransformType::Scale:
+                std::snprintf(buf, sizeof(buf), "scale(%g, %g) ",
+                              static_cast<double>(t.x), static_cast<double>(t.y));
+                break;
+            case clever::css::TransformType::Skew:
+                std::snprintf(buf, sizeof(buf), "skew(%gdeg, %gdeg) ",
+                              static_cast<double>(t.x), static_cast<double>(t.y));
+                break;
+            case clever::css::TransformType::Matrix:
+                std::snprintf(buf, sizeof(buf),
+                              "matrix(%g, %g, %g, %g, %g, %g) ",
+                              static_cast<double>(t.m[0]), static_cast<double>(t.m[1]),
+                              static_cast<double>(t.m[2]), static_cast<double>(t.m[3]),
+                              static_cast<double>(t.m[4]), static_cast<double>(t.m[5]));
+                break;
+            default:
+                buf[0] = '\0';
+                break;
+        }
+        result += buf;
+    }
+    if (!result.empty() && result.back() == ' ') result.pop_back();
+    return result;
+}
+
+// Lookup a single CSS property value from a LayoutRect.
+// Returns empty string if the property is not known or not available.
+static std::string computed_style_lookup(const DOMState::LayoutRect& rect,
+                                          const std::string& css_name) {
+    // Box model dimensions (resolved px)
+    if (css_name == "width")  return format_px(rect.width);
+    if (css_name == "height") return format_px(rect.height);
+    if (css_name == "padding-top")    return format_px(rect.padding_top);
+    if (css_name == "padding-right")  return format_px(rect.padding_right);
+    if (css_name == "padding-bottom") return format_px(rect.padding_bottom);
+    if (css_name == "padding-left")   return format_px(rect.padding_left);
+    if (css_name == "padding") {
+        return format_px(rect.padding_top) + " " + format_px(rect.padding_right) + " " +
+               format_px(rect.padding_bottom) + " " + format_px(rect.padding_left);
+    }
+    if (css_name == "margin-top")    return format_px(rect.margin_top);
+    if (css_name == "margin-right")  return format_px(rect.margin_right);
+    if (css_name == "margin-bottom") return format_px(rect.margin_bottom);
+    if (css_name == "margin-left")   return format_px(rect.margin_left);
+    if (css_name == "margin") {
+        return format_px(rect.margin_top) + " " + format_px(rect.margin_right) + " " +
+               format_px(rect.margin_bottom) + " " + format_px(rect.margin_left);
+    }
+    if (css_name == "border-top-width")    return format_px(rect.border_top);
+    if (css_name == "border-right-width")  return format_px(rect.border_right);
+    if (css_name == "border-bottom-width") return format_px(rect.border_bottom);
+    if (css_name == "border-left-width")   return format_px(rect.border_left);
+    if (css_name == "border-width") {
+        return format_px(rect.border_top) + " " + format_px(rect.border_right) + " " +
+               format_px(rect.border_bottom) + " " + format_px(rect.border_left);
+    }
+
+    // Sizing constraints
+    if (css_name == "min-width")  return (rect.min_width_val > 0) ? format_px(rect.min_width_val) : "0px";
+    if (css_name == "max-width")  return (rect.max_width_val >= 1e8f) ? "none" : format_px(rect.max_width_val);
+    if (css_name == "min-height") return (rect.min_height_val > 0) ? format_px(rect.min_height_val) : "0px";
+    if (css_name == "max-height") return (rect.max_height_val >= 1e8f) ? "none" : format_px(rect.max_height_val);
+
+    // Display / position / flow
+    if (css_name == "display")  return display_type_to_css(rect.display_type);
+    if (css_name == "position") return position_type_to_css(rect.position_type);
+    if (css_name == "float")    return float_type_to_css(rect.float_type);
+    if (css_name == "clear")    return clear_type_to_css(rect.clear_type);
+    if (css_name == "box-sizing") return rect.border_box ? "border-box" : "content-box";
+
+    // Typography
+    if (css_name == "font-size")    return format_px(rect.font_size);
+    if (css_name == "font-weight")  {
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%d", rect.font_weight);
+        return buf;
+    }
+    if (css_name == "font-style")  return rect.font_italic ? "italic" : "normal";
+    if (css_name == "font-family") return rect.font_family.empty() ? "sans-serif" : rect.font_family;
+    if (css_name == "line-height") {
+        if (rect.line_height_px > 0) return format_px(rect.line_height_px);
+        return "normal";
+    }
+
+    // Colors
+    if (css_name == "color")            return format_color_argb(rect.color);
+    if (css_name == "background-color") return format_color_argb(rect.background_color);
+    if (css_name == "background-image") {
+        if (!rect.bg_image_url.empty() && rect.bg_image_url != "<url>")
+            return "url(\"" + rect.bg_image_url + "\")";
+        if (rect.bg_image_url == "<url>") return "url()"; // URL unknown from layout
+        if (rect.gradient_type == 1)    return "linear-gradient(...)";
+        if (rect.gradient_type == 2)    return "radial-gradient(...)";
+        return "none";
+    }
+
+    // Visual
+    if (css_name == "opacity") {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(rect.opacity_val));
+        return buf;
+    }
+    if (css_name == "visibility") return rect.visibility_hidden ? "hidden" : "visible";
+    if (css_name == "overflow")   return overflow_to_css(rect.overflow_x_val);
+    if (css_name == "overflow-x") return overflow_to_css(rect.overflow_x_val);
+    if (css_name == "overflow-y") return overflow_to_css(rect.overflow_y_val);
+    if (css_name == "z-index")    return rect.z_index_auto ? "auto" : std::to_string(rect.z_index_val);
+
+    // Text properties
+    if (css_name == "text-align")      return text_align_to_css(rect.text_align_val);
+    if (css_name == "text-decoration") return text_decoration_to_css(rect.text_decoration_bits);
+    if (css_name == "white-space")     return white_space_to_css(rect.white_space_val);
+    if (css_name == "word-break")      return word_break_to_css(rect.word_break_val);
+    if (css_name == "word-wrap" || css_name == "overflow-wrap")
+                                       return overflow_wrap_to_css(rect.overflow_wrap_val);
+    if (css_name == "text-transform")  return text_transform_to_css(rect.text_transform_val);
+    if (css_name == "text-overflow") {
+        return (rect.text_overflow_val == 1) ? "ellipsis" : "clip";
+    }
+
+    // Flex properties
+    if (css_name == "flex-grow") {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(rect.flex_grow));
+        return buf;
+    }
+    if (css_name == "flex-shrink") {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(rect.flex_shrink));
+        return buf;
+    }
+    if (css_name == "flex-basis") {
+        return (rect.flex_basis < 0) ? "auto" : format_px(rect.flex_basis);
+    }
+    if (css_name == "flex") {
+        std::string fb = (rect.flex_basis < 0) ? "auto" : format_px(rect.flex_basis);
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%g %g %s",
+                      static_cast<double>(rect.flex_grow),
+                      static_cast<double>(rect.flex_shrink),
+                      fb.c_str());
+        return buf;
+    }
+    if (css_name == "flex-direction")  return flex_direction_to_css(rect.flex_direction);
+    if (css_name == "flex-wrap")       return flex_wrap_to_css(rect.flex_wrap_val);
+    if (css_name == "justify-content") return justify_content_to_css(rect.justify_content_val);
+    if (css_name == "align-items")     return align_items_to_css(rect.align_items_val);
+    if (css_name == "align-self") {
+        if (rect.align_self_val == -1) return "auto";
+        return align_items_to_css(rect.align_self_val);
+    }
+
+    // Border radius
+    if (css_name == "border-radius") {
+        // Return shorthand: tl tr br bl
+        if (rect.border_radius_tl == rect.border_radius_tr &&
+            rect.border_radius_tl == rect.border_radius_br &&
+            rect.border_radius_tl == rect.border_radius_bl) {
+            return format_px(rect.border_radius_tl);
+        }
+        return format_px(rect.border_radius_tl) + " " + format_px(rect.border_radius_tr) + " " +
+               format_px(rect.border_radius_br) + " " + format_px(rect.border_radius_bl);
+    }
+    if (css_name == "border-top-left-radius")     return format_px(rect.border_radius_tl);
+    if (css_name == "border-top-right-radius")    return format_px(rect.border_radius_tr);
+    if (css_name == "border-bottom-left-radius")  return format_px(rect.border_radius_bl);
+    if (css_name == "border-bottom-right-radius") return format_px(rect.border_radius_br);
+
+    // Border styles
+    if (css_name == "border-top-style")    return border_style_to_css(rect.border_style_top);
+    if (css_name == "border-right-style")  return border_style_to_css(rect.border_style_right);
+    if (css_name == "border-bottom-style") return border_style_to_css(rect.border_style_bottom);
+    if (css_name == "border-left-style")   return border_style_to_css(rect.border_style_left);
+    if (css_name == "border-style") {
+        return std::string(border_style_to_css(rect.border_style_top)) + " " +
+               border_style_to_css(rect.border_style_right) + " " +
+               border_style_to_css(rect.border_style_bottom) + " " +
+               border_style_to_css(rect.border_style_left);
+    }
+
+    // Border colors
+    if (css_name == "border-top-color")    return format_color_argb(rect.border_color_top);
+    if (css_name == "border-right-color")  return format_color_argb(rect.border_color_right);
+    if (css_name == "border-bottom-color") return format_color_argb(rect.border_color_bottom);
+    if (css_name == "border-left-color")   return format_color_argb(rect.border_color_left);
+    if (css_name == "border-color") {
+        return format_color_argb(rect.border_color_top) + " " +
+               format_color_argb(rect.border_color_right) + " " +
+               format_color_argb(rect.border_color_bottom) + " " +
+               format_color_argb(rect.border_color_left);
+    }
+
+    // Shorthand border
+    if (css_name == "border") {
+        return format_px(rect.border_top) + " " +
+               border_style_to_css(rect.border_style_top) + " " +
+               format_color_argb(rect.border_color_top);
+    }
+
+    // CSS transforms
+    if (css_name == "transform") return transforms_to_css(rect.transforms);
+
+    // Cursor / pointer-events / user-select
+    if (css_name == "cursor")         return cursor_to_css(rect.cursor_val);
+    if (css_name == "pointer-events") return (rect.pointer_events == 1) ? "none" : "auto";
+    if (css_name == "user-select" || css_name == "-webkit-user-select")
+                                       return user_select_to_css(rect.user_select_val);
+
+    return ""; // property not in rect
+}
+
+// getPropertyValue for computed-style objects backed by the LayoutRect cache
 static JSValue js_computed_style_get_property(JSContext* ctx,
                                                JSValueConst this_val,
                                                int argc, JSValueConst* argv) {
@@ -2893,49 +3620,21 @@ static JSValue js_computed_style_get_property(JSContext* ctx,
     std::string prop(prop_cstr);
     JS_FreeCString(ctx, prop_cstr);
 
+    // Normalize to kebab-case
     std::string css_name = camel_to_kebab(prop);
+    if (css_name == "css-float") css_name = "float";
 
-    // Check layout_geometry for dimension-related properties
+    // Check layout_geometry for layout-resolved properties
     auto* state = get_dom_state(ctx);
     if (state) {
         auto it = state->layout_geometry.find(static_cast<void*>(node));
         if (it != state->layout_geometry.end()) {
-            const auto& rect = it->second;
-            if (css_name == "width") return JS_NewString(ctx, format_px(rect.width).c_str());
-            if (css_name == "height") return JS_NewString(ctx, format_px(rect.height).c_str());
-            if (css_name == "padding-top") return JS_NewString(ctx, format_px(rect.padding_top).c_str());
-            if (css_name == "padding-right") return JS_NewString(ctx, format_px(rect.padding_right).c_str());
-            if (css_name == "padding-bottom") return JS_NewString(ctx, format_px(rect.padding_bottom).c_str());
-            if (css_name == "padding-left") return JS_NewString(ctx, format_px(rect.padding_left).c_str());
-            if (css_name == "margin-top") return JS_NewString(ctx, format_px(rect.margin_top).c_str());
-            if (css_name == "margin-right") return JS_NewString(ctx, format_px(rect.margin_right).c_str());
-            if (css_name == "margin-bottom") return JS_NewString(ctx, format_px(rect.margin_bottom).c_str());
-            if (css_name == "margin-left") return JS_NewString(ctx, format_px(rect.margin_left).c_str());
-            if (css_name == "border-top-width") return JS_NewString(ctx, format_px(rect.border_top).c_str());
-            if (css_name == "border-right-width") return JS_NewString(ctx, format_px(rect.border_right).c_str());
-            if (css_name == "border-bottom-width") return JS_NewString(ctx, format_px(rect.border_bottom).c_str());
-            if (css_name == "border-left-width") return JS_NewString(ctx, format_px(rect.border_left).c_str());
-            if (css_name == "display") {
-                // Infer display mode: if the element has layout geometry it was laid out
-                auto inline_props = parse_style_attr(get_attr(*node, "style"));
-                auto dit = inline_props.find("display");
-                if (dit != inline_props.end()) {
-                    return JS_NewString(ctx, dit->second.c_str());
-                }
-                // Default: block for divs/sections/etc, inline for spans
-                std::string tag = node->tag_name;
-                for (auto& ch : tag) ch = static_cast<char>(::tolower(ch));
-                if (tag == "span" || tag == "a" || tag == "em" || tag == "strong" ||
-                    tag == "b" || tag == "i" || tag == "u" || tag == "code" ||
-                    tag == "small" || tag == "sub" || tag == "sup" || tag == "abbr") {
-                    return JS_NewString(ctx, "inline");
-                }
-                return JS_NewString(ctx, "block");
-            }
+            std::string val = computed_style_lookup(it->second, css_name);
+            if (!val.empty()) return JS_NewString(ctx, val.c_str());
         }
     }
 
-    // Fall back to inline style
+    // Fall back to inline style attribute
     auto props = parse_style_attr(get_attr(*node, "style"));
     auto it2 = props.find(css_name);
     if (it2 != props.end()) {
@@ -2944,6 +3643,12 @@ static JSValue js_computed_style_get_property(JSContext* ctx,
     return JS_NewString(ctx, "");
 }
 
+// =========================================================================
+// window.getComputedStyle(element [, pseudoElement])
+//
+// Returns a CSSStyleDeclaration-like object with layout-backed computed
+// values for all important CSS properties.
+// =========================================================================
 static JSValue js_get_computed_style(JSContext* ctx, JSValueConst /*this_val*/,
                                       int argc, JSValueConst* argv) {
     if (argc < 1) return JS_NULL;
@@ -2952,24 +3657,24 @@ static JSValue js_get_computed_style(JSContext* ctx, JSValueConst /*this_val*/,
     auto* node = unwrap_element(ctx, argv[0]);
     if (!node) return JS_NULL;
 
-    // Parse the inline style attribute
-    auto props = parse_style_attr(get_attr(*node, "style"));
-
-    // Create proper CSSStyleDeclaration-class object
+    // Create a CSSStyleDeclaration-class object backed by the node pointer
     JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(style_class_id));
     if (JS_IsException(obj)) return JS_NULL;
     JS_SetOpaque(obj, node);
 
-    // Add getPropertyValue — uses layout-aware computed style getter
+    // Add getPropertyValue and setProperty methods
     JS_SetPropertyStr(ctx, obj, "getPropertyValue",
-        JS_NewCFunction(ctx, js_computed_style_get_property,
-                        "getPropertyValue", 1));
+        JS_NewCFunction(ctx, js_computed_style_get_property, "getPropertyValue", 1));
 
-    // Set length to 0 (stub)
-    JS_SetPropertyStr(ctx, obj, "length", JS_NewInt32(ctx, 0));
+    // Stub setProperty (computed styles are read-only per spec)
+    JS_SetPropertyStr(ctx, obj, "setProperty",
+        JS_NewCFunction(ctx, [](JSContext* /*c*/, JSValueConst, int, JSValueConst*) -> JSValue {
+            return JS_UNDEFINED;
+        }, "setProperty", 3));
 
     // Helper: kebab-to-camelCase conversion
     auto to_camel = [](const std::string& key) -> std::string {
+        if (key.rfind("--", 0) == 0) return key; // CSS variables unchanged
         std::string camel;
         bool next_upper = false;
         for (char c : key) {
@@ -2985,69 +3690,235 @@ static JSValue js_get_computed_style(JSContext* ctx, JSValueConst /*this_val*/,
         return camel;
     };
 
-    // Check layout_geometry for computed dimension properties
+    // Helper to set a property (kebab and camelCase)
+    auto set_prop = [&](const char* name, const std::string& value) {
+        JS_SetPropertyStr(ctx, obj, name, JS_NewString(ctx, value.c_str()));
+        std::string camel = to_camel(name);
+        if (camel != name) {
+            JS_SetPropertyStr(ctx, obj, camel.c_str(), JS_NewString(ctx, value.c_str()));
+        }
+    };
+
+    // Inline style fallback map (built once, used for anything not in layout cache)
+    auto inline_props = parse_style_attr(get_attr(*node, "style"));
+
     auto* state = get_dom_state(ctx);
     bool has_geometry = false;
+
     if (state) {
         auto geo_it = state->layout_geometry.find(static_cast<void*>(node));
         if (geo_it != state->layout_geometry.end()) {
             has_geometry = true;
             const auto& rect = geo_it->second;
 
-            // Populate layout-backed dimension properties
-            struct { const char* name; float value; } layout_props[] = {
-                {"width", rect.width},
-                {"height", rect.height},
-                {"padding-top", rect.padding_top},
-                {"padding-right", rect.padding_right},
-                {"padding-bottom", rect.padding_bottom},
-                {"padding-left", rect.padding_left},
-                {"margin-top", rect.margin_top},
-                {"margin-right", rect.margin_right},
-                {"margin-bottom", rect.margin_bottom},
-                {"margin-left", rect.margin_left},
-                {"border-top-width", rect.border_top},
-                {"border-right-width", rect.border_right},
-                {"border-bottom-width", rect.border_bottom},
-                {"border-left-width", rect.border_left},
-            };
-            for (auto& lp : layout_props) {
-                std::string px_val = format_px(lp.value);
-                JS_SetPropertyStr(ctx, obj, lp.name,
-                    JS_NewString(ctx, px_val.c_str()));
-                std::string camel = to_camel(lp.name);
-                if (camel != lp.name) {
-                    JS_SetPropertyStr(ctx, obj, camel.c_str(),
-                        JS_NewString(ctx, px_val.c_str()));
+            // ---- Box model (resolved px from actual layout) ----
+            set_prop("width",  format_px(rect.width));
+            set_prop("height", format_px(rect.height));
+            set_prop("padding-top",    format_px(rect.padding_top));
+            set_prop("padding-right",  format_px(rect.padding_right));
+            set_prop("padding-bottom", format_px(rect.padding_bottom));
+            set_prop("padding-left",   format_px(rect.padding_left));
+            set_prop("padding",
+                format_px(rect.padding_top) + " " + format_px(rect.padding_right) + " " +
+                format_px(rect.padding_bottom) + " " + format_px(rect.padding_left));
+            set_prop("margin-top",    format_px(rect.margin_top));
+            set_prop("margin-right",  format_px(rect.margin_right));
+            set_prop("margin-bottom", format_px(rect.margin_bottom));
+            set_prop("margin-left",   format_px(rect.margin_left));
+            set_prop("margin",
+                format_px(rect.margin_top) + " " + format_px(rect.margin_right) + " " +
+                format_px(rect.margin_bottom) + " " + format_px(rect.margin_left));
+            set_prop("border-top-width",    format_px(rect.border_top));
+            set_prop("border-right-width",  format_px(rect.border_right));
+            set_prop("border-bottom-width", format_px(rect.border_bottom));
+            set_prop("border-left-width",   format_px(rect.border_left));
+            set_prop("border-width",
+                format_px(rect.border_top) + " " + format_px(rect.border_right) + " " +
+                format_px(rect.border_bottom) + " " + format_px(rect.border_left));
+
+            // ---- Sizing constraints ----
+            set_prop("min-width",  (rect.min_width_val > 0) ? format_px(rect.min_width_val) : "0px");
+            set_prop("max-width",  (rect.max_width_val >= 1e8f) ? "none" : format_px(rect.max_width_val));
+            set_prop("min-height", (rect.min_height_val > 0) ? format_px(rect.min_height_val) : "0px");
+            set_prop("max-height", (rect.max_height_val >= 1e8f) ? "none" : format_px(rect.max_height_val));
+
+            // ---- Display / position / flow ----
+            set_prop("display",    display_type_to_css(rect.display_type));
+            set_prop("position",   position_type_to_css(rect.position_type));
+            set_prop("float",      float_type_to_css(rect.float_type));
+            set_prop("clear",      clear_type_to_css(rect.clear_type));
+            set_prop("box-sizing", rect.border_box ? "border-box" : "content-box");
+
+            // ---- Typography ----
+            set_prop("font-size",   format_px(rect.font_size));
+            {
+                char buf[16];
+                std::snprintf(buf, sizeof(buf), "%d", rect.font_weight);
+                set_prop("font-weight", buf);
+            }
+            set_prop("font-style",  rect.font_italic ? "italic" : "normal");
+            set_prop("font-family", rect.font_family.empty() ? "sans-serif" : rect.font_family);
+            set_prop("line-height", rect.line_height_px > 0 ? format_px(rect.line_height_px) : "normal");
+
+            // ---- Colors ----
+            set_prop("color",            format_color_argb(rect.color));
+            set_prop("background-color", format_color_argb(rect.background_color));
+            {
+                std::string bg_img = "none";
+                if (!rect.bg_image_url.empty() && rect.bg_image_url != "<url>")
+                    bg_img = "url(\"" + rect.bg_image_url + "\")";
+                else if (rect.bg_image_url == "<url>")
+                    bg_img = "url()"; // URL unknown from layout
+                else if (rect.gradient_type == 1)
+                    bg_img = "linear-gradient(...)";
+                else if (rect.gradient_type == 2)
+                    bg_img = "radial-gradient(...)";
+                set_prop("background-image", bg_img);
+            }
+
+            // ---- Visual ----
+            {
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(rect.opacity_val));
+                set_prop("opacity", buf);
+            }
+            set_prop("visibility",  rect.visibility_hidden ? "hidden" : "visible");
+            set_prop("overflow",    overflow_to_css(rect.overflow_x_val));
+            set_prop("overflow-x",  overflow_to_css(rect.overflow_x_val));
+            set_prop("overflow-y",  overflow_to_css(rect.overflow_y_val));
+            set_prop("z-index",     rect.z_index_auto ? "auto" : std::to_string(rect.z_index_val));
+
+            // ---- Text properties ----
+            set_prop("text-align",      text_align_to_css(rect.text_align_val));
+            set_prop("text-decoration", text_decoration_to_css(rect.text_decoration_bits));
+            set_prop("white-space",     white_space_to_css(rect.white_space_val));
+            set_prop("word-break",      word_break_to_css(rect.word_break_val));
+            set_prop("word-wrap",       overflow_wrap_to_css(rect.overflow_wrap_val));
+            set_prop("overflow-wrap",   overflow_wrap_to_css(rect.overflow_wrap_val));
+            set_prop("text-transform",  text_transform_to_css(rect.text_transform_val));
+            set_prop("text-overflow",   rect.text_overflow_val == 1 ? "ellipsis" : "clip");
+
+            // ---- Flex properties ----
+            {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(rect.flex_grow));
+                set_prop("flex-grow", buf);
+                std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(rect.flex_shrink));
+                set_prop("flex-shrink", buf);
+            }
+            set_prop("flex-basis",     rect.flex_basis < 0 ? "auto" : format_px(rect.flex_basis));
+            {
+                std::string fb = rect.flex_basis < 0 ? "auto" : format_px(rect.flex_basis);
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%g %g %s",
+                              static_cast<double>(rect.flex_grow),
+                              static_cast<double>(rect.flex_shrink),
+                              fb.c_str());
+                set_prop("flex", buf);
+            }
+            set_prop("flex-direction",  flex_direction_to_css(rect.flex_direction));
+            set_prop("flex-wrap",       flex_wrap_to_css(rect.flex_wrap_val));
+            set_prop("justify-content", justify_content_to_css(rect.justify_content_val));
+            set_prop("align-items",     align_items_to_css(rect.align_items_val));
+            set_prop("align-self",      rect.align_self_val == -1 ? "auto" :
+                                        align_items_to_css(rect.align_self_val));
+
+            // ---- Border radius ----
+            set_prop("border-top-left-radius",     format_px(rect.border_radius_tl));
+            set_prop("border-top-right-radius",    format_px(rect.border_radius_tr));
+            set_prop("border-bottom-left-radius",  format_px(rect.border_radius_bl));
+            set_prop("border-bottom-right-radius", format_px(rect.border_radius_br));
+            {
+                std::string br_short;
+                if (rect.border_radius_tl == rect.border_radius_tr &&
+                    rect.border_radius_tl == rect.border_radius_br &&
+                    rect.border_radius_tl == rect.border_radius_bl) {
+                    br_short = format_px(rect.border_radius_tl);
+                } else {
+                    br_short = format_px(rect.border_radius_tl) + " " +
+                               format_px(rect.border_radius_tr) + " " +
+                               format_px(rect.border_radius_br) + " " +
+                               format_px(rect.border_radius_bl);
                 }
+                set_prop("border-radius", br_short);
             }
+
+            // ---- Border styles ----
+            set_prop("border-top-style",    border_style_to_css(rect.border_style_top));
+            set_prop("border-right-style",  border_style_to_css(rect.border_style_right));
+            set_prop("border-bottom-style", border_style_to_css(rect.border_style_bottom));
+            set_prop("border-left-style",   border_style_to_css(rect.border_style_left));
+            set_prop("border-style",
+                std::string(border_style_to_css(rect.border_style_top)) + " " +
+                border_style_to_css(rect.border_style_right) + " " +
+                border_style_to_css(rect.border_style_bottom) + " " +
+                border_style_to_css(rect.border_style_left));
+
+            // ---- Border colors ----
+            set_prop("border-top-color",    format_color_argb(rect.border_color_top));
+            set_prop("border-right-color",  format_color_argb(rect.border_color_right));
+            set_prop("border-bottom-color", format_color_argb(rect.border_color_bottom));
+            set_prop("border-left-color",   format_color_argb(rect.border_color_left));
+            set_prop("border-color",
+                format_color_argb(rect.border_color_top) + " " +
+                format_color_argb(rect.border_color_right) + " " +
+                format_color_argb(rect.border_color_bottom) + " " +
+                format_color_argb(rect.border_color_left));
+
+            // ---- Border shorthand ----
+            set_prop("border",
+                format_px(rect.border_top) + " " +
+                border_style_to_css(rect.border_style_top) + " " +
+                format_color_argb(rect.border_color_top));
+
+            // ---- CSS Transforms ----
+            set_prop("transform", transforms_to_css(rect.transforms));
+
+            // Stub transition / animation — return "none" unless inline style says otherwise
+            set_prop("transition", "none");
+            set_prop("animation",  "none");
+
+            // ---- Cursor / pointer-events / user-select ----
+            set_prop("cursor",          cursor_to_css(rect.cursor_val));
+            set_prop("pointer-events",  rect.pointer_events == 1 ? "none" : "auto");
+            set_prop("user-select",     user_select_to_css(rect.user_select_val));
+            set_prop("-webkit-user-select", user_select_to_css(rect.user_select_val));
         }
     }
 
-    // Populate properties from inline styles on the object itself
-    for (auto& [key, value] : props) {
-        // Skip dimension properties that are already set from layout geometry
-        if (has_geometry) {
-            if (key == "width" || key == "height" ||
-                key == "padding-top" || key == "padding-right" ||
-                key == "padding-bottom" || key == "padding-left" ||
-                key == "margin-top" || key == "margin-right" ||
-                key == "margin-bottom" || key == "margin-left" ||
-                key == "border-top-width" || key == "border-right-width" ||
-                key == "border-bottom-width" || key == "border-left-width") {
-                continue;
-            }
-        }
+    // Apply any inline style properties not already set from layout geometry.
+    // This ensures properties like transition, animation, custom properties, etc.
+    // that are set inline but not in the layout cache still appear.
+    static const std::unordered_set<std::string> layout_backed_props = {
+        "width", "height",
+        "padding-top", "padding-right", "padding-bottom", "padding-left", "padding",
+        "margin-top", "margin-right", "margin-bottom", "margin-left", "margin",
+        "border-top-width", "border-right-width", "border-bottom-width", "border-left-width", "border-width",
+        "min-width", "max-width", "min-height", "max-height",
+        "display", "position", "float", "clear", "box-sizing",
+        "font-size", "font-weight", "font-style", "font-family", "line-height",
+        "color", "background-color", "background-image",
+        "opacity", "visibility", "overflow", "overflow-x", "overflow-y", "z-index",
+        "text-align", "text-decoration", "white-space", "word-break", "word-wrap",
+        "overflow-wrap", "text-transform", "text-overflow",
+        "flex-grow", "flex-shrink", "flex-basis", "flex",
+        "flex-direction", "flex-wrap", "justify-content", "align-items", "align-self",
+        "border-radius", "border-top-left-radius", "border-top-right-radius",
+        "border-bottom-left-radius", "border-bottom-right-radius",
+        "border-top-style", "border-right-style", "border-bottom-style", "border-left-style", "border-style",
+        "border-top-color", "border-right-color", "border-bottom-color", "border-left-color", "border-color",
+        "border", "transform", "cursor", "pointer-events", "user-select", "-webkit-user-select",
+    };
 
-        JS_SetPropertyStr(ctx, obj, key.c_str(),
-            JS_NewString(ctx, value.c_str()));
-
-        std::string camel = to_camel(key);
-        if (camel != key) {
-            JS_SetPropertyStr(ctx, obj, camel.c_str(),
-                JS_NewString(ctx, value.c_str()));
-        }
+    for (const auto& [key, value] : inline_props) {
+        if (has_geometry && layout_backed_props.count(key)) continue;
+        set_prop(key.c_str(), value);
     }
+
+    // Set length to count of properties (approximate)
+    int prop_count = has_geometry ? static_cast<int>(layout_backed_props.size()) : 0;
+    prop_count += static_cast<int>(inline_props.size());
+    JS_SetPropertyStr(ctx, obj, "length", JS_NewInt32(ctx, prop_count));
 
     return obj;
 }
@@ -3867,9 +4738,9 @@ static JSValue js_document_element_from_point(JSContext* ctx,
         if (lr.visibility_hidden) continue;
 
         // Compute border-box rectangle from the LayoutRect.
-        // lr.x/y is the content-box origin (after border+padding offset).
-        float box_x = lr.x - lr.padding_left - lr.border_left;
-        float box_y = lr.y - lr.padding_top - lr.border_top;
+        // Use the precomputed abs_border_x/y (border-box top-left in page coords).
+        float box_x = lr.abs_border_x;
+        float box_y = lr.abs_border_y;
         float box_w = lr.border_left + lr.padding_left + lr.width
                     + lr.padding_right + lr.border_right;
         float box_h = lr.border_top + lr.padding_top + lr.height
@@ -4907,7 +5778,12 @@ static JSValue js_element_set_hidden(JSContext* ctx, JSValueConst this_val,
 }
 
 // =========================================================================
-// element.offsetParent — stub returning body
+// element.offsetParent
+//
+// Returns the nearest ancestor element that has a CSS position other than
+// static (i.e., relative/absolute/fixed/sticky), or the <body> element if
+// no such ancestor exists.  Returns null for fixed-position elements and
+// for elements not in the layout tree.
 // =========================================================================
 
 static JSValue js_element_get_offset_parent(JSContext* ctx,
@@ -4918,6 +5794,31 @@ static JSValue js_element_get_offset_parent(JSContext* ctx,
     if (!node) return JS_NULL;
     auto* state = get_dom_state(ctx);
     if (!state || !state->root) return JS_NULL;
+
+    // If the element itself is fixed-position, offsetParent is null
+    auto self_it = state->layout_geometry.find(node);
+    if (self_it != state->layout_geometry.end() &&
+        self_it->second.position_type == 3 /* fixed */) {
+        return JS_NULL;
+    }
+
+    // Walk up via parent_dom_node chain looking for a positioned ancestor
+    if (!state->layout_geometry.empty() && self_it != state->layout_geometry.end()) {
+        void* parent_ptr = self_it->second.parent_dom_node;
+        while (parent_ptr) {
+            auto pit = state->layout_geometry.find(parent_ptr);
+            if (pit == state->layout_geometry.end()) break;
+            int ptype = pit->second.position_type;
+            // position_type 1=relative, 2=absolute, 3=fixed, 4=sticky
+            if (ptype != 0) {
+                return wrap_element(ctx,
+                    static_cast<clever::html::SimpleNode*>(parent_ptr));
+            }
+            parent_ptr = pit->second.parent_dom_node;
+        }
+    }
+
+    // Fall back to <body>
     auto* body = state->root->find_element("body");
     if (body) return wrap_element(ctx, body);
     return JS_NULL;
@@ -6637,6 +7538,47 @@ static JSValue js_element_dispatch_event(JSContext* ctx,
 // ---- Canvas gradient data (stored as C++ struct to avoid JSValue lifetime issues) ----
 enum class CanvasGradientType { None, Linear, Radial, Conic };
 
+// ---- Canvas pattern data ----
+enum class CanvasPatternRepeat { Repeat, RepeatX, RepeatY, NoRepeat };
+
+struct CanvasPattern {
+    std::vector<uint8_t> pixels; // RGBA pixel data
+    int width = 0;
+    int height = 0;
+    CanvasPatternRepeat repeat = CanvasPatternRepeat::Repeat;
+
+    bool active() const { return !pixels.empty() && width > 0 && height > 0; }
+
+    // Sample pattern color at canvas position (px, py), returns RGBA packed as R|G|B|A in 4 bytes
+    // Returns false (transparent) if outside tile and repetition mode excludes that direction.
+    // Returns ARGB uint32 like gradient (A in high byte).
+    uint32_t sample(int px, int py) const {
+        if (!active()) return 0x00000000u;
+        bool tile_x = (repeat == CanvasPatternRepeat::Repeat || repeat == CanvasPatternRepeat::RepeatX);
+        bool tile_y = (repeat == CanvasPatternRepeat::Repeat || repeat == CanvasPatternRepeat::RepeatY);
+
+        int tx = px, ty = py;
+        if (tile_x) {
+            tx = ((px % width) + width) % width;
+        } else {
+            if (px < 0 || px >= width) return 0x00000000u; // transparent outside
+        }
+        if (tile_y) {
+            ty = ((py % height) + height) % height;
+        } else {
+            if (py < 0 || py >= height) return 0x00000000u; // transparent outside
+        }
+
+        int idx = (ty * width + tx) * 4;
+        uint8_t r = pixels[idx];
+        uint8_t g = pixels[idx + 1];
+        uint8_t b = pixels[idx + 2];
+        uint8_t a = pixels[idx + 3];
+        return (static_cast<uint32_t>(a) << 24) | (static_cast<uint32_t>(r) << 16) |
+               (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b);
+    }
+};
+
 struct CanvasColorStop {
     float offset; // 0.0 - 1.0
     uint32_t color; // ARGB
@@ -6713,6 +7655,9 @@ struct Canvas2DState {
     // Gradient fill/stroke (overrides solid color when active)
     CanvasGradient fill_gradient;
     CanvasGradient stroke_gradient;
+    // Pattern fill/stroke (overrides gradient and solid color when active)
+    CanvasPattern fill_pattern;
+    CanvasPattern stroke_pattern;
     // Canvas shadow state
     uint32_t shadow_color = 0x00000000; // transparent = no shadow
     float shadow_blur = 0.0f;
@@ -6751,6 +7696,8 @@ struct Canvas2DState {
         uint32_t stroke_color;
         CanvasGradient fill_gradient;
         CanvasGradient stroke_gradient;
+        CanvasPattern fill_pattern;
+        CanvasPattern stroke_pattern;
         float line_width;
         float global_alpha;
         std::string font;
@@ -6895,7 +7842,34 @@ static void fill_rect_buffer(Canvas2DState* s, int x, int y, int w, int h) {
     int x1 = std::min(s->width, x + w);
     int y1 = std::min(s->height, y + h);
 
-    if (s->fill_gradient.active()) {
+    if (s->fill_pattern.active()) {
+        // Per-pixel pattern fill (tiled image)
+        for (int py = y0; py < y1; py++) {
+            for (int px = x0; px < x1; px++) {
+                if (s->has_clip && s->clip_mask[py * s->width + px] == 0x00) continue;
+                uint32_t col = s->fill_pattern.sample(px, py);
+                uint8_t cr = (col >> 16) & 0xFF;
+                uint8_t cg = (col >> 8) & 0xFF;
+                uint8_t cb = col & 0xFF;
+                uint8_t ca = static_cast<uint8_t>(((col >> 24) & 0xFF) * s->global_alpha);
+                if (ca == 0) continue; // fully transparent — skip
+                int idx = (py * s->width + px) * 4;
+                float alpha = ca / 255.0f;
+                if (alpha >= 1.0f) {
+                    (*s->buffer)[idx]     = cr;
+                    (*s->buffer)[idx + 1] = cg;
+                    (*s->buffer)[idx + 2] = cb;
+                    (*s->buffer)[idx + 3] = 255;
+                } else {
+                    float inv = 1.0f - alpha;
+                    (*s->buffer)[idx]     = static_cast<uint8_t>(cr * alpha + (*s->buffer)[idx]     * inv);
+                    (*s->buffer)[idx + 1] = static_cast<uint8_t>(cg * alpha + (*s->buffer)[idx + 1] * inv);
+                    (*s->buffer)[idx + 2] = static_cast<uint8_t>(cb * alpha + (*s->buffer)[idx + 2] * inv);
+                    (*s->buffer)[idx + 3] = static_cast<uint8_t>(std::min(255.0f, ca * alpha + (*s->buffer)[idx + 3] * inv));
+                }
+            }
+        }
+    } else if (s->fill_gradient.active()) {
         // Per-pixel gradient fill
         for (int py = y0; py < y1; py++) {
             for (int px = x0; px < x1; px++) {
@@ -6946,7 +7920,26 @@ static void stroke_rect_buffer(Canvas2DState* s, int x, int y, int w, int h) {
         if (px < 0 || py < 0 || px >= s->width || py >= s->height) return;
         if (s->has_clip && s->clip_mask[py * s->width + px] == 0x00) return;
         int idx = (py * s->width + px) * 4;
-        if (s->stroke_gradient.active()) {
+        if (s->stroke_pattern.active()) {
+            uint32_t col = s->stroke_pattern.sample(px, py);
+            uint8_t cr = (col >> 16) & 0xFF;
+            uint8_t cg = (col >> 8) & 0xFF;
+            uint8_t cb = col & 0xFF;
+            uint8_t ca = static_cast<uint8_t>(((col >> 24) & 0xFF) * s->global_alpha);
+            float alpha = ca / 255.0f;
+            if (alpha >= 1.0f) {
+                (*s->buffer)[idx]     = cr;
+                (*s->buffer)[idx + 1] = cg;
+                (*s->buffer)[idx + 2] = cb;
+                (*s->buffer)[idx + 3] = 255;
+            } else if (alpha > 0.0f) {
+                float inv = 1.0f - alpha;
+                (*s->buffer)[idx]     = static_cast<uint8_t>(cr * alpha + (*s->buffer)[idx]     * inv);
+                (*s->buffer)[idx + 1] = static_cast<uint8_t>(cg * alpha + (*s->buffer)[idx + 1] * inv);
+                (*s->buffer)[idx + 2] = static_cast<uint8_t>(cb * alpha + (*s->buffer)[idx + 2] * inv);
+                (*s->buffer)[idx + 3] = static_cast<uint8_t>(std::min(255.0f, ca * alpha + (*s->buffer)[idx + 3] * inv));
+            }
+        } else if (s->stroke_gradient.active()) {
             uint32_t col = s->stroke_gradient.sample(static_cast<float>(px) + 0.5f,
                                                       static_cast<float>(py) + 0.5f);
             (*s->buffer)[idx]     = (col >> 16) & 0xFF;
@@ -7010,7 +8003,26 @@ static void draw_line_buffer(Canvas2DState* s, int x0, int y0, int x1, int y1,
         if (px < 0 || py < 0 || px >= s->width || py >= s->height) return;
         if (s->has_clip && s->clip_mask[py * s->width + px] == 0x00) return;
         int idx = (py * s->width + px) * 4;
-        if (s->stroke_gradient.active()) {
+        if (s->stroke_pattern.active()) {
+            uint32_t col = s->stroke_pattern.sample(px, py);
+            uint8_t cr = (col >> 16) & 0xFF;
+            uint8_t cg = (col >> 8) & 0xFF;
+            uint8_t cb = col & 0xFF;
+            uint8_t ca = static_cast<uint8_t>(((col >> 24) & 0xFF) * alpha);
+            float palpha = ca / 255.0f;
+            if (palpha >= 1.0f) {
+                (*s->buffer)[idx]     = cr;
+                (*s->buffer)[idx + 1] = cg;
+                (*s->buffer)[idx + 2] = cb;
+                (*s->buffer)[idx + 3] = 255;
+            } else if (palpha > 0.0f) {
+                float inv = 1.0f - palpha;
+                (*s->buffer)[idx]     = static_cast<uint8_t>(cr * palpha + (*s->buffer)[idx]     * inv);
+                (*s->buffer)[idx + 1] = static_cast<uint8_t>(cg * palpha + (*s->buffer)[idx + 1] * inv);
+                (*s->buffer)[idx + 2] = static_cast<uint8_t>(cb * palpha + (*s->buffer)[idx + 2] * inv);
+                (*s->buffer)[idx + 3] = static_cast<uint8_t>(std::min(255.0f, ca * palpha + (*s->buffer)[idx + 3] * inv));
+            }
+        } else if (s->stroke_gradient.active()) {
             uint32_t col = s->stroke_gradient.sample(static_cast<float>(px) + 0.5f,
                                                       static_cast<float>(py) + 0.5f);
             (*s->buffer)[idx]     = (col >> 16) & 0xFF;
@@ -7188,19 +8200,81 @@ static JSValue js_canvas2d_get_fill_style(JSContext* ctx, JSValueConst this_val,
     return JS_NewString(ctx, canvas_color_to_string(s->fill_color).c_str());
 }
 
+// Helper: extract CanvasPattern data from a JS pattern object (produced by createPattern)
+static bool canvas_load_pattern_from_js(JSContext* ctx, JSValueConst obj, CanvasPattern& out) {
+    // Pattern object has: type="pattern", __pixels (JS array), __patWidth, __patHeight, __repeat
+    JSValue pw_val = JS_GetPropertyStr(ctx, obj, "__patWidth");
+    JSValue ph_val = JS_GetPropertyStr(ctx, obj, "__patHeight");
+    JSValue rp_val = JS_GetPropertyStr(ctx, obj, "__repeat");
+    JSValue px_val = JS_GetPropertyStr(ctx, obj, "__pixels");
+
+    int32_t pw = 0, ph = 0;
+    JS_ToInt32(ctx, &pw, pw_val);
+    JS_ToInt32(ctx, &ph, ph_val);
+    JS_FreeValue(ctx, pw_val);
+    JS_FreeValue(ctx, ph_val);
+
+    if (pw <= 0 || ph <= 0 || !JS_IsArray(ctx, px_val)) {
+        JS_FreeValue(ctx, rp_val);
+        JS_FreeValue(ctx, px_val);
+        return false;
+    }
+
+    // Parse repetition
+    CanvasPatternRepeat rep = CanvasPatternRepeat::Repeat;
+    const char* rp_str = JS_ToCString(ctx, rp_val);
+    if (rp_str) {
+        std::string rs(rp_str);
+        JS_FreeCString(ctx, rp_str);
+        if (rs == "repeat-x") rep = CanvasPatternRepeat::RepeatX;
+        else if (rs == "repeat-y") rep = CanvasPatternRepeat::RepeatY;
+        else if (rs == "no-repeat") rep = CanvasPatternRepeat::NoRepeat;
+        // else "repeat" (default)
+    }
+    JS_FreeValue(ctx, rp_val);
+
+    // Copy pixel data
+    int total = pw * ph * 4;
+    out.pixels.resize(static_cast<size_t>(total));
+    for (int i = 0; i < total; i++) {
+        JSValue v = JS_GetPropertyUint32(ctx, px_val, static_cast<uint32_t>(i));
+        int32_t bv = 0;
+        JS_ToInt32(ctx, &bv, v);
+        JS_FreeValue(ctx, v);
+        out.pixels[i] = static_cast<uint8_t>(bv < 0 ? 0 : (bv > 255 ? 255 : bv));
+    }
+    JS_FreeValue(ctx, px_val);
+
+    out.width = pw;
+    out.height = ph;
+    out.repeat = rep;
+    return true;
+}
+
 static JSValue js_canvas2d_set_fill_style(JSContext* ctx, JSValueConst this_val,
                                            int argc, JSValueConst* argv) {
     auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
     if (!s || argc < 1) return JS_UNDEFINED;
     if (JS_IsObject(argv[0]) && !JS_IsFunction(ctx, argv[0])) {
-        // Check for gradient object (has "type" property = "linear", "radial", or "conic")
+        // Check for gradient or pattern object (has "type" property)
         JSValue type_val = JS_GetPropertyStr(ctx, argv[0], "type");
         const char* type_str = JS_ToCString(ctx, type_val);
         if (type_str) {
             std::string gtype(type_str);
             JS_FreeCString(ctx, type_str);
             JS_FreeValue(ctx, type_val);
+            if (gtype == "pattern") {
+                CanvasPattern fill_pat;
+                if (canvas_load_pattern_from_js(ctx, argv[0], fill_pat)) {
+                    s->fill_pattern = std::move(fill_pat);
+                    s->fill_gradient = CanvasGradient{};
+                } else {
+                    s->fill_pattern = CanvasPattern{};
+                }
+                return JS_UNDEFINED;
+            }
             if (gtype == "linear" || gtype == "radial" || gtype == "conic") {
+                s->fill_pattern = CanvasPattern{};
                 CanvasGradient grad;
                 grad.type = (gtype == "linear") ? CanvasGradientType::Linear
                           : (gtype == "radial") ? CanvasGradientType::Radial
@@ -7253,12 +8327,14 @@ static JSValue js_canvas2d_set_fill_style(JSContext* ctx, JSValueConst this_val,
         } else {
             JS_FreeValue(ctx, type_val);
         }
-        // Unknown object — clear gradient
+        // Unknown object — clear gradient and pattern
         s->fill_gradient = CanvasGradient{};
+        s->fill_pattern = CanvasPattern{};
         return JS_UNDEFINED;
     }
-    // String: parse as solid color, clear any gradient
+    // String: parse as solid color, clear any gradient/pattern
     s->fill_gradient = CanvasGradient{};
+    s->fill_pattern = CanvasPattern{};
     const char* cstr = JS_ToCString(ctx, argv[0]);
     if (cstr) {
         s->fill_color = canvas_parse_color(cstr);
@@ -7285,7 +8361,18 @@ static JSValue js_canvas2d_set_stroke_style(JSContext* ctx, JSValueConst this_va
             std::string gtype(type_str);
             JS_FreeCString(ctx, type_str);
             JS_FreeValue(ctx, type_val);
+            if (gtype == "pattern") {
+                CanvasPattern stroke_pat;
+                if (canvas_load_pattern_from_js(ctx, argv[0], stroke_pat)) {
+                    s->stroke_pattern = std::move(stroke_pat);
+                    s->stroke_gradient = CanvasGradient{};
+                } else {
+                    s->stroke_pattern = CanvasPattern{};
+                }
+                return JS_UNDEFINED;
+            }
             if (gtype == "linear" || gtype == "radial" || gtype == "conic") {
+                s->stroke_pattern = CanvasPattern{};
                 CanvasGradient grad;
                 grad.type = (gtype == "linear") ? CanvasGradientType::Linear
                           : (gtype == "radial") ? CanvasGradientType::Radial
@@ -7335,11 +8422,14 @@ static JSValue js_canvas2d_set_stroke_style(JSContext* ctx, JSValueConst this_va
         } else {
             JS_FreeValue(ctx, type_val);
         }
+        // Unknown object — clear gradient and pattern
         s->stroke_gradient = CanvasGradient{};
+        s->stroke_pattern = CanvasPattern{};
         return JS_UNDEFINED;
     }
-    // String: parse as solid color, clear any gradient
+    // String: parse as solid color, clear any gradient/pattern
     s->stroke_gradient = CanvasGradient{};
+    s->stroke_pattern = CanvasPattern{};
     const char* cstr = JS_ToCString(ctx, argv[0]);
     if (cstr) {
         s->stroke_color = canvas_parse_color(cstr);
@@ -7781,7 +8871,26 @@ static JSValue js_canvas2d_fill(JSContext* /*ctx*/, JSValueConst this_val,
             for (int x = x_start; x < x_end; x++) {
                 if (s->has_clip && s->clip_mask[y * s->width + x] == 0x00) continue;
                 int idx = (y * s->width + x) * 4;
-                if (s->fill_gradient.active()) {
+                if (s->fill_pattern.active()) {
+                    uint32_t col = s->fill_pattern.sample(x, y);
+                    uint8_t cr = (col >> 16) & 0xFF;
+                    uint8_t cg = (col >> 8) & 0xFF;
+                    uint8_t cb = col & 0xFF;
+                    uint8_t ca = static_cast<uint8_t>(((col >> 24) & 0xFF) * s->global_alpha);
+                    float palpha = ca / 255.0f;
+                    if (palpha >= 1.0f) {
+                        (*s->buffer)[idx]     = cr;
+                        (*s->buffer)[idx + 1] = cg;
+                        (*s->buffer)[idx + 2] = cb;
+                        (*s->buffer)[idx + 3] = 255;
+                    } else if (palpha > 0.0f) {
+                        float inv = 1.0f - palpha;
+                        (*s->buffer)[idx]     = static_cast<uint8_t>(cr * palpha + (*s->buffer)[idx]     * inv);
+                        (*s->buffer)[idx + 1] = static_cast<uint8_t>(cg * palpha + (*s->buffer)[idx + 1] * inv);
+                        (*s->buffer)[idx + 2] = static_cast<uint8_t>(cb * palpha + (*s->buffer)[idx + 2] * inv);
+                        (*s->buffer)[idx + 3] = static_cast<uint8_t>(std::min(255.0f, ca * palpha + (*s->buffer)[idx + 3] * inv));
+                    }
+                } else if (s->fill_gradient.active()) {
                     uint32_t col = s->fill_gradient.sample(static_cast<float>(x) + 0.5f,
                                                            static_cast<float>(y) + 0.5f);
                     (*s->buffer)[idx]     = (col >> 16) & 0xFF;
@@ -7994,8 +9103,98 @@ static JSValue js_canvas2d_fill_text(JSContext* ctx, JSValueConst this_val,
 
 static JSValue js_canvas2d_stroke_text(JSContext* ctx, JSValueConst this_val,
                                         int argc, JSValueConst* argv) {
-    // Stub: same as fillText
-    return js_canvas2d_fill_text(ctx, this_val, argc, argv);
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s || !s->buffer || argc < 3) return JS_UNDEFINED;
+
+    const char* text_cstr = JS_ToCString(ctx, argv[0]);
+    if (!text_cstr) return JS_UNDEFINED;
+    double x, y;
+    JS_ToFloat64(ctx, &x, argv[1]);
+    JS_ToFloat64(ctx, &y, argv[2]);
+
+    // Optional maxWidth parameter (4th argument)
+    float max_width = 0.0f;
+    if (argc >= 4) {
+        double mw = 0;
+        JS_ToFloat64(ctx, &mw, argv[3]);
+        if (mw > 0) max_width = static_cast<float>(mw);
+    }
+
+    std::string txt(text_cstr);
+    JS_FreeCString(ctx, text_cstr);
+
+    // Parse font string to extract size, family, weight, italic
+    float font_size = 10.0f;
+    std::string font_family = "sans-serif";
+    int font_weight = 400;
+    bool font_italic = false;
+    parse_canvas2d_font(s->font, font_size, font_family, font_weight, font_italic);
+
+#ifdef __APPLE__
+    // --- Real CoreText stroke rendering via canvas_text_bridge ---
+    uint8_t* raw_buf = s->buffer->data();
+    clever::paint::canvas_render_text_stroke(
+        txt,
+        static_cast<float>(x),
+        static_cast<float>(y),
+        font_size,
+        font_family,
+        font_weight,
+        font_italic,
+        s->stroke_color,
+        s->global_alpha,
+        s->text_align,
+        s->text_baseline,
+        s->line_width,
+        raw_buf,
+        s->width,
+        s->height,
+        max_width);
+#else
+    // --- Fallback: outline rectangles per character position ---
+    float char_w = font_size * 0.6f;
+    float total_w = char_w * static_cast<float>(txt.size());
+    float start_x = static_cast<float>(x);
+    if (s->text_align == 1) start_x -= total_w / 2.0f;
+    else if (s->text_align == 2 || s->text_align == 3) start_x -= total_w;
+
+    uint8_t r = (s->stroke_color >> 16) & 0xFF;
+    uint8_t g = (s->stroke_color >> 8)  & 0xFF;
+    uint8_t b =  s->stroke_color        & 0xFF;
+    uint8_t a = static_cast<uint8_t>(((s->stroke_color >> 24) & 0xFF) * s->global_alpha);
+    float text_top = static_cast<float>(y) - font_size * 0.8f;
+    int lw = std::max(1, static_cast<int>(s->line_width));
+
+    auto set_pixel = [&](int px, int py) {
+        if (px < 0 || py < 0 || px >= s->width || py >= s->height) return;
+        int idx = (py * s->width + px) * 4;
+        (*s->buffer)[idx]     = r;
+        (*s->buffer)[idx + 1] = g;
+        (*s->buffer)[idx + 2] = b;
+        (*s->buffer)[idx + 3] = a;
+    };
+
+    for (size_t i = 0; i < txt.size(); i++) {
+        if (txt[i] == ' ') continue;
+        int cx = static_cast<int>(start_x + static_cast<float>(i) * char_w + char_w * 0.1f);
+        int cy = static_cast<int>(text_top);
+        int cw = static_cast<int>(char_w * 0.8f);
+        int ch = static_cast<int>(font_size);
+        // Draw only the border of the character box (outline / stroke)
+        for (int t = 0; t < lw; t++) {
+            for (int px = cx + t; px < cx + cw - t; px++) {
+                set_pixel(px, cy + t);
+                set_pixel(px, cy + ch - 1 - t);
+            }
+            for (int py = cy + t; py < cy + ch - t; py++) {
+                set_pixel(cx + t, py);
+                set_pixel(cx + cw - 1 - t, py);
+            }
+        }
+    }
+#endif
+
+    return JS_UNDEFINED;
 }
 
 static JSValue js_canvas2d_measure_text(JSContext* ctx, JSValueConst this_val,
@@ -8049,6 +9248,8 @@ static JSValue js_canvas2d_save(JSContext* /*ctx*/, JSValueConst this_val,
     st.stroke_color = s->stroke_color;
     st.fill_gradient = s->fill_gradient;
     st.stroke_gradient = s->stroke_gradient;
+    st.fill_pattern = s->fill_pattern;
+    st.stroke_pattern = s->stroke_pattern;
     st.line_width = s->line_width;
     st.global_alpha = s->global_alpha;
     st.font = s->font;
@@ -8080,6 +9281,8 @@ static JSValue js_canvas2d_restore(JSContext* /*ctx*/, JSValueConst this_val,
     s->stroke_color = st.stroke_color;
     s->fill_gradient = st.fill_gradient;
     s->stroke_gradient = st.stroke_gradient;
+    s->fill_pattern = st.fill_pattern;
+    s->stroke_pattern = st.stroke_pattern;
     s->line_width = st.line_width;
     s->global_alpha = st.global_alpha;
     s->font = std::move(st.font);
@@ -8409,12 +9612,146 @@ static JSValue js_canvas2d_create_conic_gradient(JSContext* ctx, JSValueConst /*
     return grad;
 }
 
-// ---- createPattern (stub) ----
+// ---- createPattern: create a tiling pattern from an image/canvas source ----
+// createPattern(source, repetition)
+// source: HTMLImageElement (with __pixels RGBA array), HTMLCanvasElement (with __canvas2d_ctx),
+//         or ImageData {width, height, data[]}
+// repetition: "repeat" | "repeat-x" | "repeat-y" | "no-repeat"
 static JSValue js_canvas2d_create_pattern(JSContext* ctx, JSValueConst /*this_val*/,
-                                           int /*argc*/, JSValueConst* /*argv*/) {
-    // Return a pattern stub object
+                                           int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_NULL;
+
+    JSValue source = argv[0];
+    int src_w = 0, src_h = 0;
+    std::vector<uint8_t> src_pixels;
+
+    // --- Try: HTMLCanvasElement (has __canvas2d_ctx) ---
+    JSValue src_ctx_val = JS_GetPropertyStr(ctx, source, "__canvas2d_ctx");
+    if (!JS_IsUndefined(src_ctx_val) && !JS_IsNull(src_ctx_val)) {
+        auto* src_state = static_cast<Canvas2DState*>(JS_GetOpaque(src_ctx_val, canvas2d_class_id));
+        if (src_state && src_state->buffer) {
+            JSValue jw = JS_GetPropertyStr(ctx, source, "width");
+            JSValue jh = JS_GetPropertyStr(ctx, source, "height");
+            int32_t elem_w = 0, elem_h = 0;
+            if (!JS_IsUndefined(jw)) JS_ToInt32(ctx, &elem_w, jw);
+            if (!JS_IsUndefined(jh)) JS_ToInt32(ctx, &elem_h, jh);
+            JS_FreeValue(ctx, jw); JS_FreeValue(ctx, jh);
+            src_w = (elem_w > 0 && elem_w <= src_state->width) ? elem_w : src_state->width;
+            src_h = (elem_h > 0 && elem_h <= src_state->height) ? elem_h : src_state->height;
+            // Copy pixels (RGBA, src_state->width stride)
+            src_pixels.resize(static_cast<size_t>(src_w) * src_h * 4);
+            for (int row = 0; row < src_h; row++) {
+                const uint8_t* src_row = src_state->buffer->data() + row * src_state->width * 4;
+                uint8_t* dst_row = src_pixels.data() + row * src_w * 4;
+                std::memcpy(dst_row, src_row, static_cast<size_t>(src_w) * 4);
+            }
+        }
+        JS_FreeValue(ctx, src_ctx_val);
+    } else {
+        JS_FreeValue(ctx, src_ctx_val);
+
+        // --- Try: HTMLImageElement (has __pixels RGBA flat array, naturalWidth/naturalHeight) ---
+        JSValue nat_w_val = JS_GetPropertyStr(ctx, source, "naturalWidth");
+        JSValue nat_h_val = JS_GetPropertyStr(ctx, source, "naturalHeight");
+        JSValue pix_val = JS_GetPropertyStr(ctx, source, "__pixels");
+        int32_t nw = 0, nh = 0;
+        JS_ToInt32(ctx, &nw, nat_w_val);
+        JS_ToInt32(ctx, &nh, nat_h_val);
+        JS_FreeValue(ctx, nat_w_val); JS_FreeValue(ctx, nat_h_val);
+
+        if (nw > 0 && nh > 0 && JS_IsArray(ctx, pix_val)) {
+            src_w = nw;
+            src_h = nh;
+            int total = nw * nh * 4;
+            src_pixels.resize(static_cast<size_t>(total));
+            for (int i = 0; i < total; i++) {
+                JSValue v = JS_GetPropertyUint32(ctx, pix_val, static_cast<uint32_t>(i));
+                int32_t bv = 0;
+                JS_ToInt32(ctx, &bv, v);
+                JS_FreeValue(ctx, v);
+                src_pixels[i] = static_cast<uint8_t>(bv < 0 ? 0 : (bv > 255 ? 255 : bv));
+            }
+        } else {
+            // --- Try: ImageData {width, height, data[]} ---
+            JSValue w_val = JS_GetPropertyStr(ctx, source, "width");
+            JSValue h_val = JS_GetPropertyStr(ctx, source, "height");
+            JSValue d_val = JS_GetPropertyStr(ctx, source, "data");
+            int32_t iw = 0, ih = 0;
+            if (!JS_IsUndefined(w_val)) JS_ToInt32(ctx, &iw, w_val);
+            if (!JS_IsUndefined(h_val)) JS_ToInt32(ctx, &ih, h_val);
+            if (iw > 0 && ih > 0 && JS_IsArray(ctx, d_val)) {
+                src_w = iw;
+                src_h = ih;
+                int total = iw * ih * 4;
+                src_pixels.resize(static_cast<size_t>(total));
+                for (int i = 0; i < total; i++) {
+                    JSValue v = JS_GetPropertyUint32(ctx, d_val, static_cast<uint32_t>(i));
+                    int32_t bv = 0;
+                    JS_ToInt32(ctx, &bv, v);
+                    JS_FreeValue(ctx, v);
+                    src_pixels[i] = static_cast<uint8_t>(bv < 0 ? 0 : (bv > 255 ? 255 : bv));
+                }
+            }
+            JS_FreeValue(ctx, w_val);
+            JS_FreeValue(ctx, h_val);
+            JS_FreeValue(ctx, d_val);
+        }
+        JS_FreeValue(ctx, pix_val);
+    }
+
+    if (src_w <= 0 || src_h <= 0 || src_pixels.empty()) {
+        // Per spec: invalid source still returns a CanvasPattern object (with empty pixels)
+        // Some browsers return null, but we return an inert pattern object to match test expectations.
+        JSValue empty_pat = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, empty_pat, "type", JS_NewString(ctx, "pattern"));
+        JS_SetPropertyStr(ctx, empty_pat, "__patWidth", JS_NewInt32(ctx, 0));
+        JS_SetPropertyStr(ctx, empty_pat, "__patHeight", JS_NewInt32(ctx, 0));
+        JS_SetPropertyStr(ctx, empty_pat, "__repeat",
+            argc >= 2 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1]) ?
+            JS_DupValue(ctx, argv[1]) : JS_NewString(ctx, "repeat"));
+        JS_SetPropertyStr(ctx, empty_pat, "__pixels", JS_NewArray(ctx));
+        const char* set_transform_src2 = "(function() { var p = this; p.setTransform = function() {}; })";
+        JSValue fn2 = JS_Eval(ctx, set_transform_src2, std::strlen(set_transform_src2), "<pattern>", JS_EVAL_TYPE_GLOBAL);
+        if (!JS_IsException(fn2)) { JS_Call(ctx, fn2, empty_pat, 0, nullptr); }
+        JS_FreeValue(ctx, fn2);
+        return empty_pat;
+    }
+
+    // Parse repetition string (default: "repeat")
+    std::string rep_str = "repeat";
+    if (argc >= 2 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1])) {
+        const char* rep_cstr = JS_ToCString(ctx, argv[1]);
+        if (rep_cstr) {
+            rep_str = rep_cstr;
+            JS_FreeCString(ctx, rep_cstr);
+        }
+    }
+
+    // Build the pattern JS object with embedded pixel data
+    // The C++ pattern system reads back: type, __patWidth, __patHeight, __repeat, __pixels
     JSValue pat = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, pat, "type", JS_NewString(ctx, "pattern"));
+    JS_SetPropertyStr(ctx, pat, "__patWidth", JS_NewInt32(ctx, src_w));
+    JS_SetPropertyStr(ctx, pat, "__patHeight", JS_NewInt32(ctx, src_h));
+    JS_SetPropertyStr(ctx, pat, "__repeat", JS_NewString(ctx, rep_str.c_str()));
+
+    // Store pixels as a flat JS array of RGBA bytes
+    JSValue pix_arr = JS_NewArray(ctx);
+    int total = src_w * src_h * 4;
+    for (int i = 0; i < total; i++) {
+        JS_SetPropertyUint32(ctx, pix_arr, static_cast<uint32_t>(i),
+                             JS_NewInt32(ctx, src_pixels[i]));
+    }
+    JS_SetPropertyStr(ctx, pat, "__pixels", pix_arr);
+
+    // Provide setTransform stub for API compatibility
+    const char* set_transform_src = "(function() { var p = this; p.setTransform = function() {}; })";
+    JSValue fn = JS_Eval(ctx, set_transform_src, std::strlen(set_transform_src), "<pattern>", JS_EVAL_TYPE_GLOBAL);
+    if (!JS_IsException(fn)) {
+        JS_Call(ctx, fn, pat, 0, nullptr);
+    }
+    JS_FreeValue(ctx, fn);
+
     return pat;
 }
 
@@ -10879,6 +12216,12 @@ void install_dom_bindings(JSContext* ctx,
     JS_SetPropertyStr(ctx, element_proto, "__classListContains",
         JS_NewCFunction(ctx, js_element_classlist_contains,
                         "__classListContains", 1));
+    JS_SetPropertyStr(ctx, element_proto, "__classListReplace",
+        JS_NewCFunction(ctx, js_element_classlist_replace,
+                        "__classListReplace", 2));
+    JS_SetPropertyStr(ctx, element_proto, "__classListGetAll",
+        JS_NewCFunction(ctx, js_element_classlist_get_all,
+                        "__classListGetAll", 0));
 
     // dataset internal helpers (wired into dataset proxy by JS setup)
     JS_SetPropertyStr(ctx, element_proto, "__datasetGet",
@@ -10892,6 +12235,8 @@ void install_dom_bindings(JSContext* ctx,
     // below will wire them into proper getters via Object.defineProperty.
     JS_SetPropertyStr(ctx, element_proto, "__getId",
         JS_NewCFunction(ctx, js_element_get_id, "__getId", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__setId",
+        JS_NewCFunction(ctx, js_element_set_id, "__setId", 1));
     JS_SetPropertyStr(ctx, element_proto, "__getTagName",
         JS_NewCFunction(ctx, js_element_get_tag_name, "__getTagName", 0));
     JS_SetPropertyStr(ctx, element_proto, "__getClassName",
@@ -11788,6 +13133,7 @@ void install_dom_bindings(JSContext* ctx,
 
     Object.defineProperty(proto, 'id', {
         get: function() { return this.__getId(); },
+        set: function(v) { this.__setId(String(v)); },
         configurable: true
     });
     Object.defineProperty(proto, 'tagName', {
@@ -12001,29 +13347,40 @@ void install_dom_bindings(JSContext* ctx,
 
     // ---- Dimension getters are now native (installed via C++ JS_DefinePropertyGetSet) ----
 
-    // ---- classList proxy ----
+    // ---- classList proxy (DOMTokenList-like) ----
+    // Returns a live object reflecting the element's class attribute.
+    // Changes through classList update the class attribute immediately.
     Object.defineProperty(proto, 'classList', {
         get: function() {
             var self = this;
+            // getClasses(): always reads live from the attribute
             var getClasses = function() {
                 var cn = self.__getClassName() || '';
                 if (cn === '') return [];
                 return cn.split(/\s+/).filter(function(c) { return c.length > 0; });
             };
             var cl = {
+                // add(cls, ...) — variadic, adds one or more classes
                 add: function() {
                     for (var i = 0; i < arguments.length; i++) {
-                        self.__classListAdd(arguments[i]);
+                        self.__classListAdd(String(arguments[i]));
                     }
                 },
+                // remove(cls, ...) — variadic, removes one or more classes
                 remove: function() {
                     for (var i = 0; i < arguments.length; i++) {
-                        self.__classListRemove(arguments[i]);
+                        self.__classListRemove(String(arguments[i]));
                     }
                 },
-                contains: function(cls) { return self.__classListContains(cls); },
+                // contains(cls) — returns boolean
+                contains: function(cls) {
+                    return self.__classListContains(String(cls));
+                },
+                // toggle(cls, force?) — toggle, returns boolean (whether class is now present)
                 toggle: function(cls, force) {
+                    cls = String(cls);
                     if (arguments.length > 1) {
+                        // force is explicitly provided
                         if (force) {
                             self.__classListAdd(cls);
                             return true;
@@ -12040,39 +13397,100 @@ void install_dom_bindings(JSContext* ctx,
                         return true;
                     }
                 },
+                // replace(oldClass, newClass) — atomic replace, returns boolean
                 replace: function(oldCls, newCls) {
-                    if (!self.__classListContains(oldCls)) return false;
-                    self.__classListRemove(oldCls);
-                    self.__classListAdd(newCls);
-                    return true;
+                    return self.__classListReplace(String(oldCls), String(newCls));
                 },
+                // item(index) — get class at index, null if out of range
                 item: function(index) {
                     var classes = getClasses();
-                    return index >= 0 && index < classes.length ? classes[index] : null;
+                    index = index >>> 0; // ToUint32
+                    return index < classes.length ? classes[index] : null;
                 },
+                // forEach(callback, thisArg?) — iterate: callback(value, index, list)
                 forEach: function(callback, thisArg) {
                     var classes = getClasses();
                     for (var i = 0; i < classes.length; i++) {
-                        callback.call(thisArg, classes[i], i, cl);
+                        callback.call(thisArg !== undefined ? thisArg : undefined, classes[i], i, cl);
                     }
                 },
+                // values() — iterator over class strings
                 values: function() {
                     return getClasses()[Symbol.iterator]();
+                },
+                // keys() — iterator over indices (0, 1, 2, ...)
+                keys: function() {
+                    var classes = getClasses();
+                    var i = 0;
+                    return {
+                        next: function() {
+                            if (i < classes.length) {
+                                return { value: i++, done: false };
+                            }
+                            return { value: undefined, done: true };
+                        },
+                        [Symbol.iterator]: function() { return this; }
+                    };
+                },
+                // entries() — iterator over [index, class] pairs
+                entries: function() {
+                    var classes = getClasses();
+                    var i = 0;
+                    return {
+                        next: function() {
+                            if (i < classes.length) {
+                                var idx = i++;
+                                return { value: [idx, classes[idx]], done: false };
+                            }
+                            return { value: undefined, done: true };
+                        },
+                        [Symbol.iterator]: function() { return this; }
+                    };
                 },
                 toString: function() {
                     return self.__getClassName() || '';
                 }
             };
+            // length — live count of classes
             Object.defineProperty(cl, 'length', {
                 get: function() { return getClasses().length; },
+                enumerable: true,
                 configurable: true
             });
+            // value — get/set the full className string
             Object.defineProperty(cl, 'value', {
                 get: function() { return self.__getClassName() || ''; },
-                set: function(v) { self.__setClassName(v); },
+                set: function(v) { self.__setClassName(String(v)); },
+                enumerable: true,
                 configurable: true
             });
-            return cl;
+            // Symbol.iterator — make classList directly iterable (for...of)
+            cl[Symbol.iterator] = function() {
+                return getClasses()[Symbol.iterator]();
+            };
+            // Index-based access: cl[0], cl[1], etc. via Proxy
+            // Wrap in a Proxy so numeric index access works: el.classList[0]
+            return new Proxy(cl, {
+                get: function(target, prop) {
+                    if (typeof prop === 'string') {
+                        var n = Number(prop);
+                        if (prop !== '' && !isNaN(n) && n >= 0 && n === Math.floor(n)) {
+                            var classes = getClasses();
+                            return n < classes.length ? classes[n] : undefined;
+                        }
+                    }
+                    return target[prop];
+                },
+                has: function(target, prop) {
+                    if (typeof prop === 'string') {
+                        var n = Number(prop);
+                        if (prop !== '' && !isNaN(n) && n >= 0 && n === Math.floor(n)) {
+                            return n < getClasses().length;
+                        }
+                    }
+                    return prop in target;
+                }
+            });
         },
         configurable: true
     });
@@ -12779,6 +14197,85 @@ void install_dom_bindings(JSContext* ctx,
     }
 
     // ------------------------------------------------------------------
+    // DOMRect / DOMRectReadOnly constructor
+    //
+    // new DOMRect(x, y, width, height) creates a plain DOMRect object
+    // compatible with what getBoundingClientRect() returns.
+    // DOMRectReadOnly has the same shape but is conventionally read-only.
+    // =========================================================================
+    {
+        const char* domrect_src = R"JS(
+(function() {
+    function DOMRect(x, y, width, height) {
+        this.x      = (x      !== undefined) ? +x      : 0;
+        this.y      = (y      !== undefined) ? +y      : 0;
+        this.width  = (width  !== undefined) ? +width  : 0;
+        this.height = (height !== undefined) ? +height : 0;
+    }
+    Object.defineProperty(DOMRect.prototype, 'top', {
+        get: function() { return this.height >= 0 ? this.y : this.y + this.height; },
+        configurable: true, enumerable: true
+    });
+    Object.defineProperty(DOMRect.prototype, 'left', {
+        get: function() { return this.width >= 0 ? this.x : this.x + this.width; },
+        configurable: true, enumerable: true
+    });
+    Object.defineProperty(DOMRect.prototype, 'right', {
+        get: function() { return this.width >= 0 ? this.x + this.width : this.x; },
+        configurable: true, enumerable: true
+    });
+    Object.defineProperty(DOMRect.prototype, 'bottom', {
+        get: function() { return this.height >= 0 ? this.y + this.height : this.y; },
+        configurable: true, enumerable: true
+    });
+    DOMRect.prototype.toJSON = function() {
+        return { x: this.x, y: this.y, width: this.width, height: this.height,
+                 top: this.top, right: this.right, bottom: this.bottom, left: this.left };
+    };
+    DOMRect.fromRect = function(other) {
+        if (!other) other = {};
+        return new DOMRect(other.x || 0, other.y || 0, other.width || 0, other.height || 0);
+    };
+    globalThis.DOMRect = DOMRect;
+
+    // DOMRectReadOnly — same shape, conventionally immutable
+    function DOMRectReadOnly(x, y, width, height) {
+        DOMRect.call(this, x, y, width, height);
+    }
+    DOMRectReadOnly.prototype = Object.create(DOMRect.prototype);
+    DOMRectReadOnly.prototype.constructor = DOMRectReadOnly;
+    DOMRectReadOnly.fromRect = DOMRect.fromRect;
+    globalThis.DOMRectReadOnly = DOMRectReadOnly;
+
+    // DOMRectList — array-like list returned by getClientRects()
+    function DOMRectList(rects) {
+        this._rects = rects || [];
+        this.length = this._rects.length;
+        for (var i = 0; i < this._rects.length; i++) this[i] = this._rects[i];
+    }
+    DOMRectList.prototype.item = function(i) {
+        return (i >= 0 && i < this.length) ? this[i] : null;
+    };
+    DOMRectList.prototype[Symbol.iterator] = function() {
+        var i = 0, arr = this._rects;
+        return { next: function() {
+            return i < arr.length ? { value: arr[i++], done: false }
+                                  : { done: true };
+        }};
+    };
+    globalThis.DOMRectList = DOMRectList;
+})();
+)JS";
+        JSValue dret = JS_Eval(ctx, domrect_src, std::strlen(domrect_src),
+                                "<domrect-setup>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(dret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, dret);
+    }
+
+    // ------------------------------------------------------------------
     // Window geometry defaults (do not override values already provided by
     // install_window_bindings for the active viewport).
     // ------------------------------------------------------------------
@@ -13105,56 +14602,127 @@ if (typeof DOMException === 'undefined') {
     }
 
     // ------------------------------------------------------------------
-    // AbortController / AbortSignal
+    // AbortController / AbortSignal  (enhanced — full spec coverage)
     // ------------------------------------------------------------------
     {
         const char* abort_src = R"JS(
-// AbortSignal
+// ---- AbortSignal ----
 function AbortSignal() {
     this.aborted = false;
     this.reason = undefined;
-    this._listeners = [];
+    this.onabort = null;
+    this._listeners = []; // array of {fn, once}
 }
-AbortSignal.prototype.addEventListener = function(type, fn) {
-    if (type === 'abort') this._listeners.push(fn);
+
+// Internal helper: fire the abort event on this signal.
+AbortSignal.prototype._fire = function() {
+    var evt = { type: 'abort', target: this, currentTarget: this,
+                bubbles: false, cancelable: false };
+    if (typeof this.onabort === 'function') {
+        try { this.onabort.call(this, evt); } catch(e) {}
+    }
+    var ls = this._listeners.slice();
+    var toRemove = [];
+    for (var i = 0; i < ls.length; i++) {
+        try { ls[i].fn.call(this, evt); } catch(e) {}
+        if (ls[i].once) toRemove.push(ls[i].fn);
+    }
+    var self = this;
+    toRemove.forEach(function(fn) { self.removeEventListener('abort', fn); });
 };
+
+AbortSignal.prototype.addEventListener = function(type, fn, options) {
+    if (type !== 'abort' || typeof fn !== 'function') return;
+    var once = (options && typeof options === 'object') ? !!options.once : false;
+    if (this.aborted) {
+        var evt = { type: 'abort', target: this, currentTarget: this,
+                    bubbles: false, cancelable: false };
+        try { fn.call(this, evt); } catch(e) {}
+        if (once) return;
+        return; // non-once: already aborted once, no future fires
+    }
+    for (var i = 0; i < this._listeners.length; i++) {
+        if (this._listeners[i].fn === fn && !this._listeners[i].once && !once) return;
+    }
+    this._listeners.push({ fn: fn, once: once });
+};
+
 AbortSignal.prototype.removeEventListener = function(type, fn) {
-    if (type === 'abort') {
-        this._listeners = this._listeners.filter(function(l) { return l !== fn; });
+    if (type !== 'abort') return;
+    this._listeners = this._listeners.filter(function(l) { return l.fn !== fn; });
+};
+
+AbortSignal.prototype.dispatchEvent = function(evt) {
+    if (evt && evt.type === 'abort') this._fire();
+    return true;
+};
+
+AbortSignal.prototype.throwIfAborted = function() {
+    if (this.aborted) {
+        throw (this.reason !== undefined ? this.reason
+               : new DOMException('The operation was aborted.', 'AbortError'));
     }
 };
-AbortSignal.prototype.dispatchEvent = function() { return true; };
-AbortSignal.prototype.throwIfAborted = function() {
-    if (this.aborted) throw this.reason || new DOMException('The operation was aborted.', 'AbortError');
-};
+
+// AbortSignal.abort(reason?) -- static: return an already-aborted signal
 AbortSignal.abort = function(reason) {
     var s = new AbortSignal();
     s.aborted = true;
-    s.reason = reason !== undefined ? reason : new DOMException('The operation was aborted.', 'AbortError');
+    s.reason = reason !== undefined ? reason
+               : new DOMException('The operation was aborted.', 'AbortError');
     return s;
 };
+
+// AbortSignal.timeout(ms) -- static: returns a signal that aborts after ms ms.
+// Uses setTimeout so the abort fires through the timer queue.
 AbortSignal.timeout = function(ms) {
-    return new AbortSignal(); // stub - returns non-aborted signal
+    var s = new AbortSignal();
+    var tid = setTimeout(function() {
+        if (!s.aborted) {
+            s.aborted = true;
+            s.reason = new DOMException('The operation timed out.', 'TimeoutError');
+            s._fire();
+        }
+    }, typeof ms === 'number' ? ms : 0);
+    s._timeoutId = tid;
+    return s;
 };
+
+// AbortSignal.any(signals[]) -- static: aborts when any input signal aborts.
 AbortSignal.any = function(signals) {
     var s = new AbortSignal();
+    if (!signals || !signals.length) return s;
     for (var i = 0; i < signals.length; i++) {
-        if (signals[i].aborted) { s.aborted = true; s.reason = signals[i].reason; break; }
+        if (signals[i] && signals[i].aborted) {
+            s.aborted = true;
+            s.reason = signals[i].reason;
+            return s;
+        }
+    }
+    function onInputAbort(evt) {
+        if (!s.aborted) {
+            s.aborted = true;
+            s.reason = evt.target ? evt.target.reason : undefined;
+            s._fire();
+        }
+    }
+    for (var j = 0; j < signals.length; j++) {
+        if (signals[j]) signals[j].addEventListener('abort', onInputAbort);
     }
     return s;
 };
 
-// AbortController
+// ---- AbortController ----
 function AbortController() {
     this.signal = new AbortSignal();
 }
+
 AbortController.prototype.abort = function(reason) {
     if (!this.signal.aborted) {
         this.signal.aborted = true;
-        this.signal.reason = reason !== undefined ? reason : new DOMException('The operation was aborted.', 'AbortError');
-        for (var i = 0; i < this.signal._listeners.length; i++) {
-            try { this.signal._listeners[i]({ type: 'abort', target: this.signal }); } catch(e) {}
-        }
+        this.signal.reason = reason !== undefined ? reason
+                             : new DOMException('The operation was aborted.', 'AbortError');
+        this.signal._fire();
     }
 };
 )JS";
@@ -14938,13 +16506,24 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr) {
 
     auto* root = static_cast<clever::layout::LayoutNode*>(layout_root_ptr);
 
-    std::function<void(clever::layout::LayoutNode&, float, float)> walk =
-        [&](clever::layout::LayoutNode& node, float abs_x, float abs_y) {
+    // Walk the layout tree.  parent_dom_node tracks the closest ancestor
+    // SimpleNode* — it may skip anonymous boxes which have no dom_node.
+    std::function<void(clever::layout::LayoutNode&, float, float, void*)> walk =
+        [&](clever::layout::LayoutNode& node, float abs_x, float abs_y,
+            void* parent_dom_node) {
+            // nx/ny = absolute position of the border-box top-left corner
+            // (geometry.x/y are relative to the content-box of the parent,
+            //  geometry.margin.left/top shifts to the margin-box edge, but
+            //  since the parent passed content_x/y we only add x+margin).
             float nx = abs_x + node.geometry.x + node.geometry.margin.left;
             float ny = abs_y + node.geometry.y + node.geometry.margin.top;
 
+            // The DOM node pointer that children will see as their parent
+            void* this_dom_node = parent_dom_node;
+
             if (node.dom_node) {
                 DOMState::LayoutRect rect;
+                // x/y = content-box origin (absolute page coordinates)
                 rect.x = nx + node.geometry.border.left + node.geometry.padding.left;
                 rect.y = ny + node.geometry.border.top + node.geometry.padding.top;
                 rect.width = node.geometry.width;
@@ -14961,6 +16540,11 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr) {
                 rect.margin_top = node.geometry.margin.top;
                 rect.margin_right = node.geometry.margin.right;
                 rect.margin_bottom = node.geometry.margin.bottom;
+                // Precompute absolute border-box origin (top-left of border edge)
+                // in page coordinates.  Used by getBoundingClientRect and
+                // offsetLeft/offsetTop.
+                rect.abs_border_x = nx;
+                rect.abs_border_y = ny;
                 rect.scroll_top = node.scroll_top;
                 rect.scroll_left = node.scroll_left;
                 rect.scroll_content_width = node.scroll_content_width;
@@ -14968,18 +16552,120 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr) {
                 rect.is_scroll_container = node.is_scroll_container;
                 rect.pointer_events = node.pointer_events;
                 rect.visibility_hidden = node.visibility_hidden;
+                rect.position_type = node.position_type;
+                rect.parent_dom_node = parent_dom_node;
+
+                // ---- Computed CSS style fields ----
+                // Display type from LayoutNode's DisplayType enum
+                {
+                    using DT = clever::layout::DisplayType;
+                    switch (node.display) {
+                        case DT::Block:        rect.display_type = 0;  break;
+                        case DT::Inline:       rect.display_type = 1;  break;
+                        case DT::InlineBlock:  rect.display_type = 2;  break;
+                        case DT::Flex:         rect.display_type = 3;  break;
+                        case DT::InlineFlex:   rect.display_type = 4;  break;
+                        case DT::None:         rect.display_type = 5;  break;
+                        case DT::ListItem:     rect.display_type = 6;  break;
+                        case DT::Table:        rect.display_type = 7;  break;
+                        case DT::TableRow:     rect.display_type = 8;  break;
+                        case DT::TableCell:    rect.display_type = 9;  break;
+                        case DT::Grid:         rect.display_type = 10; break;
+                        case DT::InlineGrid:   rect.display_type = 11; break;
+                        default:               rect.display_type = 0;  break;
+                    }
+                }
+                rect.float_type = node.float_type;
+                rect.clear_type = node.clear_type;
+                rect.border_box = node.border_box;
+                // Sizing constraints
+                rect.specified_width = node.specified_width;
+                rect.specified_height = node.specified_height;
+                rect.min_width_val = node.min_width;
+                rect.max_width_val = node.max_width;
+                rect.min_height_val = node.min_height;
+                rect.max_height_val = node.max_height;
+                // Typography
+                rect.font_size = node.font_size;
+                rect.font_weight = node.font_weight;
+                rect.font_italic = node.font_italic;
+                rect.font_family = node.font_family;
+                // LayoutNode::line_height is the unitless factor (e.g. 1.2)
+                rect.line_height_unitless = node.line_height;
+                rect.line_height_px = node.line_height * node.font_size;
+                // Colors
+                rect.color = node.color;
+                rect.background_color = node.background_color;
+                // Background
+                // LayoutNode lacks bg_image_url (that's in ComputedStyle only).
+                // We can only detect presence via bg_image_pixels; URL is unknown here.
+                if (node.bg_image_pixels && !node.bg_image_pixels->empty()) {
+                    rect.bg_image_url = "<url>"; // placeholder: actual URL not in LayoutNode
+                } else {
+                    rect.bg_image_url = "";
+                }
+                rect.gradient_type = node.gradient_type;
+                // Visual
+                rect.opacity_val = node.opacity;
+                rect.overflow_x_val = node.overflow;
+                rect.overflow_y_val = node.overflow;
+                if (clever::layout::is_z_index_auto(node.z_index)) {
+                    rect.z_index_auto = true;
+                    rect.z_index_val = 0;
+                } else {
+                    rect.z_index_auto = false;
+                    rect.z_index_val = node.z_index;
+                }
+                // Text
+                rect.text_align_val = node.text_align;
+                rect.text_decoration_bits = node.text_decoration_bits;
+                rect.white_space_val = node.white_space;
+                rect.word_break_val = node.word_break;
+                rect.overflow_wrap_val = node.overflow_wrap;
+                rect.text_transform_val = node.text_transform;
+                rect.text_overflow_val = node.text_overflow;
+                // Flex
+                rect.flex_grow = node.flex_grow;
+                rect.flex_shrink = node.flex_shrink;
+                rect.flex_basis = node.flex_basis;
+                rect.flex_direction = node.flex_direction;
+                rect.flex_wrap_val = node.flex_wrap;
+                rect.justify_content_val = node.justify_content;
+                rect.align_items_val = node.align_items;
+                rect.align_self_val = node.align_self;
+                // Border radius
+                rect.border_radius_tl = node.border_radius_tl;
+                rect.border_radius_tr = node.border_radius_tr;
+                rect.border_radius_bl = node.border_radius_bl;
+                rect.border_radius_br = node.border_radius_br;
+                // Border styles and colors
+                rect.border_style_top = node.border_style_top;
+                rect.border_style_right = node.border_style_right;
+                rect.border_style_bottom = node.border_style_bottom;
+                rect.border_style_left = node.border_style_left;
+                rect.border_color_top = node.border_color_top;
+                rect.border_color_right = node.border_color_right;
+                rect.border_color_bottom = node.border_color_bottom;
+                rect.border_color_left = node.border_color_left;
+                // CSS Transforms
+                rect.transforms = node.transforms;
+                // Cursor / pointer-events / user-select
+                rect.cursor_val = node.cursor;
+                rect.user_select_val = node.user_select;
+
                 state->layout_geometry[node.dom_node] = rect;
+                this_dom_node = node.dom_node;
             }
 
             float content_x = nx + node.geometry.border.left + node.geometry.padding.left;
             float content_y = ny + node.geometry.border.top + node.geometry.padding.top;
 
             for (auto& child : node.children) {
-                walk(*child, content_x, content_y);
+                walk(*child, content_x, content_y, this_dom_node);
             }
         };
 
-    walk(*root, 0, 0);
+    walk(*root, 0, 0, nullptr);
 }
 
 void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h) {
@@ -15000,12 +16686,12 @@ void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h)
             // Look up element geometry
             auto it = state->layout_geometry.find(elem);
 
-            // Compute border-box rect for the element
+            // Compute border-box rect for the element using precomputed abs_border_x/y
             float elem_x = 0, elem_y = 0, elem_w = 0, elem_h = 0;
             if (it != state->layout_geometry.end()) {
                 auto& lr = it->second;
-                elem_x = lr.x - lr.padding_left - lr.border_left;
-                elem_y = lr.y - lr.padding_top - lr.border_top;
+                elem_x = lr.abs_border_x;
+                elem_y = lr.abs_border_y;
                 elem_w = lr.border_left + lr.padding_left + lr.width +
                          lr.padding_right + lr.border_right;
                 elem_h = lr.border_top + lr.padding_top + lr.height +
@@ -15164,16 +16850,9 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h) {
             // Create ResizeObserverEntry
             JSValue entry = JS_NewObject(ctx);
 
-            // contentRect (DOMRectReadOnly)
-            JSValue cr = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, cr, "x", JS_NewFloat64(ctx, content_x));
-            JS_SetPropertyStr(ctx, cr, "y", JS_NewFloat64(ctx, content_y));
-            JS_SetPropertyStr(ctx, cr, "top", JS_NewFloat64(ctx, content_y));
-            JS_SetPropertyStr(ctx, cr, "left", JS_NewFloat64(ctx, content_x));
-            JS_SetPropertyStr(ctx, cr, "bottom", JS_NewFloat64(ctx, content_y + content_h));
-            JS_SetPropertyStr(ctx, cr, "right", JS_NewFloat64(ctx, content_x + content_w));
-            JS_SetPropertyStr(ctx, cr, "width", JS_NewFloat64(ctx, content_w));
-            JS_SetPropertyStr(ctx, cr, "height", JS_NewFloat64(ctx, content_h));
+            // contentRect (DOMRectReadOnly) — content-box in page coordinates
+            JSValue cr = make_dom_rect(ctx, content_x, content_y,
+                                        content_w, content_h);
             JS_SetPropertyStr(ctx, entry, "contentRect", cr);
 
             // contentBoxSize (array of one ResizeObserverSize)
