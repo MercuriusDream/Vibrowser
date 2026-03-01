@@ -57,6 +57,9 @@ namespace {
 // Thread-local CSS counter state for counter-reset / counter-increment / counter()
 thread_local std::unordered_map<std::string, int> css_counters;
 
+// Thread-local CSS counter scopes for counters() function (nested counter levels)
+thread_local std::unordered_map<std::string, std::vector<int>> css_counter_scopes;
+
 // Thread-local form data collection during layout tree building
 thread_local std::vector<clever::paint::FormData> collected_forms;
 
@@ -822,6 +825,76 @@ void process_css_counters(const clever::css::ComputedStyle& style) {
 // content_raw: the raw content string from ComputedStyle
 // attr_name: for content: attr(...), the attribute name
 // node: the DOM node for attr() lookup
+// Stub implementations for counter() CSS function support
+std::vector<std::string> split_css_function_args(const std::string& args) {
+    std::vector<std::string> result;
+    std::string current;
+    int paren_depth = 0;
+    bool in_double = false;
+    bool in_single = false;
+
+    for (char ch : args) {
+        if (!in_double && !in_single) {
+            if (ch == '"') {
+                in_double = true;
+                current += ch;
+            } else if (ch == '\'') {
+                in_single = true;
+                current += ch;
+            } else if (ch == '(') {
+                paren_depth++;
+                current += ch;
+            } else if (ch == ')') {
+                if (paren_depth > 0) paren_depth--;
+                current += ch;
+            } else if (ch == ',' && paren_depth == 0) {
+                result.push_back(trim(current));
+                current.clear();
+            } else {
+                current += ch;
+            }
+        } else if (in_double) {
+            current += ch;
+            if (ch == '"') in_double = false;
+        } else if (in_single) {
+            current += ch;
+            if (ch == '\'') in_single = false;
+        }
+    }
+
+    if (!current.empty()) {
+        result.push_back(trim(current));
+    }
+    return result;
+}
+
+std::string strip_matching_quotes(const std::string& s) {
+    std::string trimmed = trim(s);
+    if (trimmed.size() >= 2) {
+        if ((trimmed.front() == '"' && trimmed.back() == '"') ||
+            (trimmed.front() == '\'' && trimmed.back() == '\'')) {
+            return trimmed.substr(1, trimmed.size() - 2);
+        }
+    }
+    return trimmed;
+}
+
+int parse_counter_list_style_type(const std::string& /* style_str */) {
+    // stub: return 0 for "decimal" style (0=decimal, 1=lower-alpha, etc.)
+    return 0;
+}
+
+int get_css_counter_value(const std::string& counter_name) {
+    auto it = css_counters.find(counter_name);
+    return it != css_counters.end() ? it->second : 0;
+}
+
+std::string format_css_counter_value(int value, int style_type) {
+    // stub: just convert to decimal string
+    (void)style_type;  // unused parameter
+    return std::to_string(value);
+}
+
 std::string resolve_content_value(
     const std::string& content_raw,
     const std::string& attr_name,
@@ -10744,74 +10817,274 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     // CSS Transforms
     layout_node->transforms = style.transforms;
 
-    // Check for ::before pseudo-element and insert synthetic node
-    if (elem_view) {
-        auto before_style = resolver.resolve_pseudo(*elem_view, "before", style);
-        if (before_style && before_style->content != "none" &&
-            (!before_style->content.empty() || before_style->display != clever::css::Display::Inline)) {
-            auto pseudo_node = std::make_unique<clever::layout::LayoutNode>();
-            std::string text = resolve_content_value(
-                before_style->content, before_style->content_attr_name, node);
-            pseudo_node->font_size = before_style->font_size.to_px(font_size);
-            pseudo_node->font_family = before_style->font_family;
-            pseudo_node->color = color_to_argb(before_style->color);
-            pseudo_node->font_weight = before_style->font_weight;
-            pseudo_node->font_italic = (before_style->font_style != clever::css::FontStyle::Normal);
-            pseudo_node->link_href = link;
-            pseudo_node->link_target = link_target;
-            // Apply display mode
-            pseudo_node->mode = display_to_mode(before_style->display);
-            pseudo_node->display = display_to_type(before_style->display);
-            // Apply box-model properties
-            pseudo_node->background_color = color_to_argb(before_style->background_color);
-            auto ps_fs = pseudo_node->font_size;
-            pseudo_node->specified_width = before_style->width.to_px(ps_fs);
-            pseudo_node->specified_height = before_style->height.to_px(ps_fs);
-            pseudo_node->geometry.padding.left = before_style->padding.left.to_px(ps_fs);
-            pseudo_node->geometry.padding.right = before_style->padding.right.to_px(ps_fs);
-            pseudo_node->geometry.padding.top = before_style->padding.top.to_px(ps_fs);
-            pseudo_node->geometry.padding.bottom = before_style->padding.bottom.to_px(ps_fs);
-            pseudo_node->geometry.border.left = before_style->border_left.width.to_px(ps_fs);
-            pseudo_node->geometry.border.right = before_style->border_right.width.to_px(ps_fs);
-            pseudo_node->geometry.border.top = before_style->border_top.width.to_px(ps_fs);
-            pseudo_node->geometry.border.bottom = before_style->border_bottom.width.to_px(ps_fs);
-            pseudo_node->border_color_top = color_to_argb(before_style->border_top.color);
-            pseudo_node->border_color_bottom = color_to_argb(before_style->border_bottom.color);
-            pseudo_node->border_color_left = color_to_argb(before_style->border_left.color);
-            pseudo_node->border_color_right = color_to_argb(before_style->border_right.color);
-            pseudo_node->geometry.margin.left = before_style->margin.left.to_px(ps_fs);
-            pseudo_node->geometry.margin.right = before_style->margin.right.to_px(ps_fs);
-            pseudo_node->geometry.margin.top = before_style->margin.top.to_px(ps_fs);
-            pseudo_node->geometry.margin.bottom = before_style->margin.bottom.to_px(ps_fs);
-            pseudo_node->border_radius_tl = before_style->border_radius_tl;
-            pseudo_node->border_radius_tr = before_style->border_radius_tr;
-            pseudo_node->border_radius_bl = before_style->border_radius_bl;
-            pseudo_node->border_radius_br = before_style->border_radius_br;
-            // If there's text content, add it as a text child
-            if (!text.empty()) {
-                if (pseudo_node->display == clever::layout::DisplayType::Inline &&
-                    pseudo_node->mode == clever::layout::LayoutMode::Inline) {
-                    // Simple inline text: set directly on node
-                    pseudo_node->is_text = true;
-                    pseudo_node->text_content = text;
-                } else {
-                    // Block/flex pseudo: wrap text in a child text node
-                    auto text_child = std::make_unique<clever::layout::LayoutNode>();
-                    text_child->is_text = true;
-                    text_child->text_content = text;
-                    text_child->font_size = pseudo_node->font_size;
-                    text_child->font_family = pseudo_node->font_family;
-                    text_child->color = pseudo_node->color;
-                    text_child->font_weight = pseudo_node->font_weight;
-                    text_child->font_italic = pseudo_node->font_italic;
-                    text_child->mode = clever::layout::LayoutMode::Inline;
-                    text_child->display = clever::layout::DisplayType::Inline;
-                    pseudo_node->children.push_back(std::move(text_child));
+    auto convert_pseudo_border_style = [](clever::css::BorderStyle bs) -> int {
+        if (bs == clever::css::BorderStyle::None) return 0;
+        if (bs == clever::css::BorderStyle::Solid) return 1;
+        if (bs == clever::css::BorderStyle::Dashed) return 2;
+        if (bs == clever::css::BorderStyle::Dotted) return 3;
+        if (bs == clever::css::BorderStyle::Double) return 4;
+        if (bs == clever::css::BorderStyle::Groove) return 5;
+        if (bs == clever::css::BorderStyle::Ridge) return 6;
+        if (bs == clever::css::BorderStyle::Inset) return 7;
+        if (bs == clever::css::BorderStyle::Outset) return 8;
+        return 0;
+    };
+
+    auto apply_generated_text_style =
+        [&](const clever::css::ComputedStyle& text_style,
+            clever::layout::LayoutNode& target,
+            float inherited_font_size_px) {
+        const float text_fs = text_style.font_size.to_px(inherited_font_size_px);
+        target.font_size = text_fs;
+        target.font_family = text_style.font_family;
+        target.is_monospace = (text_style.font_family == "monospace");
+        target.color = color_to_argb(text_style.color);
+        target.font_weight = text_style.font_weight;
+        target.font_italic = (text_style.font_style != clever::css::FontStyle::Normal);
+        target.line_height = (text_fs > 0.0f)
+            ? text_style.line_height.to_px(text_fs) / text_fs
+            : 1.2f;
+        target.letter_spacing = text_style.letter_spacing.to_px(text_fs);
+        target.word_spacing = text_style.word_spacing.to_px(text_fs);
+        target.text_transform = static_cast<int>(text_style.text_transform);
+        switch (text_style.text_decoration) {
+            case clever::css::TextDecoration::Underline: target.text_decoration = 1; break;
+            case clever::css::TextDecoration::LineThrough: target.text_decoration = 2; break;
+            case clever::css::TextDecoration::Overline: target.text_decoration = 3; break;
+            default: target.text_decoration = 0; break;
+        }
+        target.text_decoration_bits = text_style.text_decoration_bits;
+        target.text_decoration_color = color_to_argb(text_style.text_decoration_color);
+        target.text_decoration_style = static_cast<int>(text_style.text_decoration_style);
+        target.text_decoration_thickness = text_style.text_decoration_thickness;
+        target.pointer_events = (text_style.pointer_events == clever::css::PointerEvents::None) ? 1 : 0;
+        target.user_select = static_cast<int>(text_style.user_select);
+        target.tab_size = text_style.tab_size;
+        target.line_clamp = text_style.line_clamp;
+        target.word_break = text_style.word_break;
+        target.overflow_wrap = text_style.overflow_wrap;
+        target.text_wrap = text_style.text_wrap;
+        target.white_space_collapse = text_style.white_space_collapse;
+        target.line_break = text_style.line_break;
+        target.math_style = text_style.math_style;
+        target.math_depth = text_style.math_depth;
+        target.orphans = text_style.orphans;
+        target.widows = text_style.widows;
+        target.column_span = text_style.column_span;
+        target.break_before = text_style.break_before;
+        target.break_after = text_style.break_after;
+        target.break_inside = text_style.break_inside;
+        target.page_break_before = text_style.page_break_before;
+        target.page_break_after = text_style.page_break_after;
+        target.page_break_inside = text_style.page_break_inside;
+        target.page = text_style.page;
+        target.hyphens = text_style.hyphens;
+        target.text_justify = text_style.text_justify;
+        target.text_underline_offset = text_style.text_underline_offset;
+        target.text_underline_position = text_style.text_underline_position;
+        target.font_variant = text_style.font_variant;
+        target.font_variant_caps = text_style.font_variant_caps;
+        target.font_variant_numeric = text_style.font_variant_numeric;
+        target.font_synthesis = text_style.font_synthesis;
+        target.font_variant_alternates = text_style.font_variant_alternates;
+        target.font_feature_settings = text_style.font_feature_settings;
+        target.font_variation_settings = text_style.font_variation_settings;
+        target.font_optical_sizing = text_style.font_optical_sizing;
+        target.print_color_adjust = text_style.print_color_adjust;
+        target.image_orientation = text_style.image_orientation;
+        target.image_orientation_explicit = text_style.image_orientation_explicit;
+        target.font_kerning = text_style.font_kerning;
+        target.font_variant_ligatures = text_style.font_variant_ligatures;
+        target.font_variant_east_asian = text_style.font_variant_east_asian;
+        target.font_palette = text_style.font_palette;
+        target.font_variant_position = text_style.font_variant_position;
+        target.font_language_override = text_style.font_language_override;
+        target.font_size_adjust = text_style.font_size_adjust;
+        target.font_stretch = text_style.font_stretch;
+        target.text_decoration_skip_ink = text_style.text_decoration_skip_ink;
+        target.text_emphasis_style = text_style.text_emphasis_style;
+        target.text_emphasis_color = text_style.text_emphasis_color;
+        target.text_stroke_width = text_style.text_stroke_width;
+        target.text_stroke_color = color_to_argb(text_style.text_stroke_color);
+        if (text_style.text_fill_color.a > 0) {
+            target.text_fill_color = color_to_argb(text_style.text_fill_color);
+        }
+        target.hanging_punctuation = text_style.hanging_punctuation;
+        target.ruby_align = text_style.ruby_align;
+        target.ruby_position = text_style.ruby_position;
+        target.ruby_overhang = text_style.ruby_overhang;
+        target.text_orientation = text_style.text_orientation;
+        target.writing_mode = text_style.writing_mode;
+        target.direction = (text_style.direction == clever::css::Direction::Rtl) ? 1 : 0;
+        target.quotes = text_style.quotes;
+        target.text_rendering = text_style.text_rendering;
+        target.font_smooth = text_style.font_smooth;
+        target.text_size_adjust = text_style.text_size_adjust;
+        target.caret_color = color_to_argb(text_style.caret_color);
+        target.accent_color = color_to_argb(text_style.accent_color);
+        target.color_interpolation = text_style.color_interpolation;
+        target.text_shadow_offset_x = text_style.text_shadow_offset_x;
+        target.text_shadow_offset_y = text_style.text_shadow_offset_y;
+        target.text_shadow_blur = text_style.text_shadow_blur;
+        target.text_shadow_color = color_to_argb(text_style.text_shadow_color);
+        target.text_shadows.clear();
+        for (const auto& ts : text_style.text_shadows) {
+            clever::layout::LayoutNode::TextShadowEntry e;
+            e.offset_x = ts.offset_x;
+            e.offset_y = ts.offset_y;
+            e.blur = ts.blur;
+            e.color = color_to_argb(ts.color);
+            target.text_shadows.push_back(e);
+        }
+        target.white_space_pre = false;
+        target.white_space_nowrap = false;
+        switch (text_style.white_space) {
+            case clever::css::WhiteSpace::Pre:
+                target.white_space = 2;
+                target.white_space_pre = true;
+                target.white_space_nowrap = true;
+                break;
+            case clever::css::WhiteSpace::PreWrap:
+                target.white_space = 3;
+                target.white_space_pre = true;
+                break;
+            case clever::css::WhiteSpace::NoWrap:
+                target.white_space = 1;
+                target.white_space_nowrap = true;
+                break;
+            case clever::css::WhiteSpace::PreLine:
+                target.white_space = 4;
+                break;
+            case clever::css::WhiteSpace::BreakSpaces:
+                target.white_space = 5;
+                target.white_space_pre = true;
+                break;
+            default:
+                target.white_space = 0;
+                break;
+        }
+    };
+
+    auto apply_generated_text_transform = [](std::string& text, clever::css::TextTransform transform) {
+        if (transform == clever::css::TextTransform::Uppercase) {
+            std::transform(text.begin(), text.end(), text.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        } else if (transform == clever::css::TextTransform::Lowercase) {
+            std::transform(text.begin(), text.end(), text.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        } else if (transform == clever::css::TextTransform::Capitalize) {
+            bool cap_next = true;
+            for (size_t i = 0; i < text.size(); i++) {
+                if (std::isspace(static_cast<unsigned char>(text[i]))) {
+                    cap_next = true;
+                } else if (cap_next) {
+                    text[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[i])));
+                    cap_next = false;
                 }
             }
-            layout_node->children.insert(layout_node->children.begin(), std::move(pseudo_node));
         }
-    }
+    };
+
+    auto build_generated_pseudo_node =
+        [&](const clever::css::ComputedStyle& pseudo_style) -> std::unique_ptr<clever::layout::LayoutNode> {
+        const std::string content_raw = pseudo_style.content;
+        const std::string content_trim = trim(content_raw);
+        const std::string content_lower = to_lower(content_trim);
+        if (content_lower == "none" || content_lower == "normal") return nullptr;
+
+        const bool has_declared_content = !content_trim.empty();
+        if (!has_declared_content && pseudo_style.display == clever::css::Display::Inline) {
+            return nullptr;
+        }
+
+        auto pseudo_node = std::make_unique<clever::layout::LayoutNode>();
+        pseudo_node->mode = display_to_mode(pseudo_style.display);
+        pseudo_node->display = display_to_type(pseudo_style.display);
+        pseudo_node->link_href = link;
+        pseudo_node->link_target = link_target;
+        pseudo_node->background_color = color_to_argb(pseudo_style.background_color);
+        pseudo_node->opacity = pseudo_style.opacity * style.opacity;
+        pseudo_node->mix_blend_mode = pseudo_style.mix_blend_mode;
+        pseudo_node->visibility_hidden = (pseudo_style.visibility == clever::css::Visibility::Hidden ||
+                                          pseudo_style.visibility == clever::css::Visibility::Collapse);
+        pseudo_node->visibility_collapse = (pseudo_style.visibility == clever::css::Visibility::Collapse);
+        pseudo_node->transforms = pseudo_style.transforms;
+        pseudo_node->text_align_last = pseudo_style.text_align_last;
+        switch (pseudo_style.text_align) {
+            case clever::css::TextAlign::Center: pseudo_node->text_align = 1; break;
+            case clever::css::TextAlign::Right: pseudo_node->text_align = 2; break;
+            case clever::css::TextAlign::Justify: pseudo_node->text_align = 3; break;
+            case clever::css::TextAlign::WebkitCenter: pseudo_node->text_align = 4; break;
+            default: pseudo_node->text_align = 0; break;
+        }
+
+        apply_generated_text_style(pseudo_style, *pseudo_node, font_size);
+        const float ps_fs = pseudo_node->font_size;
+        const float ps_lh = pseudo_style.line_height.to_px(ps_fs, 16.0f);
+
+        pseudo_node->text_indent = pseudo_style.text_indent.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->specified_width = pseudo_style.width.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->specified_height = pseudo_style.height.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.padding.left = pseudo_style.padding.left.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.padding.right = pseudo_style.padding.right.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.padding.top = pseudo_style.padding.top.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.padding.bottom = pseudo_style.padding.bottom.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.margin.left = pseudo_style.margin.left.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.margin.right = pseudo_style.margin.right.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.margin.top = pseudo_style.margin.top.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.margin.bottom = pseudo_style.margin.bottom.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.border.left =
+            (pseudo_style.border_left.style == clever::css::BorderStyle::None)
+                ? 0.0f
+                : pseudo_style.border_left.width.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.border.right =
+            (pseudo_style.border_right.style == clever::css::BorderStyle::None)
+                ? 0.0f
+                : pseudo_style.border_right.width.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.border.top =
+            (pseudo_style.border_top.style == clever::css::BorderStyle::None)
+                ? 0.0f
+                : pseudo_style.border_top.width.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->geometry.border.bottom =
+            (pseudo_style.border_bottom.style == clever::css::BorderStyle::None)
+                ? 0.0f
+                : pseudo_style.border_bottom.width.to_px(ps_fs, 16.0f, ps_lh);
+        pseudo_node->border_color_top = color_to_argb(pseudo_style.border_top.color);
+        pseudo_node->border_color_right = color_to_argb(pseudo_style.border_right.color);
+        pseudo_node->border_color_bottom = color_to_argb(pseudo_style.border_bottom.color);
+        pseudo_node->border_color_left = color_to_argb(pseudo_style.border_left.color);
+        pseudo_node->border_style_top = convert_pseudo_border_style(pseudo_style.border_top.style);
+        pseudo_node->border_style_right = convert_pseudo_border_style(pseudo_style.border_right.style);
+        pseudo_node->border_style_bottom = convert_pseudo_border_style(pseudo_style.border_bottom.style);
+        pseudo_node->border_style_left = convert_pseudo_border_style(pseudo_style.border_left.style);
+        pseudo_node->border_style = pseudo_node->border_style_top;
+        pseudo_node->border_radius = pseudo_style.border_radius;
+        pseudo_node->border_radius_tl = pseudo_style.border_radius_tl;
+        pseudo_node->border_radius_tr = pseudo_style.border_radius_tr;
+        pseudo_node->border_radius_bl = pseudo_style.border_radius_bl;
+        pseudo_node->border_radius_br = pseudo_style.border_radius_br;
+
+        if (has_declared_content) {
+            std::string text = resolve_content_value(
+                pseudo_style.content, pseudo_style.content_attr_name, node);
+            apply_generated_text_transform(text, pseudo_style.text_transform);
+
+            auto text_child = std::make_unique<clever::layout::LayoutNode>();
+            text_child->is_text = true;
+            text_child->mode = clever::layout::LayoutMode::Inline;
+            text_child->display = clever::layout::DisplayType::Inline;
+            text_child->text_content = std::move(text);
+            text_child->link_href = link;
+            text_child->link_target = link_target;
+            text_child->opacity = pseudo_node->opacity;
+            text_child->visibility_hidden = pseudo_node->visibility_hidden;
+            text_child->visibility_collapse = pseudo_node->visibility_collapse;
+            apply_generated_text_style(pseudo_style, *text_child, font_size);
+            pseudo_node->append_child(std::move(text_child));
+        }
+
+        return pseudo_node;
+    };
 
     // CSS text-decoration propagation: text-decoration is NOT inherited per CSS
     // spec, but the decoration visually propagates to all inline descendants.
@@ -10833,6 +11106,18 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
         if (style.text_decoration_thickness == 0 && parent_style.text_decoration_thickness > 0) {
             style.text_decoration_thickness = parent_style.text_decoration_thickness;
+        }
+    }
+
+    // Check for ::before pseudo-element and insert synthetic node as first child
+    if (elem_view) {
+        auto before_style = resolver.resolve_pseudo(*elem_view, "before", style);
+        if (before_style) {
+            auto pseudo_node = build_generated_pseudo_node(*before_style);
+            if (pseudo_node) {
+                pseudo_node->parent = layout_node.get();
+                layout_node->children.insert(layout_node->children.begin(), std::move(pseudo_node));
+            }
         }
     }
 
@@ -10875,67 +11160,14 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
     }
 
-    // Check for ::after pseudo-element and insert synthetic node
+    // Check for ::after pseudo-element and insert synthetic node as last child
     if (elem_view) {
         auto after_style = resolver.resolve_pseudo(*elem_view, "after", style);
-        if (after_style && after_style->content != "none" &&
-            (!after_style->content.empty() || after_style->display != clever::css::Display::Inline)) {
-            auto pseudo_node = std::make_unique<clever::layout::LayoutNode>();
-            std::string text = resolve_content_value(
-                after_style->content, after_style->content_attr_name, node);
-            pseudo_node->font_size = after_style->font_size.to_px(font_size);
-            pseudo_node->font_family = after_style->font_family;
-            pseudo_node->color = color_to_argb(after_style->color);
-            pseudo_node->font_weight = after_style->font_weight;
-            pseudo_node->font_italic = (after_style->font_style != clever::css::FontStyle::Normal);
-            pseudo_node->link_href = link;
-            pseudo_node->link_target = link_target;
-            pseudo_node->mode = display_to_mode(after_style->display);
-            pseudo_node->display = display_to_type(after_style->display);
-            pseudo_node->background_color = color_to_argb(after_style->background_color);
-            auto ps_fs = pseudo_node->font_size;
-            pseudo_node->specified_width = after_style->width.to_px(ps_fs);
-            pseudo_node->specified_height = after_style->height.to_px(ps_fs);
-            pseudo_node->geometry.padding.left = after_style->padding.left.to_px(ps_fs);
-            pseudo_node->geometry.padding.right = after_style->padding.right.to_px(ps_fs);
-            pseudo_node->geometry.padding.top = after_style->padding.top.to_px(ps_fs);
-            pseudo_node->geometry.padding.bottom = after_style->padding.bottom.to_px(ps_fs);
-            pseudo_node->geometry.border.left = after_style->border_left.width.to_px(ps_fs);
-            pseudo_node->geometry.border.right = after_style->border_right.width.to_px(ps_fs);
-            pseudo_node->geometry.border.top = after_style->border_top.width.to_px(ps_fs);
-            pseudo_node->geometry.border.bottom = after_style->border_bottom.width.to_px(ps_fs);
-            pseudo_node->border_color_top = color_to_argb(after_style->border_top.color);
-            pseudo_node->border_color_bottom = color_to_argb(after_style->border_bottom.color);
-            pseudo_node->border_color_left = color_to_argb(after_style->border_left.color);
-            pseudo_node->border_color_right = color_to_argb(after_style->border_right.color);
-            pseudo_node->geometry.margin.left = after_style->margin.left.to_px(ps_fs);
-            pseudo_node->geometry.margin.right = after_style->margin.right.to_px(ps_fs);
-            pseudo_node->geometry.margin.top = after_style->margin.top.to_px(ps_fs);
-            pseudo_node->geometry.margin.bottom = after_style->margin.bottom.to_px(ps_fs);
-            pseudo_node->border_radius_tl = after_style->border_radius_tl;
-            pseudo_node->border_radius_tr = after_style->border_radius_tr;
-            pseudo_node->border_radius_bl = after_style->border_radius_bl;
-            pseudo_node->border_radius_br = after_style->border_radius_br;
-            if (!text.empty()) {
-                if (pseudo_node->display == clever::layout::DisplayType::Inline &&
-                    pseudo_node->mode == clever::layout::LayoutMode::Inline) {
-                    pseudo_node->is_text = true;
-                    pseudo_node->text_content = text;
-                } else {
-                    auto text_child = std::make_unique<clever::layout::LayoutNode>();
-                    text_child->is_text = true;
-                    text_child->text_content = text;
-                    text_child->font_size = pseudo_node->font_size;
-                    text_child->font_family = pseudo_node->font_family;
-                    text_child->color = pseudo_node->color;
-                    text_child->font_weight = pseudo_node->font_weight;
-                    text_child->font_italic = pseudo_node->font_italic;
-                    text_child->mode = clever::layout::LayoutMode::Inline;
-                    text_child->display = clever::layout::DisplayType::Inline;
-                    pseudo_node->children.push_back(std::move(text_child));
-                }
+        if (after_style) {
+            auto pseudo_node = build_generated_pseudo_node(*after_style);
+            if (pseudo_node) {
+                layout_node->append_child(std::move(pseudo_node));
             }
-            layout_node->append_child(std::move(pseudo_node));
         }
     }
 
@@ -12611,6 +12843,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
         // Reset CSS counters and form collection before tree build
         css_counters.clear();
+        css_counter_scopes.clear();
         collected_forms.clear();
         collected_datalists.clear();
 

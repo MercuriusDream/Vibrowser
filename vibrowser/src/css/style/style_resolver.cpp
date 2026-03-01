@@ -3234,32 +3234,142 @@ void PropertyCascade::apply_declaration(
 
     // ---- Content (for ::before / ::after pseudo-elements) ----
     if (prop == "content") {
-        if (value_lower == "none" || value_lower == "normal") {
+        style.content_attr_name.clear();
+        const std::string content_value = trim(value_str);
+        const std::string content_value_lower = to_lower(content_value);
+
+        if (content_value_lower == "none" || content_value_lower == "normal") {
             style.content = "none";
-        } else if (value_lower == "open-quote") {
+        } else if (content_value_lower == "open-quote") {
             style.content = "\xe2\x80\x9c"; // left double quotation mark
-        } else if (value_lower == "close-quote") {
+        } else if (content_value_lower == "close-quote") {
             style.content = "\xe2\x80\x9d"; // right double quotation mark
-        } else if (value_lower == "no-open-quote" || value_lower == "no-close-quote") {
+        } else if (content_value_lower == "no-open-quote" || content_value_lower == "no-close-quote") {
             style.content = "none"; // produce no content
-        } else if (value_lower.substr(0, 5) == "attr(" && value_lower.back() == ')') {
-            // content: attr(data-label) — store attr name for runtime resolution
-            std::string attr_name = trim(value_str.substr(5, value_str.size() - 6));
-            style.content_attr_name = attr_name;
-            style.content = "\x01""ATTR"; // sentinel for attr() resolution
-        } else if (value_lower.substr(0, 8) == "counter(" && value_lower.back() == ')') {
-            // content: counter(name) — store raw value for runtime resolution
-            style.content = value_str; // keep as "counter(name)" for runtime
         } else {
-            // Check for concatenated content values like: counter(item) ". "
-            // Look for counter() or attr() mixed with string literals
-            bool has_func = (value_lower.find("counter(") != std::string::npos ||
-                             value_lower.find("attr(") != std::string::npos);
-            if (has_func) {
-                style.content = value_str; // keep raw for runtime resolution
+            // Tokenize content values while respecting quoted strings and function arguments.
+            // This allows values like: "Chapter " counter(name) ". "
+            auto tokenize_content = [&](const std::string& input, bool& ok) {
+                std::vector<std::string> tokens;
+                ok = true;
+                size_t i = 0;
+                while (i < input.size()) {
+                    while (i < input.size() && std::isspace(static_cast<unsigned char>(input[i]))) i++;
+                    if (i >= input.size()) break;
+
+                    size_t start = i;
+                    if (input[i] == '"' || input[i] == '\'') {
+                        char quote = input[i++];
+                        bool escaped = false;
+                        while (i < input.size()) {
+                            char ch = input[i];
+                            if (!escaped && ch == quote) break;
+                            if (!escaped && ch == '\\') escaped = true;
+                            else escaped = false;
+                            i++;
+                        }
+                        if (i >= input.size()) {
+                            ok = false;
+                            return tokens;
+                        }
+                        i++; // include closing quote
+                        tokens.push_back(input.substr(start, i - start));
+                        continue;
+                    }
+
+                    bool ident_start = std::isalpha(static_cast<unsigned char>(input[i])) ||
+                                       input[i] == '_' || input[i] == '-';
+                    if (ident_start) {
+                        i++;
+                        while (i < input.size()) {
+                            char ch = input[i];
+                            if (std::isalnum(static_cast<unsigned char>(ch)) ||
+                                ch == '_' || ch == '-' || ch == ':') {
+                                i++;
+                            } else {
+                                break;
+                            }
+                        }
+                        if (i < input.size() && input[i] == '(') {
+                            int depth = 0;
+                            bool in_single = false;
+                            bool in_double = false;
+                            while (i < input.size()) {
+                                char ch = input[i];
+                                if (ch == '"' && !in_single) {
+                                    in_double = !in_double;
+                                    i++;
+                                    continue;
+                                }
+                                if (ch == '\'' && !in_double) {
+                                    in_single = !in_single;
+                                    i++;
+                                    continue;
+                                }
+                                if (in_single || in_double) {
+                                    i++;
+                                    continue;
+                                }
+                                if (ch == '(') depth++;
+                                else if (ch == ')') {
+                                    depth--;
+                                    if (depth == 0) {
+                                        i++; // include ')'
+                                        break;
+                                    }
+                                }
+                                i++;
+                            }
+                            if (depth != 0) {
+                                ok = false;
+                                return tokens;
+                            }
+                        }
+                        tokens.push_back(trim(input.substr(start, i - start)));
+                        continue;
+                    }
+
+                    while (i < input.size() &&
+                           !std::isspace(static_cast<unsigned char>(input[i]))) i++;
+                    tokens.push_back(input.substr(start, i - start));
+                }
+                return tokens;
+            };
+
+            bool tokenized_ok = false;
+            auto tokens = tokenize_content(content_value, tokenized_ok);
+            if (!tokenized_ok || tokens.empty()) {
+                style.content = strip_quotes(content_value);
+                return;
+            }
+
+            // Multiple tokens (string/function concatenation): keep raw form for runtime resolution.
+            if (tokens.size() > 1) {
+                style.content = content_value;
+                return;
+            }
+
+            const std::string token = trim(tokens[0]);
+            const std::string token_lower = to_lower(token);
+
+            if (token_lower.size() >= 6 && token_lower.rfind("attr(", 0) == 0 && token.back() == ')') {
+                std::string attr_name = trim(token.substr(5, token.size() - 6));
+                style.content_attr_name = attr_name;
+                style.content = "\x01""ATTR"; // sentinel for attr() resolution
+            } else if (token_lower.size() >= 5 && token_lower.rfind("url(", 0) == 0 && token.back() == ')') {
+                std::string url_value = trim(token.substr(4, token.size() - 5));
+                style.content = "\x01URL:" + strip_quotes(url_value); // sentinel for url() resolution
+            } else if ((token_lower.size() >= 9 && token_lower.rfind("counter(", 0) == 0 && token.back() == ')') ||
+                       (token_lower.size() >= 10 && token_lower.rfind("counters(", 0) == 0 && token.back() == ')')) {
+                style.content = token; // keep raw for runtime resolution
+            } else if (token.size() >= 2 &&
+                       ((token.front() == '"' && token.back() == '"') ||
+                        (token.front() == '\'' && token.back() == '\''))) {
+                // Preserve quoted strings verbatim so runtime token parsing can
+                // distinguish literal strings from keyword tokens.
+                style.content = token;
             } else {
-                // Strip surrounding quotes from string literals
-                style.content = strip_quotes(value_str);
+                style.content = strip_quotes(token);
             }
         }
         return;
