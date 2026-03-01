@@ -437,6 +437,14 @@ std::string Tokenizer::try_consume_entity() {
         // === Currency symbols ===
         {"euro", "\xE2\x82\xAC"},     // U+20AC euro sign
         {"frasl", "\xE2\x81\x84"},    // U+2044 fraction slash
+        {"pound", "\xC2\xA3"},        // U+00A3 pound sign (additional alias)
+        {"yen", "\xC2\xA5"},          // U+00A5 yen sign (additional alias)
+        {"cent", "\xC2\xA2"},         // U+00A2 cent sign (additional alias)
+        {"curren", "\xC2\xA4"},       // U+00A4 currency sign (additional alias)
+        {"rupee", "\xE2\x82\xA8"},    // U+20A8 rupee sign
+        {"won", "\xE2\x82\xA9"},      // U+20A9 won sign
+        {"cedi", "\xE2\x82\xAA"},     // U+20AA shekel sign
+        {"baht", "\xE2\x82\xB1"},     // U+20B1 peso sign
 
         // === Letterlike symbols (U+2100-U+214F) ===
         {"weierp", "\xE2\x84\x98"},   // U+2118 script capital P
@@ -515,6 +523,105 @@ std::string Tokenizer::try_consume_entity() {
         {"otimes", "\xE2\x8A\x97"},   // U+2297 circled times
         {"perp", "\xE2\x8A\xA5"},     // U+22A5 up tack (perpendicular)
         {"sdot", "\xE2\x8B\x85"},     // U+22C5 dot operator
+        {"wreath", "\xE2\x89\x80"},   // U+2240 wreath product
+        {"wr", "\xE2\x89\x80"},       // U+2240 wreath product
+        {"Star", "\xE2\x8B\x86"},     // U+22C6 star operator
+        {"diamond", "\xE2\x8B\x84"},  // U+22C4 diamond operator
+        {"pitchfork", "\xE2\x8B\x94"}, // U+22D4 pitchfork
+        {"lessgtr", "\xE2\x89\xB6"},  // U+2276 less-than or greater-than
+        {"gtrless", "\xE2\x89\xB7"},  // U+2277 greater-than or less-than
+        {"multimap", "\xE2\x8A\xB8"}, // U+22B8 multimap
+        {"rightarrowtail", "\xE2\x86\xA3"}, // U+21A3 rightwards arrow with tail
+        {"leftarrowtail", "\xE2\x86\xA2"},  // U+21A2 leftwards arrow with tail
+        {"looparrowright", "\xE2\x86\xAC"}, // U+21AC rightwards arrow looped
+        {"looparrowleft", "\xE2\x86\xAB"},  // U+21AB leftwards arrow looped
+        {"rightarrowhead", "\xE2\x87\x81"}, // U+21C1 rightwards harpoon with barb downwards
+        {"leftarrowhead", "\xE2\x87\x80"},  // U+21C0 rightwards harpoon with barb upwards
+        {"triangle", "\xE2\x96\xB3"},    // U+25B3 white up-pointing triangle
+        {"triangledown", "\xE2\x96\xBD"}, // U+25BD white down-pointing triangle
+        {"triangleleft", "\xE2\x97\x83"}, // U+25C3 white left-pointing triangle
+        {"triangleright", "\xE2\x96\xB9"}, // U+25B9 white right-pointing triangle
+        {"varnothing", "\xE2\x88\x85"}, // U+2205 empty set
+        {"eq", "="},                    // U+003D equals sign
+        {"neq", "\xE2\x89\xA0"},       // U+2260 not equal to (variant)
+        {"veq", "\xE2\x89\xB2"},       // U+2272 less-than or equivalent to
+        {"geq", "\xE2\x89\xB3"},       // U+2273 greater-than or equivalent to
+        {"subne", "\xE2\x8A\x8A"},     // U+228A subset of with not equal to
+        {"supne", "\xE2\x8A\x8B"},     // U+228B superset of with not equal to
+        {"nsubset", "\xE2\x8A\x82\xCC\xB8"}, // U+2282 combining long solidus overlay
+        {"nsupset", "\xE2\x8A\x83\xCC\xB8"}, // U+2283 combining long solidus overlay
+        {"curlyeqprec", "\xE2\x8B\x9E"}, // U+22DE curly equals and precedes
+        {"curlyeqsucc", "\xE2\x8B\x9F"}, // U+22DF curly equals and succeeds
+        {"cdarrowright", "\xE2\x87\x89"}, // U+21C9 downwards arrow to right
+        {"cdarrowleft", "\xE2\x87\x88"},  // U+21C8 downwards arrow to left
+        {"udarrowleft", "\xE2\x87\x85"},  // U+21C5 upwards arrow downwards arrow
+        {"udarrowright", "\xE2\x87\x86"}, // U+21C6 downwards arrow upwards arrow
+        {"rbarr", "\xE2\x87\xA5"},     // U+21A5 rightwards arrow from bar
+        {"lbarr", "\xE2\x87\xA4"},     // U+21A4 leftwards arrow from bar
+        {"UpArrowBar", "\xE2\x91\xA0"}, // U+2340 up arrowbar
+        {"DownArrowBar", "\xE2\x91\xA1"}, // U+2341 down arrowbar
+        {"UnionPlus", "\xE2\x8A\x8E"}, // U+228E multiset union
+        {"shortparallel", "\xE2\x88\xA5"}, // U+2225 parallel to
+        {"nshortparallel", "\xE2\x88\xA6"}, // U+2226 not parallel to
+        {"parallel", "\xE2\x88\xA5"}, // U+2225 parallel to
+        {"nparallel", "\xE2\x88\xA6"}, // U+2226 not parallel to
+        {"lessdot", "\xE2\x8B\x96"},  // U+22D6 less-than with dot
+        {"gtdot", "\xE2\x8B\x97"},    // U+22D7 greater-than with dot
+        {"Ll", "\xE2\x8B\x98"},       // U+22D8 much less-than
+        {"Gg", "\xE2\x8B\x99"},       // U+22D9 much greater-than
+        {"LessEqualGreater", "\xE2\x8B\x9A"}, // U+22DA less-than equal to greater-than
+        {"GreaterEqualLess", "\xE2\x8B\x9B"}, // U+22DB greater-than equal to less-than
+        {"lessgtr", "\xE2\x89\xB6"},  // U+2276 less-than or greater-than
+        {"gtrless", "\xE2\x89\xB7"},  // U+2277 greater-than or less-than
+        {"asympeq", "\xE2\x8B\x9D"},  // U+22DD asymptotically equal to
+        {"approxeq", "\xE2\x89\x8A"},  // U+224A approximately equal to
+        {"thickapprox", "\xE2\x89\x88"}, // U+2248 almost equal to
+        {"thicksim", "\xE2\x88\xBC"},  // U+223C tilde operator
+        {"backsim", "\xE2\x89\x83"},  // U+223D reversed tilde
+        {"shortmid", "\xE2\x88\xA3"},  // U+2223 divides
+        {"nshortmid", "\xE2\x88\xA4"}, // U+2224 does not divide
+        {"mid", "\xE2\x88\xA3"},       // U+2223 divides
+        {"nmid", "\xE2\x88\xA4"},      // U+2224 does not divide
+        {"NotVerticalBar", "\xE2\x88\xA4"}, // U+2224 does not divide
+        {"DoubleVerticalBar", "\xE2\x80\x96"}, // U+2016 double vertical line
+        {"Vert", "\xE2\x80\x96"},      // U+2016 double vertical line
+        {"Vert2", "\xE2\xA0\xA0"},     // U+2980 vertical bar double
+        {"NotDoubleVerticalBar", "\xE2\x89\x82"}, // U+2242 not similar
+        {"SmallVerticalBar", "\xE2\x89\x82"}, // U+2242 similar operator
+        {"divideontimes", "\xE2\x8B\x87"}, // U+22C7 division times
+        {"dotplus", "\xE2\x88\x94"},   // U+2214 plus sign with dot above
+        {"div", "\xC3\xB7"},           // U+00F7 division sign
+
+        // === Arrow symbol variants ===
+        {"nlarr", "\xE2\x86\x9B"},     // U+219B leftwards arrow with stroke
+        {"nrarr", "\xE2\x86\x9C"},     // U+219C rightwards arrow with stroke
+        {"nlArr", "\xE2\x87\x8D"},     // U+21CD leftwards double arrow with stroke
+        {"nrArr", "\xE2\x87\x8E"},     // U+21CE rightwards double arrow with stroke
+        {"nleftrightarrow", "\xE2\x86\xAE"}, // U+21AE left right arrow with stroke
+        {"nharr", "\xE2\x86\xAE"},     // U+21AE left right arrow with stroke
+        {"UpDownArrow", "\xE2\x86\x95"}, // U+2195 up down arrow
+        {"UpArrow", "\xE2\x86\x91"},   // U+2191 upwards arrow
+        {"DownArrow", "\xE2\x86\x93"}, // U+2193 downwards arrow
+        {"LeftArrow", "\xE2\x86\x90"}, // U+2190 leftwards arrow
+        {"RightArrow", "\xE2\x86\x92"}, // U+2192 rightwards arrow
+        {"lharu", "\xE2\x87\xBD"},     // U+21BD leftwards harpoon with barb upwards
+        {"lharr", "\xE2\x87\xBD"},     // U+21BD leftwards harpoon with barb upwards
+        {"rharu", "\xE2\x87\xC0"},     // U+21C0 rightwards harpoon with barb upwards
+        {"rharr", "\xE2\x87\xC0"},     // U+21C0 rightwards harpoon with barb upwards
+        {"lhard", "\xE2\x87\xBC"},     // U+21BC leftwards harpoon with barb downwards
+        {"rhard", "\xE2\x87\xC1"},     // U+21C1 rightwards harpoon with barb downwards
+        {"curvearrowright", "\xE2\x86\xB7"}, // U+21B7 top right curved arrow
+        {"curvearrowleft", "\xE2\x86\xB6"},  // U+21B6 top left curved arrow
+        {"circlearrowleft", "\xE2\x86\xBA"}, // U+21BA leftwards open circle arrow
+        {"circlearrowright", "\xE2\x86\xBB"}, // U+21BB rightwards open circle arrow
+
+        // === Greek letter variants ===
+        {"vartheta", "\xCF\x91"},      // U+03D1 greek small letter theta symbol
+        {"varpi", "\xCF\x96"},         // U+03D6 greek pi symbol (variant)
+        {"varsigma", "\xCF\x82"},      // U+03C2 greek small letter final sigma
+        {"varphi", "\xCF\x95"},        // U+03D5 greek small letter phi symbol
+        {"varrho", "\xCF\xA1"},        // U+03F1 greek small letter rho symbol
+        {"varepsilon", "\xCF\xB5"},    // U+03F5 greek small letter epsilon symbol
 
         // === Miscellaneous technical (U+2300-U+23FF) ===
         {"lceil", "\xE2\x8C\x88"},    // U+2308 left ceiling
