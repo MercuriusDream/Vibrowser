@@ -1129,6 +1129,16 @@ struct LayoutNode {
     // Anonymous blocks have no tag_name and transparent background (CSS 2.1 §9.2.1.1).
     bool is_anonymous = false;
 
+    // Sticky constraint caching for paint-time calculations
+    float sticky_container_top = 0;
+    float sticky_container_bottom = 0;
+    float sticky_container_left = 0;
+    float sticky_container_right = 0;
+    float sticky_container_width = 0;
+    float sticky_container_height = 0;
+    float sticky_max_top = 0;
+    float sticky_max_bottom = 0;
+
     // Tree
     LayoutNode* parent = nullptr;
     std::vector<std::unique_ptr<LayoutNode>> children;
