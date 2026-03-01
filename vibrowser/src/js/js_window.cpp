@@ -2,6 +2,8 @@
 #include <clever/js/js_web_storage.h>
 #include <clever/js/js_workers.h>
 #include <clever/js/js_dom_bindings.h>
+#include <clever/js/js_indexed_db.h>
+#include <clever/js/js_web_audio.h>
 
 extern "C" {
 #include <quickjs.h>
@@ -5629,6 +5631,12 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // ---- window.localStorage and window.sessionStorage ----
     ParsedURL parsed_url = parse_url(url);
     install_web_storage_bindings(ctx, parsed_url.origin);
+
+    // ---- IndexedDB API ----
+    install_indexed_db_bindings(ctx);
+
+    // ---- Web Audio API ----
+    install_web_audio_bindings(ctx);
 
     // ---- Worker API ----
     install_worker_bindings(ctx);
