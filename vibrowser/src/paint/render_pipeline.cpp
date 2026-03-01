@@ -9705,14 +9705,27 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (layout_node->specified_width < 0) layout_node->specified_width = attr_w;
         if (layout_node->specified_height < 0) layout_node->specified_height = attr_h;
 
-        layout_node->background_color = 0xFF000000; // black background
+        // Detect background/ambient videos (autoplay + muted = decorative, no poster)
+        bool is_autoplay = has_attr(node, "autoplay");
+        bool is_muted = has_attr(node, "muted");
+        bool has_poster = !get_attr(node, "poster").empty();
+        bool is_background_video = is_autoplay && is_muted && !has_poster;
+
         layout_node->media_type = 1;
         layout_node->media_src = get_attr(node, "src");
-
         layout_node->mode = clever::layout::LayoutMode::Block;
         layout_node->display = clever::layout::DisplayType::InlineBlock;
         layout_node->text_align = 1; // center
 
+        if (is_background_video) {
+            // Background/ambient videos: transparent placeholder (no black box)
+            // Sites use autoplay+muted videos as visual backgrounds; we just skip them
+            layout_node->background_color = 0x00000000; // transparent
+            return layout_node;
+        }
+
+        // Regular video: dark placeholder with play button
+        layout_node->background_color = 0xFF1A1A2E; // dark navy background
         // Add a centered play button triangle
         auto play_btn = std::make_unique<clever::layout::LayoutNode>();
         play_btn->is_text = true;

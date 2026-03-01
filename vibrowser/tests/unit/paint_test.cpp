@@ -34037,7 +34037,7 @@ TEST_F(PaintTest, VideoElementPlaceholderDimensions) {
     };
     auto* video = find_video(result.root.get());
     ASSERT_NE(video, nullptr);
-    EXPECT_EQ(video->background_color, 0xFF000000u); // black
+    EXPECT_EQ(video->background_color, 0xFF1A1A2Eu); // dark navy placeholder
     EXPECT_EQ(video->media_type, 1); // video
     // Should have a play button child
     ASSERT_FALSE(video->children.empty());
@@ -38507,9 +38507,9 @@ TEST_F(PaintTest, VideoPlaceholderLayoutNode) {
     EXPECT_EQ(video->media_type, 1) << "Video media_type should be 1";
     EXPECT_FLOAT_EQ(video->specified_width, 300.0f) << "Default video width should be 300";
     EXPECT_FLOAT_EQ(video->specified_height, 150.0f) << "Default video height should be 150";
-    // Background should be black (#000000 = 0xFF000000)
-    EXPECT_EQ(video->background_color, 0xFF000000u)
-        << "Video background should be black";
+    // Background should be dark navy (video placeholder color)
+    EXPECT_EQ(video->background_color, 0xFF1A1A2Eu)
+        << "Video background should be dark navy placeholder";
 }
 
 // Test 4: <video> respects HTML width/height attributes
