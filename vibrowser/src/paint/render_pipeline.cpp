@@ -13647,79 +13647,181 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             result.page_title = title_nodes[0]->text_content();
         }
 
-        // Extract <meta http-equiv="refresh"> for auto-redirect/reload
+        // Extract <meta> tag information: charset, http-equiv, description, theme-color
         auto meta_nodes = doc->find_all_elements("meta");
+        bool refresh_found = false;
         for (const auto* meta : meta_nodes) {
-            std::string http_equiv = to_lower(get_attr(*meta, "http-equiv"));
-            if (http_equiv == "refresh") {
-                std::string content = get_attr(*meta, "content");
-                if (content.empty()) break;
+            if (!meta) continue;
 
-                // Parse content: "N" or "N;url=URL" or "N; url=URL"
-                // Find the delay (leading digits)
-                size_t pos = 0;
-                // Skip leading whitespace
-                while (pos < content.size() && std::isspace(static_cast<unsigned char>(content[pos])))
-                    pos++;
-                size_t num_start = pos;
-                while (pos < content.size() && std::isdigit(static_cast<unsigned char>(content[pos])))
-                    pos++;
-                if (pos > num_start) {
-                    result.meta_refresh_delay = std::stoi(content.substr(num_start, pos - num_start));
-                } else {
-                    result.meta_refresh_delay = 0; // No number means immediate
+            // --- charset attribute: <meta charset="utf-8"> ---
+            if (result.page_charset.empty()) {
+                std::string charset_attr = trim(get_attr(*meta, "charset"));
+                if (!charset_attr.empty()) {
+                    result.page_charset = to_lower(charset_attr);
                 }
+            }
 
-                // Look for optional URL after semicolon
-                // Skip whitespace and semicolons
-                while (pos < content.size() &&
-                       (content[pos] == ';' || content[pos] == ',' ||
-                        std::isspace(static_cast<unsigned char>(content[pos]))))
-                    pos++;
-                // Check for "url=" prefix (case-insensitive), allowing spaces around '='
-                if (pos + 3 <= content.size() && to_lower(content.substr(pos, 3)) == "url") {
-                    pos += 3;
-                    // Skip whitespace before '='
+            std::string name_attr = to_lower(trim(get_attr(*meta, "name")));
+            std::string http_equiv = to_lower(trim(get_attr(*meta, "http-equiv")));
+            std::string content = get_attr(*meta, "content");
+
+            // --- http-equiv="refresh" ---
+            if (!refresh_found && http_equiv == "refresh") {
+                if (!content.empty()) {
+                    // Parse content: "N" or "N;url=URL" or "N; url=URL"
+                    size_t pos = 0;
                     while (pos < content.size() && std::isspace(static_cast<unsigned char>(content[pos])))
                         pos++;
-                    // Skip '='
-                    if (pos < content.size() && content[pos] == '=')
+                    size_t num_start = pos;
+                    while (pos < content.size() && std::isdigit(static_cast<unsigned char>(content[pos])))
                         pos++;
-                    // Skip optional quotes and whitespace
+                    if (pos > num_start) {
+                        result.meta_refresh_delay = std::stoi(content.substr(num_start, pos - num_start));
+                    } else {
+                        result.meta_refresh_delay = 0;
+                    }
                     while (pos < content.size() &&
-                           (content[pos] == '\'' || content[pos] == '"' ||
+                           (content[pos] == ';' || content[pos] == ',' ||
                             std::isspace(static_cast<unsigned char>(content[pos]))))
                         pos++;
-                    // Extract URL (trim trailing quotes/whitespace)
-                    size_t url_start = pos;
-                    size_t url_end = content.size();
-                    while (url_end > url_start &&
-                           (content[url_end - 1] == '\'' || content[url_end - 1] == '"' ||
-                            std::isspace(static_cast<unsigned char>(content[url_end - 1]))))
-                        url_end--;
-                    if (url_end > url_start) {
-                        result.meta_refresh_url = content.substr(url_start, url_end - url_start);
+                    if (pos + 3 <= content.size() && to_lower(content.substr(pos, 3)) == "url") {
+                        pos += 3;
+                        while (pos < content.size() && std::isspace(static_cast<unsigned char>(content[pos])))
+                            pos++;
+                        if (pos < content.size() && content[pos] == '=')
+                            pos++;
+                        while (pos < content.size() &&
+                               (content[pos] == '\'' || content[pos] == '"' ||
+                                std::isspace(static_cast<unsigned char>(content[pos]))))
+                            pos++;
+                        size_t url_start = pos;
+                        size_t url_end = content.size();
+                        while (url_end > url_start &&
+                               (content[url_end - 1] == '\'' || content[url_end - 1] == '"' ||
+                                std::isspace(static_cast<unsigned char>(content[url_end - 1]))))
+                            url_end--;
+                        if (url_end > url_start) {
+                            result.meta_refresh_url = content.substr(url_start, url_end - url_start);
+                        }
                     }
+                    refresh_found = true;
                 }
-                break; // Use first matching meta refresh
+            }
+
+            // --- http-equiv="Content-Type": extract charset from content="text/html; charset=utf-8" ---
+            if (result.page_charset.empty() && http_equiv == "content-type" && !content.empty()) {
+                auto cs_pos = to_lower(content).find("charset=");
+                if (cs_pos != std::string::npos) {
+                    std::string cs = trim(content.substr(cs_pos + 8));
+                    // Strip any trailing semicolon or quote
+                    auto end_pos = cs.find_first_of(";\"' \t");
+                    if (end_pos != std::string::npos) cs = cs.substr(0, end_pos);
+                    if (!cs.empty()) result.page_charset = to_lower(cs);
+                }
+            }
+
+            // --- name="description" ---
+            if (result.page_description.empty() && name_attr == "description") {
+                result.page_description = trim(content);
+            }
+
+            // --- name="theme-color" ---
+            if (result.theme_color.empty() && name_attr == "theme-color") {
+                result.theme_color = trim(content);
             }
         }
 
-        // Extract favicon URL from <link rel="icon"> elements
+        // Extract <link> tag information: favicon (with priority), canonical URL
+        // Favicon candidate scoring: prefer rel="icon" over apple-touch-icon; PNG/ICO > SVG;
+        // optimal sizes (32x32 > 16x16 > 64x64); penalize very large icons.
+        struct FaviconCandidate {
+            std::string url;
+            int priority = 0;
+            int pixel_size = 0;
+        };
+        std::vector<FaviconCandidate> favicon_candidates;
+
         auto link_nodes = doc->find_all_elements("link");
         for (const auto* link : link_nodes) {
-            std::string rel, href;
+            if (!link) continue;
+            std::string rel, href, sizes_attr, type_attr;
             for (const auto& attr : link->attributes) {
                 if (attr.name == "rel") rel = attr.value;
                 else if (attr.name == "href") href = attr.value;
+                else if (attr.name == "sizes") sizes_attr = attr.value;
+                else if (attr.name == "type") type_attr = attr.value;
             }
-            // Match rel="icon", rel="shortcut icon", rel="apple-touch-icon"
-            if (!href.empty() && (rel == "icon" || rel == "shortcut icon" ||
-                                  rel.find("icon") != std::string::npos)) {
-                result.favicon_url = resolve_url(href, base_url);
-                break; // Use first matching icon
+            if (href.empty()) continue;
+
+            std::string rel_lower = to_lower(rel);
+
+            // Helper to check if rel contains a token
+            auto has_rel_token = [&](const std::string& token) -> bool {
+                // Tokenize rel on whitespace
+                std::istringstream iss(rel_lower);
+                std::string tok;
+                while (iss >> tok) {
+                    if (tok == token) return true;
+                }
+                return false;
+            };
+
+            // --- rel="canonical" ---
+            if (result.canonical_url.empty() && has_rel_token("canonical")) {
+                result.canonical_url = resolve_url(href, base_url);
+                continue;
             }
+
+            // --- favicon rel tokens ---
+            bool is_icon = has_rel_token("icon");
+            bool is_shortcut_icon = (rel_lower == "shortcut icon");
+            bool is_apple = has_rel_token("apple-touch-icon");
+
+            if (!is_icon && !is_shortcut_icon && !is_apple) continue;
+
+            FaviconCandidate cand;
+            cand.url = resolve_url(href, base_url);
+
+            // Base priority by rel type
+            if (is_icon || is_shortcut_icon) cand.priority = 20;
+            else if (is_apple)               cand.priority = 10;
+
+            // Bonus for image type
+            std::string type_lower = to_lower(type_attr);
+            if (type_lower == "image/png" || type_lower == "image/x-icon" ||
+                type_lower == "image/vnd.microsoft.icon") {
+                cand.priority += 5;
+            } else if (type_lower == "image/svg+xml") {
+                cand.priority += 1;
+            }
+
+            // Bonus/penalty for sizes attribute (e.g., "32x32", "16x16")
+            if (!sizes_attr.empty() && to_lower(sizes_attr) != "any") {
+                auto x_pos = sizes_attr.find_first_of("xX");
+                if (x_pos != std::string::npos) {
+                    try {
+                        int sz = std::stoi(sizes_attr.substr(0, x_pos));
+                        cand.pixel_size = sz;
+                        if (sz == 32) cand.priority += 8;
+                        else if (sz == 16) cand.priority += 6;
+                        else if (sz >= 24 && sz <= 48) cand.priority += 3;
+                        else if (sz > 96) cand.priority -= 2;
+                    } catch (...) {}
+                }
+            }
+
+            favicon_candidates.push_back(std::move(cand));
         }
+
+        // Select best favicon candidate
+        if (!favicon_candidates.empty()) {
+            auto best = std::max_element(favicon_candidates.begin(), favicon_candidates.end(),
+                [](const FaviconCandidate& a, const FaviconCandidate& b) {
+                    return a.priority < b.priority;
+                });
+            result.favicon_url = best->url;
+        }
+
         // Fallback: try /favicon.ico if no <link rel="icon"> found
         if (result.favicon_url.empty() && !base_url.empty()) {
             auto scheme_end = base_url.find("://");

@@ -10,6 +10,8 @@
 @property (nonatomic, copy) NSString* title;
 @property (nonatomic, copy) NSString* currentURL;
 @property (nonatomic, strong) NSImage* faviconImage;
+@property (nonatomic, copy) NSString* pageDescription;  // <meta name="description"> content
+@property (nonatomic, copy) NSString* canonicalURL;     // <link rel="canonical"> href
 - (instancetype)initWithFrame:(NSRect)frame;
 @end
 

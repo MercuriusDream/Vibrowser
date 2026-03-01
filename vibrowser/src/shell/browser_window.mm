@@ -463,6 +463,9 @@ static std::string build_shell_message_html(const std::string& page_title,
     clever::html::SimpleNode* _hoveredNode; // currently hovered DOM node
     float _lastHoverX, _lastHoverY; // last hover coordinates (buffer pixels)
     BOOL _pageUsesHoverState;
+    NSTimer* _animationTimer;
+    NSString* _animationHTML;
+    BOOL _isAnimationRerender;
 }
 
 - (instancetype)init {
@@ -1415,6 +1418,12 @@ static std::string build_shell_message_html(const std::string& page_title,
     if (!tab) return;
     _pageUsesHoverState = page_uses_hover_state(html);
 
+    if (!_isAnimationRerender && _animationTimer) {
+        [_animationTimer invalidate];
+        _animationTimer = nil;
+        _animationHTML = nil;
+    }
+
     NSRect bounds = tab.renderView.bounds;
     int width = static_cast<int>(std::round(bounds.size.width));
     int height = static_cast<int>(std::round(bounds.size.height));
@@ -1439,9 +1448,10 @@ static std::string build_shell_message_html(const std::string& page_title,
         ? clever::paint::render_html(html, [tab currentBaseURL], renderWidth, renderHeight)
         : clever::paint::render_html(html, [tab currentBaseURL], renderWidth, renderHeight, _toggledDetails);
 
+    bool animationsActive = clever::paint::render_has_active_animations();
+
     if (result.success && result.renderer) {
-        // Reset scroll position to top on new page load (but not on details toggle)
-        if (_toggledDetails.empty()) {
+        if (_toggledDetails.empty() && !_isAnimationRerender) {
             tab.renderView.scrollOffset = 0;
         }
 
@@ -1669,6 +1679,54 @@ static std::string build_shell_message_html(const std::string& page_title,
             });
         }
 
+        // Store page description from <meta name="description">
+        if (!result.page_description.empty()) {
+            tab.pageDescription = [NSString stringWithUTF8String:result.page_description.c_str()];
+        } else {
+            tab.pageDescription = nil;
+        }
+
+        // Store canonical URL from <link rel="canonical">
+        if (!result.canonical_url.empty()) {
+            tab.canonicalURL = [NSString stringWithUTF8String:result.canonical_url.c_str()];
+        } else {
+            tab.canonicalURL = nil;
+        }
+
+        // Apply theme-color to window chrome background
+        if (!result.theme_color.empty()) {
+            const std::string& tc = result.theme_color;
+            CGFloat cr = 0, cg = 0, cb = 0;
+            bool color_parsed = false;
+            if (tc.size() == 4 && tc[0] == '#') {
+                // #RGB shorthand
+                unsigned long val = std::stoul(tc.substr(1), nullptr, 16);
+                cr = ((val >> 8) & 0xF) / 15.0;
+                cg = ((val >> 4) & 0xF) / 15.0;
+                cb = (val & 0xF) / 15.0;
+                color_parsed = true;
+            } else if (tc.size() == 7 && tc[0] == '#') {
+                // #RRGGBB
+                unsigned long val = std::stoul(tc.substr(1), nullptr, 16);
+                cr = ((val >> 16) & 0xFF) / 255.0;
+                cg = ((val >> 8) & 0xFF) / 255.0;
+                cb = (val & 0xFF) / 255.0;
+                color_parsed = true;
+            }
+            if (color_parsed) {
+                NSColor* themeNsColor = [NSColor colorWithCalibratedRed:cr green:cg blue:cb alpha:1.0];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.window.backgroundColor = themeNsColor;
+                });
+            } else {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self.window.backgroundColor = [NSColor windowBackgroundColor];
+                });
+            }
+        } else {
+            self.window.backgroundColor = [NSColor windowBackgroundColor];
+        }
+
         // Handle <meta http-equiv="refresh"> auto-redirect/reload
         if (result.meta_refresh_delay >= 0) {
             [_metaRefreshTimer invalidate];
@@ -1731,6 +1789,47 @@ static std::string build_shell_message_html(const std::string& page_title,
             [tab.renderView updateWithRenderer:fallback.renderer.get()];
         }
         self.window.title = [NSString stringWithFormat:@"Error - %@", kBrowserAppName];
+    }
+
+    if (!_isAnimationRerender && animationsActive) {
+        [_animationTimer invalidate];
+        _animationTimer = nil;
+        _animationHTML = [NSString stringWithUTF8String:html.c_str()];
+        _animationTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 60.0)
+                                                           target:self
+                                                         selector:@selector(animationTimerFired:)
+                                                         userInfo:nil
+                                                          repeats:YES];
+    } else if (!animationsActive) {
+        [_animationTimer invalidate];
+        _animationTimer = nil;
+        _animationHTML = nil;
+    }
+}
+
+- (void)animationTimerFired:(NSTimer*)timer {
+    (void)timer;
+    if (!clever::paint::render_has_active_animations()) {
+        [_animationTimer invalidate];
+        _animationTimer = nil;
+        _animationHTML = nil;
+        return;
+    }
+    BrowserTab* tab = [self activeTab];
+    if (!tab || !_animationHTML) {
+        [_animationTimer invalidate];
+        _animationTimer = nil;
+        _animationHTML = nil;
+        return;
+    }
+    _isAnimationRerender = YES;
+    std::string animHtml([_animationHTML UTF8String]);
+    [self doRender:animHtml];
+    _isAnimationRerender = NO;
+    if (!clever::paint::render_has_active_animations()) {
+        [_animationTimer invalidate];
+        _animationTimer = nil;
+        _animationHTML = nil;
     }
 }
 

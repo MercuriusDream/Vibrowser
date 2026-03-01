@@ -1061,6 +1061,27 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
         return;
     }
 
+    // Resolve deferred percentage min/max constraints against the containing block.
+    // css_min_width / css_max_width store the raw CSS value; resolve them here
+    // so that apply_min_max_constraints() uses the correct resolved pixel values.
+    {
+        if (node.css_min_width.has_value()) {
+            node.min_width = node.css_min_width->to_px(containing_width);
+        }
+        if (node.css_max_width.has_value()) {
+            node.max_width = node.css_max_width->to_px(containing_width);
+        }
+        float cb_height = (node.parent && node.parent->specified_height >= 0)
+                          ? node.parent->specified_height
+                          : viewport_height_;
+        if (node.css_min_height.has_value()) {
+            node.min_height = node.css_min_height->to_px(cb_height);
+        }
+        if (node.css_max_height.has_value()) {
+            node.max_height = node.css_max_height->to_px(cb_height);
+        }
+    }
+
     // Inline element with specified dimensions
     if (node.specified_width >= 0) {
         node.geometry.width = node.specified_width;
@@ -1321,10 +1342,15 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                 layout_block(*child, layout_width);
                 break;
             case LayoutMode::InlineBlock:
-                // Inline-block shrink-wraps to content unless explicit width
+                // Inline-block shrink-wraps to content unless explicit width.
+                // Always pass layout_width as the containing_width so that
+                // percentage min/max (e.g. max-width:100%) resolve against the
+                // parent container, not the element's own intrinsic size.
                 if (child->specified_width >= 0) {
+                    // Pre-assign geometry.width so it is set even when parent
+                    // pointer is null (unit tests may not use append_child).
                     child->geometry.width = child->specified_width;
-                    layout_block(*child, child->specified_width);
+                    layout_block(*child, layout_width);
                 } else {
                     layout_block(*child, layout_width);
                     // Shrink-wrap width to content
@@ -1777,10 +1803,14 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                     child->display == DisplayType::InlineBlock) {
                     // Inline-block uses block formatting internally, but
                     // participates in this inline formatting context as one box.
+                    // Always pass containing_width so percentage min/max (e.g.
+                    // max-width:100%) resolve against the parent, not the child.
                     if (child->specified_width >= 0) {
+                        // Pre-assign so width is set even when parent == nullptr
+                        // (unit tests that don't use append_child).
                         child->geometry.width = child->specified_width;
                     }
-                    layout_block(*child, child->specified_width >= 0 ? child->specified_width : containing_width);
+                    layout_block(*child, containing_width);
                     if (child->specified_width < 0) {
                         float max_child_w = 0;
                         for (auto& gc : child->children) {
@@ -1981,11 +2011,14 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
         // Layout child — InlineBlock uses block model internally but participates inline
         if (child->mode == LayoutMode::InlineBlock ||
             child->display == DisplayType::InlineBlock) {
-            // Shrink-wrap: use specified width or compute from content
+            // Always pass containing_width so percentage min/max (e.g. max-width:100%)
+            // resolve against the parent container, not the child's own intrinsic size.
             if (child->specified_width >= 0) {
+                // Pre-assign so width is set even when parent == nullptr
+                // (unit tests that use children.push_back instead of append_child).
                 child->geometry.width = child->specified_width;
             }
-            layout_block(*child, child->specified_width >= 0 ? child->specified_width : containing_width);
+            layout_block(*child, containing_width);
             // Shrink-wrap width to content if no explicit width
             if (child->specified_width < 0) {
                 // When parent has text-align center/right, the centering offset

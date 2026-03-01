@@ -4189,8 +4189,10 @@ TEST(PainterTest, BackgroundPositionCenter) {
     node.bg_image_height = 20;
     node.background_size = 0; // auto (natural size 20x20)
     node.background_repeat = 3; // no-repeat
-    node.bg_position_x = -2; // center
-    node.bg_position_y = -2; // center
+    node.bg_position_x = 50.0f; // 50% = center
+    node.bg_position_x_pct = true;
+    node.bg_position_y = 50.0f; // 50% = center
+    node.bg_position_y_pct = true;
 
     Painter painter;
     auto list = painter.paint(node);
@@ -37739,8 +37741,10 @@ TEST(PainterTest, BackgroundAttachmentScrollDefault) {
     node.bg_image_height = 10;
     node.background_size = 0; // auto
     node.background_repeat = 3; // no-repeat
-    node.bg_position_x = -1; // left
-    node.bg_position_y = -1; // top
+    node.bg_position_x = 0.0f; // left (0px offset)
+    node.bg_position_x_pct = false;
+    node.bg_position_y = 0.0f; // top (0px offset)
+    node.bg_position_y_pct = false;
     node.bg_attachment = 0; // scroll (default)
 
     Painter painter;
@@ -37776,8 +37780,10 @@ TEST(PainterTest, BackgroundAttachmentFixed) {
     node.bg_image_height = 10;
     node.background_size = 0; // auto (10x10)
     node.background_repeat = 3; // no-repeat
-    node.bg_position_x = -1; // left
-    node.bg_position_y = -1; // top
+    node.bg_position_x = 0.0f; // left (0px offset)
+    node.bg_position_x_pct = false;
+    node.bg_position_y = 0.0f; // top (0px offset)
+    node.bg_position_y_pct = false;
     node.bg_attachment = 1; // fixed
 
     // Set viewport dimensions
@@ -37821,8 +37827,10 @@ TEST(PainterTest, BackgroundAttachmentLocal) {
     node.bg_image_height = 10;
     node.background_size = 0;
     node.background_repeat = 3;
-    node.bg_position_x = -1;
-    node.bg_position_y = -1;
+    node.bg_position_x = 0.0f; // left (0px offset)
+    node.bg_position_x_pct = false;
+    node.bg_position_y = 0.0f; // top (0px offset)
+    node.bg_position_y_pct = false;
     node.bg_attachment = 2; // local
 
     Painter painter;
