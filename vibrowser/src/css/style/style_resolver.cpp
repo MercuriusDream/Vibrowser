@@ -241,6 +241,10 @@ ComputedStyle PropertyCascade::cascade(
     style.accent_color = parent_style.accent_color;
     style.color_interpolation = parent_style.color_interpolation;
 
+    // CSS custom properties (--foo) are inherited by default (CSS spec)
+    // Inherit ALL parent custom properties so var() resolution can access them
+    style.custom_properties = parent_style.custom_properties;
+
     // Build a list of all declarations with their priority
     struct PrioritizedDecl {
         const Declaration* decl;
@@ -3115,23 +3119,68 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "object-position") {
         auto parts = split_whitespace(value_lower);
-        auto parse_pos = [](const std::string& s) -> float {
-            if (s == "left" || s == "top") return 0.0f;
+        auto parse_pos = [](const std::string& s, bool is_x_axis) -> float {
+            if (is_x_axis) {
+                if (s == "left") return 0.0f;
+                if (s == "right") return 100.0f;
+                if (s == "top") return 0.0f;
+                if (s == "bottom") return 100.0f;
+            } else {
+                if (s == "top") return 0.0f;
+                if (s == "bottom") return 100.0f;
+                if (s == "left") return 0.0f;
+                if (s == "right") return 100.0f;
+            }
             if (s == "center") return 50.0f;
-            if (s == "right" || s == "bottom") return 100.0f;
             if (!s.empty() && s.back() == '%') {
-                try { return std::stof(s); } catch (...) { return 50.0f; }
+                try { return std::stof(s.substr(0, s.size() - 1)); } catch (...) { return 50.0f; }
             }
             try { return std::stof(s); } catch (...) { return 50.0f; }
         };
+        auto token_axis = [](const std::string& s) -> int {
+            if (s == "left" || s == "right") return 0;
+            if (s == "top" || s == "bottom") return 1;
+            return 2;
+        };
+        auto clamp_position = [](float v) -> float {
+            if (v < 0.0f) return 0.0f;
+            if (v > 100.0f) return 100.0f;
+            return v;
+        };
+
+        float object_x = 50.0f;
+        float object_y = 50.0f;
+
         if (parts.size() >= 2) {
-            style.object_position_x = parse_pos(parts[0]);
-            style.object_position_y = parse_pos(parts[1]);
+            int a0 = token_axis(parts[0]);
+            int a1 = token_axis(parts[1]);
+            float p0_x = clamp_position(parse_pos(parts[0], true));
+            float p0_y = clamp_position(parse_pos(parts[0], false));
+            float p1_x = clamp_position(parse_pos(parts[1], true));
+            float p1_y = clamp_position(parse_pos(parts[1], false));
+
+            if (a0 == 1 && a1 != 1) {
+                object_x = p1_x;
+                object_y = p0_y;
+            } else if (a1 == 1) {
+                object_x = p0_x;
+                object_y = p1_y;
+            } else {
+                object_x = p0_x;
+                object_y = p1_y;
+            }
         } else if (parts.size() == 1) {
-            float v = parse_pos(parts[0]);
-            style.object_position_x = v;
-            style.object_position_y = v;
+            const std::string& token = parts[0];
+            if (token_axis(token) == 1) {
+                object_x = 50.0f;
+                object_y = clamp_position(parse_pos(token, false));
+            } else {
+                object_x = clamp_position(parse_pos(token, true));
+                object_y = 50.0f;
+            }
         }
+        style.object_position_x = object_x;
+        style.object_position_y = object_y;
         return;
     }
     if (prop == "flex-grow") {
