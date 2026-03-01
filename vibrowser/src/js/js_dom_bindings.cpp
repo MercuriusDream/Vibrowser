@@ -14,8 +14,12 @@ extern "C" {
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cctype>
+#include <cerrno>
+#include <cstdlib>
 #include <functional>
 #include <map>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -60,11 +64,27 @@ struct EventListenerEntry {
     bool passive = false;
 };
 
+struct ConstraintValidationState {
+    bool value_missing = false;
+    bool type_mismatch = false;
+    bool pattern_mismatch = false;
+    bool too_short = false;
+    bool too_long = false;
+    bool range_underflow = false;
+    bool range_overflow = false;
+    bool step_mismatch = false;
+    bool bad_input = false;
+    bool custom_error = false;
+    bool valid = true;
+};
+
 struct DOMState {
     clever::html::SimpleNode* root = nullptr;
     bool modified = false;
     std::string title;
     bool title_set = false;
+    std::unordered_map<void*, std::string> custom_validity_messages;
+    std::unordered_map<void*, ConstraintValidationState> validation_states;
     // Owned nodes created by createElement/createTextNode that have not yet
     // been attached to the tree.  Once appendChild moves them into the tree
     // the unique_ptr is released from here.
@@ -1009,6 +1029,759 @@ static std::string to_lower_str(const std::string& s) {
     std::transform(result.begin(), result.end(), result.begin(),
                    [](unsigned char c) { return std::tolower(c); });
     return result;
+}
+
+static std::string trim_copy(std::string value) {
+    const auto is_space = [](unsigned char c) { return std::isspace(c); };
+    while (!value.empty() && is_space(static_cast<unsigned char>(value.front()))) {
+        value.erase(value.begin());
+    }
+    while (!value.empty() && is_space(static_cast<unsigned char>(value.back()))) {
+        value.pop_back();
+    }
+    return value;
+}
+
+static bool parse_number(const std::string& input, double& out_value) {
+    std::string s = trim_copy(input);
+    if (s.empty()) return false;
+    char* end = nullptr;
+    errno = 0;
+    out_value = std::strtod(s.c_str(), &end);
+    if (errno == ERANGE || !end || end == s.c_str()) return false;
+    while (*end) {
+        if (!std::isspace(static_cast<unsigned char>(*end))) return false;
+        ++end;
+    }
+    return true;
+}
+
+static bool parse_int(const std::string& input, int& out_value) {
+    std::string s = trim_copy(input);
+    if (s.empty()) return false;
+    char* end = nullptr;
+    errno = 0;
+    long parsed = std::strtol(s.c_str(), &end, 10);
+    if (errno == ERANGE || !end || end == s.c_str()) return false;
+    while (*end) {
+        if (!std::isspace(static_cast<unsigned char>(*end))) return false;
+        ++end;
+    }
+    out_value = static_cast<int>(parsed);
+    return true;
+}
+
+static bool parse_int_attr(const clever::html::SimpleNode& node,
+                          const std::string& attr_name,
+                          int& out_value) {
+    return parse_int(get_attr(node, attr_name), out_value);
+}
+
+static bool parse_datetime_date(const std::string& value, long long& out_days) {
+    static const std::regex date_re(R"(^(\d{4})-(\d{2})-(\d{2})$)");
+    std::smatch match;
+    if (!std::regex_match(value, match, date_re)) return false;
+
+    int year = std::stoi(match[1].str());
+    int month = std::stoi(match[2].str());
+    int day = std::stoi(match[3].str());
+    if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+
+    auto is_leap = [](int y) { return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0); };
+    static const int mdays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+    if (day > mdays[month - 1] + (month == 2 && is_leap(year) ? 1 : 0)) return false;
+
+    int y = year;
+    int m = month;
+    y -= m <= 2;
+    const int era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned ey = static_cast<unsigned>(y - era * 400);
+    const unsigned em = static_cast<unsigned>(m + (m > 2 ? -3 : 9));
+    const unsigned er = ey / 400 - ey / 100 + ey / 4;
+    const unsigned ed = (153 * em + 2) / 5 + (static_cast<unsigned>(day) - 1);
+    out_days = static_cast<long long>(era * 146097LL + static_cast<long long>(ey * 365 + er + ed));
+    return true;
+}
+
+static bool parse_time_seconds(const std::string& value, long long& out_seconds) {
+    static const std::regex time_re(R"(^(\d{2}):(\d{2})(?::(\d{2}))?$)");
+    std::smatch match;
+    if (!std::regex_match(value, match, time_re)) return false;
+
+    int hour = std::stoi(match[1].str());
+    int minute = std::stoi(match[2].str());
+    int second = match[3].matched ? std::stoi(match[3].str()) : 0;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
+        second < 0 || second > 59) return false;
+
+    out_seconds = (hour * 60LL + minute) * 60LL + second;
+    return true;
+}
+
+static bool is_form_control(clever::html::SimpleNode* node) {
+    if (!node || node->type != clever::html::SimpleNode::Element) return false;
+    const std::string tag = to_lower_str(node->tag_name);
+    return tag == "input" || tag == "textarea" || tag == "select" ||
+           tag == "button";
+}
+
+static bool is_valid_email(const std::string& value) {
+    static const std::regex email_re(R"(^[^@\s]+@[^@\s]+\.[^@\s]+$)");
+    return std::regex_match(value, email_re);
+}
+
+static std::string get_input_type(clever::html::SimpleNode* node) {
+    if (!node) return "";
+    if (to_lower_str(node->tag_name) != "input") return "";
+    std::string type = to_lower_str(get_attr(*node, "type"));
+    if (type.empty()) return "text";
+    return type;
+}
+
+static std::string get_form_control_value(clever::html::SimpleNode* node) {
+    if (!node || node->type != clever::html::SimpleNode::Element) return "";
+    const std::string tag = to_lower_str(node->tag_name);
+
+    if (tag == "textarea") {
+        return node->text_content();
+    }
+
+    if (tag == "select") {
+        std::string fallback;
+        bool found = false;
+        for (auto& child : node->children) {
+            if (child->type != clever::html::SimpleNode::Element ||
+                to_lower_str(child->tag_name) != "option") {
+                continue;
+            }
+            if (has_attr(*child, "selected")) {
+                std::string selected = get_attr(*child, "value");
+                if (selected.empty()) selected = child->text_content();
+                return selected;
+            }
+            if (!found) {
+                found = true;
+                fallback = get_attr(*child, "value");
+                if (fallback.empty()) fallback = child->text_content();
+            }
+        }
+        return found ? fallback : "";
+    }
+
+    if (tag == "button") {
+        return get_attr(*node, "value");
+    }
+
+    if (tag != "input") {
+        return get_attr(*node, "value");
+    }
+
+    const std::string type = get_input_type(node);
+    if (type == "checkbox" || type == "radio") {
+        if (!has_attr(*node, "checked")) return "";
+        std::string value = get_attr(*node, "value");
+        return value.empty() ? "on" : value;
+    }
+    return get_attr(*node, "value");
+}
+
+static bool is_barred_from_validation(clever::html::SimpleNode* node) {
+    if (!node || node->type != clever::html::SimpleNode::Element) return true;
+    if (!is_form_control(node)) return true;
+    if (has_attr(*node, "disabled")) return true;
+
+    const std::string tag = to_lower_str(node->tag_name);
+    if (tag == "input") {
+        const std::string type = get_input_type(node);
+        if (type == "hidden" || type == "button" ||
+            type == "reset" || type == "image") {
+            return true;
+        }
+    } else if (tag == "button") {
+        std::string type = to_lower_str(get_attr(*node, "type"));
+        if (type.empty()) type = "submit";
+        if (type == "button" || type == "reset") return true;
+    }
+    return false;
+}
+
+static void collect_form_controls(clever::html::SimpleNode* root,
+                                 std::vector<clever::html::SimpleNode*>& controls) {
+    if (!root) return;
+    for (auto& child_ptr : root->children) {
+        auto* child = child_ptr.get();
+        if (!child || child->type != clever::html::SimpleNode::Element) continue;
+        const std::string tag = to_lower_str(child->tag_name);
+        if (tag == "form") {
+            continue;
+        }
+        if (is_form_control(child)) {
+            controls.push_back(child);
+        }
+        collect_form_controls(child, controls);
+    }
+}
+
+static bool radio_group_has_checked(clever::html::SimpleNode* node) {
+    if (!node || node->type != clever::html::SimpleNode::Element) return false;
+    std::string name = get_attr(*node, "name");
+    if (!has_attr(*node, "checked")) return false;
+    if (name.empty()) return true;
+
+    clever::html::SimpleNode* form = node->parent;
+    while (form && !(form->type == clever::html::SimpleNode::Element &&
+                     to_lower_str(form->tag_name) == "form")) {
+        form = form->parent;
+    }
+
+    auto walk = [&](auto&& self, clever::html::SimpleNode* current) -> bool {
+        if (!current || current->type != clever::html::SimpleNode::Element) return false;
+        if (to_lower_str(current->tag_name) == "input" &&
+            to_lower_str(get_attr(*current, "type")) == "radio") {
+            if (get_attr(*current, "name") == name && has_attr(*current, "checked")) {
+                return true;
+            }
+        }
+        for (auto& child : current->children) {
+            if (self(self, child.get())) return true;
+        }
+        return false;
+    };
+
+    if (form) return walk(walk, form);
+    if (node->parent) {
+        for (auto& sibling : node->parent->children) {
+            if (walk(walk, sibling.get())) return true;
+        }
+    }
+    return walk(walk, node->parent);
+}
+
+static bool is_valid_type(clever::html::SimpleNode* node,
+                         const std::string& value) {
+    if (!node || node->type != clever::html::SimpleNode::Element) return false;
+    if (to_lower_str(node->tag_name) != "input") return true;
+
+    const std::string type = get_input_type(node);
+    const std::string trimmed = trim_copy(value);
+    if (trimmed.empty()) return true;
+
+    if (type == "number" || type == "range") {
+        double parsed = 0.0;
+        return parse_number(trimmed, parsed);
+    }
+    if (type == "date") {
+        long long date_value = 0;
+        return parse_datetime_date(trimmed, date_value);
+    }
+    if (type == "time") {
+        long long time_value = 0;
+        return parse_time_seconds(trimmed, time_value);
+    }
+    if (type == "email") return is_valid_email(trimmed);
+    if (type == "url") {
+        static const std::regex url_re(R"(^[a-zA-Z][a-zA-Z0-9+.\-]*://.+)");
+        return std::regex_match(trimmed, url_re);
+    }
+    return true;
+}
+
+static ConstraintValidationState check_constraint_validity(clever::html::SimpleNode* node) {
+    ConstraintValidationState state;
+    if (!node || node->type != clever::html::SimpleNode::Element) {
+        return state;
+    }
+    if (!is_form_control(node) || is_barred_from_validation(node)) {
+        state.valid = true;
+        return state;
+    }
+
+    const std::string tag = to_lower_str(node->tag_name);
+    const std::string value = get_form_control_value(node);
+    const std::string trimmed = trim_copy(value);
+    const std::string input_type = get_input_type(node);
+
+    if (has_attr(*node, "required")) {
+        if (tag == "input" && input_type == "checkbox") {
+            state.value_missing = !has_attr(*node, "checked");
+        } else if (tag == "input" && input_type == "radio") {
+            state.value_missing = !radio_group_has_checked(node);
+        } else if (tag == "select") {
+            bool found_selected = false;
+            for (auto& child : node->children) {
+                if (child->type == clever::html::SimpleNode::Element &&
+                    to_lower_str(child->tag_name) == "option" &&
+                    has_attr(*child, "selected")) {
+                    found_selected = true;
+                    break;
+                }
+            }
+            if (!found_selected && !node->children.empty()) found_selected = true;
+            state.value_missing = !found_selected;
+        } else {
+            state.value_missing = trimmed.empty();
+        }
+    }
+
+    if (tag == "input") {
+        if (!trimmed.empty()) {
+            state.type_mismatch = !is_valid_type(node, trimmed);
+        }
+
+        if (!trimmed.empty() &&
+            (input_type == "number" || input_type == "range")) {
+            double num = 0.0;
+            if (!parse_number(trimmed, num)) {
+                state.bad_input = true;
+                state.type_mismatch = true;
+            } else {
+                double min_value = 0.0;
+                double max_value = 0.0;
+                if (parse_number(get_attr(*node, "min"), min_value) && num < min_value) {
+                    state.range_underflow = true;
+                }
+                if (parse_number(get_attr(*node, "max"), max_value) && num > max_value) {
+                    state.range_overflow = true;
+                }
+
+                double step_value = 0.0;
+                std::string step_attr = trim_copy(to_lower_str(get_attr(*node, "step")));
+                if (!step_attr.empty() && step_attr != "any" &&
+                    parse_number(step_attr, step_value) && step_value > 0.0) {
+                    double step_base = 0.0;
+                    if (!parse_number(get_attr(*node, "min"), step_base)) {
+                        step_base = 0.0;
+                    }
+                    double rem = std::fmod(num - step_base, step_value);
+                    if (rem < 0) rem = -rem;
+                    state.step_mismatch = rem > 1e-9 && rem < step_value - 1e-9;
+                }
+            }
+        } else if (!trimmed.empty() && input_type == "date") {
+            long long date_value = 0;
+            if (!parse_datetime_date(trimmed, date_value)) {
+                state.bad_input = true;
+            } else {
+                long long min_value = 0;
+                if (parse_datetime_date(get_attr(*node, "min"), min_value) &&
+                    date_value < min_value) {
+                    state.range_underflow = true;
+                }
+                long long max_value = 0;
+                if (parse_datetime_date(get_attr(*node, "max"), max_value) &&
+                    date_value > max_value) {
+                    state.range_overflow = true;
+                }
+
+                std::string step_attr = trim_copy(to_lower_str(get_attr(*node, "step")));
+                double step_value = 0.0;
+                if (!step_attr.empty() && step_attr != "any" &&
+                    parse_number(step_attr, step_value) && step_value > 0.0) {
+                    long long step_base = 0;
+                    if (parse_datetime_date(get_attr(*node, "min"), step_base)) {
+                        double rem = std::fmod(static_cast<double>(date_value - step_base),
+                                              step_value);
+                        if (rem < 0) rem = -rem;
+                        state.step_mismatch = rem > 1e-9 && rem < step_value - 1e-9;
+                    } else {
+                        double rem = std::fmod(static_cast<double>(date_value), step_value);
+                        if (rem < 0) rem = -rem;
+                        state.step_mismatch = rem > 1e-9 && rem < step_value - 1e-9;
+                    }
+                }
+            }
+        } else if (!trimmed.empty() && input_type == "time") {
+            long long time_value = 0;
+            if (!parse_time_seconds(trimmed, time_value)) {
+                state.bad_input = true;
+            } else {
+                long long min_value = 0;
+                if (parse_time_seconds(get_attr(*node, "min"), min_value) &&
+                    time_value < min_value) {
+                    state.range_underflow = true;
+                }
+                long long max_value = 0;
+                if (parse_time_seconds(get_attr(*node, "max"), max_value) &&
+                    time_value > max_value) {
+                    state.range_overflow = true;
+                }
+                double step_value = 0.0;
+                std::string step_attr = trim_copy(to_lower_str(get_attr(*node, "step")));
+                if (!step_attr.empty() && step_attr != "any" &&
+                    parse_number(step_attr, step_value) && step_value > 0.0) {
+                    double rem = std::fmod(static_cast<double>(time_value), step_value);
+                    if (rem < 0) rem = -rem;
+                    state.step_mismatch = rem > 1e-9 && rem < step_value - 1e-9;
+                }
+            }
+        }
+
+        if ((input_type == "text" || input_type == "password" ||
+             input_type == "search" || input_type == "tel" ||
+             input_type == "email" || input_type == "url") &&
+            has_attr(*node, "pattern")) {
+            std::string pattern = get_attr(*node, "pattern");
+            try {
+                std::regex pattern_re(pattern);
+                state.pattern_mismatch = !std::regex_match(value, pattern_re);
+            } catch (...) {
+                state.pattern_mismatch = false;
+            }
+        }
+
+        if ((input_type == "text" || input_type == "password" ||
+             input_type == "search" || input_type == "tel" ||
+             input_type == "email" || input_type == "url") &&
+            !state.bad_input) {
+            int min_length = 0;
+            int max_length = 0;
+            if (parse_int_attr(*node, "minlength", min_length) &&
+                static_cast<int>(trimmed.size()) < min_length) {
+                state.too_short = true;
+            }
+            if (parse_int_attr(*node, "maxlength", max_length) &&
+                static_cast<int>(trimmed.size()) > max_length) {
+                state.too_long = true;
+            }
+        }
+    } else if (tag == "textarea") {
+        if (has_attr(*node, "required")) {
+            state.value_missing = trimmed.empty();
+        }
+        int min_length = 0;
+        int max_length = 0;
+        if (parse_int_attr(*node, "minlength", min_length) &&
+            static_cast<int>(trimmed.size()) < min_length) {
+            state.too_short = true;
+        }
+        if (parse_int_attr(*node, "maxlength", max_length) &&
+            static_cast<int>(trimmed.size()) > max_length) {
+            state.too_long = true;
+        }
+    } else if (tag == "select") {
+        if (has_attr(*node, "required")) {
+            bool found_selected = false;
+            for (auto& child : node->children) {
+                if (child->type == clever::html::SimpleNode::Element &&
+                    to_lower_str(child->tag_name) == "option" &&
+                    has_attr(*child, "selected")) {
+                    found_selected = true;
+                    break;
+                }
+            }
+            if (!found_selected && !node->children.empty()) found_selected = true;
+            state.value_missing = !found_selected;
+        }
+    }
+
+    state.valid = !(state.value_missing || state.type_mismatch || state.pattern_mismatch ||
+                    state.too_short || state.too_long || state.range_underflow ||
+                    state.range_overflow || state.step_mismatch || state.bad_input ||
+                    state.custom_error);
+    return state;
+}
+
+// Helper: get custom validity message for a node
+static std::string get_custom_message(DOMState* state, clever::html::SimpleNode* node) {
+    if (!state || !node) return "";
+    auto it = state->custom_validity_messages.find(static_cast<void*>(node));
+    if (it != state->custom_validity_messages.end()) return it->second;
+    return "";
+}
+
+// Helper: store constraint validation state for a node
+static void set_constraint_state(DOMState* state, clever::html::SimpleNode* node,
+                                 const ConstraintValidationState& cvs) {
+    if (!state || !node) return;
+    state->validation_states[static_cast<void*>(node)] = cvs;
+}
+
+static ConstraintValidationState get_validation_state(DOMState* state,
+                                                    clever::html::SimpleNode* node) {
+    ConstraintValidationState result = check_constraint_validity(node);
+    if (!state || !node) return result;
+
+    std::string custom_msg = get_custom_message(state, node);
+    result.custom_error = !custom_msg.empty();
+    result.valid = !(result.value_missing || result.type_mismatch ||
+                    result.pattern_mismatch || result.too_short ||
+                    result.too_long || result.range_underflow ||
+                    result.range_overflow || result.step_mismatch ||
+                    result.bad_input || result.custom_error);
+    set_constraint_state(state, node, result);
+    return result;
+}
+
+static void set_custom_validity_state(DOMState* state, clever::html::SimpleNode* node,
+                                     const std::string& message) {
+    if (!state || !node) return;
+    if (message.empty()) state->custom_validity_messages.erase(static_cast<void*>(node));
+    else state->custom_validity_messages[static_cast<void*>(node)] = message;
+
+    ConstraintValidationState result = check_constraint_validity(node);
+    result.custom_error = !message.empty();
+    result.valid = !(result.value_missing || result.type_mismatch ||
+                     result.pattern_mismatch || result.too_short ||
+                     result.too_long || result.range_underflow ||
+                     result.range_overflow || result.step_mismatch ||
+                     result.bad_input || result.custom_error);
+    set_constraint_state(state, node, result);
+}
+
+static JSValue build_validity_state_object(JSContext* ctx,
+                                          const ConstraintValidationState& state) {
+    JSValue result = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, result, "valueMissing", JS_NewBool(ctx, state.value_missing));
+    JS_SetPropertyStr(ctx, result, "typeMismatch", JS_NewBool(ctx, state.type_mismatch));
+    JS_SetPropertyStr(ctx, result, "patternMismatch", JS_NewBool(ctx, state.pattern_mismatch));
+    JS_SetPropertyStr(ctx, result, "tooShort", JS_NewBool(ctx, state.too_short));
+    JS_SetPropertyStr(ctx, result, "tooLong", JS_NewBool(ctx, state.too_long));
+    JS_SetPropertyStr(ctx, result, "rangeUnderflow", JS_NewBool(ctx, state.range_underflow));
+    JS_SetPropertyStr(ctx, result, "rangeOverflow", JS_NewBool(ctx, state.range_overflow));
+    JS_SetPropertyStr(ctx, result, "stepMismatch", JS_NewBool(ctx, state.step_mismatch));
+    JS_SetPropertyStr(ctx, result, "badInput", JS_NewBool(ctx, state.bad_input));
+    JS_SetPropertyStr(ctx, result, "customError", JS_NewBool(ctx, state.custom_error));
+    JS_SetPropertyStr(ctx, result, "valid", JS_NewBool(ctx, state.valid));
+    return result;
+}
+
+static std::string build_validation_message(clever::html::SimpleNode* node,
+                                           const ConstraintValidationState& state,
+                                           const std::string& custom_message) {
+    if (!node || node->type != clever::html::SimpleNode::Element) return "";
+    if (!custom_message.empty()) return custom_message;
+    if (state.value_missing) return "Please fill out this field.";
+    if (state.type_mismatch) {
+        std::string type = get_input_type(node);
+        if (type == "email") return "Please enter a valid email address.";
+        if (type == "url") return "Please enter a valid URL.";
+        return "Please enter a valid value.";
+    }
+    if (state.pattern_mismatch) return "Please match the requested format.";
+    if (state.too_short) {
+        std::string min_len = get_attr(*node, "minlength");
+        return "Please lengthen this text to " + min_len + " characters or more.";
+    }
+    if (state.too_long) {
+        std::string max_len = get_attr(*node, "maxlength");
+        return "Please shorten this text to " + max_len + " characters or less.";
+    }
+    if (state.range_underflow) {
+        return "Value must be greater than or equal to " + get_attr(*node, "min") + ".";
+    }
+    if (state.range_overflow) {
+        return "Value must be less than or equal to " + get_attr(*node, "max") + ".";
+    }
+    if (state.step_mismatch) return "Please enter a valid value (step mismatch).";
+    if (state.bad_input) return "Please enter a valid value.";
+    return "";
+}
+
+// Forward declaration for dispatch_event_propagated (defined later in file)
+static bool dispatch_event_propagated(JSContext* ctx, DOMState* state,
+                                      clever::html::SimpleNode* target, JSValue event_obj,
+                                      const std::string& event_type, bool bubbles);
+
+static void dispatch_invalid_event(JSContext* ctx, DOMState* state,
+                                 clever::html::SimpleNode* control) {
+    if (!ctx || !state || !control) return;
+    JSValue evt = JS_NewObject(state->ctx);
+    JS_SetPropertyStr(state->ctx, evt, "type", JS_NewString(state->ctx, "invalid"));
+    JS_SetPropertyStr(state->ctx, evt, "bubbles", JS_FALSE);
+    JS_SetPropertyStr(state->ctx, evt, "cancelable", JS_TRUE);
+    JS_SetPropertyStr(state->ctx, evt, "defaultPrevented", JS_FALSE);
+    JS_SetPropertyStr(state->ctx, evt, "eventPhase", JS_NewInt32(state->ctx, 0));
+    JS_SetPropertyStr(state->ctx, evt, "target", JS_NULL);
+    JS_SetPropertyStr(state->ctx, evt, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(state->ctx, evt, "timeStamp", JS_NewFloat64(state->ctx, 0.0));
+    JS_SetPropertyStr(state->ctx, evt, "__stopped", JS_FALSE);
+    JS_SetPropertyStr(state->ctx, evt, "__immediate_stopped", JS_FALSE);
+
+    const char* evt_methods = R"JS(
+        (function() {
+            var evt = this;
+            evt.preventDefault = function() { evt.defaultPrevented = true; };
+            evt.stopPropagation = function() { evt.__stopped = true; };
+            evt.stopImmediatePropagation = function() {
+                evt.__stopped = true;
+                evt.__immediate_stopped = true;
+            };
+            evt.composedPath = function() {
+                var arr = evt.__composedPathArray;
+                if (!arr) return [];
+                var result = [];
+                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
+                return result;
+            };
+        })
+    )JS";
+    JSValue setup_fn = JS_Eval(state->ctx, evt_methods, std::strlen(evt_methods),
+                               "<invalid-event>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsFunction(state->ctx, setup_fn)) {
+        JSValue setup_ret = JS_Call(state->ctx, setup_fn, evt, 0, nullptr);
+        JS_FreeValue(state->ctx, setup_ret);
+    }
+    JS_FreeValue(state->ctx, setup_fn);
+
+    dispatch_event_propagated(state->ctx, state, control, evt, "invalid", false);
+    JS_FreeValue(state->ctx, evt);
+}
+
+static bool form_controls_all_valid(DOMState* state,
+                                   clever::html::SimpleNode* form,
+                                   bool dispatch_invalid) {
+    if (!form || form->type != clever::html::SimpleNode::Element) {
+        return true;
+    }
+    std::vector<clever::html::SimpleNode*> controls;
+    collect_form_controls(form, controls);
+
+    bool valid = true;
+    for (auto* control : controls) {
+        if (!control || is_barred_from_validation(control)) continue;
+        ConstraintValidationState result = get_validation_state(state, control);
+        set_constraint_state(state, control, result);
+
+        if (result.valid) continue;
+        valid = false;
+        if (dispatch_invalid && state && state->ctx) {
+            dispatch_invalid_event(state->ctx, state, control);
+        }
+    }
+    return valid;
+}
+
+// --- element.checkValidity() ---
+static JSValue js_element_check_validity(JSContext* ctx, JSValueConst this_val,
+                                        int /*argc*/, JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    auto* state = get_dom_state(ctx);
+    if (!node || !state) return JS_UNDEFINED;
+    if (node->type != clever::html::SimpleNode::Element) return JS_UNDEFINED;
+
+    const std::string tag = to_lower_str(node->tag_name);
+    if (tag == "form") {
+        return JS_NewBool(ctx, form_controls_all_valid(state, node, false));
+    }
+
+    ConstraintValidationState cvs = get_validation_state(state, node);
+    return JS_NewBool(ctx, cvs.valid);
+}
+
+// --- element.reportValidity() ---
+static JSValue js_element_report_validity(JSContext* ctx, JSValueConst this_val,
+                                         int /*argc*/, JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    auto* state = get_dom_state(ctx);
+    if (!node || !state) return JS_UNDEFINED;
+    if (node->type != clever::html::SimpleNode::Element) return JS_UNDEFINED;
+
+    const std::string tag = to_lower_str(node->tag_name);
+    if (tag == "form") {
+        return JS_NewBool(ctx, form_controls_all_valid(state, node, true));
+    }
+
+    ConstraintValidationState cvs = get_validation_state(state, node);
+    if (cvs.valid) return JS_TRUE;
+    dispatch_invalid_event(state->ctx, state, node);
+    return JS_FALSE;
+}
+
+// --- element.setCustomValidity(message) ---
+static JSValue js_element_set_custom_validity(JSContext* ctx, JSValueConst this_val,
+                                            int argc, JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    auto* state = get_dom_state(ctx);
+    if (!node || !state) return JS_UNDEFINED;
+
+    std::string message;
+    if (argc > 0) {
+        const char* msg = JS_ToCString(ctx, argv[0]);
+        if (msg) {
+            message = msg;
+            JS_FreeCString(ctx, msg);
+        }
+    }
+    set_custom_validity_state(state, node, message);
+    return JS_UNDEFINED;
+}
+
+// --- element.__getValidity ---
+static JSValue js_element_get_validity_object(JSContext* ctx, JSValueConst this_val,
+                                            int /*argc*/, JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    auto* state = get_dom_state(ctx);
+    if (!node || !state || node->type != clever::html::SimpleNode::Element) {
+        return JS_UNDEFINED;
+    }
+
+    if (!is_form_control(node) || is_barred_from_validation(node)) {
+        ConstraintValidationState blank;
+        blank.valid = true;
+        return build_validity_state_object(ctx, blank);
+    }
+
+    return build_validity_state_object(ctx, get_validation_state(state, node));
+}
+
+// --- element.__getValidationMessage ---
+static JSValue js_element_get_validation_message(JSContext* ctx, JSValueConst this_val,
+                                               int /*argc*/, JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    auto* state = get_dom_state(ctx);
+    if (!node || !state || node->type != clever::html::SimpleNode::Element) {
+        return JS_UNDEFINED;
+    }
+    if (!is_form_control(node) || is_barred_from_validation(node)) return JS_NewString(ctx, "");
+
+    auto cvs = get_validation_state(state, node);
+    const std::string message = build_validation_message(
+        node, cvs, get_custom_message(state, node));
+    return JS_NewString(ctx, message.c_str());
+}
+
+// --- element.__getWillValidate ---
+static JSValue js_element_get_will_validate(JSContext* ctx, JSValueConst this_val,
+                                           int /*argc*/, JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node || node->type != clever::html::SimpleNode::Element) {
+        return JS_UNDEFINED;
+    }
+    bool will_validate = is_form_control(node) && !is_barred_from_validation(node);
+    return JS_NewBool(ctx, will_validate);
+}
+
+// --- form.__checkValidity() ---
+static JSValue js_form_check_validity(JSContext* ctx, JSValueConst this_val,
+                                     int argc, JSValueConst* argv) {
+    return js_element_check_validity(ctx, this_val, argc, argv);
+}
+
+// --- form.__reportValidity() ---
+static JSValue js_form_report_validity(JSContext* ctx, JSValueConst this_val,
+                                      int argc, JSValueConst* argv) {
+    return js_element_report_validity(ctx, this_val, argc, argv);
+}
+
+// --- form.__getElements() ---
+static JSValue js_form_get_elements(JSContext* ctx, JSValueConst this_val,
+                                   int /*argc*/, JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node || node->type != clever::html::SimpleNode::Element) return JS_UNDEFINED;
+    if (to_lower_str(node->tag_name) != "form") {
+        return JS_NewArray(ctx);
+    }
+
+    std::vector<clever::html::SimpleNode*> controls;
+    collect_form_controls(node, controls);
+
+    JSValue arr = JS_NewArray(ctx);
+    uint32_t index = 0;
+    for (auto* control : controls) {
+        if (!control) continue;
+        JS_SetPropertyUint32(ctx, arr, index++, wrap_element(ctx, control));
+    }
+    return arr;
 }
 
 // Build a full ElementView tree from a SimpleNode and its ancestors.
