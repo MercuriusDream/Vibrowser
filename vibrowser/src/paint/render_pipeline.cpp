@@ -16534,6 +16534,28 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     } else if (update.property_name == "color") {
                         target->color = argb;
                     }
+                } else if (update.has_length) {
+                    if (update.property_name == "width") {
+                        target->width = update.length_value;
+                    } else if (update.property_name == "height") {
+                        target->height = update.length_value;
+                    } else if (update.property_name == "margin-top") {
+                        target->margin_top = update.length_value;
+                    } else if (update.property_name == "margin-right") {
+                        target->margin_right = update.length_value;
+                    } else if (update.property_name == "margin-bottom") {
+                        target->margin_bottom = update.length_value;
+                    } else if (update.property_name == "margin-left") {
+                        target->margin_left = update.length_value;
+                    } else if (update.property_name == "padding-top") {
+                        target->padding_top = update.length_value;
+                    } else if (update.property_name == "padding-right") {
+                        target->padding_right = update.length_value;
+                    } else if (update.property_name == "padding-bottom") {
+                        target->padding_bottom = update.length_value;
+                    } else if (update.property_name == "padding-left") {
+                        target->padding_left = update.length_value;
+                    }
                 }
             }
             g_transition_animation_controller->clear_updates();
@@ -16622,6 +16644,28 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                         target->background_color = argb;
                     } else if (update.property_name == "color") {
                         target->color = argb;
+                    }
+                } else if (update.has_length) {
+                    if (update.property_name == "width") {
+                        target->width = update.length_value;
+                    } else if (update.property_name == "height") {
+                        target->height = update.length_value;
+                    } else if (update.property_name == "margin-top") {
+                        target->margin_top = update.length_value;
+                    } else if (update.property_name == "margin-right") {
+                        target->margin_right = update.length_value;
+                    } else if (update.property_name == "margin-bottom") {
+                        target->margin_bottom = update.length_value;
+                    } else if (update.property_name == "margin-left") {
+                        target->margin_left = update.length_value;
+                    } else if (update.property_name == "padding-top") {
+                        target->padding_top = update.length_value;
+                    } else if (update.property_name == "padding-right") {
+                        target->padding_right = update.length_value;
+                    } else if (update.property_name == "padding-bottom") {
+                        target->padding_bottom = update.length_value;
+                    } else if (update.property_name == "padding-left") {
+                        target->padding_left = update.length_value;
                     }
                 }
             }

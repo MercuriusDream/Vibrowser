@@ -19,9 +19,11 @@ struct PropertyUpdate {
     float float_value = 0.0f;
     clever::css::Color color_value;
     clever::css::Transform transform_value;
+    float length_value = 0.0f;
     bool has_float = false;
     bool has_color = false;
     bool has_transform = false;
+    bool has_length = false;
 };
 
 // Represents a single running animation or transition instance
@@ -49,6 +51,10 @@ struct AnimationInstance {
     clever::css::Transform from_transform;
     clever::css::Transform to_transform;
 
+    // Value storage for length properties (width, height, margin, padding, font-size)
+    float from_length = 0.0f;
+    float to_length = 0.0f;
+
     // Animation-specific parameters
     bool is_paused = false;
     int fill_mode = 0;          // 0=none, 1=forwards, 2=backwards, 3=both
@@ -61,6 +67,7 @@ struct AnimationInstance {
     bool has_float = false;
     bool has_color = false;
     bool has_transform = false;
+    bool has_length = false;
 };
 
 // Manages CSS Animations and Transitions runtime

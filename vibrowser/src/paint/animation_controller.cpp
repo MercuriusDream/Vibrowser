@@ -3,6 +3,8 @@
 #include <cmath>
 #include <algorithm>
 #include <set>
+#include <sstream>
+#include <cctype>
 
 namespace clever::paint {
 
@@ -22,6 +24,93 @@ extern clever::css::Color interpolate_color(const clever::css::Color& from,
                                             const clever::css::Color& to, float t);
 extern clever::css::Transform interpolate_transform(const clever::css::Transform& from,
                                                      const clever::css::Transform& to, float t);
+
+static float parse_length_value(const std::string& css_value) {
+    if (css_value.empty()) return 0.0f;
+
+    size_t i = 0;
+    bool has_minus = false;
+    if (css_value[0] == '-') {
+        has_minus = true;
+        i = 1;
+    }
+
+    float value = 0.0f;
+    bool has_decimal = false;
+
+    while (i < css_value.length() && (std::isdigit(css_value[i]) || css_value[i] == '.')) {
+        if (css_value[i] == '.') {
+            if (has_decimal) break;
+            has_decimal = true;
+        }
+        value = value * 10.0f + (css_value[i] - '0');
+        if (has_decimal) value /= 10.0f;
+        i++;
+    }
+
+    if (has_minus) value = -value;
+    return value;
+}
+
+static bool parse_color_value(const std::string& css_value, clever::css::Color& out_color) {
+    if (css_value.empty()) return false;
+
+    std::string lower = css_value;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+    if (lower[0] == '#') {
+        std::string hex = lower.substr(1);
+        if (hex.length() == 6 || hex.length() == 8) {
+            unsigned long val = std::stoul(hex, nullptr, 16);
+            if (hex.length() == 6) {
+                out_color.r = (val >> 16) & 0xFF;
+                out_color.g = (val >> 8) & 0xFF;
+                out_color.b = val & 0xFF;
+                out_color.a = 255;
+            } else {
+                out_color.r = (val >> 24) & 0xFF;
+                out_color.g = (val >> 16) & 0xFF;
+                out_color.b = (val >> 8) & 0xFF;
+                out_color.a = val & 0xFF;
+            }
+            return true;
+        }
+    }
+
+    if (lower.find("rgb") == 0) {
+        size_t start = lower.find('(');
+        size_t end = lower.find(')');
+        if (start != std::string::npos && end != std::string::npos) {
+            std::string content = lower.substr(start + 1, end - start - 1);
+            std::istringstream iss(content);
+            std::string part;
+            int rgb_idx = 0;
+            std::vector<int> rgb_vals;
+
+            while (std::getline(iss, part, ',') && rgb_idx < 4) {
+                part.erase(0, part.find_first_not_of(" \t"));
+                part.erase(part.find_last_not_of(" \t") + 1);
+                part.erase(std::remove_if(part.begin(), part.end(), [](char c) { return std::isalpha(c); }), part.end());
+                if (!part.empty()) {
+                    try {
+                        rgb_vals.push_back(std::stoi(part));
+                    } catch (...) {}
+                }
+                rgb_idx++;
+            }
+
+            if (rgb_vals.size() >= 3) {
+                out_color.r = std::clamp(rgb_vals[0], 0, 255);
+                out_color.g = std::clamp(rgb_vals[1], 0, 255);
+                out_color.b = std::clamp(rgb_vals[2], 0, 255);
+                out_color.a = rgb_vals.size() > 3 ? std::clamp(rgb_vals[3], 0, 255) : 255;
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 void AnimationController::tick(double delta_ms) {
     active_updates_.clear();
@@ -139,6 +228,9 @@ void AnimationController::interpolate_animation(AnimationInstance& anim, double 
     } else if (anim.has_transform) {
         update.transform_value = interpolate_transform(anim.from_transform, anim.to_transform, eased_progress);
         update.has_transform = true;
+    } else if (anim.has_length) {
+        update.length_value = interpolate_float(anim.from_length, anim.to_length, eased_progress);
+        update.has_length = true;
     }
 
     active_updates_.push_back(update);
@@ -239,25 +331,21 @@ void AnimationController::start_animation(clever::layout::LayoutNode* element,
         return;
     }
 
-    // Create animation instance for each property in the keyframes
     std::set<std::string> properties_to_animate;
-
-    // Collect all properties mentioned in keyframes
     for (const auto& step : keyframes.rules) {
         for (const auto& prop_pair : step.declarations) {
             properties_to_animate.insert(prop_pair.first);
         }
     }
 
-    // Create animation instance for each property
     for (const auto& property : properties_to_animate) {
         AnimationInstance anim;
         anim.target = element;
         anim.property = property;
         anim.animation_name = animation_name;
-        anim.start_time_ms = -anim.delay_ms;  // Will be initialized on first tick
-        anim.duration_ms = style.animation_duration * 1000;  // Convert to ms
-        anim.delay_ms = style.animation_delay * 1000;
+        anim.start_time_ms = 0;
+        anim.duration_ms = style.animation_duration * 1000.0;
+        anim.delay_ms = style.animation_delay * 1000.0;
         anim.timing_function = style.animation_timing;
         anim.bezier_x1 = style.animation_bezier_x1;
         anim.bezier_y1 = style.animation_bezier_y1;
@@ -269,38 +357,54 @@ void AnimationController::start_animation(clever::layout::LayoutNode* element,
         anim.iteration_count = style.animation_iteration_count;
         anim.is_transition = false;
 
-        // Extract initial and final values
         if (keyframes.rules.size() >= 2) {
             const auto& first_step = keyframes.rules.front();
             const auto& last_step = keyframes.rules.back();
 
-            float dummy_f = 0;
-            clever::css::Color dummy_c;
-            clever::css::Transform dummy_t;
+            auto first_it = std::find_if(first_step.declarations.begin(), first_step.declarations.end(),
+                                        [&property](const auto& p) { return p.first == property; });
+            auto last_it = std::find_if(last_step.declarations.begin(), last_step.declarations.end(),
+                                       [&property](const auto& p) { return p.first == property; });
 
-            // Try to extract from keyframe styles
-            auto prop_it_first = std::find_if(first_step.declarations.begin(), first_step.declarations.end(),
-                                             [&property](const auto& p) { return p.first == property; });
-            auto prop_it_last = std::find_if(last_step.declarations.begin(), last_step.declarations.end(),
-                                            [&property](const auto& p) { return p.first == property; });
+            if (first_it != first_step.declarations.end() && last_it != last_step.declarations.end()) {
+                const std::string& from_css = first_it->second;
+                const std::string& to_css = last_it->second;
 
-            if (prop_it_first != first_step.declarations.end() &&
-                prop_it_last != last_step.declarations.end()) {
-                // For now, just mark as float (simplified)
+                if (property == "opacity") {
+                    anim.from_value = parse_length_value(from_css);
+                    anim.to_value = parse_length_value(to_css);
+                    anim.has_float = true;
+                } else if (property == "color" || property == "background-color") {
+                    if (parse_color_value(from_css, anim.from_color) &&
+                        parse_color_value(to_css, anim.to_color)) {
+                        anim.has_color = true;
+                    } else {
+                        anim.has_float = true;
+                        anim.from_value = 0.0f;
+                        anim.to_value = 1.0f;
+                    }
+                } else if (property == "font-size" || property == "border-radius" ||
+                           property == "width" || property == "height" ||
+                           property == "margin-top" || property == "margin-right" ||
+                           property == "margin-bottom" || property == "margin-left" ||
+                           property == "padding-top" || property == "padding-right" ||
+                           property == "padding-bottom" || property == "padding-left") {
+                    anim.from_length = parse_length_value(from_css);
+                    anim.to_length = parse_length_value(to_css);
+                    anim.has_length = true;
+                } else if (property == "transform") {
+                    anim.from_transform = clever::css::Transform();
+                    anim.to_transform = clever::css::Transform();
+                    anim.has_transform = true;
+                } else {
+                    anim.from_value = parse_length_value(from_css);
+                    anim.to_value = parse_length_value(to_css);
+                    anim.has_float = true;
+                }
+            } else {
                 anim.from_value = 0.0f;
                 anim.to_value = 1.0f;
                 anim.has_float = true;
-            } else {
-                // Extract from current style
-                extract_property_value(style, property, dummy_f, dummy_c, dummy_t);
-                anim.has_float = (property == "opacity" || property == "font-size" || property == "border-radius");
-                anim.has_color = (property == "color" || property == "background-color");
-                anim.has_transform = (property == "transform");
-
-                if (anim.has_float) {
-                    anim.from_value = 0.0f;
-                    anim.to_value = 1.0f;
-                }
             }
         }
 
