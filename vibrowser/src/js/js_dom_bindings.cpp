@@ -5364,22 +5364,59 @@ static JSValue js_element_scroll_into_view(JSContext* ctx,
     return JS_UNDEFINED;
 }
 
-static JSValue js_element_scroll_to(JSContext* /*ctx*/,
-                                     JSValueConst /*this_val*/,
-                                     int /*argc*/,
-                                     JSValueConst* /*argv*/) {
+static JSValue js_element_scroll_to(JSContext* ctx,
+                                   JSValueConst this_val,
+                                   int argc,
+                                   JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node) return JS_UNDEFINED;
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_UNDEFINED;
+
+    auto it = state->layout_geometry.find(static_cast<void*>(node));
+    if (it == state->layout_geometry.end()) return JS_UNDEFINED;
+
+    auto& lr = it->second;
+    double left = lr.scroll_left;
+    double top = lr.scroll_top;
+    if (argc > 0 && JS_IsObject(argv[0])) {
+        JSValue left_v = JS_GetPropertyStr(ctx, argv[0], "left");
+        JSValue top_v = JS_GetPropertyStr(ctx, argv[0], "top");
+        JSValue x_v = JS_GetPropertyStr(ctx, argv[0], "x");
+        JSValue y_v = JS_GetPropertyStr(ctx, argv[0], "y");
+
+        if (JS_IsNumber(left_v)) JS_ToFloat64(ctx, &left, left_v);
+        if (JS_IsNumber(x_v)) JS_ToFloat64(ctx, &left, x_v);
+        if (JS_IsNumber(top_v)) JS_ToFloat64(ctx, &top, top_v);
+        if (JS_IsNumber(y_v)) JS_ToFloat64(ctx, &top, y_v);
+
+        JS_FreeValue(ctx, left_v);
+        JS_FreeValue(ctx, top_v);
+        JS_FreeValue(ctx, x_v);
+        JS_FreeValue(ctx, y_v);
+    } else {
+        if (argc > 0 && JS_IsNumber(argv[0])) JS_ToFloat64(ctx, &left, argv[0]);
+        if (argc > 1 && JS_IsNumber(argv[1])) JS_ToFloat64(ctx, &top, argv[1]);
+    }
+
+    if (left < 0.0) left = 0.0;
+    if (top < 0.0) top = 0.0;
+
+    lr.scroll_left = static_cast<float>(left);
+    lr.scroll_top = static_cast<float>(top);
+    state->modified = true;
     return JS_UNDEFINED;
 }
 
-static JSValue js_element_scroll(JSContext* /*ctx*/,
-                                  JSValueConst /*this_val*/,
-                                  int /*argc*/,
-                                  JSValueConst* /*argv*/) {
-    return JS_UNDEFINED;
+static JSValue js_element_scroll(JSContext* ctx,
+                                JSValueConst this_val,
+                                int argc,
+                                JSValueConst* argv) {
+    return js_element_scroll_to(ctx, this_val, argc, argv);
 }
 
 static JSValue js_element_focus(JSContext* ctx,
-                                 JSValueConst this_val,
+                               JSValueConst this_val,
                                  int /*argc*/,
                                  JSValueConst* /*argv*/) {
     auto* node = unwrap_element(ctx, this_val);
@@ -17255,36 +17292,128 @@ void install_dom_bindings(JSContext* ctx,
     }
 
     // ------------------------------------------------------------------
-    // window.matchMedia(query) — returns MediaQueryList stub
+    // window.matchMedia(query) — comprehensive media query evaluation
     // ------------------------------------------------------------------
     {
         const char* mm_src = R"JS(
 (function() {
+    var _listeners = [];
     globalThis.matchMedia = function(query) {
-        var matches = false;
         var viewportWidth = (typeof globalThis.innerWidth === 'number' && globalThis.innerWidth > 0)
-            ? globalThis.innerWidth
-            : 1024;
-        // Simple checks for common queries
-        if (query.indexOf('(prefers-color-scheme: light)') !== -1) matches = true;
-        if (query.indexOf('(min-width:') !== -1) {
-            var m = query.match(/min-width:\s*(\d+)/);
-            if (m) matches = parseInt(m[1]) <= viewportWidth;
+            ? globalThis.innerWidth : 1024;
+        var viewportHeight = (typeof globalThis.innerHeight === 'number' && globalThis.innerHeight > 0)
+            ? globalThis.innerHeight : 768;
+        var dpr = globalThis.devicePixelRatio || 1;
+        function parseLen(s) {
+            var n = parseFloat(s);
+            if (s.indexOf('em') !== -1 || s.indexOf('rem') !== -1) return n * 16;
+            return n;
         }
-        if (query.indexOf('(max-width:') !== -1) {
-            var m = query.match(/max-width:\s*(\d+)/);
-            if (m) matches = parseInt(m[1]) >= viewportWidth;
+        function evalSingle(q) {
+            q = q.trim();
+            if (q === 'all' || q === 'screen') return true;
+            if (q === 'print' || q === 'speech') return false;
+            // prefers-color-scheme
+            if (q.indexOf('prefers-color-scheme: light') !== -1) return true;
+            if (q.indexOf('prefers-color-scheme: dark') !== -1) return false;
+            // prefers-reduced-motion
+            if (q.indexOf('prefers-reduced-motion: reduce') !== -1) return false;
+            if (q.indexOf('prefers-reduced-motion: no-preference') !== -1) return true;
+            // prefers-contrast
+            if (q.indexOf('prefers-contrast: more') !== -1) return false;
+            if (q.indexOf('prefers-contrast: no-preference') !== -1) return true;
+            // prefers-reduced-data
+            if (q.indexOf('prefers-reduced-data: reduce') !== -1) return false;
+            // forced-colors
+            if (q.indexOf('forced-colors: active') !== -1) return false;
+            if (q.indexOf('forced-colors: none') !== -1) return true;
+            // pointer / hover
+            if (q.indexOf('pointer: fine') !== -1) return true;
+            if (q.indexOf('pointer: coarse') !== -1) return false;
+            if (q.indexOf('pointer: none') !== -1) return false;
+            if (q.indexOf('hover: hover') !== -1) return true;
+            if (q.indexOf('hover: none') !== -1) return false;
+            if (q.indexOf('any-pointer: fine') !== -1) return true;
+            if (q.indexOf('any-hover: hover') !== -1) return true;
+            // display-mode
+            if (q.indexOf('display-mode: browser') !== -1) return true;
+            if (q.indexOf('display-mode: standalone') !== -1) return false;
+            // scripting
+            if (q.indexOf('scripting: enabled') !== -1) return true;
+            // orientation
+            if (q.indexOf('orientation: landscape') !== -1) return viewportWidth >= viewportHeight;
+            if (q.indexOf('orientation: portrait') !== -1) return viewportHeight > viewportWidth;
+            // resolution / dpi / dppx
+            var dpiM = q.match(/min-resolution:\s*([\d.]+)dpi/);
+            if (dpiM) return dpr * 96 >= parseFloat(dpiM[1]);
+            var dppxM = q.match(/min-resolution:\s*([\d.]+)(?:dppx|x)/);
+            if (dppxM) return dpr >= parseFloat(dppxM[1]);
+            var maxDpiM = q.match(/max-resolution:\s*([\d.]+)dpi/);
+            if (maxDpiM) return dpr * 96 <= parseFloat(maxDpiM[1]);
+            // device-pixel-ratio (webkit)
+            var mdpr = q.match(/-webkit-min-device-pixel-ratio:\s*([\d.]+)/);
+            if (mdpr) return dpr >= parseFloat(mdpr[1]);
+            var xdpr = q.match(/-webkit-max-device-pixel-ratio:\s*([\d.]+)/);
+            if (xdpr) return dpr <= parseFloat(xdpr[1]);
+            // min/max width
+            var minW = q.match(/min-width:\s*([\d.]+)(px|em|rem)?/);
+            if (minW) return viewportWidth >= parseLen(minW[1] + (minW[2]||''));
+            var maxW = q.match(/max-width:\s*([\d.]+)(px|em|rem)?/);
+            if (maxW) return viewportWidth <= parseLen(maxW[1] + (maxW[2]||''));
+            // min/max height
+            var minH = q.match(/min-height:\s*([\d.]+)(px|em|rem)?/);
+            if (minH) return viewportHeight >= parseLen(minH[1] + (minH[2]||''));
+            var maxH = q.match(/max-height:\s*([\d.]+)(px|em|rem)?/);
+            if (maxH) return viewportHeight <= parseLen(maxH[1] + (maxH[2]||''));
+            // width / height exact
+            var exW = q.match(/\(width:\s*([\d.]+)(px|em|rem)?\)/);
+            if (exW) return viewportWidth === parseLen(exW[1] + (exW[2]||''));
+            var exH = q.match(/\(height:\s*([\d.]+)(px|em|rem)?\)/);
+            if (exH) return viewportHeight === parseLen(exH[1] + (exH[2]||''));
+            // color / monochrome
+            if (q.indexOf('(color)') !== -1) return true;
+            if (q.indexOf('(monochrome)') !== -1) return false;
+            if (q.indexOf('color-gamut: srgb') !== -1) return true;
+            if (q.indexOf('color-gamut: p3') !== -1) return true;
+            // Default: unknown query matches false
+            return false;
         }
-        return {
+        function evalQuery(q) {
+            q = q.trim();
+            // Handle not
+            if (q.indexOf('not ') === 0) return !evalQuery(q.substring(4));
+            // Handle comma-separated (OR)
+            var parts = q.split(',');
+            if (parts.length > 1) {
+                for (var i = 0; i < parts.length; i++) {
+                    if (evalQuery(parts[i])) return true;
+                }
+                return false;
+            }
+            // Handle 'and' (AND)
+            var ands = q.split(' and ');
+            if (ands.length > 1) {
+                for (var j = 0; j < ands.length; j++) {
+                    if (!evalSingle(ands[j])) return false;
+                }
+                return true;
+            }
+            return evalSingle(q);
+        }
+        var matches = evalQuery(query);
+        var listeners = [];
+        var mql = {
             matches: matches,
             media: query,
             onchange: null,
-            addListener: function() {},
-            removeListener: function() {},
-            addEventListener: function() {},
-            removeEventListener: function() {},
-            dispatchEvent: function() { return false; }
+            addListener: function(fn) { if (fn) listeners.push(fn); },
+            removeListener: function(fn) { listeners = listeners.filter(function(l) { return l !== fn; }); },
+            addEventListener: function(type, fn) { if (type === 'change' && fn) listeners.push(fn); },
+            removeEventListener: function(type, fn) { if (type === 'change') listeners = listeners.filter(function(l) { return l !== fn; }); },
+            dispatchEvent: function(ev) { listeners.forEach(function(fn) { fn(ev || mql); }); return true; }
         };
+        _listeners.push(mql);
+        return mql;
     };
 })();
 )JS";
@@ -17298,11 +17427,64 @@ void install_dom_bindings(JSContext* ctx,
     }
 
     // ------------------------------------------------------------------
-    // window.scrollTo/scrollBy/scroll (no-op stubs)
+    // window.scrollTo/scrollBy/scroll helpers
     // ------------------------------------------------------------------
     {
         const char* scroll_src = R"JS(
 (function() {
+    function __parseWindowScrollArgs(args, currentX, currentY, relative) {
+        var targetX = relative ? 0 : currentX;
+        var targetY = relative ? 0 : currentY;
+        if (args.length > 0 && args[0] && typeof args[0] === 'object') {
+            if (typeof args[0].left === 'number') targetX = args[0].left;
+            if (typeof args[0].x === 'number') targetX = args[0].x;
+            if (typeof args[0].top === 'number') targetY = args[0].top;
+            if (typeof args[0].y === 'number') targetY = args[0].y;
+            if (relative) {
+                targetX += currentX;
+                targetY += currentY;
+            }
+        } else {
+            if (typeof args[0] === 'number') targetX = args[0];
+            if (typeof args[1] === 'number') targetY = args[1];
+            if (relative) {
+                targetX += currentX;
+                targetY += currentY;
+            }
+        }
+        if (targetX < 0) targetX = 0;
+        if (targetY < 0) targetY = 0;
+        return { x: targetX, y: targetY };
+    }
+
+    function __applyWindowScroll(x, y) {
+        globalThis.scrollX = x;
+        globalThis.scrollY = y;
+        globalThis.pageXOffset = x;
+        globalThis.pageYOffset = y;
+    }
+
+    globalThis.scrollTo = function() {
+        var cx = (typeof globalThis.scrollX === 'number') ? globalThis.scrollX : 0;
+        var cy = (typeof globalThis.scrollY === 'number') ? globalThis.scrollY : 0;
+        var next = __parseWindowScrollArgs(arguments, cx, cy, false);
+        __applyWindowScroll(next.x, next.y);
+    };
+
+    globalThis.scrollBy = function() {
+        var cx = (typeof globalThis.scrollX === 'number') ? globalThis.scrollX : 0;
+        var cy = (typeof globalThis.scrollY === 'number') ? globalThis.scrollY : 0;
+        var next = __parseWindowScrollArgs(arguments, cx, cy, true);
+        __applyWindowScroll(next.x, next.y);
+    };
+
+    globalThis.scroll = function() {
+        var cx = (typeof globalThis.scrollX === 'number') ? globalThis.scrollX : 0;
+        var cy = (typeof globalThis.scrollY === 'number') ? globalThis.scrollY : 0;
+        var next = __parseWindowScrollArgs(arguments, cx, cy, false);
+        __applyWindowScroll(next.x, next.y);
+    };
+
     if (typeof globalThis.confirm !== 'function') globalThis.confirm = function() { return false; };
     if (typeof globalThis.prompt !== 'function') globalThis.prompt = function() { return null; };
     if (typeof globalThis.print !== 'function') globalThis.print = function() {};
