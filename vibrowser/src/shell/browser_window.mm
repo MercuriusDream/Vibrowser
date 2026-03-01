@@ -364,6 +364,192 @@ static std::string escape_html_text(const std::string& input) {
     return escaped;
 }
 
+static bool is_dns_lookup_failure(const std::string& host, uint16_t port) {
+    if (host.empty()) return false;
+
+    struct addrinfo hints {};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+
+    struct addrinfo* results = nullptr;
+    std::string service = std::to_string(port);
+    int rc = ::getaddrinfo(host.c_str(), service.c_str(), &hints, &results);
+    if (results != nullptr) {
+        ::freeaddrinfo(results);
+    }
+    return rc != 0;
+}
+
+static std::string build_error_page_html(const std::string& error_type,
+                                        const std::string& url,
+                                        int status_code,
+                                        const std::string& status_text,
+                                        const std::string& additional_detail) {
+    const std::string safe_url =
+        escape_html_text(url.empty() ? "Unknown URL" : url);
+    const std::string safe_status_text = escape_html_text(status_text);
+    const std::string safe_additional_detail =
+        escape_html_text(additional_detail);
+
+    const std::string retry_url = (url.empty() ? "about:blank" : safe_url);
+    std::string page_title = "Unable to load page";
+    std::string icon = "&#9888;";
+    std::string heading = "Unable to open this page";
+    std::string summary = "This page could not be loaded.";
+    std::string action_text = "Try again in a moment.";
+
+    if (error_type == "dns_failed") {
+        page_title = "This site can't be reached";
+        heading = "This site can't be reached";
+        summary = "The browser could not find the host name for this address.";
+        action_text = "Check the URL for spelling and try again.";
+    } else if (error_type == "connection_refused") {
+        page_title = "Connection was refused";
+        heading = "Connection was refused";
+        summary = "The remote server is not accepting connections.";
+        action_text = "Wait a moment and then try again.";
+    } else if (error_type == "timeout") {
+        page_title = "Request timed out";
+        heading = "Connection timed out";
+        summary = "The request to this site took too long to complete.";
+        action_text = "Try again when your connection is stable.";
+    } else if (error_type == "http_4xx") {
+        page_title = status_code == 404 ? "Page not found" : "Request blocked";
+        heading =
+            (status_code == 404 ? "Page not found" : "This page is not available");
+        if (status_code == 404) {
+            summary = "The page might have been moved or deleted.";
+            action_text = "Please check the URL and try again.";
+        } else if (status_code == 403) {
+            summary = "You do not have permission to access this page.";
+            action_text = "Sign in if required, then try again.";
+        } else {
+            summary = "The server rejected this request.";
+            action_text = "Check your request and try again.";
+        }
+    } else if (error_type == "http_5xx") {
+        page_title = "Server error";
+        heading = "Server unavailable";
+        summary = "The website is having a temporary problem.";
+        action_text = "Try again shortly.";
+    } else if (error_type == "ssl_error") {
+        page_title = "Secure connection failed";
+        heading = "Secure connection failed";
+        summary = "This page could not be verified.";
+        action_text = "Check your certificate settings and try again.";
+    } else if (error_type == "network_error") {
+        summary = "A network error prevented the page from loading.";
+        action_text = "Check your network connection and try again.";
+    }
+
+    std::string status_block;
+    if (status_code > 0) {
+        status_block = "<p class=\"meta\"><strong>Status:</strong> " +
+                       std::to_string(status_code);
+        if (!safe_status_text.empty()) {
+            status_block += " (" + safe_status_text + ")";
+        }
+        status_block += "</p>";
+    }
+
+    std::string details_block;
+    if (!safe_additional_detail.empty()) {
+        details_block = "<p class=\"detail\">" + safe_additional_detail + "</p>";
+    }
+
+    return "<!doctype html><html lang=\"en\"><head>"
+           "<meta charset=\"utf-8\">"
+           "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+           "<title>" + page_title + "</title>"
+           "<style>"
+           ":root{color-scheme:light dark;}"
+           "body{"
+           "--bg:#eef4ff;"
+           "--card:#ffffff;"
+           "--card-soft:#f4f8ff;"
+           "--text:#1f2b3a;"
+           "--muted:#4a5a6e;"
+           "--line:#c9d7e8;"
+           "--accent:#2b6cff;"
+           "--accent-soft:#e8efff;"
+           "--focus:#4f6cff;"
+           "margin:0;"
+           "min-height:100vh;"
+           "font-family:Inter,system-ui,-apple-system,\"Segoe UI\",sans-serif;"
+           "line-height:1.5;"
+           "background:radial-gradient(circle at 18% 20%, #d5e4ff 0%, #eef4ff 45%, #f8fbff 100%);"
+           "display:flex;"
+           "justify-content:center;"
+           "align-items:center;"
+           "padding:24px;"
+           "color:var(--text);}"
+           "*{box-sizing:border-box;}"
+           "main.error-page{width:min(780px,100%);background:var(--card);border:1px solid var(--line);"
+           "border-radius:16px;padding:24px;box-shadow:0 16px 36px rgba(24,40,72,0.16);"
+           "display:flex;flex-direction:column;gap:18px;}"
+           ".error-icon{font-size:38px;line-height:1;}"
+           "h1{margin:0;font-size:clamp(1.35rem,4vw,1.9rem);line-height:1.2;}"
+           "p{margin:0;}"
+           ".summary{font-size:1rem;color:var(--muted);max-width:62ch;}"
+           ".url{font-weight:600;font-size:0.95rem;word-break:break-all;color:var(--text);}"
+           "section{display:flex;flex-direction:column;gap:8px;}"
+           ".meta,.detail{color:var(--muted);}"
+           "a.retry{"
+           "display:inline-block;"
+           "align-self:flex-start;"
+           "padding:10px 14px;"
+           "border-radius:10px;"
+           "text-decoration:none;"
+           "font-weight:700;"
+           "background:var(--accent);"
+           "color:#fff;"
+           "box-shadow:0 8px 20px rgba(43,108,255,0.26);"
+           "transition:transform 150ms ease, box-shadow 150ms ease;"
+           "}"
+           "a.retry:focus-visible{outline:3px solid var(--focus);outline-offset:3px;}"
+           "a.retry:hover,a.retry:focus-visible{transform:translateY(-1px);"
+           "box-shadow:0 10px 24px rgba(43,108,255,0.36);}"
+           "@media (max-width:680px){"
+           "body{padding:16px;}"
+           "main.error-page{padding:20px;}"
+           "a.retry{width:100%;text-align:center;}"
+           "}"
+           "@media (prefers-color-scheme: dark){"
+           "body{"
+           "--bg:#111827;"
+           "--card:#1f2937;"
+           "--card-soft:#243244;"
+           "--text:#eef2ff;"
+           "--muted:#a3adc2;"
+           "--line:#2f3a4a;"
+           "--accent:#5c86ff;"
+           "--accent-soft:#25304a;"
+           "--focus:#9fb2ff;"
+           "background:radial-gradient(circle at 18% 20%, #1b2640 0%, #111827 45%, #0f172a 100%);}"
+           "a.retry{background:#5c86ff;}"
+           "}"
+           "</style>"
+           "</head><body>"
+           "<main class=\"error-page\">"
+           "<span class=\"error-icon\" aria-hidden=\"true\">" + icon + "</span>"
+           "<h1>" + escape_html_text(heading) + "</h1>"
+           "<p class=\"summary\">" + summary + "</p>"
+           "<section>"
+           "<div class=\"meta-row\">"
+           "<span class=\"meta\"><strong>URL:</strong></span>"
+           "<span class=\"url\">" + safe_url + "</span>"
+           "</div>"
+           + status_block +
+           details_block +
+           "</section>"
+           "<a class=\"retry\" href=\"" + retry_url + "\">Try Again</a>"
+           "<p class=\"summary\" style=\"color:var(--text);\">"
+           + action_text +
+           "</p>"
+           "</main></body></html>";
+}
+
 static std::string build_shell_message_html(const std::string& page_title,
                                             const std::string& heading,
                                             const std::string& detail) {
@@ -1400,16 +1586,24 @@ static std::string build_shell_message_html(const std::string& page_title,
         if (!response || response->status >= 400) {
             std::string error_html;
             if (!response) {
-                error_html = build_shell_message_html(
-                    "Connection Failed",
-                    "Connection Failed",
+                std::string error_type = "network_error";
+                clever::net::Request req;
+                req.url = currentUrl;
+                req.parse_url();
+                if (is_dns_lookup_failure(req.host, req.port)) {
+                    error_type = "dns_failed";
+                }
+                error_html = build_error_page_html(error_type, urlStr, 0, "",
                     "Could not connect to " + urlStr);
             } else {
-                const std::string status_heading = "Error " + std::to_string(response->status);
-                error_html = build_shell_message_html(
-                    status_heading,
-                    status_heading,
-                    response->status_text);
+                std::string error_type = "network_error";
+                if (response->status >= 500) {
+                    error_type = "http_5xx";
+                } else if (response->status >= 400) {
+                    error_type = "http_4xx";
+                }
+                error_html = build_error_page_html(error_type, urlStr, response->status,
+                    response->status_text, "");
             }
             [self renderHTML:[NSString stringWithUTF8String:error_html.c_str()]];
             [self finishProgress];
@@ -2453,16 +2647,24 @@ static std::string build_shell_message_html(const std::string& page_title,
         if (!response || response->status >= 400) {
             std::string error_html;
             if (!response) {
-                error_html = build_shell_message_html(
-                    "Connection Failed",
-                    "Connection Failed",
+                std::string error_type = "network_error";
+                clever::net::Request req;
+                req.url = currentUrl;
+                req.parse_url();
+                if (is_dns_lookup_failure(req.host, req.port)) {
+                    error_type = "dns_failed";
+                }
+                error_html = build_error_page_html(error_type, urlStr, 0, "",
                     "Could not connect to " + urlStr);
             } else {
-                const std::string status_heading = "Error " + std::to_string(response->status);
-                error_html = build_shell_message_html(
-                    status_heading,
-                    status_heading,
-                    response->status_text);
+                std::string error_type = "network_error";
+                if (response->status >= 500) {
+                    error_type = "http_5xx";
+                } else if (response->status >= 400) {
+                    error_type = "http_4xx";
+                }
+                error_html = build_error_page_html(error_type, urlStr, response->status,
+                    response->status_text, "");
             }
             [self renderHTML:[NSString stringWithUTF8String:error_html.c_str()]];
             [self finishProgress];
