@@ -895,6 +895,16 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
             + node.geometry.padding.top + node.geometry.padding.bottom
             + node.geometry.border.top + node.geometry.border.bottom;
     }
+
+    // Replaced elements (images) with a natural aspect ratio: if max-width clamped
+    // the width below the originally specified value, scale height proportionally.
+    if (node.aspect_ratio_is_auto && node.image_width > 0 && node.image_height > 0
+        && node.specified_width > 0 && h > 0
+        && node.geometry.width < node.specified_width) {
+        float scale = node.geometry.width / node.specified_width;
+        h = h * scale;
+    }
+
     h = std::max(h, node.min_height);
     h = std::min(h, node.max_height);
     node.geometry.height = h;
