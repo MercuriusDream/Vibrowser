@@ -9617,6 +9617,8 @@ struct Canvas2DState {
     // Compositing
     std::string global_composite_op = "source-over";
     bool image_smoothing = true;
+    // CSS filter string (e.g., "blur(5px) brightness(1.2)")
+    std::string filter;
     // Path state
     struct PathPoint { float x, y; bool is_move; };
     std::vector<PathPoint> path_points;
@@ -9652,6 +9654,7 @@ struct Canvas2DState {
         float shadow_blur, shadow_offset_x, shadow_offset_y;
         std::string global_composite_op;
         bool image_smoothing;
+        std::string filter;
         float tx_a, tx_b, tx_c, tx_d, tx_e, tx_f;
         // Clip state
         bool has_clip;
@@ -10787,6 +10790,24 @@ static JSValue js_canvas2d_set_image_smoothing(JSContext* ctx, JSValueConst this
     return JS_UNDEFINED;
 }
 
+// ---- filter ----
+static JSValue js_canvas2d_get_filter(JSContext* ctx, JSValueConst this_val,
+                                       int /*argc*/, JSValueConst* /*argv*/) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    return s ? JS_NewString(ctx, s->filter.c_str()) : JS_UNDEFINED;
+}
+static JSValue js_canvas2d_set_filter(JSContext* ctx, JSValueConst this_val,
+                                       int argc, JSValueConst* argv) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s || argc < 1) return JS_UNDEFINED;
+    const char* cstr = JS_ToCString(ctx, argv[0]);
+    if (cstr) {
+        s->filter = cstr;
+        JS_FreeCString(ctx, cstr);
+    }
+    return JS_UNDEFINED;
+}
+
 // ---- Path methods ----
 static JSValue js_canvas2d_begin_path(JSContext* /*ctx*/, JSValueConst this_val,
                                        int /*argc*/, JSValueConst* /*argv*/) {
@@ -11320,6 +11341,10 @@ static JSValue js_canvas2d_measure_text(JSContext* ctx, JSValueConst this_val,
     if (!s || argc < 1) {
         JSValue obj = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, obj, "width", JS_NewFloat64(ctx, 0));
+        JS_SetPropertyStr(ctx, obj, "actualBoundingBoxAscent", JS_NewFloat64(ctx, 0));
+        JS_SetPropertyStr(ctx, obj, "actualBoundingBoxDescent", JS_NewFloat64(ctx, 0));
+        JS_SetPropertyStr(ctx, obj, "actualBoundingBoxLeft", JS_NewFloat64(ctx, 0));
+        JS_SetPropertyStr(ctx, obj, "actualBoundingBoxRight", JS_NewFloat64(ctx, 0));
         return obj;
     }
 
@@ -11327,6 +11352,10 @@ static JSValue js_canvas2d_measure_text(JSContext* ctx, JSValueConst this_val,
     if (!text_cstr) {
         JSValue obj = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, obj, "width", JS_NewFloat64(ctx, 0));
+        JS_SetPropertyStr(ctx, obj, "actualBoundingBoxAscent", JS_NewFloat64(ctx, 0));
+        JS_SetPropertyStr(ctx, obj, "actualBoundingBoxDescent", JS_NewFloat64(ctx, 0));
+        JS_SetPropertyStr(ctx, obj, "actualBoundingBoxLeft", JS_NewFloat64(ctx, 0));
+        JS_SetPropertyStr(ctx, obj, "actualBoundingBoxRight", JS_NewFloat64(ctx, 0));
         return obj;
     }
     std::string txt(text_cstr);
@@ -11350,9 +11379,78 @@ static JSValue js_canvas2d_measure_text(JSContext* ctx, JSValueConst this_val,
     width = font_size * 0.6f * static_cast<float>(txt.size());
 #endif
 
+    float ascent = font_size * 0.8f;
+    float descent = font_size * 0.2f;
+
     JSValue obj = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, obj, "width", JS_NewFloat64(ctx, static_cast<double>(width)));
+    JS_SetPropertyStr(ctx, obj, "actualBoundingBoxAscent", JS_NewFloat64(ctx, static_cast<double>(ascent)));
+    JS_SetPropertyStr(ctx, obj, "actualBoundingBoxDescent", JS_NewFloat64(ctx, static_cast<double>(descent)));
+    JS_SetPropertyStr(ctx, obj, "actualBoundingBoxLeft", JS_NewFloat64(ctx, 0));
+    JS_SetPropertyStr(ctx, obj, "actualBoundingBoxRight", JS_NewFloat64(ctx, static_cast<double>(width)));
     return obj;
+}
+
+// ---- reset ----
+static JSValue js_canvas2d_reset(JSContext* /*ctx*/, JSValueConst this_val,
+                                  int /*argc*/, JSValueConst* /*argv*/) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s) return JS_UNDEFINED;
+
+    // Reset drawing state
+    s->fill_color = 0xFF000000;   // black
+    s->stroke_color = 0xFF000000; // black
+    s->line_width = 1.0f;
+    s->font = "10px sans-serif";
+    s->text_align = 0;
+    s->global_alpha = 1.0f;
+    s->text_baseline = 0;
+
+    // Clear gradients and patterns
+    s->fill_gradient = CanvasGradient();
+    s->stroke_gradient = CanvasGradient();
+    s->fill_pattern = CanvasPattern();
+    s->stroke_pattern = CanvasPattern();
+
+    // Reset line styles
+    s->line_cap = 0;
+    s->line_join = 0;
+    s->miter_limit = 10.0f;
+    s->line_dash.clear();
+    s->line_dash_offset = 0.0f;
+
+    // Reset shadow
+    s->shadow_color = 0x00000000;
+    s->shadow_blur = 0.0f;
+    s->shadow_offset_x = 0.0f;
+    s->shadow_offset_y = 0.0f;
+
+    // Reset compositing
+    s->global_composite_op = "source-over";
+    s->image_smoothing = true;
+    s->filter.clear();
+
+    // Reset transform to identity
+    s->tx_a = 1;
+    s->tx_b = 0;
+    s->tx_c = 0;
+    s->tx_d = 1;
+    s->tx_e = 0;
+    s->tx_f = 0;
+
+    // Clear path
+    s->path_points.clear();
+    s->path_x = 0;
+    s->path_y = 0;
+
+    // Clear state stack
+    s->state_stack.clear();
+
+    // Clear clip
+    s->has_clip = false;
+    s->clip_mask.clear();
+
+    return JS_UNDEFINED;
 }
 
 // ---- save/restore and transforms ----
@@ -11381,6 +11479,7 @@ static JSValue js_canvas2d_save(JSContext* /*ctx*/, JSValueConst this_val,
     st.shadow_offset_y = s->shadow_offset_y;
     st.global_composite_op = s->global_composite_op;
     st.image_smoothing = s->image_smoothing;
+    st.filter = s->filter;
     st.tx_a = s->tx_a; st.tx_b = s->tx_b; st.tx_c = s->tx_c;
     st.tx_d = s->tx_d; st.tx_e = s->tx_e; st.tx_f = s->tx_f;
     st.has_clip = s->has_clip;
@@ -11414,6 +11513,7 @@ static JSValue js_canvas2d_restore(JSContext* /*ctx*/, JSValueConst this_val,
     s->shadow_offset_y = st.shadow_offset_y;
     s->global_composite_op = std::move(st.global_composite_op);
     s->image_smoothing = st.image_smoothing;
+    s->filter = std::move(st.filter);
     s->tx_a = st.tx_a; s->tx_b = st.tx_b; s->tx_c = st.tx_c;
     s->tx_d = st.tx_d; s->tx_e = st.tx_e; s->tx_f = st.tx_f;
     s->has_clip = st.has_clip;
@@ -12210,14 +12310,96 @@ static JSValue js_canvas2d_round_rect(JSContext* ctx, JSValueConst this_val,
     JS_ToFloat64(ctx, &y, argv[1]);
     JS_ToFloat64(ctx, &w, argv[2]);
     JS_ToFloat64(ctx, &h, argv[3]);
-    // For simplicity, just add a rect path (ignoring radii)
-    s->path_points.push_back({static_cast<float>(x), static_cast<float>(y), true});
-    s->path_points.push_back({static_cast<float>(x + w), static_cast<float>(y), false});
-    s->path_points.push_back({static_cast<float>(x + w), static_cast<float>(y + h), false});
-    s->path_points.push_back({static_cast<float>(x), static_cast<float>(y + h), false});
-    s->path_points.push_back({static_cast<float>(x), static_cast<float>(y), false});
-    s->path_x = static_cast<float>(x);
-    s->path_y = static_cast<float>(y);
+
+    float r_tl = 0, r_tr = 0, r_br = 0, r_bl = 0;
+    if (argc >= 5) {
+        if (JS_IsArray(ctx, argv[4])) {
+            // Array of radii: [tl, tr, br, bl]
+            JSValue len_val = JS_GetPropertyStr(ctx, argv[4], "length");
+            int len = 0;
+            JS_ToInt32(ctx, &len, len_val);
+            JS_FreeValue(ctx, len_val);
+
+            double radii[4] = {0, 0, 0, 0};
+            for (int i = 0; i < len && i < 4; i++) {
+                JSValue elem = JS_GetPropertyUint32(ctx, argv[4], i);
+                JS_ToFloat64(ctx, &radii[i], elem);
+                JS_FreeValue(ctx, elem);
+            }
+            r_tl = static_cast<float>(radii[0]);
+            r_tr = len > 1 ? static_cast<float>(radii[1]) : r_tl;
+            r_br = len > 2 ? static_cast<float>(radii[2]) : r_tl;
+            r_bl = len > 3 ? static_cast<float>(radii[3]) : (len > 1 ? static_cast<float>(radii[1]) : r_tl);
+        } else {
+            // Single radius value
+            double rad = 0;
+            JS_ToFloat64(ctx, &rad, argv[4]);
+            r_tl = r_tr = r_br = r_bl = static_cast<float>(rad);
+        }
+    }
+
+    float x0 = static_cast<float>(x);
+    float y0 = static_cast<float>(y);
+    float x1 = x0 + static_cast<float>(w);
+    float y1 = y0 + static_cast<float>(h);
+
+    // Clamp radii to half of width/height
+    float max_r_h = static_cast<float>(h) / 2.0f;
+    float max_r_w = static_cast<float>(w) / 2.0f;
+    r_tl = std::min(r_tl, std::min(max_r_w, max_r_h));
+    r_tr = std::min(r_tr, std::min(max_r_w, max_r_h));
+    r_br = std::min(r_br, std::min(max_r_w, max_r_h));
+    r_bl = std::min(r_bl, std::min(max_r_w, max_r_h));
+
+    constexpr int arc_steps = 8;
+    const float pi = 3.14159265358979323846f;
+
+    // Top-left corner arc (90 degrees, 1/4 circle)
+    s->path_points.push_back({x0 + r_tl, y0, true});
+    for (int i = 1; i <= arc_steps; i++) {
+        float angle = pi / 2.0f * i / arc_steps;
+        float px = x0 + r_tl - r_tl * std::cos(angle);
+        float py = y0 + r_tl - r_tl * std::sin(angle);
+        s->path_points.push_back({px, py, false});
+    }
+
+    // Top edge
+    s->path_points.push_back({x1 - r_tr, y0, false});
+
+    // Top-right corner arc
+    for (int i = 1; i <= arc_steps; i++) {
+        float angle = pi / 2.0f * i / arc_steps;
+        float px = x1 - r_tr + r_tr * std::sin(angle);
+        float py = y0 + r_tr - r_tr * std::cos(angle);
+        s->path_points.push_back({px, py, false});
+    }
+
+    // Right edge
+    s->path_points.push_back({x1, y1 - r_br, false});
+
+    // Bottom-right corner arc
+    for (int i = 1; i <= arc_steps; i++) {
+        float angle = pi / 2.0f * i / arc_steps;
+        float px = x1 - r_br + r_br * std::cos(angle);
+        float py = y1 - r_br + r_br * std::sin(angle);
+        s->path_points.push_back({px, py, false});
+    }
+
+    // Bottom edge
+    s->path_points.push_back({x0 + r_bl, y1, false});
+
+    // Bottom-left corner arc
+    for (int i = 1; i <= arc_steps; i++) {
+        float angle = pi / 2.0f * i / arc_steps;
+        float px = x0 + r_bl - r_bl * std::sin(angle);
+        float py = y1 - r_bl + r_bl * std::cos(angle);
+        s->path_points.push_back({px, py, false});
+    }
+
+    // Left edge and close path
+    s->path_points.push_back({x0, y0 + r_tl, false});
+    s->path_x = x0 + r_tl;
+    s->path_y = y0;
     return JS_UNDEFINED;
 }
 
@@ -12559,6 +12741,10 @@ static JSValue create_canvas2d_context(JSContext* ctx, Canvas2DState* state) {
     JS_SetPropertyStr(ctx, obj, "measureText",
         JS_NewCFunction(ctx, js_canvas2d_measure_text, "measureText", 1));
 
+    // State methods
+    JS_SetPropertyStr(ctx, obj, "reset",
+        JS_NewCFunction(ctx, js_canvas2d_reset, "reset", 0));
+
     // Transform stubs
     JS_SetPropertyStr(ctx, obj, "save",
         JS_NewCFunction(ctx, js_canvas2d_save, "save", 0));
@@ -12664,6 +12850,10 @@ static JSValue create_canvas2d_context(JSContext* ctx, Canvas2DState* state) {
         JS_NewCFunction(ctx, js_canvas2d_get_image_smoothing, "__getImageSmoothing", 0));
     JS_SetPropertyStr(ctx, obj, "__setImageSmoothing",
         JS_NewCFunction(ctx, js_canvas2d_set_image_smoothing, "__setImageSmoothing", 1));
+    JS_SetPropertyStr(ctx, obj, "__getFilter",
+        JS_NewCFunction(ctx, js_canvas2d_get_filter, "__getFilter", 0));
+    JS_SetPropertyStr(ctx, obj, "__setFilter",
+        JS_NewCFunction(ctx, js_canvas2d_set_filter, "__setFilter", 1));
 
     // Wire up getters/setters via eval
     const char* ctx2d_setup = R"JS(
@@ -12751,6 +12941,11 @@ static JSValue create_canvas2d_context(JSContext* ctx, Canvas2DState* state) {
     Object.defineProperty(c, 'imageSmoothingEnabled', {
         get: function() { return c.__getImageSmoothing(); },
         set: function(v) { c.__setImageSmoothing(v); },
+        configurable: true
+    });
+    Object.defineProperty(c, 'filter', {
+        get: function() { return c.__getFilter(); },
+        set: function(v) { c.__setFilter(v); },
         configurable: true
     });
 })
