@@ -541,6 +541,7 @@ struct LayoutNode {
     bool is_checkbox = false;
     bool is_radio = false;
     bool is_checked = false;
+    bool loading_lazy = false;
 
     // Range input (<input type="range">)
     bool is_range_input = false;

@@ -8842,6 +8842,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
     // Handle <img> as replaced inline element
     if (tag_lower == "img") {
+        std::string loading = get_attr(node, "loading");
+        if (to_lower(loading) == "lazy") {
+            layout_node->loading_lazy = true;
+        }
         // Use width/height attributes if not set by CSS
         float attr_w = -1, attr_h = -1;
         {
@@ -10102,6 +10106,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     // Handle <iframe> element — render a placeholder (nested browsing contexts not yet supported)
     if (tag_lower == "iframe") {
         layout_node->is_iframe = true;
+        std::string loading = get_attr(node, "loading");
+        if (to_lower(loading) == "lazy") {
+            layout_node->loading_lazy = true;
+        }
         layout_node->mode = clever::layout::LayoutMode::Block;
         layout_node->display = clever::layout::DisplayType::InlineBlock;
 

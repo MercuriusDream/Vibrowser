@@ -711,7 +711,14 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
         }
 
         // Paint image if this node has decoded image data
-        if (node.image_pixels && !node.image_pixels->empty()) {
+        const bool should_lazy_skip =
+            node.loading_lazy &&
+            (abs_y > (viewport_scroll_y_ + (2.0f * viewport_height_)));
+
+        if (should_lazy_skip) {
+            Color placeholder_color = {0xE5, 0xE5, 0xE5, 0xFF};
+            list.fill_rect({abs_x, abs_y, geom.border_box_width(), geom.border_box_height()}, placeholder_color);
+        } else if (node.image_pixels && !node.image_pixels->empty()) {
             auto img = std::make_shared<ImageData>();
             img->pixels = *node.image_pixels;
             img->width = node.image_width;
@@ -808,7 +815,8 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
         }
 
         // Paint broken image indicator when img has no image data but has alt text
-        if (!node.img_alt_text.empty() && (!node.image_pixels || node.image_pixels->empty())) {
+        if (!node.loading_lazy &&
+            !node.img_alt_text.empty() && (!node.image_pixels || node.image_pixels->empty())) {
             // Draw a small broken image icon (gray box outline) in the top-left padding area
             float icon_size = 16.0f;
             float icon_x = abs_x + geom.border.left + 4;
