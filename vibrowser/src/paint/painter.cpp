@@ -18,6 +18,32 @@ struct DecodedImage {
     int height = 0;
 };
 
+static inline uint8_t clamp_color_channel(int value) {
+    return static_cast<uint8_t>(std::clamp(value, 0, 255));
+}
+
+static inline uint32_t lighten_color(uint32_t argb, int amount) {
+    Color base = Color::from_argb(argb);
+    return (static_cast<uint32_t>(base.a) << 24) |
+           (static_cast<uint32_t>(clamp_color_channel(static_cast<int>(base.r) + amount)) << 16) |
+           (static_cast<uint32_t>(clamp_color_channel(static_cast<int>(base.g) + amount)) << 8) |
+           static_cast<uint32_t>(clamp_color_channel(static_cast<int>(base.b) + amount));
+}
+
+static inline uint32_t darken_color(uint32_t argb, int amount) {
+    Color base = Color::from_argb(argb);
+    return (static_cast<uint32_t>(base.a) << 24) |
+           (static_cast<uint32_t>(clamp_color_channel(static_cast<int>(base.r) - amount)) << 16) |
+           (static_cast<uint32_t>(clamp_color_channel(static_cast<int>(base.g) - amount)) << 8) |
+           static_cast<uint32_t>(clamp_color_channel(static_cast<int>(base.b) - amount));
+}
+
+static inline bool is_dark_color(uint32_t argb) {
+    Color base = Color::from_argb(argb);
+    int luma = (299 * base.r + 587 * base.g + 114 * base.b) / 1000;
+    return luma < 128;
+}
+
 // Helper: rasterize SVG string to bitmap using nanosvg
 static DecodedImage decode_svg_image(const std::string& svg_data, float target_width = 0) {
     DecodedImage result;
@@ -3611,7 +3637,10 @@ void Painter::paint_range_input(const clever::layout::LayoutNode& node, DisplayL
     // Colors: track background and accent — use dark theme if color-scheme: dark
     bool dark_range = (node.color_scheme == 2);
     Color track_bg = dark_range ? Color{0x33, 0x33, 0x33, 0xFF} : Color{0xDD, 0xDD, 0xDD, 0xFF};
-    Color accent = {0x4A, 0x90, 0xD9, 0xFF};
+    uint32_t accent_argb = node.accent_color != 0 ? node.accent_color : 0xFF007AFFu;
+    Color accent_fill = Color::from_argb(accent_argb);
+    // Use a darker shade for thumb emphasis by default.
+    Color thumb_fill = Color::from_argb(darken_color(accent_argb, 24));
 
     // Draw track background (full width, rounded)
     float track_radius = track_height / 2.0f;
@@ -3620,13 +3649,13 @@ void Painter::paint_range_input(const clever::layout::LayoutNode& node, DisplayL
     // Draw filled portion of track (from left edge to thumb center)
     float filled_width = thumb_cx - abs_x;
     if (filled_width > 0) {
-        list.fill_rounded_rect({abs_x, track_y, filled_width, track_height}, accent, track_radius);
+        list.fill_rounded_rect({abs_x, track_y, filled_width, track_height}, accent_fill, track_radius);
     }
 
     // Draw thumb as a circle (rounded rect with radius = half its size)
     float thumb_size = thumb_radius * 2.0f;
     Rect thumb_rect = {thumb_cx - thumb_radius, thumb_cy - thumb_radius, thumb_size, thumb_size};
-    list.fill_rounded_rect(thumb_rect, accent, thumb_radius);
+    list.fill_rounded_rect(thumb_rect, thumb_fill, thumb_radius);
 }
 
 void Painter::paint_color_input(const clever::layout::LayoutNode& node, DisplayList& list,
@@ -3671,15 +3700,21 @@ void Painter::paint_checkbox(const clever::layout::LayoutNode& node, DisplayList
     float cx = abs_x + (box_w - size) / 2.0f;
     float cy = abs_y + (box_h - size) / 2.0f;
 
-    // Accent color or default blue (#0075FF)
-    uint32_t ac = node.accent_color;
-    Color accent = (ac != 0) ? Color::from_argb(ac) : Color{0x00, 0x75, 0xFF, 0xFF};
+    uint32_t ac = node.accent_color != 0 ? node.accent_color : 0xFF007AFFu;
+    Color accent = Color::from_argb(ac);
+    Color accent_hover = Color::from_argb(lighten_color(ac, 30));
+    Color accent_active = Color::from_argb(darken_color(ac, 28));
+    bool use_hover = false;
+    bool use_active = false;
+    Color fill = accent;
+    if (use_active) fill = accent_active;
+    else if (use_hover) fill = accent_hover;
+    Color mark = is_dark_color(ac) ? Color{0xFF, 0xFF, 0xFF, 0xFF} : Color{0x00, 0x00, 0x00, 0xFF};
 
     if (node.is_checked) {
         // Filled rounded rect with accent color
-        list.fill_rounded_rect({cx, cy, size, size}, accent, 2.0f);
-        // Draw check mark (white) — simplified as two lines
-        Color white = {0xFF, 0xFF, 0xFF, 0xFF};
+        list.fill_rounded_rect({cx, cy, size, size}, fill, 2.0f);
+        // Draw check mark with enough contrast — simplified as two lines
         float inset = size * 0.2f;
         // Check mark: short line from lower-left to bottom-center, then long line to upper-right
         float x1 = cx + inset;
@@ -3696,7 +3731,7 @@ void Painter::paint_checkbox(const clever::layout::LayoutNode& node, DisplayList
             float t = static_cast<float>(i) / static_cast<float>(steps);
             float px = x1 + (x2 - x1) * t;
             float py = y1 + (y2 - y1) * t;
-            list.fill_rect({px - stroke / 2, py - stroke / 2, stroke, stroke}, white);
+            list.fill_rect({px - stroke / 2, py - stroke / 2, stroke, stroke}, mark);
         }
         // Right leg: (x2,y2) to (x3,y3)
         steps = static_cast<int>(size * 0.8f);
@@ -3704,7 +3739,7 @@ void Painter::paint_checkbox(const clever::layout::LayoutNode& node, DisplayList
             float t = static_cast<float>(i) / static_cast<float>(steps);
             float px = x2 + (x3 - x2) * t;
             float py = y2 + (y3 - y2) * t;
-            list.fill_rect({px - stroke / 2, py - stroke / 2, stroke, stroke}, white);
+            list.fill_rect({px - stroke / 2, py - stroke / 2, stroke, stroke}, mark);
         }
     } else {
         // Unchecked: border only — use dark theme if color-scheme: dark
@@ -3729,19 +3764,25 @@ void Painter::paint_radio(const clever::layout::LayoutNode& node, DisplayList& l
     float cx = abs_x + box_w / 2.0f;
     float cy = abs_y + box_h / 2.0f;
 
-    // Accent color or default blue
-    uint32_t ac = node.accent_color;
-    Color accent = (ac != 0) ? Color::from_argb(ac) : Color{0x00, 0x75, 0xFF, 0xFF};
+    uint32_t ac = node.accent_color != 0 ? node.accent_color : 0xFF007AFFu;
+    Color accent = Color::from_argb(ac);
+    Color accent_hover = Color::from_argb(lighten_color(ac, 30));
+    Color accent_active = Color::from_argb(darken_color(ac, 28));
+    bool use_hover = false;
+    bool use_active = false;
+    Color outer_fill = accent;
+    if (use_active) outer_fill = accent_active;
+    else if (use_hover) outer_fill = accent_hover;
+    Color dot = is_dark_color(ac) ? Color{0xFF, 0xFF, 0xFF, 0xFF} : Color{0x00, 0x00, 0x00, 0xFF};
 
     if (node.is_checked) {
         // Outer circle with accent color
         Rect outer = {cx - radius, cy - radius, size, size};
-        list.fill_rounded_rect(outer, accent, radius);
+        list.fill_rounded_rect(outer, outer_fill, radius);
         // Inner white dot
         float inner_r = radius * 0.4f;
         Rect inner = {cx - inner_r, cy - inner_r, inner_r * 2, inner_r * 2};
-        Color white = {0xFF, 0xFF, 0xFF, 0xFF};
-        list.fill_rounded_rect(inner, white, inner_r);
+        list.fill_rounded_rect(inner, dot, inner_r);
     } else {
         // Unchecked: circle border — use dark theme if color-scheme: dark
         bool dark = (node.color_scheme == 2);

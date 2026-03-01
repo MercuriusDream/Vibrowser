@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1973 — R37-R39 complete. Progress/meter rendering, whitespace fix, ResizeObserver, Web Animations, outline, entities.
-**Momentum**: Cycle 1973 — 55+ commits pushed. 14/14 tests passing. 17/19 priority gaps DONE.
-**Cycle**: 1973
+**Current Focus**: Cycle 1974 — R40-R41 complete. CSS @layer, loading=lazy, DOMMatrix/DOMPoint, Performance API, matchMedia, History API, scroll-behavior, @font-face, list-style.
+**Momentum**: Cycle 1974 — 65+ commits pushed. 14/14 tests passing. 17/19 priority gaps DONE.
+**Cycle**: 1974
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
@@ -1573,6 +1573,27 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 1974 (R40-R41 Feature Implementation) — 2026-03-02
+
+- **Theme**: Geometry APIs, Performance API, media queries, CSS cascade layers, lazy loading, navigation, font-face, scroll
+- **Commits**: 87c8f85, 50f5a23, b92d923, 2929227, e0766bc, 3a055ff
+- **Features Implemented**:
+  - CSS @layer cascade layers — connected layer_rules to style resolver collect_matching_rules/collect_pseudo_rules
+  - loading="lazy" for images/iframes — deferred fetch with 200px viewport threshold
+  - DOMMatrix — full 4x4 matrix: multiply, translate, scale, rotate, skew, inverse, transformPoint, toString
+  - DOMPoint — 4D point with matrixTransform, fromPoint, toJSON
+  - WebKitCSSMatrix/CSSMatrix aliases for compatibility
+  - Performance.mark()/measure() — functional implementation storing entries with getEntries/ByName/ByType
+  - Enhanced matchMedia — prefers-reduced-motion, pointer/hover, orientation, resolution/dpi, color-gamut, forced-colors, scripting
+  - History API — hashchange events, location.hash accessor, location.replace() using replaceState
+  - scroll-behavior smooth — __setPendingScroll C++ bridge for window.scrollTo/scrollBy/scroll
+  - @font-face improvements — font-display timing, unicode-range, weight range matching, smart caching
+  - CSS list-style — Armenian, Georgian, CjkDecimal marker types with UTF-8 positioning
+  - CSS text-overflow — improved UTF-8 truncation, fade effect, clip mode
+  - HTTP Keep-Alive — confirmed already fully active (ConnectionPool with 6/host, 60s timeout)
+- **Build Fixes**: @font-face forward declarations, paren balance, pointer access, optional vector
+- **Validation**: 14/14 suites pass, 0 failures
+
 ### Cycle 1970 (R33-R34 Feature Implementation) — 2026-03-02
 
 - **Theme**: Modern JS polyfills, responsive images, CSS accent-color + color-scheme, select element UX
@@ -1939,12 +1960,13 @@ Generated: 2026-03-01
 ### Tell The Next Claude
 
 - Build from `/Users/seong-useog/vibrowser/vibrowser` (NOT repo root). Clean rebuild: `rm -rf build && cmake -S . -B build && cmake --build build -j$(sysctl -n hw.ncpu)`
-- 14/14 tests passing. Entity table at 638/2231 entries.
+- 14/14 tests passing. Entity table at 741/2231 entries.
 - **DO NOT** call JS_AddIntrinsicWeakRef() — causes GC assertion on teardown
 - **DO NOT** use JS_Eval for global function definitions — use native JS_NewCFunction to avoid GC leaks
-- Multi-column layout, details/summary, dialog, canvas 2D, localStorage, WebSocket, AbortController, fetch, CSS grid, flexbox, animations, transitions — ALL implemented
-- `codex-spark` haiku agents are the primary subagent type. 6 per round. They commit+push directly.
-- High-value next targets: HTTP/2, Service Worker actual implementation, improved error pages, CSS `@layer` cascade layers, Web Animations API improvements, lazy loading (`loading="lazy"`)
+- **AGENT CONFLICT RISK**: Agents use `git add -A` which can overwrite local changes. Always commit your direct work BEFORE agents finish, or accept that agents will bundle your changes.
+- Multi-column layout, details/summary, dialog, canvas 2D, localStorage, WebSocket, AbortController, fetch, CSS grid, flexbox, animations, transitions, @layer, loading=lazy, DOMMatrix, History API, scroll-behavior, @font-face matching — ALL implemented
+- `codex-spark` haiku agents are the primary subagent type. 4 per round. They commit+push directly.
+- High-value next targets: HTTP/2, Service Worker actual implementation, improved error pages, CSS `text-wrap: pretty`, Canvas 2D improvements, form submission improvements, improved table layout, CSS `font-feature-settings`
 
 ### Tell The Next Codex
 

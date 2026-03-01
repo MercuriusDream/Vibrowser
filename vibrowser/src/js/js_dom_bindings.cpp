@@ -11283,6 +11283,21 @@ static JSValue js_canvas2d_set_transform(JSContext* ctx, JSValueConst this_val,
     s->tx_f = static_cast<float>(f);
     return JS_UNDEFINED;
 }
+
+static JSValue js_canvas2d_get_transform(JSContext* ctx, JSValueConst this_val,
+                                          int /*argc*/, JSValueConst* /*argv*/) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s) return JS_UNDEFINED;
+    JSValue matrix = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, matrix, "m11", JS_NewFloat64(ctx, static_cast<double>(s->tx_a)));
+    JS_SetPropertyStr(ctx, matrix, "m12", JS_NewFloat64(ctx, static_cast<double>(s->tx_b)));
+    JS_SetPropertyStr(ctx, matrix, "m21", JS_NewFloat64(ctx, static_cast<double>(s->tx_c)));
+    JS_SetPropertyStr(ctx, matrix, "m22", JS_NewFloat64(ctx, static_cast<double>(s->tx_d)));
+    JS_SetPropertyStr(ctx, matrix, "m41", JS_NewFloat64(ctx, static_cast<double>(s->tx_e)));
+    JS_SetPropertyStr(ctx, matrix, "m42", JS_NewFloat64(ctx, static_cast<double>(s->tx_f)));
+    return matrix;
+}
+
 static JSValue js_canvas2d_reset_transform(JSContext* /*ctx*/, JSValueConst this_val,
                                             int /*argc*/, JSValueConst* /*argv*/) {
     auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
@@ -11744,6 +11759,8 @@ static JSValue create_canvas2d_context(JSContext* ctx, Canvas2DState* state) {
         JS_NewCFunction(ctx, js_canvas2d_transform, "transform", 6));
     JS_SetPropertyStr(ctx, obj, "setTransform",
         JS_NewCFunction(ctx, js_canvas2d_set_transform, "setTransform", 6));
+    JS_SetPropertyStr(ctx, obj, "getTransform",
+        JS_NewCFunction(ctx, js_canvas2d_get_transform, "getTransform", 0));
     JS_SetPropertyStr(ctx, obj, "resetTransform",
         JS_NewCFunction(ctx, js_canvas2d_reset_transform, "resetTransform", 0));
     JS_SetPropertyStr(ctx, obj, "clip",
