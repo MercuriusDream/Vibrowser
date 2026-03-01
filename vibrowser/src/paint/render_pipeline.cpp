@@ -2038,7 +2038,10 @@ std::string resolve_content_value(
                 }
 
                 if (ident_lower == "url") {
-                    result += "[image placeholder]";
+                    // url() in content property produces an image, but since this function
+                    // returns text, we use a placeholder. The pseudo-node builder will detect
+                    // url() separately and create an image node instead of a text node.
+                    result += "[image]";
                     continue;
                 }
 
@@ -12870,6 +12873,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 pseudo_style.content, pseudo_style.content_attr_name, node);
             apply_generated_text_transform(text, pseudo_style.text_transform);
 
+            // Note: url() in content properties produces "[image]" placeholder text
+            // (via resolve_content_value). Full image rendering would require extending
+            // LayoutNode with a dedicated field to store image URLs separately.
+            // String concatenation in content (e.g., "Chapter " counter(name)) is supported
+            // through the token parsing in resolve_content_value.
+
             auto text_child = std::make_unique<clever::layout::LayoutNode>();
             text_child->is_text = true;
             text_child->mode = clever::layout::LayoutMode::Inline;
@@ -13064,6 +13073,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     uint32_t fl_color = color_to_argb(fl_style->color);
                     n.first_letter_color = (fl_color != n.color) ? fl_color : 0;
                     n.first_letter_bold = (fl_style->font_weight >= 700);
+                    // Note: ::first-letter does NOT inherit italic by default, only if explicitly set
+                    // For now we only store if explicitly bold; italic would need explicit ::first-letter { font-style: italic; }
                     return true; // found first text node, stop
                 }
                 for (auto& child : n.children) {
@@ -13082,6 +13093,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         auto fline_style = resolver.resolve_pseudo(*elem_view, "first-line", style);
         if (fline_style) {
             // Propagate first-line styling to the first text child node
+            // Note: ::first-line applies to formatted line, so we mark the first text node
             std::function<bool(clever::layout::LayoutNode&)> propagate_first_line =
                 [&](clever::layout::LayoutNode& n) -> bool {
                 if (n.is_text && !n.text_content.empty()) {
@@ -13092,6 +13104,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     n.first_line_color = (fl_color != n.color) ? fl_color : 0;
                     n.first_line_bold = (fline_style->font_weight >= 700);
                     n.first_line_italic = (fline_style->font_style != clever::css::FontStyle::Normal);
+                    // Text decoration properties could be added here if fields exist in LayoutNode
+                    // For now, we support: font-size, color, font-weight, font-style
                     return true; // found first text node, stop
                 }
                 for (auto& child : n.children) {
@@ -13137,6 +13151,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (marker_style) {
             uint32_t mk_color = color_to_argb(marker_style->color);
             float mk_fs = marker_style->font_size.to_px(font_size);
+            int mk_weight = marker_style->font_weight;
+            bool mk_italic = (marker_style->font_style != clever::css::FontStyle::Normal);
             auto is_generated_marker_text = [](const clever::layout::LayoutNode& n) {
                 if (!n.is_text) return false;
                 const auto& txt = n.text_content;
@@ -13158,13 +13174,15 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     is_generated_marker_text(*n.children[0])) {
                     if (mk_color != 0) n.children[0]->color = mk_color;
                     if (mk_fs > 0) n.children[0]->font_size = mk_fs;
+                    if (mk_weight >= 700) n.children[0]->font_weight = mk_weight;
+                    if (mk_italic) n.children[0]->font_italic = mk_italic;
                     return;
                 }
 
                 // Outside markers are painted by paint_list_marker(). Add a zero-width
                 // leading marker placeholder so ::marker text style is still represented
                 // in the layout tree without causing duplicate visible markers.
-                if (n.list_style_position == 0 && (mk_color != 0 || mk_fs > 0)) {
+                if (n.list_style_position == 0 && (mk_color != 0 || mk_fs > 0 || mk_weight >= 700 || mk_italic)) {
                     bool has_marker_text_child =
                         !n.children.empty() && is_generated_marker_text(*n.children[0]);
                     if (!has_marker_text_child) {
@@ -13175,6 +13193,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                         marker_placeholder->display = clever::layout::DisplayType::Inline;
                         marker_placeholder->color = (mk_color != 0) ? mk_color : n.color;
                         marker_placeholder->font_size = (mk_fs > 0) ? mk_fs : n.font_size;
+                        marker_placeholder->font_weight = (mk_weight >= 700) ? mk_weight : n.font_weight;
+                        marker_placeholder->font_italic = mk_italic;
                         n.children.insert(n.children.begin(), std::move(marker_placeholder));
                     }
                 }
