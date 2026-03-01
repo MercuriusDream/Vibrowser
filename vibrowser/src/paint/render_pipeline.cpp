@@ -13153,6 +13153,752 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             for (auto& o : others) layout_node->children.push_back(std::move(o));
             for (auto& c : captions) layout_node->children.push_back(std::move(c));
         }
+
+        // Build and apply a table layout pass for caption positioning, columns,
+        // rows, spanning, border collapse, and vertical alignment.
+        auto compute_table_layout = [&](clever::layout::LayoutNode& table_node) -> void {
+            if (table_node.children.empty()) {
+                return;
+            }
+
+            auto is_row_tag = [](const std::string& tag) -> bool {
+                if (tag.size() != 2) return false;
+                auto t = to_lower(tag);
+                return t == "tr";
+            };
+            auto is_cell_tag = [](const std::string& tag) -> bool {
+                if (tag.size() != 2) return false;
+                auto t = to_lower(tag);
+                return t == "td" || t == "th";
+            };
+            auto is_caption_tag = [](const std::string& tag) -> bool {
+                if (tag.size() != 7) return false;
+                auto t = to_lower(tag);
+                return t == "caption";
+            };
+            auto is_section_tag = [](const std::string& tag) -> bool {
+                if (tag.size() < 5) return false;
+                auto t = to_lower(tag);
+                return t == "thead" || t == "tbody" || t == "tfoot";
+            };
+            auto is_table_row = [&](const clever::layout::LayoutNode& candidate) -> bool {
+                return candidate.display == clever::layout::DisplayType::TableRow || is_row_tag(candidate.tag_name);
+            };
+            auto is_table_cell = [&](const clever::layout::LayoutNode& candidate) -> bool {
+                return candidate.display == clever::layout::DisplayType::TableCell || is_cell_tag(candidate.tag_name);
+            };
+
+            struct CellPlacement {
+                clever::layout::LayoutNode* cell = nullptr;
+                int row = 0;
+                int col = 0;
+                int colspan = 1;
+                int rowspan = 1;
+            };
+
+            std::vector<clever::layout::LayoutNode*> rows;
+            std::vector<clever::layout::LayoutNode*> top_captions;
+            std::vector<clever::layout::LayoutNode*> bottom_captions;
+
+            for (auto& child : table_node.children) {
+                if (child->display == clever::layout::DisplayType::None || child->mode == clever::layout::LayoutMode::None) {
+                    continue;
+                }
+                if (child->position_type == 2 || child->position_type == 3) {
+                    continue;
+                }
+                if (is_caption_tag(child->tag_name)) {
+                    if (child->caption_side == 0) {
+                        top_captions.push_back(child.get());
+                    } else {
+                        bottom_captions.push_back(child.get());
+                    }
+                    continue;
+                }
+                if (is_section_tag(child->tag_name)) {
+                    for (auto& grandchild : child->children) {
+                        if (grandchild->display == clever::layout::DisplayType::None || grandchild->mode == clever::layout::LayoutMode::None) {
+                            continue;
+                        }
+                        if (grandchild->position_type == 2 || grandchild->position_type == 3) {
+                            continue;
+                        }
+                        if (is_table_row(*grandchild)) {
+                            rows.push_back(grandchild.get());
+                        }
+                    }
+                    continue;
+                }
+                if (is_table_row(*child)) {
+                    rows.push_back(child.get());
+                }
+            }
+
+            float h_spacing = table_node.border_collapse ? 0.0f : table_node.border_spacing;
+            float v_spacing = table_node.border_collapse ? 0.0f
+                               : (table_node.border_spacing_v > 0 ? table_node.border_spacing_v : table_node.border_spacing);
+            bool fixed_layout = table_node.table_layout == 1;
+
+            int row_count = static_cast<int>(rows.size());
+            int col_count = 0;
+
+            auto estimate_node_width = [&](auto&& self,
+                                          const clever::layout::LayoutNode& node) -> float {
+                float w = 0.0f;
+                if (node.geometry.width > 0.0f) {
+                    w = node.geometry.width;
+                } else if (node.specified_width >= 0.0f) {
+                    w = node.specified_width;
+                } else if (node.css_width.has_value()) {
+                    float base = table_node.geometry.width > 0.0f ? table_node.geometry.width : 800.0f;
+                    float parsed = node.css_width->to_px(base);
+                    if (parsed > 0.0f) w = parsed;
+                } else if (node.image_width > 0) {
+                    w = static_cast<float>(node.image_width);
+                } else if (node.is_text) {
+                    float fs = node.font_size > 0.0f ? node.font_size : 16.0f;
+                    float per_ch = fs * 0.55f + std::max(0.0f, node.letter_spacing);
+                    w = static_cast<float>(node.text_content.size()) * per_ch;
+                }
+
+                if (w > 0.0f) {
+                    return w + node.geometry.padding.left + node.geometry.padding.right
+                           + node.geometry.border.left + node.geometry.border.right;
+                }
+
+                float inline_sum = 0.0f;
+                float block_max = 0.0f;
+                bool inline_seen = false;
+                bool block_seen = false;
+                for (auto& child : node.children) {
+                    float child_w = self(self, *child);
+                    bool is_inline = child->mode == clever::layout::LayoutMode::Inline
+                                  || child->display == clever::layout::DisplayType::Inline
+                                  || child->is_text
+                                  || child->display == clever::layout::DisplayType::InlineBlock;
+                    if (is_inline) {
+                        inline_sum += child_w;
+                        inline_seen = true;
+                    } else {
+                        block_max = std::max(block_max, child_w);
+                        block_seen = true;
+                    }
+                }
+
+                if (block_seen) {
+                    w = std::max(block_max, inline_sum);
+                } else if (inline_seen) {
+                    w = inline_sum;
+                } else {
+                    float fs = node.font_size > 0.0f ? node.font_size : 16.0f;
+                    w = fs;
+                }
+
+                return w + node.geometry.padding.left + node.geometry.padding.right
+                       + node.geometry.border.left + node.geometry.border.right;
+            };
+
+            auto estimate_node_height = [&](auto&& self,
+                                           const clever::layout::LayoutNode& node) -> float {
+                if (node.geometry.height > 0.0f) {
+                    return node.geometry.height;
+                }
+                if (node.is_text) {
+                    float fs = node.font_size > 0.0f ? node.font_size : 16.0f;
+                    float lh = node.line_height > 0.0f ? node.line_height : 1.2f;
+                    float lines = 1.0f;
+                    for (auto ch : node.text_content) {
+                        if (ch == '\n') lines += 1.0f;
+                    }
+                    return lines * fs * lh;
+                }
+                if (node.image_height > 0) {
+                    return static_cast<float>(node.image_height);
+                }
+
+                float inline_max = 0.0f;
+                float block_sum = 0.0f;
+                bool block_seen = false;
+                for (auto& child : node.children) {
+                    float child_h = self(self, *child);
+                    bool is_inline = child->mode == clever::layout::LayoutMode::Inline
+                                  || child->display == clever::layout::DisplayType::Inline
+                                  || child->is_text
+                                  || child->display == clever::layout::DisplayType::InlineBlock;
+                    if (is_inline) {
+                        inline_max = std::max(inline_max, child_h);
+                    } else {
+                        block_sum += child_h;
+                        block_seen = true;
+                    }
+                }
+
+                if (block_seen) {
+                    return block_sum + inline_max
+                           + node.geometry.padding.top + node.geometry.padding.bottom
+                           + node.geometry.border.top + node.geometry.border.bottom;
+                }
+                if (inline_max > 0.0f) {
+                    return inline_max
+                           + node.geometry.padding.top + node.geometry.padding.bottom
+                           + node.geometry.border.top + node.geometry.border.bottom;
+                }
+
+                float fs = node.font_size > 0.0f ? node.font_size : 16.0f;
+                float lh = node.line_height > 0.0f ? node.line_height : 1.2f;
+                return fs * lh
+                       + node.geometry.padding.top + node.geometry.padding.bottom
+                       + node.geometry.border.top + node.geometry.border.bottom;
+            };
+
+            auto measure_color_brightness = [](uint32_t c) -> float {
+                float a = static_cast<float>((c >> 24) & 0xFF) / 255.0f;
+                if (a <= 0.0f) return 0.0f;
+                float r = static_cast<float>((c >> 16) & 0xFF) / 255.0f;
+                float g = static_cast<float>((c >> 8) & 0xFF) / 255.0f;
+                float b = static_cast<float>(c & 0xFF) / 255.0f;
+                return 0.299f * r + 0.587f * g + 0.114f * b;
+            };
+
+            auto spread_span_width = [&](std::vector<float>& widths,
+                                        const std::vector<int>& is_locked,
+                                        int start, int span, float requested,
+                                        float spacing) {
+                if (start < 0 || span <= 1 || requested <= 0.0f || col_count <= 0) return;
+                int end = std::min(col_count, start + span);
+                if (end <= start) return;
+                float current = 0.0f;
+                int variable = 0;
+                for (int i = start; i < end; ++i) {
+                    current += widths[static_cast<size_t>(i)];
+                    if (is_locked[static_cast<size_t>(i)] == 0) {
+                        ++variable;
+                    }
+                }
+                float needed = std::max(0.0f, requested - spacing * static_cast<float>(std::max(0, end - start - 1)));
+                float deficit = needed - current;
+                if (deficit <= 0.0f) return;
+
+                if (variable > 0) {
+                    float weight_sum = 0.0f;
+                    for (int i = start; i < end; ++i) {
+                        if (is_locked[static_cast<size_t>(i)] == 0) {
+                            weight_sum += std::max(1.0f, widths[static_cast<size_t>(i)]);
+                        }
+                    }
+                    if (weight_sum <= 0.0f) {
+                        weight_sum = static_cast<float>(variable);
+                    }
+                    for (int i = start; i < end; ++i) {
+                        if (is_locked[static_cast<size_t>(i)] == 0) {
+                            widths[static_cast<size_t>(i)] += deficit
+                                * (std::max(1.0f, widths[static_cast<size_t>(i)]) / weight_sum);
+                        }
+                    }
+                } else if (current > 0.0f) {
+                    float factor = (current + deficit) / current;
+                    for (int i = start; i < end; ++i) {
+                        widths[static_cast<size_t>(i)] *= factor;
+                    }
+                } else {
+                    float each = needed / static_cast<float>(end - start);
+                    for (int i = start; i < end; ++i) {
+                        widths[static_cast<size_t>(i)] = std::max(widths[static_cast<size_t>(i)], each);
+                    }
+                }
+            };
+
+            auto width_hint = [&](const clever::layout::LayoutNode& cell) -> float {
+                if (cell.specified_width >= 0.0f) return cell.specified_width;
+                if (cell.css_width.has_value()) {
+                    float base = table_node.geometry.width > 0.0f ? table_node.geometry.width : 800.0f;
+                    float w = cell.css_width->to_px(base);
+                    if (w > 0.0f) return w;
+                }
+                return estimate_node_width(estimate_node_width, cell);
+            };
+
+            auto recompute_row_tops = [&](const std::vector<float>& heights,
+                                          std::vector<float>& tops,
+                                          float first_top) {
+                if (heights.empty()) return;
+                tops[0] = first_top;
+                for (size_t i = 1; i < heights.size(); ++i) {
+                    tops[static_cast<size_t>(i)] = tops[static_cast<size_t>(i - 1)]
+                        + heights[static_cast<size_t>(i - 1)] + v_spacing;
+                }
+            };
+
+            auto take_collapsed_border = [&](float left_w, float right_w, uint32_t left_c, uint32_t right_c) -> bool {
+                if (left_w > right_w) return true;
+                if (right_w > left_w) return false;
+                float luma_left = measure_color_brightness(left_c);
+                float luma_right = measure_color_brightness(right_c);
+                if (luma_left == luma_right) return true;
+                return luma_left < luma_right;
+            };
+
+            auto row_cell_offset = [&](float row_h, float cell_h, int valign, float baseline) -> float {
+                float v_off = 0.0f;
+                switch (valign) {
+                    case 1:
+                        v_off = 0.0f;
+                        break;
+                    case 2:
+                        v_off = (row_h - cell_h) * 0.5f;
+                        break;
+                    case 3:
+                        v_off = row_h - cell_h;
+                        break;
+                    case 0:
+                    default:
+                        v_off = baseline - (cell_h * 0.8f);
+                        break;
+                }
+                return v_off < 0.0f ? 0.0f : v_off;
+            };
+
+            auto ensure_min_width = [&](float value) {
+                if (value <= 0.0f) value = 1.0f;
+                return value;
+            };
+
+            std::vector<CellPlacement> placements;
+            std::vector<std::vector<clever::layout::LayoutNode*>> cell_matrix;
+            cell_matrix.resize(static_cast<size_t>(row_count));
+
+            for (int ri = 0; ri < row_count; ++ri) {
+                if (static_cast<int>(cell_matrix[static_cast<size_t>(ri)].size()) < col_count) {
+                    cell_matrix[static_cast<size_t>(ri)].resize(static_cast<size_t>(col_count), nullptr);
+                }
+
+                int col_idx = 0;
+                for (auto& child : rows[static_cast<size_t>(ri)]->children) {
+                    if (child->display == clever::layout::DisplayType::None || child->mode == clever::layout::LayoutMode::None) {
+                        continue;
+                    }
+                    if (child->position_type == 2 || child->position_type == 3) {
+                        continue;
+                    }
+                    if (!is_table_cell(*child)) {
+                        continue;
+                    }
+                    if (child->display == clever::layout::DisplayType::Table) {
+                        continue;
+                    }
+
+                    int span = std::max(1, child->colspan);
+                    int row_span = std::max(1, child->rowspan);
+                    while (col_idx < col_count &&
+                           static_cast<size_t>(col_idx) < cell_matrix[static_cast<size_t>(ri)].size() &&
+                           cell_matrix[static_cast<size_t>(ri)][static_cast<size_t>(col_idx)] != nullptr) {
+                        ++col_idx;
+                    }
+
+                    if (col_idx + span > col_count) {
+                        col_count = col_idx + span;
+                        for (auto& matrix_row : cell_matrix) {
+                            if (static_cast<int>(matrix_row.size()) < col_count) {
+                                matrix_row.resize(static_cast<size_t>(col_count), nullptr);
+                            }
+                        }
+                    }
+
+                    int occupy_rows = std::min(row_span, std::max(0, row_count - ri));
+                    for (int dr = 0; dr < occupy_rows; ++dr) {
+                        int target_row = ri + dr;
+                        if (target_row >= row_count) continue;
+                        if (static_cast<int>(cell_matrix[static_cast<size_t>(target_row)].size()) < col_count) {
+                            cell_matrix[static_cast<size_t>(target_row)].resize(static_cast<size_t>(col_count), nullptr);
+                        }
+                        for (int dc = 0; dc < span; ++dc) {
+                            int cc = col_idx + dc;
+                            if (cc < col_count) {
+                                cell_matrix[static_cast<size_t>(target_row)][static_cast<size_t>(cc)] = child.get();
+                            }
+                        }
+                    }
+
+                    placements.push_back({child.get(), ri, col_idx, span, row_span});
+                    col_idx += span;
+                }
+            }
+
+            if (col_count <= 0) col_count = 1;
+            for (auto& matrix_row : cell_matrix) {
+                if (static_cast<int>(matrix_row.size()) < col_count) {
+                    matrix_row.resize(static_cast<size_t>(col_count), nullptr);
+                }
+            }
+
+            std::vector<float> min_width(static_cast<size_t>(col_count), 0.0f);
+            std::vector<float> max_width(static_cast<size_t>(col_count), 0.0f);
+            std::vector<float> final_width(static_cast<size_t>(col_count), 0.0f);
+            std::vector<int> locked(static_cast<size_t>(col_count), 0);
+            for (int ci = 0; ci < col_count; ++ci) {
+                if (ci < static_cast<int>(table_node.col_widths.size()) && table_node.col_widths[static_cast<size_t>(ci)] >= 0.0f) {
+                    float v = table_node.col_widths[static_cast<size_t>(ci)];
+                    min_width[static_cast<size_t>(ci)] = v;
+                    max_width[static_cast<size_t>(ci)] = v;
+                    final_width[static_cast<size_t>(ci)] = v;
+                    locked[static_cast<size_t>(ci)] = 1;
+                }
+            }
+
+            if (fixed_layout) {
+                for (const auto& p : placements) {
+                    if (p.cell == nullptr || p.row != 0) continue;
+                    if (p.col < 0 || p.col >= col_count) continue;
+                    int span = std::max(1, p.colspan);
+                    float hint = width_hint(*p.cell);
+                    if (span == 1) {
+                        final_width[static_cast<size_t>(p.col)] = std::max(final_width[static_cast<size_t>(p.col)], hint);
+                        min_width[static_cast<size_t>(p.col)] = std::max(min_width[static_cast<size_t>(p.col)], hint);
+                        max_width[static_cast<size_t>(p.col)] = std::max(max_width[static_cast<size_t>(p.col)], hint);
+                        locked[static_cast<size_t>(p.col)] = 1;
+                    } else {
+                        float each = hint / static_cast<float>(span);
+                        for (int i = 0; i < span && (p.col + i) < col_count; ++i) {
+                            final_width[static_cast<size_t>(p.col + i)] = std::max(final_width[static_cast<size_t>(p.col + i)], each);
+                            min_width[static_cast<size_t>(p.col + i)] = std::max(min_width[static_cast<size_t>(p.col + i)], each);
+                            max_width[static_cast<size_t>(p.col + i)] = std::max(max_width[static_cast<size_t>(p.col + i)], each);
+                            locked[static_cast<size_t>(p.col + i)] = 1;
+                        }
+                    }
+                }
+            }
+
+            for (const auto& placement : placements) {
+                if (placement.cell == nullptr) continue;
+                if (!fixed_layout || placement.row == 0) {
+                    int c = placement.col;
+                    if (c < 0 || c >= col_count) continue;
+                    int span = std::max(1, placement.colspan);
+                    float hint = width_hint(*placement.cell);
+                    if (span <= 1) {
+                        min_width[static_cast<size_t>(c)] = std::max(min_width[static_cast<size_t>(c)], hint);
+                        max_width[static_cast<size_t>(c)] = std::max(max_width[static_cast<size_t>(c)], hint);
+                        if (!fixed_layout) {
+                            final_width[static_cast<size_t>(c)] = std::max(final_width[static_cast<size_t>(c)], hint);
+                        }
+                    } else {
+                        spread_span_width(min_width, locked, c, span, hint, h_spacing);
+                        spread_span_width(max_width, locked, c, span, hint, h_spacing);
+                        if (!fixed_layout) {
+                            spread_span_width(final_width, locked, c, span, hint, h_spacing);
+                        }
+                    }
+                }
+            }
+
+            for (int c = 0; c < col_count; ++c) {
+                float fw = final_width[static_cast<size_t>(c)];
+                if (fw <= 0.0f) {
+                    fw = std::max(min_width[static_cast<size_t>(c)], max_width[static_cast<size_t>(c)]);
+                }
+                final_width[static_cast<size_t>(c)] = ensure_min_width(fw);
+            }
+
+            if (!fixed_layout) {
+                float table_content_hint = table_node.geometry.width > 0.0f ? table_node.geometry.width
+                    : (table_node.specified_width >= 0.0f ? table_node.specified_width : 0.0f);
+                table_content_hint -= table_node.geometry.padding.left + table_node.geometry.padding.right
+                                     + table_node.geometry.border.left + table_node.geometry.border.right;
+                if (table_content_hint < 0.0f) table_content_hint = 0.0f;
+
+                float occupied = 0.0f;
+                for (int c = 0; c < col_count; ++c) {
+                    occupied += final_width[static_cast<size_t>(c)];
+                }
+                float requested = std::max(0.0f, table_content_hint);
+                float gutter = h_spacing * static_cast<float>(col_count + 1);
+                float remaining = requested - (occupied + gutter);
+                if (remaining > 0.0f) {
+                    float grow_weight = 0.0f;
+                    for (int c = 0; c < col_count; ++c) {
+                        if (locked[static_cast<size_t>(c)] == 0) {
+                            grow_weight += std::max(1.0f, final_width[static_cast<size_t>(c)]);
+                        }
+                    }
+                    if (grow_weight <= 0.0f) grow_weight = static_cast<float>(col_count);
+                    for (int c = 0; c < col_count; ++c) {
+                        if (locked[static_cast<size_t>(c)] == 0) {
+                            final_width[static_cast<size_t>(c)] += remaining
+                                * (std::max(1.0f, final_width[static_cast<size_t>(c)]) / grow_weight);
+                        }
+                    }
+                }
+            }
+
+            float content_area_width = 0.0f;
+            for (int c = 0; c < col_count; ++c) content_area_width += final_width[static_cast<size_t>(c)];
+            float content_area_total = content_area_width + h_spacing * static_cast<float>(col_count + 1);
+            float caption_block_w = content_area_total
+                                  + table_node.geometry.padding.left + table_node.geometry.padding.right
+                                  + table_node.geometry.border.left + table_node.geometry.border.right;
+
+            float cursor_top = 0.0f;
+            for (auto* cap : top_captions) {
+                if (!cap) continue;
+                cap->geometry.x = 0.0f;
+                if (caption_block_w > cap->geometry.width) {
+                    cap->geometry.width = caption_block_w;
+                }
+                if (cap->geometry.height <= 0.0f) {
+                    cap->geometry.height = estimate_node_height(estimate_node_height, *cap);
+                }
+                cap->geometry.y = cursor_top;
+                cursor_top += cap->geometry.margin_box_height();
+            }
+
+            std::vector<float> row_top(static_cast<size_t>(row_count), 0.0f);
+            std::vector<float> row_height(static_cast<size_t>(row_count), 0.0f);
+            std::vector<float> row_baseline(static_cast<size_t>(row_count), 0.0f);
+            std::vector<std::vector<CellPlacement*>> row_cells(row_count);
+            std::vector<CellPlacement*> rowspan_cells;
+            for (auto& p : placements) {
+                if (p.cell == nullptr) continue;
+                if (p.row >= 0 && p.row < row_count) {
+                    row_cells[static_cast<size_t>(p.row)].push_back(&p);
+                }
+                if (p.rowspan > 1) {
+                    rowspan_cells.push_back(&p);
+                }
+            }
+
+            if (row_count > 0) {
+                row_top[0] = cursor_top + v_spacing;
+                float running_y = row_top[0];
+                for (int ri = 0; ri < row_count; ++ri) {
+                    auto* row = rows[static_cast<size_t>(ri)];
+                    if (!row) continue;
+
+                    if (row->visibility_collapse) {
+                        row->geometry.height = 0.0f;
+                        row->geometry.y = running_y;
+                        row->geometry.width = content_area_width;
+                        row->geometry.x = 0.0f;
+                        row_top[static_cast<size_t>(ri)] = running_y;
+                        row_height[static_cast<size_t>(ri)] = 0.0f;
+                        row_baseline[static_cast<size_t>(ri)] = 0.0f;
+                        running_y += v_spacing;
+                        continue;
+                    }
+
+                    row->geometry.y = running_y;
+                    row->geometry.x = 0.0f;
+                    row->geometry.width = content_area_width;
+                    row_top[static_cast<size_t>(ri)] = running_y;
+
+                    float cursor_x = h_spacing;
+                    int cursor_col = 0;
+                    float height_in_row = 0.0f;
+                    float baseline = 0.0f;
+                    for (auto* placement : row_cells[static_cast<size_t>(ri)]) {
+                        if (!placement || !placement->cell) continue;
+
+                        int c = placement->col;
+                        int span = std::max(1, placement->colspan);
+                        while (cursor_col < c && cursor_col < col_count) {
+                            cursor_x += final_width[static_cast<size_t>(cursor_col)] + h_spacing;
+                            ++cursor_col;
+                        }
+
+                        float cell_w = 0.0f;
+                        int end = std::min(col_count, c + span);
+                        for (int cc = c; cc < end; ++cc) {
+                            cell_w += final_width[static_cast<size_t>(cc)];
+                        }
+                        if (span > 1) {
+                            cell_w += h_spacing * static_cast<float>(std::max(0, span - 1));
+                        }
+
+                        placement->cell->geometry.x = cursor_x;
+                        placement->cell->geometry.width = cell_w;
+                        float content_h = estimate_node_height(estimate_node_height, *placement->cell);
+                        if (placement->cell->geometry.height <= 0.0f) {
+                            placement->cell->geometry.height = content_h;
+                        } else if (placement->cell->geometry.height < content_h) {
+                            placement->cell->geometry.height = content_h;
+                        }
+
+                        float cell_h = placement->cell->geometry.margin_box_height();
+                        if (placement->cell->rowspan <= 1) {
+                            height_in_row = std::max(height_in_row, cell_h);
+                            baseline = std::max(baseline, cell_h * 0.8f);
+                        }
+
+                        cursor_col = c + span;
+                        cursor_x += cell_w;
+                        if (cursor_col < col_count) cursor_x += h_spacing;
+                    }
+
+                    if (height_in_row < 0.0f) height_in_row = 0.0f;
+                    row->geometry.height = height_in_row;
+                    row_height[static_cast<size_t>(ri)] = height_in_row;
+                    row_baseline[static_cast<size_t>(ri)] = baseline;
+
+                    for (auto* placement : row_cells[static_cast<size_t>(ri)]) {
+                        if (!placement || !placement->cell) continue;
+                        if (placement->cell->rowspan > 1) {
+                            placement->cell->geometry.y = 0.0f;
+                            continue;
+                        }
+                        float cell_h = placement->cell->geometry.margin_box_height();
+                        placement->cell->geometry.y = row_cell_offset(height_in_row, cell_h, placement->cell->vertical_align, baseline);
+                    }
+
+                    running_y = row_top[static_cast<size_t>(ri)] + row_height[static_cast<size_t>(ri)];
+                    if (ri + 1 < row_count) running_y += v_spacing;
+                }
+            }
+
+            for (auto* p : rowspan_cells) {
+                if (!p || !p->cell) continue;
+                if (p->row < 0 || p->row >= row_count) continue;
+                int row_start = p->row;
+                int row_end = std::min(row_count, p->row + std::max(1, p->rowspan));
+                if (row_end <= row_start) continue;
+                float span_h = 0.0f;
+                for (int r = row_start; r < row_end; ++r) {
+                    span_h += row_height[static_cast<size_t>(r)];
+                    if (r + 1 < row_end) span_h += v_spacing;
+                }
+                float needed = p->cell->geometry.margin_box_height();
+                if (needed > span_h) {
+                    float extra = needed - span_h;
+                    int last = row_end - 1;
+                    if (last >= 0 && last < row_count) {
+                        row_height[static_cast<size_t>(last)] += extra;
+                        if (rows[static_cast<size_t>(last)]) {
+                            rows[static_cast<size_t>(last)]->geometry.height = row_height[static_cast<size_t>(last)];
+                        }
+                    }
+                    if (!row_top.empty()) {
+                        recompute_row_tops(row_height, row_top, row_top[0]);
+                    }
+                }
+                float final_span_h = 0.0f;
+                for (int r = row_start; r < row_end; ++r) {
+                    final_span_h += row_height[static_cast<size_t>(r)];
+                    if (r + 1 < row_end) final_span_h += v_spacing;
+                }
+                if (p->cell->geometry.height < final_span_h) {
+                    p->cell->geometry.height = final_span_h;
+                }
+            }
+
+            for (int ri = 0; ri < row_count; ++ri) {
+                if (ri < static_cast<int>(rows.size()) && rows[ri]) {
+                    rows[static_cast<size_t>(ri)]->geometry.y = row_top[static_cast<size_t>(ri)];
+                    rows[static_cast<size_t>(ri)]->geometry.height = row_height[static_cast<size_t>(ri)];
+                }
+            }
+
+            if (row_count > 0) {
+                for (auto& pvec : row_cells) {
+                    if (pvec.empty()) continue;
+                    int ri = pvec[0]->row;
+                    float h = row_height[static_cast<size_t>(ri)];
+                    if (h <= 0.0f) continue;
+                    float baseline = row_baseline[static_cast<size_t>(ri)];
+                    for (auto* p : pvec) {
+                        if (!p || !p->cell || p->cell->rowspan > 1) continue;
+                        float cell_h = p->cell->geometry.margin_box_height();
+                        p->cell->geometry.y = row_cell_offset(h, cell_h, p->cell->vertical_align, baseline);
+                    }
+                }
+            }
+
+            float cursor_bottom = row_count > 0 ? row_top[0] : cursor_top;
+            if (row_count > 0) {
+                size_t last = static_cast<size_t>(row_count - 1);
+                cursor_bottom = row_top[last] + row_height[last] + v_spacing;
+            }
+
+            for (auto* cap : bottom_captions) {
+                if (!cap) continue;
+                cap->geometry.x = 0.0f;
+                if (caption_block_w > cap->geometry.width) {
+                    cap->geometry.width = caption_block_w;
+                }
+                if (cap->geometry.height <= 0.0f) {
+                    cap->geometry.height = estimate_node_height(estimate_node_height, *cap);
+                }
+                cap->geometry.y = cursor_bottom;
+                cursor_bottom += cap->geometry.margin_box_height();
+            }
+
+            float final_height = cursor_bottom
+                               + table_node.geometry.padding.top + table_node.geometry.padding.bottom
+                               + table_node.geometry.border.top + table_node.geometry.border.bottom;
+            if (table_node.geometry.height <= 0.0f || table_node.geometry.height < final_height) {
+                table_node.geometry.height = final_height;
+            }
+
+            float final_width_value = content_area_total
+                                   + table_node.geometry.padding.left + table_node.geometry.padding.right
+                                   + table_node.geometry.border.left + table_node.geometry.border.right;
+            if (table_node.geometry.width <= 0.0f || table_node.geometry.width < final_width_value) {
+                table_node.geometry.width = final_width_value;
+            }
+
+            if (table_node.border_collapse) {
+                for (int r = 0; r < row_count; ++r) {
+                    for (int c = 0; c + 1 < col_count; ++c) {
+                        auto* left = cell_matrix[static_cast<size_t>(r)][static_cast<size_t>(c)];
+                        auto* right = cell_matrix[static_cast<size_t>(r)][static_cast<size_t>(c + 1)];
+                        if (!left || !right || left == right) continue;
+                        float left_w = left->geometry.border.right;
+                        float right_w = right->geometry.border.left;
+                        uint32_t left_c = left->border_color_right != 0 ? left->border_color_right : left->border_color;
+                        uint32_t right_c = right->border_color_left != 0 ? right->border_color_left : right->border_color;
+                        int left_style = left->border_style_right;
+                        int right_style = right->border_style_left;
+                        bool take_left = take_collapsed_border(left_w, right_w, left_c, right_c);
+                        float winner_w = take_left ? left_w : right_w;
+                        uint32_t winner_c = take_left ? left_c : right_c;
+                        int winner_style = take_left ? left_style : right_style;
+                        left->geometry.border.right = winner_w;
+                        left->border_color_right = winner_c;
+                        left->border_style_right = winner_style;
+                        right->geometry.border.left = winner_w;
+                        right->border_color_left = winner_c;
+                        right->border_style_left = winner_style;
+                        if (left->border_color == 0) left->border_color = winner_c;
+                        if (right->border_color == 0) right->border_color = winner_c;
+                    }
+                }
+
+                for (int r = 0; r + 1 < row_count; ++r) {
+                    for (int c = 0; c < col_count; ++c) {
+                        auto* top = cell_matrix[static_cast<size_t>(r)][static_cast<size_t>(c)];
+                        auto* bottom = cell_matrix[static_cast<size_t>(r + 1)][static_cast<size_t>(c)];
+                        if (!top || !bottom || top == bottom) continue;
+                        float top_w = top->geometry.border.bottom;
+                        float bottom_w = bottom->geometry.border.top;
+                        uint32_t top_c = top->border_color_bottom != 0 ? top->border_color_bottom : top->border_color;
+                        uint32_t bottom_c = bottom->border_color_top != 0 ? bottom->border_color_top : bottom->border_color;
+                        int top_style = top->border_style_bottom;
+                        int bottom_style = bottom->border_style_top;
+                        bool take_top = take_collapsed_border(top_w, bottom_w, top_c, bottom_c);
+                        float winner_w = take_top ? top_w : bottom_w;
+                        uint32_t winner_c = take_top ? top_c : bottom_c;
+                        int winner_style = take_top ? top_style : bottom_style;
+                        top->geometry.border.bottom = winner_w;
+                        top->border_color_bottom = winner_c;
+                        top->border_style_bottom = winner_style;
+                        bottom->geometry.border.top = winner_w;
+                        bottom->border_color_top = winner_c;
+                        bottom->border_style_top = winner_style;
+                        if (top->border_color == 0) top->border_color = winner_c;
+                        if (bottom->border_color == 0) bottom->border_color = winner_c;
+                    }
+                }
+            }
+        };
+
+        compute_table_layout(*layout_node);
     }
 
     // Post-cascade UA defaults — apply AFTER cascade transfer to avoid being overwritten

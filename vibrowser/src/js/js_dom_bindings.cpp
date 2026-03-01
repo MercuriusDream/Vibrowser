@@ -8967,10 +8967,22 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
                         std::strlen(method_code), "<submit-evt>", JS_EVAL_TYPE_GLOBAL);
                     if (JS_IsFunction(ctx, setup_fn)) {
                         JSValue setup_ret = JS_Call(ctx, setup_fn, submit_evt,
-                                                     0, nullptr);
+                                                         0, nullptr);
                         JS_FreeValue(ctx, setup_ret);
                     }
                     JS_FreeValue(ctx, setup_fn);
+
+                    bool form_validation_required = true;
+                    if (form && form->type == clever::html::SimpleNode::Element) {
+                        if (has_attr(*form, "novalidate") || has_attr(*target, "formnovalidate")) {
+                            form_validation_required = false;
+                        }
+                    }
+
+                    if (form_validation_required && !form_controls_all_valid(state, form, true)) {
+                        JS_FreeValue(ctx, submit_evt);
+                        break;
+                    }
 
                     dispatch_event_propagated(ctx, state, form, submit_evt,
                                               "submit", true);
@@ -14891,6 +14903,27 @@ void install_dom_bindings(JSContext* ctx,
         JS_NewCFunction(ctx, js_element_set_hidden, "__setHidden", 1));
     JS_SetPropertyStr(ctx, element_proto, "__getOffsetParent",
         JS_NewCFunction(ctx, js_element_get_offset_parent, "__getOffsetParent", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__checkValidity",
+        JS_NewCFunction(ctx, js_element_check_validity, "__checkValidity", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__reportValidity",
+        JS_NewCFunction(ctx, js_element_report_validity, "__reportValidity", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__setCustomValidity",
+        JS_NewCFunction(ctx, js_element_set_custom_validity, "__setCustomValidity", 1));
+    JS_SetPropertyStr(ctx, element_proto, "__getValidity",
+        JS_NewCFunction(ctx, js_element_get_validity_object, "__getValidity", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__getValidationMessage",
+        JS_NewCFunction(ctx, js_element_get_validation_message,
+                        "__getValidationMessage", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__getWillValidate",
+        JS_NewCFunction(ctx, js_element_get_will_validate, "__getWillValidate", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__getElements",
+        JS_NewCFunction(ctx, js_form_get_elements, "__getElements", 0));
+    JS_SetPropertyStr(ctx, element_proto, "checkValidity",
+        JS_NewCFunction(ctx, js_element_check_validity, "checkValidity", 0));
+    JS_SetPropertyStr(ctx, element_proto, "reportValidity",
+        JS_NewCFunction(ctx, js_element_report_validity, "reportValidity", 0));
+    JS_SetPropertyStr(ctx, element_proto, "setCustomValidity",
+        JS_NewCFunction(ctx, js_element_set_custom_validity, "setCustomValidity", 1));
 
     JS_SetClassProto(ctx, element_class_id, element_proto);
 
@@ -16603,317 +16636,32 @@ void install_dom_bindings(JSContext* ctx,
     globalThis.Option.prototype = proto;
 
     // ---- HTML5 Form Validation API ----
-    // Per-element custom validity message storage (keyed by a unique per-element marker)
-    var __customValidityMap = {};
-    var __customValidityCounter = 0;
-    function __getCustomValidityKey(el) {
-        var k = el.__customValidityKey;
-        if (!k) {
-            k = '__cvk' + (++__customValidityCounter);
-            el.__customValidityKey = k;
-        }
-        return k;
-    }
-
-    // Helper: is this a submittable element that participates in constraint validation?
-    function __isSubmittable(el) {
-        var tag = (el.__getTagName ? el.__getTagName() : '').toLowerCase();
-        return tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'button';
-    }
-
-    // Helper: is element barred from constraint validation?
-    // (disabled, hidden/button/reset/image input types, button with button/reset type)
-    function __isBarred(el) {
-        if (el.hasAttribute('disabled')) return true;
-        var tag = (el.__getTagName ? el.__getTagName() : '').toLowerCase();
-        if (tag === 'input') {
-            var t = (el.getAttribute('type') || 'text').toLowerCase();
-            if (t === 'hidden' || t === 'button' || t === 'reset' || t === 'image') return true;
-        }
-        if (tag === 'button') {
-            var bt = (el.getAttribute('type') || 'submit').toLowerCase();
-            if (bt === 'button' || bt === 'reset') return true;
-        }
-        return false;
-    }
-
-    // Helper: validate email format (RFC 5322 simplified)
-    function __isValidEmail(val) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
-    }
-
-    // Helper: validate URL format (must have scheme://rest)
-    function __isValidURL(val) {
-        if (!val) return false;
-        return /^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\/.+/.test(val);
-    }
-
-    // Compute full ValidityState for an element
-    function __computeValidity(el) {
-        var tag = (el.__getTagName ? el.__getTagName() : '').toLowerCase();
-        var val = el.getAttribute('value') || '';
-        var customMsg = __customValidityMap[el.__customValidityKey] || '';
-
-        var valueMissing = false;
-        var typeMismatch = false;
-        var patternMismatch = false;
-        var tooShort = false;
-        var tooLong = false;
-        var rangeUnderflow = false;
-        var rangeOverflow = false;
-        var stepMismatch = false;
-        var badInput = false;
-        var customError = customMsg.length > 0;
-
-        if (tag === 'input') {
-            var inputType = (el.getAttribute('type') || 'text').toLowerCase();
-            var inputRequired = el.hasAttribute('required');
-
-            // valueMissing: required field is empty
-            if (inputRequired) {
-                if (inputType === 'checkbox' || inputType === 'radio') {
-                    valueMissing = !el.hasAttribute('checked');
-                } else {
-                    valueMissing = (val.trim() === '');
-                }
-            }
-
-            // typeMismatch: value doesn't match declared type
-            if (val !== '') {
-                if (inputType === 'email') {
-                    typeMismatch = !__isValidEmail(val);
-                } else if (inputType === 'url') {
-                    typeMismatch = !__isValidURL(val);
-                } else if (inputType === 'number' || inputType === 'range') {
-                    typeMismatch = isNaN(parseFloat(val)) || !isFinite(parseFloat(val));
-                }
-            }
-
-            // patternMismatch: value doesn't match the pattern attribute regex
-            var patternAttr = el.getAttribute('pattern');
-            if (patternAttr && val !== '') {
-                try {
-                    var patRe = new RegExp('^(?:' + patternAttr + ')$');
-                    patternMismatch = !patRe.test(val);
-                } catch(patE) {
-                    // invalid pattern — treat as no mismatch
-                }
-            }
-
-            // tooShort / tooLong (minlength / maxlength)
-            if (inputType !== 'number' && inputType !== 'range' &&
-                inputType !== 'checkbox' && inputType !== 'radio' &&
-                inputType !== 'file') {
-                var minLenAttr = el.getAttribute('minlength');
-                var maxLenAttr = el.getAttribute('maxlength');
-                if (minLenAttr !== null && val.length > 0) {
-                    var minLenNum = parseInt(minLenAttr, 10);
-                    if (!isNaN(minLenNum) && val.length < minLenNum) tooShort = true;
-                }
-                if (maxLenAttr !== null) {
-                    var maxLenNum = parseInt(maxLenAttr, 10);
-                    if (!isNaN(maxLenNum) && val.length > maxLenNum) tooLong = true;
-                }
-            }
-
-            // rangeUnderflow / rangeOverflow / stepMismatch for numeric inputs
-            if (inputType === 'number' || inputType === 'range') {
-                var numVal = parseFloat(val);
-                if (!isNaN(numVal)) {
-                    var minAttr = el.getAttribute('min');
-                    var maxAttr = el.getAttribute('max');
-                    if (minAttr !== null) {
-                        var minNum = parseFloat(minAttr);
-                        if (!isNaN(minNum) && numVal < minNum) rangeUnderflow = true;
-                    }
-                    if (maxAttr !== null) {
-                        var maxNum = parseFloat(maxAttr);
-                        if (!isNaN(maxNum) && numVal > maxNum) rangeOverflow = true;
-                    }
-                    var stepAttr = el.getAttribute('step');
-                    if (stepAttr && stepAttr !== 'any') {
-                        var step = parseFloat(stepAttr);
-                        var stepBase = parseFloat(el.getAttribute('min') || '0') || 0;
-                        if (!isNaN(step) && step > 0) {
-                            var remainder = (numVal - stepBase) % step;
-                            // allow small floating point tolerance
-                            if (Math.abs(remainder) > 1e-10 && Math.abs(remainder - step) > 1e-10) {
-                                stepMismatch = true;
-                            }
-                        }
-                    }
-                }
-            }
-
-        } else if (tag === 'textarea') {
-            var taRequired = el.hasAttribute('required');
-            if (taRequired && (val.trim() === '')) valueMissing = true;
-
-            var taMinLen = el.getAttribute('minlength');
-            var taMaxLen = el.getAttribute('maxlength');
-            if (taMinLen !== null && val.length > 0) {
-                var taMinLenNum = parseInt(taMinLen, 10);
-                if (!isNaN(taMinLenNum) && val.length < taMinLenNum) tooShort = true;
-            }
-            if (taMaxLen !== null) {
-                var taMaxLenNum = parseInt(taMaxLen, 10);
-                if (!isNaN(taMaxLenNum) && val.length > taMaxLenNum) tooLong = true;
-            }
-
-        } else if (tag === 'select') {
-            var selRequired = el.hasAttribute('required');
-            if (selRequired) {
-                var selIdxAttr = el.getAttribute('data-selected-index');
-                var selIdx = selIdxAttr !== null ? parseInt(selIdxAttr, 10) : -1;
-                valueMissing = (selIdx < 0);
-            }
-        }
-
-        var valid = !valueMissing && !typeMismatch && !patternMismatch &&
-                    !tooShort && !tooLong && !rangeUnderflow && !rangeOverflow &&
-                    !stepMismatch && !badInput && !customError;
-
-        return {
-            valid: valid,
-            valueMissing: valueMissing,
-            typeMismatch: typeMismatch,
-            patternMismatch: patternMismatch,
-            tooShort: tooShort,
-            tooLong: tooLong,
-            rangeUnderflow: rangeUnderflow,
-            rangeOverflow: rangeOverflow,
-            stepMismatch: stepMismatch,
-            badInput: badInput,
-            customError: customError
-        };
-    }
-
-    // Build a human-readable validation message from a ValidityState
-    function __buildValidationMessage(el, vs, customMsg) {
-        if (customMsg) return customMsg;
-        if (vs.valueMissing) return 'Please fill out this field.';
-        if (vs.typeMismatch) {
-            var vmType = (el.getAttribute('type') || 'text').toLowerCase();
-            if (vmType === 'email') return 'Please enter a valid email address.';
-            if (vmType === 'url') return 'Please enter a valid URL.';
-            return 'Please enter a valid value.';
-        }
-        if (vs.patternMismatch) return 'Please match the requested format.';
-        if (vs.tooShort) {
-            return 'Please lengthen this text to ' + (el.getAttribute('minlength') || '0') + ' characters or more.';
-        }
-        if (vs.tooLong) {
-            return 'Please shorten this text to ' + (el.getAttribute('maxlength') || '0') + ' characters or less.';
-        }
-        if (vs.rangeUnderflow) {
-            return 'Value must be greater than or equal to ' + (el.getAttribute('min') || '0') + '.';
-        }
-        if (vs.rangeOverflow) {
-            return 'Value must be less than or equal to ' + (el.getAttribute('max') || '0') + '.';
-        }
-        if (vs.stepMismatch) return 'Please enter a valid value (step mismatch).';
-        if (vs.badInput) return 'Please enter a valid value.';
-        return '';
-    }
-
-    // Helper: fire an 'invalid' event on an element (bubbles: false, cancelable: true)
-    function __fireInvalidEvent(el) {
-        try {
-            var evt = document.createEvent('Event');
-            if (evt && evt.initEvent) {
-                evt.initEvent('invalid', false, true);
-                el.dispatchEvent(evt);
-            }
-        } catch(fireE) {}
-    }
-
-    // element.checkValidity() — returns true if element satisfies all constraints.
-    // For <form> elements, validates all descendant form controls.
-    // Fires 'invalid' event on each failing control.
-    proto.checkValidity = function() {
-        var cvTag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
-        if (cvTag === 'form') {
-            // Gather all descendant submittable form controls
-            var formControls = [];
-            try {
-                var formAll = this.querySelectorAll('input, select, textarea, button');
-                if (formAll) {
-                    for (var fi = 0; fi < formAll.length; fi++) {
-                        formControls.push(formAll[fi]);
-                    }
-                }
-            } catch(qsE) {}
-            var formAllValid = true;
-            for (var fj = 0; fj < formControls.length; fj++) {
-                var fctrl = formControls[fj];
-                if (!__isSubmittable(fctrl) || __isBarred(fctrl)) continue;
-                __getCustomValidityKey(fctrl);
-                var fstate = __computeValidity(fctrl);
-                if (!fstate.valid) {
-                    __fireInvalidEvent(fctrl);
-                    formAllValid = false;
-                }
-            }
-            return formAllValid;
-        }
-        // Non-form submittable elements
-        if (!__isSubmittable(this)) return true;
-        if (__isBarred(this)) return true;
-        __getCustomValidityKey(this);
-        var cvState = __computeValidity(this);
-        if (!cvState.valid) {
-            __fireInvalidEvent(this);
-            return false;
-        }
-        return true;
-    };
-
-    // element.reportValidity() — same as checkValidity (UI feedback not yet implemented)
-    proto.reportValidity = function() {
-        return this.checkValidity();
-    };
-
-    // element.validity — returns a ValidityState-like object
+    // Constraint validation is implemented by native C++ bindings.
     Object.defineProperty(proto, 'validity', {
-        get: function() {
-            if (!__isSubmittable(this)) {
-                return { valid: true, valueMissing: false, typeMismatch: false,
-                         patternMismatch: false, tooShort: false, tooLong: false,
-                         rangeUnderflow: false, rangeOverflow: false,
-                         stepMismatch: false, badInput: false, customError: false };
-            }
-            __getCustomValidityKey(this);
-            return __computeValidity(this);
-        },
+        get: function() { return this.__getValidity(); },
         configurable: true
     });
-
-    // element.setCustomValidity(message) — stores custom message; non-empty makes element invalid
-    proto.setCustomValidity = function(msg) {
-        var k = __getCustomValidityKey(this);
-        __customValidityMap[k] = (msg === null || msg === undefined) ? '' : String(msg);
-    };
-
-    // element.validationMessage — returns localized validation message or ''
     Object.defineProperty(proto, 'validationMessage', {
-        get: function() {
-            if (!__isSubmittable(this) || __isBarred(this)) return '';
-            __getCustomValidityKey(this);
-            var vmCustom = __customValidityMap[this.__customValidityKey] || '';
-            var vmState = __computeValidity(this);
-            if (vmState.valid) return '';
-            return __buildValidationMessage(this, vmState, vmCustom);
-        },
+        get: function() { return this.__getValidationMessage(); },
         configurable: true
     });
-
-    // element.willValidate — true if element is a submittable element not barred from validation
     Object.defineProperty(proto, 'willValidate', {
-        get: function() {
-            return __isSubmittable(this) && !__isBarred(this);
-        },
+        get: function() { return this.__getWillValidate(); },
         configurable: true
     });
+    Object.defineProperty(proto, 'elements', {
+        get: function() { return this.__getElements(); },
+        configurable: true
+    });
+    proto.checkValidity = function() {
+        return this.__checkValidity();
+    };
+    proto.reportValidity = function() {
+        return this.__reportValidity();
+    };
+    proto.setCustomValidity = function(message) {
+        return this.__setCustomValidity(message);
+    };
 
     Object.defineProperty(proto, 'open', {
         get: function() {
