@@ -12670,9 +12670,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     } else {
         layout_node->flex_basis = style.flex_basis.to_px(0);
     }
-    if (!style.gap.is_zero()) {
-        layout_node->gap = style.gap.to_px(0);
-    }
+    layout_node->gap = style.gap.to_px(0);
     layout_node->row_gap = style.gap.to_px(0);
     layout_node->column_gap = style.column_gap_val.to_px(0);
 
