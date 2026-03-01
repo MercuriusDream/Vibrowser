@@ -5787,6 +5787,26 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     node.geometry.height = std::max(node.geometry.height, node.min_height);
     node.geometry.height = std::min(node.geometry.height, node.max_height);
 
+    // Shrink-to-fit for auto-width tables: table without explicit width should
+    // not stretch to the full containing width but shrink to its column content.
+    if (!table_has_explicit_width) {
+        float col_total = 0;
+        for (int i = 0; i < num_cols; i++) col_total += col_widths[static_cast<size_t>(i)];
+        float shrink_content_w = col_total + h_spacing * static_cast<float>(num_cols + 1);
+        float shrink_w = shrink_content_w
+            + node.geometry.padding.left + node.geometry.padding.right
+            + node.geometry.border.left + node.geometry.border.right;
+        if (node.geometry.width > shrink_w) {
+            node.geometry.width = shrink_w;
+            // Also shrink row widths to match actual column content
+            for (auto* row : rows) {
+                if (row && row->geometry.width > shrink_content_w) {
+                    row->geometry.width = shrink_content_w;
+                }
+            }
+        }
+    }
+
     // Position absolute/fixed children
     position_absolute_children(node);
 }

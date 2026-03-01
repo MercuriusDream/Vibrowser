@@ -46,7 +46,7 @@ public:
                      const std::string& font_feature_settings = "",
                      const std::string& font_variation_settings = "",
                      int text_rendering = 0, int font_kerning = 0,
-                     int font_optical_sizing = 0);
+                     int font_optical_sizing = 0, float word_spacing = 0);
 
     // Measure text width for a given string and font size.
     float measure_text_width(const std::string& text, float font_size,
@@ -56,7 +56,7 @@ public:
     float measure_text_width(const std::string& text, float font_size,
                              const std::string& font_family,
                              int font_weight, bool font_italic,
-                             float letter_spacing);
+                             float letter_spacing, float word_spacing = 0);
 
 private:
     // Render a single line (no newlines) at the given position
@@ -65,7 +65,7 @@ private:
                             uint8_t* buffer, int buffer_width, int buffer_height,
                             CTFontRef font, CGColorRef cg_color, CGColorSpaceRef colorspace,
                             float letter_spacing = 0, int text_rendering = 0,
-                            int font_kerning = 0);
+                            int font_kerning = 0, float word_spacing = 0);
 };
 
 } // namespace clever::paint

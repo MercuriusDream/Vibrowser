@@ -11344,13 +11344,17 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
     }
 
-    // Handle <center> — legacy block-level centering element
+    // Handle <center> — legacy block-level centering element.
+    // <center> centers its BLOCK children via auto margins. It does NOT force
+    // text-align: center on all descendants (that would incorrectly center all
+    // text in sites like HN that rely on block centering, not text centering).
+    // The auto-margin centering of block children is handled in the post-process
+    // step below (at the "if (tag_lower == "center")" block near line 12871).
     if (tag_lower == "center") {
         layout_node->mode = clever::layout::LayoutMode::Block;
         layout_node->display = clever::layout::DisplayType::Block;
-        layout_node->text_align = 1; // center
-        // Also update ComputedStyle so children inherit text-align: center
-        style.text_align = clever::css::TextAlign::Center;
+        // Do NOT set text_align = 1 here — that would center all descendant text.
+        // Block children are centered via auto margins in the post-process pass.
     }
 
     // Handle legacy HTML `align` attribute on generic block elements

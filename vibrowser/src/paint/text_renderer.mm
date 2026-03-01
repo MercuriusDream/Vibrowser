@@ -226,7 +226,7 @@ void TextRenderer::render_single_line(const std::string& text, float x, float y,
                                        float /*font_size*/, const Color& /*color*/,
                                        uint8_t* buffer, int buffer_width, int buffer_height,
                                        CTFontRef font, CGColorRef cg_color, CGColorSpaceRef colorspace,
-                                       float letter_spacing, int text_rendering, int font_kerning) {
+                                       float letter_spacing, int text_rendering, int font_kerning, float word_spacing) {
     if (text.empty()) return;
 
     // Create attributed string for this line
@@ -269,18 +269,6 @@ void TextRenderer::render_single_line(const std::string& text, float x, float y,
         return;
     }
 
-    CTLineRef line = CTLineCreateWithAttributedString(attr_str);
-    if (!line) {
-        CFRelease(attr_str);
-        CFRelease(attrs);
-        CFRelease(cf_text);
-        if (kern_value) CFRelease(kern_value);
-        return;
-    }
-
-    CGFloat ascent, descent, leading;
-    CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
-
     // Create a CG context wrapping the main pixel buffer.
     // IMPORTANT: Do NOT apply a CTM flip — CoreText mirrors glyphs when
     // the CTM has a negative y-scale.  Instead we manually convert our
@@ -292,7 +280,6 @@ void TextRenderer::render_single_line(const std::string& text, float x, float y,
     );
 
     if (!ctx) {
-        CFRelease(line);
         CFRelease(attr_str);
         CFRelease(attrs);
         CFRelease(cf_text);
@@ -313,16 +300,80 @@ void TextRenderer::render_single_line(const std::string& text, float x, float y,
     // text matrix in a CGBitmapContext can be non-identity.
     CGContextSetTextMatrix(ctx, CGAffineTransformIdentity);
 
-    // Convert from top-left coords to CG bottom-left coords.
-    // In our system: y = top of text, baseline = y + ascent.
-    // In CG system:  baseline_cg = buffer_height - (y + ascent).
-    CGFloat baseline_x = static_cast<CGFloat>(x);
-    CGFloat baseline_y = static_cast<CGFloat>(buffer_height) - (static_cast<CGFloat>(y) + ascent);
-    CGContextSetTextPosition(ctx, baseline_x, baseline_y);
-    CTLineDraw(line, ctx);
+    // Handle word spacing: if non-zero, render word-by-word with manual spacing
+    if (word_spacing != 0) {
+        float cursor_x = x;
+        size_t i = 0;
+        while (i < text.size()) {
+            // Find next space
+            size_t sp = text.find(' ', i);
+            if (sp == std::string::npos) sp = text.size();
+            std::string word = text.substr(i, sp - i);
+
+            if (!word.empty()) {
+                // Render the word
+                CFStringRef word_cf = CFStringCreateWithBytes(
+                    kCFAllocatorDefault,
+                    reinterpret_cast<const UInt8*>(word.data()),
+                    static_cast<CFIndex>(word.size()),
+                    kCFStringEncodingUTF8, false);
+                if (word_cf) {
+                    CFAttributedStringRef word_attr_str = CFAttributedStringCreate(kCFAllocatorDefault, word_cf, attrs);
+                    if (word_attr_str) {
+                        CTLineRef word_line = CTLineCreateWithAttributedString(word_attr_str);
+                        if (word_line) {
+                            CGFloat ascent, descent, leading;
+                            double width = CTLineGetTypographicBounds(word_line, &ascent, &descent, &leading);
+                            CGFloat baseline_y = static_cast<CGFloat>(buffer_height) - (static_cast<CGFloat>(y) + ascent);
+                            CGContextSetTextPosition(ctx, cursor_x, baseline_y);
+                            CTLineDraw(word_line, ctx);
+                            cursor_x += width;
+                            CFRelease(word_line);
+                        }
+                        CFRelease(word_attr_str);
+                    }
+                    CFRelease(word_cf);
+                }
+            }
+
+            // Handle space with word_spacing
+            if (sp < text.size()) {
+                // Measure space width using a single space in attrs
+                CFStringRef space_cf = CFStringCreateWithCString(kCFAllocatorDefault, " ", kCFStringEncodingUTF8);
+                if (space_cf) {
+                    CFAttributedStringRef space_attr_str = CFAttributedStringCreate(kCFAllocatorDefault, space_cf, attrs);
+                    if (space_attr_str) {
+                        CTLineRef space_line = CTLineCreateWithAttributedString(space_attr_str);
+                        if (space_line) {
+                            CGFloat ascent_sp, descent_sp, leading_sp;
+                            double space_width = CTLineGetTypographicBounds(space_line, &ascent_sp, &descent_sp, &leading_sp);
+                            cursor_x += space_width + word_spacing;
+                            CFRelease(space_line);
+                        }
+                        CFRelease(space_attr_str);
+                    }
+                    CFRelease(space_cf);
+                }
+            }
+
+            i = sp + 1;
+            if (sp == text.size()) break;
+        }
+    } else {
+        // No word spacing: render entire line at once
+        CTLineRef line = CTLineCreateWithAttributedString(attr_str);
+        if (line) {
+            CGFloat ascent, descent, leading;
+            CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
+            CGFloat baseline_x = static_cast<CGFloat>(x);
+            CGFloat baseline_y = static_cast<CGFloat>(buffer_height) - (static_cast<CGFloat>(y) + ascent);
+            CGContextSetTextPosition(ctx, baseline_x, baseline_y);
+            CTLineDraw(line, ctx);
+            CFRelease(line);
+        }
+    }
 
     CGContextRelease(ctx);
-    CFRelease(line);
     CFRelease(attr_str);
     CFRelease(attrs);
     CFRelease(cf_text);
@@ -479,7 +530,7 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
                                 const std::string& font_feature_settings,
                                 const std::string& font_variation_settings,
                                 int text_rendering, int font_kerning,
-                                int font_optical_sizing) {
+                                int font_optical_sizing, float word_spacing) {
     (void)font_optical_sizing;
     if (text.empty() || buffer_width <= 0 || buffer_height <= 0) return;
     if (!buffer) return;
@@ -584,7 +635,7 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
                 render_single_line(line_text, x, current_y, font_size, color,
                                    buffer, buffer_width, buffer_height,
                                    font, cg_color, colorspace, letter_spacing,
-                                   text_rendering, font_kerning);
+                                   text_rendering, font_kerning, word_spacing);
             }
             current_y += line_height;
             prev = pos + 1;
@@ -594,7 +645,7 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
         render_single_line(text, x, y, font_size, color,
                            buffer, buffer_width, buffer_height,
                            font, cg_color, colorspace, letter_spacing,
-                           text_rendering, font_kerning);
+                           text_rendering, font_kerning, word_spacing);
     }
 
     CGColorRelease(cg_color);
@@ -667,7 +718,7 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
 float TextRenderer::measure_text_width(const std::string& text, float font_size,
                                         const std::string& font_family,
                                         int font_weight, bool font_italic,
-                                        float letter_spacing) {
+                                        float letter_spacing, float word_spacing) {
     if (text.empty()) return 0.0f;
     if (font_size < 1.0f) font_size = 1.0f;
 
@@ -762,6 +813,15 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
     CFRelease(cf_text);
     CFRelease(font);
     if (kern_value) CFRelease(kern_value);
+
+    // Account for word_spacing: count spaces and add extra width
+    if (word_spacing != 0) {
+        int space_count = 0;
+        for (char c : text) {
+            if (c == ' ') space_count++;
+        }
+        width += space_count * word_spacing;
+    }
 
     return static_cast<float>(width);
 }
