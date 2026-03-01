@@ -16635,6 +16635,32 @@ void install_dom_bindings(JSContext* ctx,
     };
     globalThis.Option.prototype = proto;
 
+    // ---- Form-related input/button properties ----
+    // input.form — returns owning form element
+    // select.form — returns owning form element
+    // textarea.form — returns owning form element
+    // button.form — returns owning form element
+    Object.defineProperty(proto, 'form', {
+        get: function() {
+            var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+            if (tag !== 'input' && tag !== 'select' && tag !== 'textarea' && tag !== 'button') return null;
+            var formId = this.getAttribute('form');
+            if (formId) {
+                try {
+                    return document.getElementById(formId);
+                } catch(fE) {}
+            }
+            var parent = this.parentElement;
+            while (parent) {
+                var ptag = (parent.__getTagName ? parent.__getTagName() : '').toLowerCase();
+                if (ptag === 'form') return parent;
+                parent = parent.parentElement;
+            }
+            return null;
+        },
+        configurable: true
+    });
+
     // ---- HTML5 Form Validation API ----
     // Constraint validation is implemented by native C++ bindings.
     Object.defineProperty(proto, 'validity', {
@@ -16661,6 +16687,74 @@ void install_dom_bindings(JSContext* ctx,
     };
     proto.setCustomValidity = function(message) {
         return this.__setCustomValidity(message);
+    };
+
+    // form.reset() — reset all form controls to their default values
+    proto.reset = function() {
+        var resetTag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+        if (resetTag !== 'form') return;
+        try {
+            var allControls = this.querySelectorAll('input, select, textarea, button');
+            if (allControls) {
+                for (var ri = 0; ri < allControls.length; ri++) {
+                    var ctrl = allControls[ri];
+                    var ctag = (ctrl.__getTagName ? ctrl.__getTagName() : '').toLowerCase();
+                    if (ctag === 'input') {
+                        var itype = (ctrl.getAttribute('type') || 'text').toLowerCase();
+                        if (itype === 'checkbox' || itype === 'radio') {
+                            if (ctrl.hasAttribute('data-default-checked')) {
+                                ctrl.setAttribute('checked', '');
+                            } else {
+                                ctrl.removeAttribute('checked');
+                            }
+                        } else if (itype !== 'button' && itype !== 'submit' && itype !== 'reset' && itype !== 'image') {
+                            var dval = ctrl.getAttribute('data-default-value') || '';
+                            ctrl.setAttribute('value', dval);
+                        }
+                    } else if (ctag === 'textarea') {
+                        var dtext = ctrl.getAttribute('data-default-text') || '';
+                        ctrl.textContent = dtext;
+                    } else if (ctag === 'select') {
+                        var dselIdx = ctrl.getAttribute('data-default-selected-index');
+                        if (dselIdx !== null) {
+                            var selIdx = parseInt(dselIdx, 10);
+                            try {
+                                var selOpts = ctrl.querySelectorAll('option');
+                                if (selOpts) {
+                                    for (var si = 0; si < selOpts.length; si++) {
+                                        if (si === selIdx) {
+                                            selOpts[si].setAttribute('selected', '');
+                                        } else {
+                                            selOpts[si].removeAttribute('selected');
+                                        }
+                                    }
+                                    ctrl.setAttribute('data-selected-index', String(selIdx));
+                                }
+                            } catch(qsE) {}
+                        }
+                    }
+                }
+            }
+        } catch(qsE) {}
+    };
+
+    // form.requestSubmit(submitButton) — validate and submit form if valid
+    proto.requestSubmit = function(submitButton) {
+        var rsTag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+        if (rsTag !== 'form') return false;
+        if (!this.checkValidity()) {
+            return false;
+        }
+        var submitEvt = null;
+        try {
+            submitEvt = document.createEvent('Event');
+            if (submitEvt && submitEvt.initEvent) {
+                submitEvt.initEvent('submit', true, true);
+                var prevented = !this.dispatchEvent(submitEvt);
+                if (prevented) return false;
+            }
+        } catch(createE) {}
+        return true;
     };
 
     Object.defineProperty(proto, 'open', {
