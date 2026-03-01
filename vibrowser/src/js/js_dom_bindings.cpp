@@ -5364,6 +5364,27 @@ static JSValue js_element_scroll_into_view(JSContext* ctx,
     return JS_UNDEFINED;
 }
 
+// Set pending scroll for window.scrollTo/scrollBy calls from JS
+static JSValue js_set_pending_scroll(JSContext* ctx,
+                                      JSValueConst /*this_val*/,
+                                      int argc,
+                                      JSValueConst* argv) {
+    if (argc < 2) return JS_UNDEFINED;
+
+    double scroll_x = 0.0, scroll_y = 0.0;
+    if (JS_IsNumber(argv[0])) JS_ToFloat64(ctx, &scroll_x, argv[0]);
+    if (JS_IsNumber(argv[1])) JS_ToFloat64(ctx, &scroll_y, argv[1]);
+
+    auto* state = get_dom_state(ctx);
+    if (state) {
+        state->has_pending_scroll = true;
+        state->pending_scroll_x = scroll_x;
+        state->pending_scroll_y = scroll_y;
+    }
+
+    return JS_UNDEFINED;
+}
+
 static JSValue js_element_scroll_to(JSContext* ctx,
                                    JSValueConst this_val,
                                    int argc,
@@ -14441,6 +14462,10 @@ void install_dom_bindings(JSContext* ctx,
     JS_SetPropertyStr(ctx, global, "__imgFetchSync",
         JS_NewCFunction(ctx, js_img_fetch_sync, "__imgFetchSync", 1));
 
+    // ---- __setPendingScroll: C++ bridge for window.scrollTo/scrollBy pending scroll ----
+    JS_SetPropertyStr(ctx, global, "__setPendingScroll",
+        JS_NewCFunction(ctx, js_set_pending_scroll, "__setPendingScroll", 2));
+
     // ---- document.location as getter/setter that delegates to window.location ----
     {
         const char* doc_loc_code = R"JS(
@@ -17462,6 +17487,9 @@ void install_dom_bindings(JSContext* ctx,
         globalThis.scrollY = y;
         globalThis.pageXOffset = x;
         globalThis.pageYOffset = y;
+        if (typeof globalThis.__setPendingScroll === 'function') {
+            globalThis.__setPendingScroll(x, y);
+        }
     }
 
     globalThis.scrollTo = function() {
