@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
-**Current Focus**: Round 24 feature implementation
-**Momentum**: Cycle 1962 — 19 commits pushed across sessions. 13/13 tests passing.
-**Cycle**: 1962
+**Current Focus**: Round 25 feature implementation
+**Momentum**: Cycle 1963 — 23 commits pushed across sessions. 13/13 tests passing.
+**Cycle**: 1963
 **Workflow**: Multi-phase feature implementation. Use 4-6 Sonnet subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
@@ -154,6 +154,21 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycle 1963 (Round 24 Feature Implementation) — 2026-03-01
+
+- **Theme**: 6 Sonnet subagent feature round — CSS transitions runtime, min/max constraints, background-size, event bubbling, opacity, meta/link tags
+- **Commits**: 59664a4, 48fe96c, 2b7d1da, 8bf3ed9
+- **Features Implemented**:
+  - CSS transitions runtime: 60fps NSTimer animation loop via render_has_active_animations(), auto-stop
+  - Min/max width/height: percentage resolution, aspect ratio preservation when max-width clamps images, InlineBlock containing_width fix
+  - Background-size: percentage flags, cover/contain, space/round repeat modes, proper position keyword encoding
+  - JS event bubbling: composedPath spec-compliant ordering, window capture/bubble, isTrusted, stopImmediatePropagation
+  - Opacity: applied to box-shadows (outer+inset) and text-shadows, visibility:hidden child override
+  - Meta/link tags: charset, description, theme-color (applied to window chrome), canonical URL, favicon priority scoring
+  - Image aspect ratio: proportional height scaling in both layout_inline and layout_block when max-width clamps
+- **Also fixed**: 4 paint test API migrations (bg_position sentinel → percentage flags), animation_controller.h
+- **Validation**: 13/13 suites pass, 0 failures
 
 ### Cycle 1962 (Round 23 Feature Implementation) — 2026-03-01
 
@@ -8521,26 +8536,25 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 185 |
-| Total Cycles | 1962 |
+| Total Cycles | 1963 |
 | Files Created | ~137 |
-| Files Modified | 205+ |
-| Lines Added (est.) | 238900+ |
+| Files Modified | 215+ |
+| Lines Added (est.) | 241000+ |
 | Tests Added | 10844 |
-| Bugs Fixed | 310 |
-| Features Added | 2751 |
+| Bugs Fixed | 315 |
+| Features Added | 2768 |
 
 ## Tell The Next Claude
 
-**LATEST (Cycle 1962) — Round 23 Feature Implementation**
+**LATEST (Cycle 1963) — Round 24 Feature Implementation**
 
-- Cycle 1962 (0316a9d): Round 23 — inset box-shadow with Gaussian falloff, pointer-events:none hit-test skip, CoreText word-spacing, textarea rendering, outline styles, form element visuals.
-- Cycle 1961 (78d1eb8): Round 22 — conic gradients, border-image 9-slice, vertical-align baseline, table layout, deep-nesting guard, shell UX.
-- Cycle 1960 (b0ad874): Round 21 — @font-face WOFF, flex column, text-overflow, CSS @import, ServiceWorker, transform-origin.
-- 19 commits pushed this session.
-- All user-reported TODOs resolved.
-- LESSON LEARNED: Background agents can revert each other's changes to shared files (box.h, main.mm). Always verify fields exist after agents finish.
-- LESSON LEARNED: kMaxTreeDepth 256→64 prevents stack overflow. Depth guards in layout_block/paint_node.
-- LESSON LEARNED: macOS Developer Tools Access dialog blocks app when running binary directly. Use `open -n -a` instead.
+- Cycle 1963 (59664a4-8bf3ed9): Round 24 — CSS transitions 60fps animation loop, min/max constraint improvements, background-size percentage/cover/contain, JS event bubbling spec-compliant, opacity on shadows, meta/link tag processing with theme-color/favicon scoring, image aspect ratio preservation.
+- Cycle 1962 (0316a9d): Round 23 — inset box-shadow, pointer-events:none, CoreText word-spacing, textarea, outline styles.
+- Cycle 1961 (78d1eb8): Round 22 — conic gradients, border-image 9-slice, vertical-align, table layout, deep-nesting guard.
+- 23 commits pushed this session.
+- NEW: bg_position API changed from sentinel values (-1/-2/-3) to float + _pct flag. All paint tests migrated.
+- NEW: render_has_active_animations() + 60fps NSTimer in browser_window.mm for CSS animations.
+- NEW: RenderResult now includes page_charset, page_description, theme_color, canonical_url.
 - Top remaining: More feature rounds, incremental render pipeline refactor, GPU compositing
 
 **STATUS: 13 COMMITS THIS SESSION — 12,080 TESTS, 13/13 PASS** — Launch with `open vibrowser/build/src/shell/vibrowser.app`
