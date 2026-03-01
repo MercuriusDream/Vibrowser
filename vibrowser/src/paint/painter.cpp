@@ -637,6 +637,43 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
                         list.fill_rect({rule_x, rule_y + dy,
                                         node.column_rule_width, seg_h}, rule_color);
                     }
+                } else if (rs == 4) {
+                    // Double: two thin lines with a gap
+                    float line_w = node.column_rule_width / 3.0f;
+                    float gap = line_w;
+                    float left_x = rule_x;
+                    float right_x = rule_x + line_w + gap;
+                    list.fill_rect({left_x, rule_y, line_w, content_h}, rule_color);
+                    list.fill_rect({right_x, rule_y, line_w, content_h}, rule_color);
+                } else if (rs == 5 || rs == 6) {
+                    // Groove (5): lighter left / darker right
+                    // Ridge (6): darker left / lighter right
+                    float half_w = node.column_rule_width / 2.0f;
+                    float left_alpha = static_cast<float>(rule_color.a) * 0.75f;
+                    float right_alpha = static_cast<float>(rule_color.a) * 0.75f;
+                    float left_target = (rs == 5) ? 255.0f : 0.0f;
+                    float right_target = (rs == 5) ? 0.0f : 255.0f;
+                    float left_r = (static_cast<float>(rule_color.r) * 0.5f) + (left_target * 0.5f);
+                    float left_g = (static_cast<float>(rule_color.g) * 0.5f) + (left_target * 0.5f);
+                    float left_b = (static_cast<float>(rule_color.b) * 0.5f) + (left_target * 0.5f);
+                    float right_r = (static_cast<float>(rule_color.r) * 0.5f) + (right_target * 0.5f);
+                    float right_g = (static_cast<float>(rule_color.g) * 0.5f) + (right_target * 0.5f);
+                    float right_b = (static_cast<float>(rule_color.b) * 0.5f) + (right_target * 0.5f);
+                    Color left_color = {
+                        static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, left_r))),
+                        static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, left_g))),
+                        static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, left_b))),
+                        static_cast<uint8_t>(std::max(0.0f, left_alpha))
+                    };
+                    Color right_color = {
+                        static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, right_r))),
+                        static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, right_g))),
+                        static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, right_b))),
+                        static_cast<uint8_t>(std::max(0.0f, right_alpha))
+                    };
+                    list.fill_rect({rule_x, rule_y, half_w, content_h}, left_color);
+                    list.fill_rect({rule_x + half_w, rule_y,
+                                    node.column_rule_width - half_w, content_h}, right_color);
                 } else {
                     // Solid (1) or any other — draw as solid rect
                     list.fill_rect({rule_x, rule_y, node.column_rule_width, content_h}, rule_color);
