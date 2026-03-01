@@ -190,6 +190,9 @@ struct DOMState {
         float root_margin_top = 0, root_margin_right = 0;
         float root_margin_bottom = 0, root_margin_left = 0;
         std::vector<float> thresholds;  // default [0]
+        // Tracks previous intersection state per element for threshold crossing detection
+        std::unordered_map<clever::html::SimpleNode*, float> prev_ratio;
+        std::unordered_map<clever::html::SimpleNode*, bool> prev_intersecting;
     };
     std::vector<IntersectionObserverEntry> intersection_observers;
 
@@ -6511,39 +6514,63 @@ static JSValue js_intersection_observer_observe(JSContext* ctx,
         }
         entry.observed_elements.push_back(elem);
 
-        // Fire initial callback with a not-intersecting entry (spec behavior)
+        // Fire initial callback with real intersection data (spec behavior)
         if (JS_IsFunction(ctx, entry.callback)) {
             JSValue entries_arr = JS_NewArray(ctx);
             JSValue init_entry = JS_NewObject(ctx);
 
+            // Compute real intersection
+            float elem_x = 0, elem_y = 0, elem_w = 0, elem_h = 0;
+            auto geom_it = state->layout_geometry.find(elem);
+            if (geom_it != state->layout_geometry.end()) {
+                auto& lr = geom_it->second;
+                elem_x = lr.abs_border_x;
+                elem_y = lr.abs_border_y;
+                elem_w = lr.border_left + lr.padding_left + lr.width +
+                         lr.padding_right + lr.border_right;
+                elem_h = lr.border_top + lr.padding_top + lr.height +
+                         lr.padding_bottom + lr.border_bottom;
+            }
+            float vw = static_cast<float>(state->viewport_width > 0 ? state->viewport_width : 800);
+            float vh = static_cast<float>(state->viewport_height > 0 ? state->viewport_height : 600);
+            float ix1 = std::max(elem_x, 0.0f);
+            float iy1 = std::max(elem_y, 0.0f);
+            float ix2 = std::min(elem_x + elem_w, vw);
+            float iy2 = std::min(elem_y + elem_h, vh);
+            float inter_w = std::max(0.0f, ix2 - ix1);
+            float inter_h = std::max(0.0f, iy2 - iy1);
+            float elem_area = elem_w * elem_h;
+            float ratio = (elem_area > 0) ? ((inter_w * inter_h) / elem_area) : 0.0f;
+            bool is_intersecting = (ratio > 0) || (elem_w > 0 && elem_h > 0 && inter_w > 0 && inter_h > 0);
+
             JS_SetPropertyStr(ctx, init_entry, "target", wrap_element(ctx, elem));
-            JS_SetPropertyStr(ctx, init_entry, "isIntersecting", JS_FALSE);
-            JS_SetPropertyStr(ctx, init_entry, "intersectionRatio", JS_NewFloat64(ctx, 0.0));
+            JS_SetPropertyStr(ctx, init_entry, "isIntersecting", JS_NewBool(ctx, is_intersecting));
+            JS_SetPropertyStr(ctx, init_entry, "intersectionRatio", JS_NewFloat64(ctx, ratio));
             JS_SetPropertyStr(ctx, init_entry, "time", JS_NewFloat64(ctx, 0.0));
             JS_SetPropertyStr(ctx, init_entry, "rootBounds", JS_NULL);
 
             // boundingClientRect
             JSValue bcr = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, bcr, "x", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, bcr, "y", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, bcr, "width", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, bcr, "height", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, bcr, "top", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, bcr, "left", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, bcr, "bottom", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, bcr, "right", JS_NewFloat64(ctx, 0));
+            JS_SetPropertyStr(ctx, bcr, "x", JS_NewFloat64(ctx, elem_x));
+            JS_SetPropertyStr(ctx, bcr, "y", JS_NewFloat64(ctx, elem_y));
+            JS_SetPropertyStr(ctx, bcr, "width", JS_NewFloat64(ctx, elem_w));
+            JS_SetPropertyStr(ctx, bcr, "height", JS_NewFloat64(ctx, elem_h));
+            JS_SetPropertyStr(ctx, bcr, "top", JS_NewFloat64(ctx, elem_y));
+            JS_SetPropertyStr(ctx, bcr, "left", JS_NewFloat64(ctx, elem_x));
+            JS_SetPropertyStr(ctx, bcr, "bottom", JS_NewFloat64(ctx, elem_y + elem_h));
+            JS_SetPropertyStr(ctx, bcr, "right", JS_NewFloat64(ctx, elem_x + elem_w));
             JS_SetPropertyStr(ctx, init_entry, "boundingClientRect", bcr);
 
             // intersectionRect
             JSValue ir = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, ir, "x", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, ir, "y", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, ir, "width", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, ir, "height", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, ir, "top", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, ir, "left", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, ir, "bottom", JS_NewFloat64(ctx, 0));
-            JS_SetPropertyStr(ctx, ir, "right", JS_NewFloat64(ctx, 0));
+            JS_SetPropertyStr(ctx, ir, "x", JS_NewFloat64(ctx, ix1));
+            JS_SetPropertyStr(ctx, ir, "y", JS_NewFloat64(ctx, iy1));
+            JS_SetPropertyStr(ctx, ir, "width", JS_NewFloat64(ctx, inter_w));
+            JS_SetPropertyStr(ctx, ir, "height", JS_NewFloat64(ctx, inter_h));
+            JS_SetPropertyStr(ctx, ir, "top", JS_NewFloat64(ctx, iy1));
+            JS_SetPropertyStr(ctx, ir, "left", JS_NewFloat64(ctx, ix1));
+            JS_SetPropertyStr(ctx, ir, "bottom", JS_NewFloat64(ctx, iy1 + inter_h));
+            JS_SetPropertyStr(ctx, ir, "right", JS_NewFloat64(ctx, ix1 + inter_w));
             JS_SetPropertyStr(ctx, init_entry, "intersectionRect", ir);
 
             JS_SetPropertyUint32(ctx, entries_arr, 0, init_entry);
@@ -18196,6 +18223,93 @@ if(typeof globalThis.AbstractRange==='undefined')
     }
 
     // ------------------------------------------------------------------
+    // document.fonts (FontFaceSet API)
+    // ------------------------------------------------------------------
+    {
+        const char* fonts_src = R"JS(
+(function() {
+    if (typeof document === 'undefined') return;
+    if (document.fonts && typeof document.fonts.ready !== 'undefined') return;
+
+    function FontFace(family, source, descriptors) {
+        this.family = family;
+        this.source = source;
+        this.descriptors = descriptors || {};
+        this.status = 'unloaded';
+        this.loaded = Promise.resolve(this);
+        this.style = (descriptors && descriptors.style) || 'normal';
+        this.weight = (descriptors && descriptors.weight) || 'normal';
+        this.stretch = (descriptors && descriptors.stretch) || 'normal';
+        this.unicodeRange = (descriptors && descriptors.unicodeRange) || 'U+0-10FFFF';
+        this.variant = (descriptors && descriptors.variant) || 'normal';
+        this.featureSettings = (descriptors && descriptors.featureSettings) || 'normal';
+        this.display = (descriptors && descriptors.display) || 'auto';
+    }
+    FontFace.prototype.load = function() {
+        this.status = 'loaded';
+        return Promise.resolve(this);
+    };
+    globalThis.FontFace = FontFace;
+
+    var _fonts = [];
+    var _listeners = {};
+    var fontFaceSet = {
+        status: 'loaded',
+        size: 0,
+        ready: Promise.resolve(null),
+        add: function(fontFace) {
+            _fonts.push(fontFace);
+            this.size = _fonts.length;
+        },
+        delete: function(fontFace) {
+            var idx = _fonts.indexOf(fontFace);
+            if (idx >= 0) { _fonts.splice(idx, 1); this.size = _fonts.length; }
+        },
+        has: function(fontFace) { return _fonts.indexOf(fontFace) >= 0; },
+        clear: function() { _fonts = []; this.size = 0; },
+        forEach: function(fn) { _fonts.forEach(fn); },
+        check: function(font, text) { return true; },
+        load: function(font, text) { return Promise.resolve([]); },
+        addEventListener: function(type, fn) {
+            if (!_listeners[type]) _listeners[type] = [];
+            _listeners[type].push(fn);
+        },
+        removeEventListener: function(type, fn) {
+            if (!_listeners[type]) return;
+            var idx = _listeners[type].indexOf(fn);
+            if (idx >= 0) _listeners[type].splice(idx, 1);
+        },
+        dispatchEvent: function() { return true; },
+        onloading: null,
+        onloadingdone: null,
+        onloadingerror: null,
+        [Symbol.iterator]: function() {
+            var i = 0;
+            return {
+                next: function() {
+                    if (i < _fonts.length) return { value: _fonts[i++], done: false };
+                    return { value: undefined, done: true };
+                }
+            };
+        }
+    };
+    Object.defineProperty(fontFaceSet, 'ready', {
+        get: function() { return Promise.resolve(fontFaceSet); },
+        configurable: true
+    });
+    document.fonts = fontFaceSet;
+})();
+)JS";
+        JSValue fonts_ret = JS_Eval(ctx, fonts_src, std::strlen(fonts_src),
+                                     "<document-fonts>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(fonts_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, fonts_ret);
+    }
+
+    // ------------------------------------------------------------------
     // Scan for inline event attributes (onclick, onload, etc.)
     // ------------------------------------------------------------------
     scan_inline_event_attributes(ctx, document_root);
@@ -18841,13 +18955,27 @@ void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h)
             bool is_intersecting = (ratio > 0) || (elem_w > 0 && elem_h > 0 &&
                                    inter_w > 0 && inter_h > 0);
 
-            // Check against thresholds — fire if ratio crosses any threshold
-            bool should_fire = false;
-            for (float t : io.thresholds) {
-                if (ratio >= t) { should_fire = true; break; }
+            // Check against thresholds — fire if:
+            // (a) not seen this element before (initial observation), OR
+            // (b) isIntersecting state changes, OR
+            // (c) ratio crosses any threshold
+            auto prev_ratio_it = io.prev_ratio.find(elem);
+            auto prev_inter_it = io.prev_intersecting.find(elem);
+            bool is_first_time = (prev_ratio_it == io.prev_ratio.end());
+            bool prev_is_intersecting = is_first_time ? !is_intersecting : prev_inter_it->second;
+            float prev_r = is_first_time ? -1.0f : prev_ratio_it->second;
+
+            bool should_fire = is_first_time;
+            if (!should_fire && prev_is_intersecting != is_intersecting) {
+                should_fire = true;
             }
-            // Always fire on initial observation (spec behavior)
-            should_fire = true;
+            if (!should_fire) {
+                for (float t : io.thresholds) {
+                    bool was_above = (prev_r >= t);
+                    bool now_above = (ratio >= t);
+                    if (was_above != now_above) { should_fire = true; break; }
+                }
+            }
 
             if (should_fire) {
                 // Create IntersectionObserverEntry
@@ -18919,6 +19047,10 @@ void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h)
                 JS_SetPropertyStr(ctx, entry, "target", wrap_element(ctx, elem));
 
                 JS_SetPropertyUint32(ctx, entries, entry_idx++, entry);
+
+                // Update tracked state after firing
+                io.prev_ratio[elem] = ratio;
+                io.prev_intersecting[elem] = is_intersecting;
             }
         }
 

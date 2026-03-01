@@ -138,6 +138,58 @@ static JSValue js_url_revoke_object_url(JSContext* ctx, JSValueConst /*this_val*
     return JS_UNDEFINED;
 }
 
+// =========================================================================
+// window.crypto.getRandomValues and crypto.randomUUID — C++ native
+// =========================================================================
+
+static JSValue js_window_crypto_get_random_values(JSContext* ctx, JSValueConst /*this_val*/,
+                                                    int argc, JSValueConst* argv) {
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "crypto.getRandomValues requires 1 argument");
+
+    size_t byte_offset = 0, byte_length = 0, bytes_per_element = 0;
+    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &byte_offset, &byte_length, &bytes_per_element);
+    if (JS_IsException(ab)) {
+        JSValue exc = JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+        size_t direct_len = 0;
+        uint8_t* direct_ptr = JS_GetArrayBuffer(ctx, &direct_len, argv[0]);
+        if (!direct_ptr)
+            return JS_ThrowTypeError(ctx, "crypto.getRandomValues: argument must be a TypedArray");
+        if (direct_len > 65536)
+            return JS_ThrowRangeError(ctx, "crypto.getRandomValues: byte length exceeds 65536");
+        arc4random_buf(direct_ptr, direct_len);
+        return JS_DupValue(ctx, argv[0]);
+    }
+    if (byte_length > 65536) {
+        JS_FreeValue(ctx, ab);
+        return JS_ThrowRangeError(ctx, "crypto.getRandomValues: byte length exceeds 65536");
+    }
+    size_t ab_len = 0;
+    uint8_t* buf_ptr = JS_GetArrayBuffer(ctx, &ab_len, ab);
+    JS_FreeValue(ctx, ab);
+    if (!buf_ptr)
+        return JS_ThrowTypeError(ctx, "crypto.getRandomValues: could not access array buffer");
+    arc4random_buf(buf_ptr + byte_offset, byte_length);
+    return JS_DupValue(ctx, argv[0]);
+}
+
+static JSValue js_window_crypto_random_uuid(JSContext* ctx, JSValueConst /*this_val*/,
+                                             int /*argc*/, JSValueConst* /*argv*/) {
+    uint8_t bytes[16];
+    arc4random_buf(bytes, sizeof(bytes));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    char buf[37];
+    snprintf(buf, sizeof(buf),
+             "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+             bytes[0], bytes[1], bytes[2], bytes[3],
+             bytes[4], bytes[5], bytes[6], bytes[7],
+             bytes[8], bytes[9],
+             bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+    return JS_NewString(ctx, buf);
+}
+
 namespace {
 
 // =========================================================================
@@ -908,251 +960,12 @@ static std::string to_lower_ascii(const std::string& value) {
     return lower;
 }
 
-static std::string camel_to_kebab(const std::string& value) {
-    std::string out;
-    out.reserve(value.size() + 4);
-    for (char c : value) {
-        if (c >= 'A' && c <= 'Z') {
-            out.push_back('-');
-            out.push_back(static_cast<char>(c - 'A' + 'a'));
-        } else {
-            out.push_back(c);
-        }
-    }
-    return out;
-}
-
-static std::string kebab_to_camel(const std::string& value) {
-    std::string out;
-    out.reserve(value.size());
-    bool upper = false;
-    for (char c : value) {
-        if (c == '-') {
-            upper = true;
-            continue;
-        }
-        if (upper) {
-            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-            upper = false;
-        } else {
-            out.push_back(c);
-        }
-    }
-    return out;
-}
-
-static std::map<std::string, std::string> parse_style_attribute(
-        const std::string& style_text) {
-    std::map<std::string, std::string> props;
-    size_t pos = 0;
-    while (pos < style_text.size()) {
-        size_t colon = style_text.find(':', pos);
-        if (colon == std::string::npos) break;
-
-        size_t semi = style_text.find(';', colon);
-        if (semi == std::string::npos) semi = style_text.size();
-
-        std::string key = trim_ascii(style_text.substr(pos, colon - pos));
-        std::string val = trim_ascii(style_text.substr(colon + 1, semi - colon - 1));
-        if (!key.empty()) props[to_lower_ascii(key)] = val;
-
-        pos = semi + 1;
-    }
-    return props;
-}
-
-static void expand_box_shorthand(std::map<std::string, std::string>& props,
-                                 const char* shorthand,
-                                 const char* top, const char* right,
-                                 const char* bottom, const char* left) {
-    auto it = props.find(shorthand);
-    if (it == props.end()) return;
-
-    const std::string& value = it->second;
-    std::vector<std::string> parts;
-    size_t pos = 0;
-    while (pos < value.size()) {
-        while (pos < value.size() &&
-               std::isspace(static_cast<unsigned char>(value[pos]))) {
-            ++pos;
-        }
-        if (pos >= value.size()) break;
-        size_t end = pos;
-        while (end < value.size() &&
-               !std::isspace(static_cast<unsigned char>(value[end]))) {
-            ++end;
-        }
-        parts.push_back(value.substr(pos, end - pos));
-        pos = end;
-    }
-    if (parts.empty()) return;
-
-    std::string top_v = parts[0];
-    std::string right_v = parts.size() >= 2 ? parts[1] : top_v;
-    std::string bottom_v = parts.size() >= 3 ? parts[2] : top_v;
-    std::string left_v = parts.size() >= 4 ? parts[3] : right_v;
-
-    if (props.find(top) == props.end()) props[top] = top_v;
-    if (props.find(right) == props.end()) props[right] = right_v;
-    if (props.find(bottom) == props.end()) props[bottom] = bottom_v;
-    if (props.find(left) == props.end()) props[left] = left_v;
-}
-
-static bool js_get_number_property(JSContext* ctx, JSValueConst obj,
-                                   const char* name, double* out) {
-    JSValue value = JS_GetPropertyStr(ctx, obj, name);
-    bool ok = false;
-    if (JS_IsNumber(value)) {
-        double number = 0.0;
-        if (JS_ToFloat64(ctx, &number, value) == 0 && std::isfinite(number)) {
-            *out = number;
-            ok = true;
-        }
-    }
-    JS_FreeValue(ctx, value);
-    return ok;
-}
-
 static std::string js_value_to_string(JSContext* ctx, JSValueConst value) {
     const char* cstr = JS_ToCString(ctx, value);
     if (!cstr) return "";
     std::string out(cstr);
     JS_FreeCString(ctx, cstr);
     return out;
-}
-
-static std::string format_px(double value) {
-    if (!std::isfinite(value)) return "0px";
-    double rounded = std::round(value);
-    if (std::fabs(value - rounded) < 0.01) {
-        return std::to_string(static_cast<int>(rounded)) + "px";
-    }
-    char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), "%.2fpx", value);
-    return buffer;
-}
-
-static std::string read_element_inline_style(JSContext* ctx, JSValueConst element) {
-    std::string inline_style;
-
-    JSValue get_attribute = JS_GetPropertyStr(ctx, element, "getAttribute");
-    if (JS_IsFunction(ctx, get_attribute)) {
-        JSValue arg = JS_NewString(ctx, "style");
-        JSValue result = JS_Call(ctx, get_attribute, element, 1, &arg);
-        JS_FreeValue(ctx, arg);
-        if (JS_IsException(result)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        } else if (!JS_IsNull(result) && !JS_IsUndefined(result)) {
-            inline_style = js_value_to_string(ctx, result);
-        }
-        JS_FreeValue(ctx, result);
-    }
-    JS_FreeValue(ctx, get_attribute);
-
-    if (!inline_style.empty()) return inline_style;
-
-    JSValue style_obj = JS_GetPropertyStr(ctx, element, "style");
-    if (JS_IsString(style_obj)) {
-        inline_style = js_value_to_string(ctx, style_obj);
-    } else if (JS_IsObject(style_obj)) {
-        JSValue css_text = JS_GetPropertyStr(ctx, style_obj, "cssText");
-        if (JS_IsString(css_text)) {
-            inline_style = js_value_to_string(ctx, css_text);
-        }
-        JS_FreeValue(ctx, css_text);
-    }
-    JS_FreeValue(ctx, style_obj);
-    return inline_style;
-}
-
-static std::string infer_default_display(JSContext* ctx, JSValueConst element) {
-    JSValue tag = JS_GetPropertyStr(ctx, element, "tagName");
-    std::string tag_name;
-    if (JS_IsString(tag)) {
-        tag_name = to_lower_ascii(js_value_to_string(ctx, tag));
-    }
-    JS_FreeValue(ctx, tag);
-
-    if (tag_name == "span" || tag_name == "a" || tag_name == "em" ||
-        tag_name == "strong" || tag_name == "b" || tag_name == "i" ||
-        tag_name == "u" || tag_name == "small" || tag_name == "label" ||
-        tag_name == "abbr" || tag_name == "code" || tag_name == "img" ||
-        tag_name == "input" || tag_name == "button") {
-        return "inline";
-    }
-    return "block";
-}
-
-static bool read_element_layout_size(JSContext* ctx, JSValueConst element,
-                                     double* out_width, double* out_height) {
-    bool have_width = false;
-    bool have_height = false;
-    double width = 0.0;
-    double height = 0.0;
-
-    JSValue get_rect = JS_GetPropertyStr(ctx, element, "getBoundingClientRect");
-    if (JS_IsFunction(ctx, get_rect)) {
-        JSValue rect = JS_Call(ctx, get_rect, element, 0, nullptr);
-        if (JS_IsException(rect)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        } else if (JS_IsObject(rect)) {
-            have_width = js_get_number_property(ctx, rect, "width", &width);
-            have_height = js_get_number_property(ctx, rect, "height", &height);
-        }
-        JS_FreeValue(ctx, rect);
-    }
-    JS_FreeValue(ctx, get_rect);
-
-    if (!have_width) have_width = js_get_number_property(ctx, element, "offsetWidth", &width);
-    if (!have_height) have_height = js_get_number_property(ctx, element, "offsetHeight", &height);
-
-    if (have_width) *out_width = width;
-    if (have_height) *out_height = height;
-    return have_width || have_height;
-}
-
-static void set_computed_style_property(JSContext* ctx, JSValue obj,
-                                        const std::string& css_name,
-                                        const std::string& value) {
-    JS_SetPropertyStr(ctx, obj, css_name.c_str(), JS_NewString(ctx, value.c_str()));
-    if (css_name.rfind("--", 0) == 0) return;
-    std::string camel = kebab_to_camel(css_name);
-    if (camel != css_name) {
-        JS_SetPropertyStr(ctx, obj, camel.c_str(), JS_NewString(ctx, value.c_str()));
-    }
-}
-
-static JSValue js_computed_style_get_property_value(JSContext* ctx,
-                                                    JSValueConst this_val,
-                                                    int argc,
-                                                    JSValueConst* argv) {
-    if (argc < 1) return JS_NewString(ctx, "");
-
-    std::string requested = trim_ascii(js_value_to_string(ctx, argv[0]));
-    if (requested.empty()) return JS_NewString(ctx, "");
-
-    std::string normalized = requested;
-    if (normalized == "cssFloat") normalized = "float";
-    normalized = to_lower_ascii(camel_to_kebab(normalized));
-    if (normalized == "css-float") normalized = "float";
-
-    JSValue value = JS_GetPropertyStr(ctx, this_val, normalized.c_str());
-    if (JS_IsUndefined(value)) {
-        JS_FreeValue(ctx, value);
-        value = JS_GetPropertyStr(ctx, this_val, requested.c_str());
-    }
-
-    if (JS_IsUndefined(value) || JS_IsNull(value)) {
-        JS_FreeValue(ctx, value);
-        return JS_NewString(ctx, "");
-    }
-    if (JS_IsString(value)) return value;
-
-    std::string as_string = js_value_to_string(ctx, value);
-    JS_FreeValue(ctx, value);
-    return JS_NewString(ctx, as_string.c_str());
 }
 
 // =========================================================================
@@ -1242,9 +1055,193 @@ static bool evaluate_media_clause(const std::string& clause,
         return viewport_width >= px;
     }
 
+    if (feature == "min-height") {
+        int px = 0;
+        if (!parse_px_clause_value(value, &px)) return false;
+        return viewport_height >= px;
+    }
+
+    if (feature == "max-height") {
+        int px = 0;
+        if (!parse_px_clause_value(value, &px)) return false;
+        return viewport_height <= px;
+    }
+
     if (feature == "orientation") {
         if (value == "portrait") return viewport_height >= viewport_width;
         if (value == "landscape") return viewport_width > viewport_height;
+        *known_clause = false;
+        return false;
+    }
+
+    // prefers-reduced-motion: assume no preference (motion is fine)
+    if (feature == "prefers-reduced-motion") {
+        if (value == "no-preference") return true;
+        if (value == "reduce") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // prefers-contrast: assume no-preference
+    if (feature == "prefers-contrast") {
+        if (value == "no-preference") return true;
+        if (value == "more" || value == "less" || value == "forced") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // prefers-reduced-data: assume no-preference
+    if (feature == "prefers-reduced-data") {
+        if (value == "no-preference") return true;
+        if (value == "reduce") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // prefers-transparency: no-preference
+    if (feature == "prefers-transparency") {
+        if (value == "no-preference") return true;
+        if (value == "reduce") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // forced-colors: none (no forced colors)
+    if (feature == "forced-colors") {
+        if (value == "none") return true;
+        if (value == "active") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // inverted-colors: none
+    if (feature == "inverted-colors") {
+        if (value == "none") return true;
+        if (value == "inverted") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // display-mode: browser
+    if (feature == "display-mode") {
+        if (value == "browser") return true;
+        if (value == "fullscreen" || value == "standalone" || value == "minimal-ui") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // hover: hover (we have a mouse)
+    if (feature == "hover") {
+        if (value == "hover") return true;
+        if (value == "none") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // any-hover: hover
+    if (feature == "any-hover") {
+        if (value == "hover") return true;
+        if (value == "none") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // pointer: fine (mouse)
+    if (feature == "pointer") {
+        if (value == "fine") return true;
+        if (value == "coarse" || value == "none") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // any-pointer: fine
+    if (feature == "any-pointer") {
+        if (value == "fine") return true;
+        if (value == "coarse" || value == "none") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // color: assume 8-bit color (truthy)
+    if (feature == "color") {
+        if (value.empty() || value == "8" || value == "1") return true;
+        *known_clause = false;
+        return false;
+    }
+
+    // color-gamut: srgb
+    if (feature == "color-gamut") {
+        if (value == "srgb") return true;
+        if (value == "p3" || value == "rec2020") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // monochrome: 0 (not monochrome)
+    if (feature == "monochrome") {
+        if (value == "0") return true;
+        *known_clause = false;
+        return false;
+    }
+
+    // scripting: enabled
+    if (feature == "scripting") {
+        if (value == "enabled") return true;
+        if (value == "none" || value == "initial-only") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // update: fast
+    if (feature == "update") {
+        if (value == "fast") return true;
+        if (value == "slow" || value == "none") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // overflow-block: scroll
+    if (feature == "overflow-block") {
+        if (value == "scroll" || value == "optional-paged") return true;
+        if (value == "none" || value == "paged") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // overflow-inline: scroll
+    if (feature == "overflow-inline") {
+        if (value == "scroll") return true;
+        if (value == "none") return false;
+        *known_clause = false;
+        return false;
+    }
+
+    // resolution: treat as known but unknown value (return false for non-1dppx)
+    if (feature == "resolution" || feature == "min-resolution" || feature == "max-resolution") {
+        // We assume 96dpi/1dppx
+        *known_clause = true;
+        if (value.find("dppx") != std::string::npos) {
+            try { float v = std::stof(value); return (feature == "max-resolution") ? (1.0f <= v) : (1.0f >= v); } catch (...) {}
+        }
+        return false;
+    }
+
+    // aspect-ratio: compute from viewport
+    if (feature == "aspect-ratio" || feature == "min-aspect-ratio" || feature == "max-aspect-ratio") {
+        // Parse "W/H" format
+        auto slash = value.find('/');
+        if (slash != std::string::npos) {
+            try {
+                float w = std::stof(value.substr(0, slash));
+                float h = std::stof(value.substr(slash + 1));
+                if (h <= 0) { *known_clause = false; return false; }
+                float query_ratio = w / h;
+                float vp_ratio = (viewport_height > 0) ? (float)viewport_width / viewport_height : 1.0f;
+                if (feature == "aspect-ratio") return std::fabs(vp_ratio - query_ratio) < 0.01f;
+                if (feature == "min-aspect-ratio") return vp_ratio >= query_ratio;
+                if (feature == "max-aspect-ratio") return vp_ratio <= query_ratio;
+            } catch (...) {}
+        }
         *known_clause = false;
         return false;
     }
@@ -1526,11 +1523,6 @@ static JSValue js_window_dispatch_event(JSContext* /*ctx*/, JSValueConst /*this_
 // (window.addEventListener is in js_dom_bindings.cpp; this is a fallback
 //  for when DOM bindings are not installed or for non-DOMContentLoaded events)
 // =========================================================================
-
-static JSValue js_window_remove_event_listener(JSContext* /*ctx*/, JSValueConst /*this_val*/,
-                                                int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_UNDEFINED;
-}
 
 // =========================================================================
 // History API — session history management
@@ -3829,39 +3821,12 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         configurable: true
     });
 
-    // ---- window.crypto.getRandomValues ----
-    window.crypto = {
-        getRandomValues: function(array) {
-            // Fill typed array with pseudo-random bytes.
-            // We use Math.random() since we don't have access to
-            // arc4random_buf from JS, but this is only a stub for
-            // compatibility -- not for cryptographic security.
-            if (array && array.length !== undefined) {
-                for (var i = 0; i < array.length; i++) {
-                    array[i] = (Math.random() * 256) | 0;
-                }
-            }
-            return array;
-        },
-        subtle: {},
-        randomUUID: function() {
-            // Generate a v4 UUID using Math.random
-            var hex = '0123456789abcdef';
-            var uuid = '';
-            for (var i = 0; i < 36; i++) {
-                if (i === 8 || i === 13 || i === 18 || i === 23) {
-                    uuid += '-';
-                } else if (i === 14) {
-                    uuid += '4';
-                } else if (i === 19) {
-                    uuid += hex[(Math.random() * 4 | 0) + 8];
-                } else {
-                    uuid += hex[Math.random() * 16 | 0];
-                }
-            }
-            return uuid;
-        }
-    };
+    // ---- window.crypto placeholder ----
+    // The real crypto object with native getRandomValues/randomUUID is installed
+    // below as C++ native functions after this eval block completes.
+    if (typeof window.crypto === 'undefined' || !window.crypto) {
+        window.crypto = { subtle: {} };
+    }
 
     // ---- URLSearchParams class ----
     window.URLSearchParams = function URLSearchParams(init) {
@@ -4129,6 +4094,37 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         }
         JS_FreeValue(ctx, url_ctor);
         JS_FreeValue(ctx, g2);
+    }
+
+    // ------------------------------------------------------------------
+    // Replace window.crypto with native C++ implementation using arc4random_buf
+    // (overrides the placeholder set by the extended_setup eval above).
+    // ------------------------------------------------------------------
+    {
+        JSValue g3 = JS_GetGlobalObject(ctx);
+        JSValue crypto_obj = JS_NewObject(ctx);
+
+        JS_SetPropertyStr(ctx, crypto_obj, "getRandomValues",
+            JS_NewCFunction(ctx, js_window_crypto_get_random_values, "getRandomValues", 1));
+        JS_SetPropertyStr(ctx, crypto_obj, "randomUUID",
+            JS_NewCFunction(ctx, js_window_crypto_random_uuid, "randomUUID", 0));
+
+        // crypto.subtle: minimal stub object
+        JSValue subtle_obj = JS_NewObject(ctx);
+        // Install a digest that returns a rejected promise (not supported at window level)
+        const char* digest_stub = "(function() { return Promise.reject(new Error('Not supported')); })";
+        JSValue digest_fn = JS_Eval(ctx, digest_stub, std::strlen(digest_stub),
+                                     "<subtle-digest>", JS_EVAL_TYPE_GLOBAL);
+        if (!JS_IsException(digest_fn)) {
+            JS_SetPropertyStr(ctx, subtle_obj, "digest", digest_fn);
+        } else {
+            JS_FreeValue(ctx, digest_fn);
+        }
+        JS_SetPropertyStr(ctx, crypto_obj, "subtle", subtle_obj);
+
+        // Install on globalThis
+        JS_SetPropertyStr(ctx, g3, "crypto", crypto_obj);
+        JS_FreeValue(ctx, g3);
     }
 
     // ------------------------------------------------------------------
