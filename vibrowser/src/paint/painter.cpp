@@ -2233,81 +2233,81 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         effective_font_size = effective_font_size * (node.font_size_adjust / assumed_ratio);
     }
 
-    // Check if parent has overflow:hidden + text-overflow + white-space:nowrap
+    // Check if parent has overflow:hidden + white-space:nowrap, then handle text-overflow mode.
     bool needs_fade = false;
     float fade_region_x = 0, fade_region_y = 0, fade_region_w = 0, fade_region_h = 0;
-    if (node.parent &&
-        node.parent->overflow == 1 &&
-        node.parent->text_overflow == 1 &&
-        node.parent->white_space_nowrap) {
-        // text-overflow: ellipsis — use actual font metrics for accurate truncation
+    const auto* overflow_parent = node.parent;
+    if (overflow_parent && overflow_parent->overflow == 1 && overflow_parent->white_space_nowrap) {
         static TextRenderer s_text_measurer;
         const std::string ellipsis_str = "\xE2\x80\xA6"; // U+2026 HORIZONTAL ELLIPSIS
-        float container_width = node.parent->geometry.width;
+        const float container_width = overflow_parent->geometry.width;
+        const int text_overflow_mode = overflow_parent->text_overflow;
 
-        // Measure actual text width using font metrics
-        float text_width = s_text_measurer.measure_text_width(
-            text_to_render, effective_font_size, node.font_family,
-            eff_weight, eff_italic, node.letter_spacing);
+        auto utf8_char_len = [](unsigned char lead) -> size_t {
+            if ((lead & 0x80) == 0) return 1;
+            if ((lead & 0xE0) == 0xC0) return 2;
+            if ((lead & 0xF0) == 0xE0) return 3;
+            if ((lead & 0xF8) == 0xF0) return 4;
+            return 1;
+        };
 
-        if (text_width > container_width && container_width > 0) {
-            float ellipsis_width = s_text_measurer.measure_text_width(
-                ellipsis_str, effective_font_size, node.font_family,
+        if (text_overflow_mode == 1) {
+            // text-overflow: ellipsis — use actual font metrics for accurate truncation.
+            const float text_width = s_text_measurer.measure_text_width(
+                text_to_render, effective_font_size, node.font_family,
                 eff_weight, eff_italic, node.letter_spacing);
-            float available_width = container_width - ellipsis_width;
-            if (available_width < 0) available_width = 0;
+            if (text_width > container_width && container_width > 0.0f) {
+                const float ellipsis_width = s_text_measurer.measure_text_width(
+                    ellipsis_str, effective_font_size, node.font_family,
+                    eff_weight, eff_italic, node.letter_spacing);
+                const float available_width = std::max(0.0f, container_width - ellipsis_width);
 
-            // Binary search for the number of UTF-8 characters that fit
-            // We work with byte positions but need to respect UTF-8 boundaries
-            // Build a list of valid UTF-8 character end positions
-            std::vector<size_t> char_ends; // byte offsets after each UTF-8 char
-            for (size_t i = 0; i < text_to_render.size(); ) {
-                unsigned char c = static_cast<unsigned char>(text_to_render[i]);
-                size_t char_len = 1;
-                if (c >= 0xF0) char_len = 4;
-                else if (c >= 0xE0) char_len = 3;
-                else if (c >= 0xC0) char_len = 2;
-                i += char_len;
-                if (i > text_to_render.size()) i = text_to_render.size();
-                char_ends.push_back(i);
-            }
-
-            if (!char_ends.empty()) {
-                // Binary search: find largest prefix that fits in available_width
-                size_t lo = 0, hi = char_ends.size();
-                while (lo < hi) {
-                    size_t mid = lo + (hi - lo + 1) / 2;
-                    std::string prefix = text_to_render.substr(0, char_ends[mid - 1]);
-                    float w = s_text_measurer.measure_text_width(
-                        prefix, effective_font_size, node.font_family,
-                        eff_weight, eff_italic, node.letter_spacing);
-                    if (w <= available_width) lo = mid;
-                    else hi = mid - 1;
+                // Binary search for the number of UTF-8 characters that fit.
+                // Work with byte offsets while preserving UTF-8 boundaries.
+                std::vector<size_t> char_ends; // byte offsets after each UTF-8 char
+                for (size_t i = 0; i < text_to_render.size(); ) {
+                    size_t char_len = utf8_char_len(static_cast<unsigned char>(text_to_render[i]));
+                    i += char_len;
+                    if (i > text_to_render.size()) i = text_to_render.size();
+                    char_ends.push_back(i);
                 }
-                size_t cut_bytes = (lo > 0) ? char_ends[lo - 1] : 0;
-                text_to_render = text_to_render.substr(0, cut_bytes) + ellipsis_str;
-            }
-        }
-    } else if (node.parent &&
-               node.parent->overflow == 1 &&
-               node.parent->text_overflow == 2 &&
-               node.parent->white_space_nowrap) {
-        // text-overflow: fade — apply a gradient fade effect over the trailing portion
-        float char_width = node.font_size * 0.6f + node.letter_spacing;
-        float container_width = node.parent->geometry.width;
-        float text_width = static_cast<float>(text_to_render.size()) * char_width;
 
-        if (text_width > container_width && container_width > 0) {
-            needs_fade = true;
-            // Fade covers the last 25% of the container (or up to 3em, whichever is smaller)
-            float fade_len = std::min(container_width * 0.25f, node.font_size * 3.0f);
-            if (fade_len < node.font_size) fade_len = node.font_size; // minimum 1em
-            // The fade region starts at container_end - fade_len
-            float parent_abs_x = abs_x - node.geometry.x; // approximate parent's abs_x
-            fade_region_x = parent_abs_x + container_width - fade_len;
-            fade_region_y = abs_y;
-            fade_region_w = fade_len;
-            fade_region_h = node.font_size * node.line_height;
+                if (!char_ends.empty()) {
+                    // Binary search: find largest prefix that fits in available_width.
+                    size_t lo = 0, hi = char_ends.size();
+                    while (lo < hi) {
+                        size_t mid = lo + (hi - lo + 1) / 2;
+                        size_t cut_bytes = char_ends[mid - 1];
+                        const float w = s_text_measurer.measure_text_width(
+                            text_to_render.substr(0, cut_bytes), effective_font_size, node.font_family,
+                            eff_weight, eff_italic, node.letter_spacing);
+                        if (w <= available_width) lo = mid;
+                        else hi = mid - 1;
+                    }
+                    const size_t cut_bytes = (lo > 0) ? char_ends[lo - 1] : 0;
+                    text_to_render = text_to_render.substr(0, cut_bytes) + ellipsis_str;
+                }
+            }
+        } else if (text_overflow_mode == 2) {
+            // text-overflow: fade — apply a trailing gradient fade when content overflows.
+            const float text_width = s_text_measurer.measure_text_width(
+                text_to_render, effective_font_size, node.font_family,
+                eff_weight, eff_italic, node.letter_spacing);
+            if (text_width > container_width && container_width > 0.0f) {
+                needs_fade = true;
+                // Fade covers the last 25% of the container (or up to 3em, whichever is smaller).
+                float fade_len = std::min(container_width * 0.25f, effective_font_size * 3.0f);
+                if (fade_len < effective_font_size) fade_len = effective_font_size; // minimum 1em
+
+                // The fade region starts at container_end - fade_len.
+                float parent_abs_x = abs_x - node.geometry.x; // approximate parent's abs_x
+                fade_region_x = parent_abs_x + container_width - fade_len;
+                fade_region_y = abs_y;
+                fade_region_w = fade_len;
+                fade_region_h = effective_font_size * node.line_height;
+            }
+        } else {
+            // text-overflow: clip (0) or unknown value — no synthetic overflow treatment.
         }
     }
 

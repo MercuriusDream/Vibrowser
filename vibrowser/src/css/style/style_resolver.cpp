@@ -7123,6 +7123,9 @@ std::vector<MatchedRule> StyleResolver::collect_matching_rules(const ElementView
 
     for (const auto& sheet : stylesheets_) {
         collect_from_rules(sheet.rules, element, result, source_order);
+        for (const auto& layer : sheet.layer_rules) {
+            collect_from_rules(layer.rules, element, result, source_order);
+        }
 
         for (const auto& mq : sheet.media_queries) {
             if (evaluate_media_condition(mq.condition)) {
@@ -7149,6 +7152,9 @@ std::vector<MatchedRule> StyleResolver::collect_pseudo_rules(
 
     for (const auto& sheet : stylesheets_) {
         collect_pseudo_from_rules(sheet.rules, element, pseudo_name, result, source_order);
+        for (const auto& layer : sheet.layer_rules) {
+            collect_pseudo_from_rules(layer.rules, element, pseudo_name, result, source_order);
+        }
 
         for (const auto& mq : sheet.media_queries) {
             if (evaluate_media_condition(mq.condition)) {
