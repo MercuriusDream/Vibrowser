@@ -2,6 +2,8 @@
 #include <clever/layout/box.h>
 #include <clever/css/style/style_resolver.h>
 #include <clever/paint/text_renderer.h>
+#include <nanosvg.h>
+#include <nanosvgrast.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -9,6 +11,62 @@
 #include <sstream>
 
 namespace clever::paint {
+
+struct DecodedImage {
+    std::shared_ptr<std::vector<uint8_t>> pixels;
+    int width = 0;
+    int height = 0;
+};
+
+// Helper: rasterize SVG string to bitmap using nanosvg
+static DecodedImage decode_svg_image(const std::string& svg_data, float target_width = 0) {
+    DecodedImage result;
+    std::string svg_copy = svg_data;
+    NSVGimage* svg = nsvgParse(svg_copy.data(), "px", 96.0f);
+    if (!svg) return result;
+
+    if (svg->width <= 0 || svg->height <= 0) {
+        nsvgDelete(svg);
+        return result;
+    }
+
+    float scale = 1.0f;
+    if (target_width > 0 && svg->width > 0) {
+        scale = target_width / svg->width;
+    }
+
+    int w = static_cast<int>(svg->width * scale);
+    int h = static_cast<int>(svg->height * scale);
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096) {
+        if (w > 4096 || h > 4096) {
+            float max_dim = std::max(svg->width, svg->height);
+            scale = 4096.0f / max_dim;
+            w = static_cast<int>(svg->width * scale);
+            h = static_cast<int>(svg->height * scale);
+        }
+        if (w <= 0 || h <= 0) {
+            nsvgDelete(svg);
+            return result;
+        }
+    }
+
+    NSVGrasterizer* rast = nsvgCreateRasterizer();
+    if (!rast) {
+        nsvgDelete(svg);
+        return result;
+    }
+
+    auto pixels = std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(w) * h * 4, 0);
+    nsvgRasterize(rast, svg, 0, 0, scale, pixels->data(), w, h, w * 4);
+
+    nsvgDeleteRasterizer(rast);
+    nsvgDelete(svg);
+
+    result.width = w;
+    result.height = h;
+    result.pixels = pixels;
+    return result;
+}
 
 DisplayList Painter::paint(const clever::layout::LayoutNode& root, float viewport_height,
                            float viewport_width, float viewport_scroll_y, float viewport_scroll_x) {
@@ -456,6 +514,22 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
             list.fill_inset_shadow(element_box, {sr_c, sg_c, sb_c, sa},
                                    node.shadow_blur, node.shadow_offset_x, node.shadow_offset_y,
                                    node.shadow_spread, i_tl, i_tr, i_bl, i_br);
+        }
+
+        // Paint inline SVG containers (rasterized via nanosvg) — only when no child layout nodes
+        // (i.e., image-sourced SVGs). Inline DOM SVGs with children use native shape painting.
+        if (node.is_svg && node.svg_type == 0 && !node.svg_content.empty() && node.children.empty()) {
+            auto decoded = decode_svg_image(node.svg_content,
+                                           node.geometry.width > 0 ? node.geometry.width : 300);
+            if (decoded.pixels) {
+                auto img = std::make_shared<ImageData>();
+                img->pixels = *decoded.pixels;
+                img->width = decoded.width;
+                img->height = decoded.height;
+                Rect dest = {abs_x, abs_y, static_cast<float>(decoded.width), static_cast<float>(decoded.height)};
+                list.draw_image(dest, std::move(img));
+            }
+            return;
         }
 
         // Paint SVG shape elements
