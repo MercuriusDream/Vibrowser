@@ -16348,6 +16348,17 @@ void install_dom_bindings(JSContext* ctx,
     JS_SetPropertyStr(ctx, global, "isSecureContext", JS_TRUE);
     JS_SetPropertyStr(ctx, global, "crossOriginIsolated", JS_FALSE);
 
+    // globalThis.self === globalThis (required by many libraries)
+    JS_SetPropertyStr(ctx, global, "self", JS_DupValue(ctx, global));
+
+    // reportError(e) — re-throw the error (simplified version)
+    JS_SetPropertyStr(ctx, global, "reportError",
+        JS_NewCFunction(ctx, [](JSContext* c, JSValueConst /*this_val*/,
+                                int argc, JSValueConst* argv) -> JSValue {
+            if (argc < 1) return JS_ThrowTypeError(c, "reportError requires 1 argument");
+            return JS_Throw(c, JS_DupValue(c, argv[0]));
+        }, "reportError", 1));
+
     // ------------------------------------------------------------------
     // performance object (basic stub)
     // ------------------------------------------------------------------
