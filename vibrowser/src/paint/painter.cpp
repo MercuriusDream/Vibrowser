@@ -9,8 +9,12 @@
 
 namespace clever::paint {
 
-DisplayList Painter::paint(const clever::layout::LayoutNode& root, float viewport_height) {
+DisplayList Painter::paint(const clever::layout::LayoutNode& root, float viewport_height,
+                           float viewport_width, float viewport_scroll_y, float viewport_scroll_x) {
     viewport_height_ = viewport_height;
+    viewport_width_ = viewport_width;
+    viewport_scroll_y_ = viewport_scroll_y;
+    viewport_scroll_x_ = viewport_scroll_x;
     DisplayList list;
     paint_node(root, list, 0.0f, 0.0f);
     return list;
@@ -929,75 +933,221 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
         if (child->position_type == 3) {
             paint_node(*child, list, 0.0f, 0.0f);
         } else if (child->position_type == 4) {
-            // position:sticky — apply scroll-based clamping during paint
-            // Sticky element sticks to edges within its containing scroll container
+            // position:sticky — apply scroll-based clamping during paint.
+            // Sticky element sticks to edges within its nearest scroll container ancestor.
+            // If no scroll container ancestor exists, the sticky element is constrained
+            // by the viewport (scroll_top = viewport_scroll_y_, typically 0 at render time).
 
             float sticky_offset_x = 0.0f, sticky_offset_y = 0.0f;
             const auto& child_geom = child->geometry;
 
-            // The sticky element is constrained within its parent's content box if parent is a scroll container
+            // Find the effective scroll container: first check the direct parent (node),
+            // then walk up the ancestor chain via parent pointers.
+            // This handles the common real-world case where the sticky element is nested
+            // inside a non-scroll intermediate container whose ancestor IS a scroll container,
+            // including the case where the scroll container is the viewport/root.
+            const clever::layout::LayoutNode* sc = nullptr;
             if (node.is_scroll_container) {
-                // Parent is a scroll container; child sticks within parent's padding box
-                // child_offset_x/y point to the content box start, so we need to account for parent's layout
-
-                // Position of child relative to parent's content box start
-                float child_y = child_geom.y;
-                float child_x = child_geom.x;
-
-                // Parent's padding box dimensions
-                float parent_padding_h = node.geometry.height;
-                float parent_padding_w = node.geometry.width;
-
-                // Vertical sticking: clamp child position within [0, parent_height - child_height]
-                // but offset by pos_top/pos_bottom from the edges
-                if (child->pos_top_set) {
-                    // Element sticks child->pos_top pixels from top when scrolled up
-                    float sticky_top = child->pos_top;
-                    float max_y = parent_padding_h - child_geom.border_box_height();
-
-                    // Child should not go below its natural position within the container
-                    if (child_y < sticky_top) {
-                        sticky_offset_y = sticky_top - child_y;
+                sc = &node;
+            } else {
+                // Walk up the ancestor chain to find the nearest scroll container
+                const clever::layout::LayoutNode* ancestor = node.parent;
+                while (ancestor != nullptr) {
+                    if (ancestor->is_scroll_container) {
+                        sc = ancestor;
+                        break;
                     }
-                    // And should not stick past the bottom of the container
-                    if (child_y + sticky_offset_y > max_y) {
-                        sticky_offset_y = max_y - child_y;
+                    ancestor = ancestor->parent;
+                }
+                // sc == nullptr means viewport is the scroll container
+            }
+
+            if (sc != nullptr) {
+                // Found a scroll container ancestor (may be direct parent or higher up).
+                // Compute the sticky element's position relative to the scroll container's
+                // content area by walking up the parent chain from the sticky child.
+                //
+                // The sticky element's absolute y in page coordinates:
+                //   elem_abs_y = child_offset_y + child_geom.y
+                //
+                // The scroll container's content area absolute y can be recovered by
+                // summing geometry positions from the sticky element up to (but not
+                // including) the scroll container, accounting for border+padding offsets.
+                //
+                // Walk from child->parent (&node) up to sc, accumulating the content-area
+                // y offset of each intermediate node.  At each step:
+                //   node_abs_content_y = parent_content_y + node.geometry.y
+                //                        + node.geometry.border.top + node.geometry.padding.top
+                // So:
+                //   parent_content_y = node_abs_content_y
+                //                      - node.geometry.y
+                //                      - node.geometry.border.top - node.geometry.padding.top
+                //
+                // Start: node_abs_content_y = child_offset_y (content area of &node)
+                //        node_abs_content_x = child_offset_x
+
+                float cur_content_y = child_offset_y;
+                float cur_content_x = child_offset_x;
+                const clever::layout::LayoutNode* cur = &node;
+
+                // Walk up until we reach sc (without processing sc itself)
+                while (cur != sc && cur != nullptr) {
+                    // Move up to cur->parent's content area:
+                    // parent_content_y = cur_content_y - cur.geometry.y - cur.border.top - cur.padding.top
+                    float parent_content_y = cur_content_y
+                        - cur->geometry.y
+                        - cur->geometry.border.top
+                        - cur->geometry.padding.top;
+                    float parent_content_x = cur_content_x
+                        - cur->geometry.x
+                        - cur->geometry.border.left
+                        - cur->geometry.padding.left;
+                    // The painter applies scroll offsets when entering a scroll container node,
+                    // so all positions in cur_content_y are already in the scrolled coordinate
+                    // system.  No additional scroll adjustment is needed here — the subtraction
+                    // of geom.y + border + padding is sufficient to recover the parent's
+                    // content-area y in the same coordinate space.
+                    cur_content_y = parent_content_y;
+                    cur_content_x = parent_content_x;
+                    cur = cur->parent;
+                }
+                // cur == sc; cur_content_y is now the scroll container's content area abs y
+
+                float sc_content_y = cur_content_y;
+                float sc_content_x = cur_content_x;
+                float sc_scroll_y = sc->scroll_top;
+                float sc_scroll_x = sc->scroll_left;
+                float sc_h = sc->geometry.height; // viewport height of the scroll container
+                float sc_w = sc->geometry.width;
+
+                // Sticky element's position within the scroll container's content area
+                // (at natural layout position, scroll_top=0):
+                float elem_abs_y = child_offset_y + child_geom.y;
+                float elem_abs_x = child_offset_x + child_geom.x;
+                float elem_in_sc_y = elem_abs_y - sc_content_y; // y within sc content area
+                float elem_in_sc_x = elem_abs_x - sc_content_x;
+
+                // Vertical sticking
+                if (child->pos_top_set) {
+                    float sticky_top = child->pos_top;
+                    // The element's visible y within the sc viewport = elem_in_sc_y - sc_scroll_y
+                    // It should stick when this falls below sticky_top
+                    float visible_y = elem_in_sc_y - sc_scroll_y;
+                    float max_stick_y = sc_h - child_geom.border_box_height(); // can't stick past sc bottom
+                    if (visible_y < sticky_top) {
+                        sticky_offset_y = sticky_top - visible_y;
+                    }
+                    // Clamp so the element doesn't stick past the bottom of the scroll container
+                    if (elem_in_sc_y + sticky_offset_y > max_stick_y) {
+                        sticky_offset_y = max_stick_y - elem_in_sc_y;
+                    }
+                    // Never push the element above its natural position (don't apply negative offset)
+                    if (sticky_offset_y < 0.0f) {
+                        sticky_offset_y = 0.0f;
                     }
                 } else if (child->pos_bottom_set) {
-                    // Element sticks child->pos_bottom pixels from bottom
                     float sticky_bottom = child->pos_bottom;
-                    float max_y = parent_padding_h - child_geom.border_box_height();
-                    float min_y = max_y - sticky_bottom;
-
-                    if (child_y > max_y) {
-                        sticky_offset_y = max_y - child_y;
+                    float visible_y = elem_in_sc_y - sc_scroll_y;
+                    float min_stick_y = sc_h - child_geom.border_box_height() - sticky_bottom;
+                    if (visible_y > min_stick_y) {
+                        sticky_offset_y = min_stick_y - visible_y;
                     }
-                    if (child_y + sticky_offset_y < min_y && min_y >= 0) {
-                        sticky_offset_y = min_y - child_y;
+                    if (sticky_offset_y > 0.0f) {
+                        sticky_offset_y = 0.0f;
                     }
                 }
 
                 // Horizontal sticking
                 if (child->pos_left_set) {
                     float sticky_left = child->pos_left;
-                    float max_x = parent_padding_w - child_geom.border_box_width();
-
-                    if (child_x < sticky_left) {
-                        sticky_offset_x = sticky_left - child_x;
+                    float visible_x = elem_in_sc_x - sc_scroll_x;
+                    float max_stick_x = sc_w - child_geom.border_box_width();
+                    if (visible_x < sticky_left) {
+                        sticky_offset_x = sticky_left - visible_x;
                     }
-                    if (child_x + sticky_offset_x > max_x) {
-                        sticky_offset_x = max_x - child_x;
+                    if (elem_in_sc_x + sticky_offset_x > max_stick_x) {
+                        sticky_offset_x = max_stick_x - elem_in_sc_x;
+                    }
+                    if (sticky_offset_x < 0.0f) {
+                        sticky_offset_x = 0.0f;
                     }
                 } else if (child->pos_right_set) {
                     float sticky_right = child->pos_right;
-                    float max_x = parent_padding_w - child_geom.border_box_width();
-                    float min_x = max_x - sticky_right;
-
-                    if (child_x > max_x) {
-                        sticky_offset_x = max_x - child_x;
+                    float visible_x = elem_in_sc_x - sc_scroll_x;
+                    float min_stick_x = sc_w - child_geom.border_box_width() - sticky_right;
+                    if (visible_x > min_stick_x) {
+                        sticky_offset_x = min_stick_x - visible_x;
                     }
-                    if (child_x + sticky_offset_x < min_x && min_x >= 0) {
-                        sticky_offset_x = min_x - child_x;
+                    if (sticky_offset_x > 0.0f) {
+                        sticky_offset_x = 0.0f;
+                    }
+                }
+            } else {
+                // No scroll container ancestor found: the sticky element scrolls with the viewport.
+                // Use viewport_scroll_y_ as the scroll amount (typically 0 at static render time).
+                // This handles the common "sticky header inside <body>" pattern where the user
+                // scrolls the viewport, not an overflow:scroll container.
+                float sc_scroll_y = viewport_scroll_y_;
+                float sc_scroll_x = viewport_scroll_x_;
+                float sc_h = viewport_height_ > 0.0f ? viewport_height_ : 1e9f;
+                float sc_w = viewport_width_ > 0.0f ? viewport_width_ : 1e9f;
+
+                // The element's absolute y in page coordinates is child_offset_y + child_geom.y.
+                // In the viewport's coordinate system (content area starts at 0,0), that is the
+                // same absolute value since the viewport content area is rooted at the page origin.
+                float elem_abs_y = child_offset_y + child_geom.y;
+                float elem_abs_x = child_offset_x + child_geom.x;
+
+                // Vertical sticking
+                if (child->pos_top_set) {
+                    float sticky_top = child->pos_top;
+                    // Visible y relative to viewport = elem_abs_y - sc_scroll_y
+                    float visible_y = elem_abs_y - sc_scroll_y;
+                    float max_stick_y = sc_h - child_geom.border_box_height();
+                    if (visible_y < sticky_top) {
+                        sticky_offset_y = sticky_top - visible_y;
+                    }
+                    if (elem_abs_y + sticky_offset_y > max_stick_y) {
+                        sticky_offset_y = max_stick_y - elem_abs_y;
+                    }
+                    if (sticky_offset_y < 0.0f) {
+                        sticky_offset_y = 0.0f;
+                    }
+                } else if (child->pos_bottom_set) {
+                    float sticky_bottom = child->pos_bottom;
+                    float visible_y = elem_abs_y - sc_scroll_y;
+                    float min_stick_y = sc_h - child_geom.border_box_height() - sticky_bottom;
+                    if (visible_y > min_stick_y) {
+                        sticky_offset_y = min_stick_y - visible_y;
+                    }
+                    if (sticky_offset_y > 0.0f) {
+                        sticky_offset_y = 0.0f;
+                    }
+                }
+
+                // Horizontal sticking
+                if (child->pos_left_set) {
+                    float sticky_left = child->pos_left;
+                    float visible_x = elem_abs_x - sc_scroll_x;
+                    float max_stick_x = sc_w - child_geom.border_box_width();
+                    if (visible_x < sticky_left) {
+                        sticky_offset_x = sticky_left - visible_x;
+                    }
+                    if (elem_abs_x + sticky_offset_x > max_stick_x) {
+                        sticky_offset_x = max_stick_x - elem_abs_x;
+                    }
+                    if (sticky_offset_x < 0.0f) {
+                        sticky_offset_x = 0.0f;
+                    }
+                } else if (child->pos_right_set) {
+                    float sticky_right = child->pos_right;
+                    float visible_x = elem_abs_x - sc_scroll_x;
+                    float min_stick_x = sc_w - child_geom.border_box_width() - sticky_right;
+                    if (visible_x > min_stick_x) {
+                        sticky_offset_x = min_stick_x - visible_x;
+                    }
+                    if (sticky_offset_x > 0.0f) {
+                        sticky_offset_x = 0.0f;
                     }
                 }
             }
@@ -1040,26 +1190,71 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     if (!node.mask_image.empty()) {
         float elem_w = geom.border_box_width();
         float elem_h = geom.border_box_height();
-        Rect mask_bounds = {abs_x, abs_y, elem_w, elem_h};
 
-        // Apply mask-size: adjust the mask gradient area
-        if (node.mask_size == 3 && node.mask_size_width > 0 && node.mask_size_height > 0) {
-            // Explicit size
-            mask_bounds.width = node.mask_size_width;
-            mask_bounds.height = node.mask_size_height;
-        } else if (node.mask_size == 1) {
-            // cover: scale up to cover entire element (aspect ratio 1:1 for gradients)
-            float s = std::max(elem_w, elem_h);
-            mask_bounds.width = s;
-            mask_bounds.height = s;
-        } else if (node.mask_size == 2) {
-            // contain: scale down to fit within element
-            float s = std::min(elem_w, elem_h);
-            mask_bounds.width = s;
-            mask_bounds.height = s;
+        // ---- mask-origin: determine the positioning reference box ----
+        // 0=border-box (abs_x/abs_y), 1=padding-box (default), 2=content-box
+        float origin_x = abs_x;
+        float origin_y = abs_y;
+        float origin_w = elem_w;
+        float origin_h = elem_h;
+        if (node.mask_origin == 1) {
+            // padding-box: shift inward by border
+            origin_x += geom.border.left;
+            origin_y += geom.border.top;
+            origin_w = geom.padding.left + geom.width + geom.padding.right;
+            origin_h = geom.padding.top + geom.height + geom.padding.bottom;
+        } else if (node.mask_origin == 2) {
+            // content-box: shift inward by border + padding
+            origin_x += geom.border.left + geom.padding.left;
+            origin_y += geom.border.top + geom.padding.top;
+            origin_w = geom.width;
+            origin_h = geom.height;
         }
 
-        // Parse "linear-gradient(...)" into angle + stops
+        // ---- mask-clip: determine the visible region ----
+        // 0=border-box, 1=padding-box, 2=content-box, 3=no-clip
+        bool mask_clipping = (node.mask_clip != 3);
+        Rect clip_rect = {abs_x, abs_y, elem_w, elem_h}; // border-box by default
+        if (node.mask_clip == 1) {
+            // padding-box
+            clip_rect = {
+                abs_x + geom.border.left,
+                abs_y + geom.border.top,
+                geom.padding.left + geom.width + geom.padding.right,
+                geom.padding.top + geom.height + geom.padding.bottom
+            };
+        } else if (node.mask_clip == 2) {
+            // content-box
+            clip_rect = {
+                abs_x + geom.border.left + geom.padding.left,
+                abs_y + geom.border.top + geom.padding.top,
+                geom.width,
+                geom.height
+            };
+        }
+        if (mask_clipping) {
+            list.push_clip(clip_rect);
+        }
+
+        // ---- mask-size: compute tile dimensions ----
+        float tile_w = origin_w;
+        float tile_h = origin_h;
+        if (node.mask_size == 3 && node.mask_size_width > 0 && node.mask_size_height > 0) {
+            tile_w = node.mask_size_width;
+            tile_h = node.mask_size_height;
+        } else if (node.mask_size == 1) {
+            // cover: scale uniformly to cover origin box (gradient treated as square)
+            float s = std::max(origin_w, origin_h);
+            tile_w = s;
+            tile_h = s;
+        } else if (node.mask_size == 2) {
+            // contain: scale uniformly to fit within origin box
+            float s = std::min(origin_w, origin_h);
+            tile_w = s;
+            tile_h = s;
+        }
+
+        // ---- Parse "linear-gradient(...)" into angle + stops ----
         auto mask_str = node.mask_image;
         auto lg_pos = mask_str.find("linear-gradient(");
         if (lg_pos != std::string::npos) {
@@ -1161,9 +1356,58 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
                 }
 
                 if (stops.size() >= 2) {
-                    list.apply_mask_gradient(mask_bounds, angle, stops);
+                    // ---- mask-repeat: tile gradient tiles across the origin box ----
+                    // 0=repeat, 1=repeat-x, 2=repeat-y, 3=no-repeat
+                    // For gradients tiling produces multiple apply_mask_gradient calls
+                    // covering adjacent tile positions; the clip rect above limits visibility.
+                    bool tile_x = (node.mask_repeat == 0 || node.mask_repeat == 1);
+                    bool tile_y = (node.mask_repeat == 0 || node.mask_repeat == 2);
+
+                    if (!tile_x && !tile_y) {
+                        // no-repeat: paint a single tile at origin position
+                        Rect mask_bounds = {origin_x, origin_y, tile_w, tile_h};
+                        list.apply_mask_gradient(mask_bounds, angle, stops);
+                    } else {
+                        // Tile across the clip region (union of origin box and clip rect)
+                        float region_x = clip_rect.x;
+                        float region_y = clip_rect.y;
+                        float region_w = clip_rect.width;
+                        float region_h = clip_rect.height;
+
+                        // Guard against zero tile size to prevent infinite loop
+                        float step_x = (tile_w > 0) ? tile_w : origin_w;
+                        float step_y = (tile_h > 0) ? tile_h : origin_h;
+                        if (step_x <= 0) step_x = 1;
+                        if (step_y <= 0) step_y = 1;
+
+                        // Starting tile position aligned to origin_x/origin_y
+                        float start_x = origin_x;
+                        float start_y = origin_y;
+                        if (tile_x) {
+                            // Walk backwards to cover region left edge
+                            while (start_x > region_x) start_x -= step_x;
+                        }
+                        if (tile_y) {
+                            while (start_y > region_y) start_y -= step_y;
+                        }
+
+                        float end_x = tile_x ? (region_x + region_w) : (origin_x + step_x);
+                        float end_y = tile_y ? (region_y + region_h) : (origin_y + step_y);
+
+                        for (float ty = start_y; ty < end_y; ty += step_y) {
+                            for (float tx = start_x; tx < end_x; tx += step_x) {
+                                Rect mask_bounds = {tx, ty, tile_w, tile_h};
+                                list.apply_mask_gradient(mask_bounds, angle, stops);
+                            }
+                            if (!tile_x) break;
+                        }
+                    }
                 }
             }
+        }
+
+        if (mask_clipping) {
+            list.pop_clip();
         }
     }
 
@@ -1337,6 +1581,14 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
             else if (node.bg_position_y == -2) pos_y = (origin_elem_h - draw_h) / 2.0f; // center
             else if (node.bg_position_y == -3) pos_y = origin_elem_h - draw_h; // bottom
             else pos_y = node.bg_position_y; // px value
+
+            // local (2): background scrolls with the element's own content.
+            // Offset the background position by the element's scroll offset so
+            // that the background image moves together with the scrolled content.
+            if (node.bg_attachment == 2 && node.is_scroll_container) {
+                pos_x -= node.scroll_left;
+                pos_y -= node.scroll_top;
+            }
         }
 
         // Draw based on background-repeat, clipped to the clipping box (rect)

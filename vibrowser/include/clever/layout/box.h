@@ -220,6 +220,7 @@ struct LayoutNode {
     float min_height = 0;
     float max_height = 1e9f;
     float aspect_ratio = 0; // 0 = none, >0 = width/height ratio
+    bool aspect_ratio_is_auto = false; // true for "auto" or "auto <ratio>"
 
     // Box sizing: false=content-box (default), true=border-box
     bool border_box = false;

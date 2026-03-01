@@ -39,8 +39,14 @@ bool is_empty_block_for_margin_collapse(const LayoutNode& node) {
     return std::abs(node.geometry.height) < 0.0001f;
 }
 
-std::string collapse_whitespace(const std::string& text, int white_space, bool white_space_pre) {
+std::string collapse_whitespace(const std::string& text, int white_space, bool white_space_pre,
+                                int white_space_collapse = -1) {
     if (text.empty()) return text;
+    // CSS Text Level 4: white-space-collapse longhand overrides when explicitly set.
+    // 0=collapse, 1=preserve, 2=preserve-breaks, 3=break-spaces
+    if (white_space_collapse >= 0) {
+        if (white_space_collapse == 1 || white_space_collapse == 3) return text; // preserve / break-spaces
+    }
     if (white_space_pre || white_space == 2 || white_space == 3 || white_space == 5) {
         return text;
     }
@@ -353,6 +359,28 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
     }
 }
 
+// Returns the effective aspect ratio for a node, respecting the "auto" flag.
+// When aspect_ratio_is_auto is true, prefer the element's intrinsic ratio
+// (from image_width/image_height for replaced content like img/video/canvas).
+// Fall back to the specified aspect_ratio only if no intrinsic ratio exists.
+// When aspect_ratio_is_auto is false, always use the specified ratio directly.
+static float effective_aspect_ratio(const LayoutNode& node) {
+    if (node.aspect_ratio_is_auto) {
+        // Replaced elements with known intrinsic dimensions
+        if (node.image_width > 0 && node.image_height > 0) {
+            return static_cast<float>(node.image_width) / static_cast<float>(node.image_height);
+        }
+        // For video/canvas without loaded image data, check contain_intrinsic_width/height
+        if (node.contain_intrinsic_width > 0 && node.contain_intrinsic_height > 0) {
+            return node.contain_intrinsic_width / node.contain_intrinsic_height;
+        }
+        // No intrinsic ratio available; fall back to specified ratio (may be 0 = none)
+        return node.aspect_ratio;
+    }
+    // Not auto: always use the specified ratio
+    return node.aspect_ratio;
+}
+
 float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
     // For a block element:
     //   If specified_width is set, use it.
@@ -402,9 +430,9 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
         // we keep specified_width as-is — layout_block's content_w calculation
         // will naturally give children the correct content area.
         // No adjustment needed here; it matches the engine convention.
-    } else if (node.specified_width < 0 && node.specified_height >= 0 && node.aspect_ratio > 0) {
+    } else if (node.specified_width < 0 && node.specified_height >= 0 && effective_aspect_ratio(node) > 0) {
         // Width is auto, height is set, and aspect-ratio exists: compute width from height
-        w = node.specified_height * node.aspect_ratio;
+        w = node.specified_height * effective_aspect_ratio(node);
     } else {
         float horiz_margins = 0;
         // Only subtract non-auto margins
@@ -838,9 +866,9 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
 
     // Compute height
     float h = compute_height(node);
-    if (h < 0 && node.aspect_ratio > 0) {
+    if (h < 0 && effective_aspect_ratio(node) > 0) {
         // Aspect ratio: height = width / ratio
-        h = node.geometry.width / node.aspect_ratio;
+        h = node.geometry.width / effective_aspect_ratio(node);
     }
     if (h < 0) {
         // Height from children + padding + border
@@ -898,7 +926,7 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
         // Apply CSS white-space collapsing before measuring and font-variant processing.
         // Skip for <br> elements — their newline must be preserved regardless of white-space.
         if (node.tag_name != "br") {
-            node.text_content = collapse_whitespace(node.text_content, node.white_space, node.white_space_pre);
+            node.text_content = collapse_whitespace(node.text_content, node.white_space, node.white_space_pre, node.white_space_collapse);
         }
 
         // font-variant: small-caps — measure per-character width since
@@ -2716,11 +2744,15 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
         }
 
         // Cross-axis align-items for this line
-        // For single-line flex with specified container size, use container cross
+        // For single-line flex with specified container size, use container cross.
+        // Also consider min-height (e.g. min-height:100vh) for cross-axis centering.
         float line_cross = line.max_cross;
         if (lines.size() == 1) {
             if (is_row && node.specified_height >= 0) {
                 line_cross = node.specified_height;
+            } else if (is_row && node.specified_height < 0 && node.min_height > line_cross) {
+                // min-height provides extra space for cross-axis alignment
+                line_cross = node.min_height;
             } else if (!is_row) {
                 line_cross = containing_width;
             }

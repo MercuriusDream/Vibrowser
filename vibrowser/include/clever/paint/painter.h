@@ -7,10 +7,17 @@ namespace clever::paint {
 
 class Painter {
 public:
-    DisplayList paint(const clever::layout::LayoutNode& root, float viewport_height = 0);
+    DisplayList paint(const clever::layout::LayoutNode& root,
+                      float viewport_height = 0,
+                      float viewport_width = 0,
+                      float viewport_scroll_y = 0,
+                      float viewport_scroll_x = 0);
 
 private:
     float viewport_height_ = 0;
+    float viewport_width_ = 0;
+    float viewport_scroll_y_ = 0;  // current viewport scroll offset (Y), for sticky positioning
+    float viewport_scroll_x_ = 0;  // current viewport scroll offset (X), for sticky positioning
     void paint_node(const clever::layout::LayoutNode& node, DisplayList& list,
                     float offset_x, float offset_y);
     void paint_background(const clever::layout::LayoutNode& node, DisplayList& list,

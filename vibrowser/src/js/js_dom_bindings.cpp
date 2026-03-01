@@ -6740,6 +6740,11 @@ struct Canvas2DState {
     // | 0 0 1 |
     float tx_a = 1, tx_b = 0, tx_c = 0, tx_d = 1, tx_e = 0, tx_f = 0;
 
+    // Clip mask: size = width * height, 0xFF = visible, 0x00 = clipped
+    // Allocated lazily on first clip() call to avoid per-canvas overhead
+    bool has_clip = false;
+    std::vector<uint8_t> clip_mask; // empty means no clip mask allocated
+
     // State stack for save/restore
     struct SavedState {
         uint32_t fill_color;
@@ -6758,6 +6763,9 @@ struct Canvas2DState {
         std::string global_composite_op;
         bool image_smoothing;
         float tx_a, tx_b, tx_c, tx_d, tx_e, tx_f;
+        // Clip state
+        bool has_clip;
+        std::vector<uint8_t> clip_mask;
     };
     std::vector<SavedState> state_stack;
 };
@@ -6891,6 +6899,7 @@ static void fill_rect_buffer(Canvas2DState* s, int x, int y, int w, int h) {
         // Per-pixel gradient fill
         for (int py = y0; py < y1; py++) {
             for (int px = x0; px < x1; px++) {
+                if (s->has_clip && s->clip_mask[py * s->width + px] == 0x00) continue;
                 uint32_t col = s->fill_gradient.sample(static_cast<float>(px) + 0.5f,
                                                        static_cast<float>(py) + 0.5f);
                 uint8_t cr = (col >> 16) & 0xFF;
@@ -6912,6 +6921,7 @@ static void fill_rect_buffer(Canvas2DState* s, int x, int y, int w, int h) {
         a = static_cast<uint8_t>(a * s->global_alpha);
         for (int py = y0; py < y1; py++) {
             for (int px = x0; px < x1; px++) {
+                if (s->has_clip && s->clip_mask[py * s->width + px] == 0x00) continue;
                 int idx = (py * s->width + px) * 4;
                 (*s->buffer)[idx]     = r;
                 (*s->buffer)[idx + 1] = g;
@@ -6934,6 +6944,7 @@ static void stroke_rect_buffer(Canvas2DState* s, int x, int y, int w, int h) {
 
     auto set_pixel = [&](int px, int py) {
         if (px < 0 || py < 0 || px >= s->width || py >= s->height) return;
+        if (s->has_clip && s->clip_mask[py * s->width + px] == 0x00) return;
         int idx = (py * s->width + px) * 4;
         if (s->stroke_gradient.active()) {
             uint32_t col = s->stroke_gradient.sample(static_cast<float>(px) + 0.5f,
@@ -6997,6 +7008,7 @@ static void draw_line_buffer(Canvas2DState* s, int x0, int y0, int x1, int y1,
 
     auto set_pixel = [&](int px, int py) {
         if (px < 0 || py < 0 || px >= s->width || py >= s->height) return;
+        if (s->has_clip && s->clip_mask[py * s->width + px] == 0x00) return;
         int idx = (py * s->width + px) * 4;
         if (s->stroke_gradient.active()) {
             uint32_t col = s->stroke_gradient.sample(static_cast<float>(px) + 0.5f,
@@ -7767,6 +7779,7 @@ static JSValue js_canvas2d_fill(JSContext* /*ctx*/, JSValueConst this_val,
             int x_start = std::max(0, static_cast<int>(intersections[i]));
             int x_end = std::min(s->width, static_cast<int>(intersections[i + 1]) + 1);
             for (int x = x_start; x < x_end; x++) {
+                if (s->has_clip && s->clip_mask[y * s->width + x] == 0x00) continue;
                 int idx = (y * s->width + x) * 4;
                 if (s->fill_gradient.active()) {
                     uint32_t col = s->fill_gradient.sample(static_cast<float>(x) + 0.5f,
@@ -8052,6 +8065,8 @@ static JSValue js_canvas2d_save(JSContext* /*ctx*/, JSValueConst this_val,
     st.image_smoothing = s->image_smoothing;
     st.tx_a = s->tx_a; st.tx_b = s->tx_b; st.tx_c = s->tx_c;
     st.tx_d = s->tx_d; st.tx_e = s->tx_e; st.tx_f = s->tx_f;
+    st.has_clip = s->has_clip;
+    st.clip_mask = s->clip_mask; // copy current clip mask
     s->state_stack.push_back(std::move(st));
     return JS_UNDEFINED;
 }
@@ -8081,6 +8096,8 @@ static JSValue js_canvas2d_restore(JSContext* /*ctx*/, JSValueConst this_val,
     s->image_smoothing = st.image_smoothing;
     s->tx_a = st.tx_a; s->tx_b = st.tx_b; s->tx_c = st.tx_c;
     s->tx_d = st.tx_d; s->tx_e = st.tx_e; s->tx_f = st.tx_f;
+    s->has_clip = st.has_clip;
+    s->clip_mask = std::move(st.clip_mask); // restore clip mask
     s->state_stack.pop_back();
     return JS_UNDEFINED;
 }
@@ -8454,10 +8471,83 @@ static JSValue js_canvas2d_reset_transform(JSContext* /*ctx*/, JSValueConst this
     s->tx_e = 0.0f; s->tx_f = 0.0f;
     return JS_UNDEFINED;
 }
-// ---- clip stub ----
-static JSValue js_canvas2d_clip(JSContext* /*ctx*/, JSValueConst /*this_val*/,
+// ---- clip ----
+// Rasterises the current path into a new clip mask using the same
+// even-odd scanline algorithm as js_canvas2d_fill, then intersects
+// (ANDs) it with any existing clip mask.  Future draw calls skip
+// pixels whose clip_mask entry is 0x00.
+static JSValue js_canvas2d_clip(JSContext* /*ctx*/, JSValueConst this_val,
                                  int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_UNDEFINED; // no-op
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s) return JS_UNDEFINED;
+
+    int total = s->width * s->height;
+    if (total <= 0) return JS_UNDEFINED;
+
+    // Build a fresh mask for this path (default 0x00 = all clipped)
+    std::vector<uint8_t> new_mask(total, 0x00);
+
+    if (!s->path_points.empty()) {
+        // Build edges from the current path
+        struct Edge { float x0, y0, x1, y1; };
+        std::vector<Edge> edges;
+        float prev_x = 0, prev_y = 0;
+        bool have_prev = false;
+        for (auto& pt : s->path_points) {
+            if (pt.is_move) {
+                prev_x = pt.x; prev_y = pt.y;
+                have_prev = true;
+            } else if (have_prev) {
+                edges.push_back({prev_x, prev_y, pt.x, pt.y});
+                prev_x = pt.x; prev_y = pt.y;
+            }
+        }
+
+        // Find bounding box
+        float min_y = s->path_points[0].y, max_y = s->path_points[0].y;
+        for (auto& pt : s->path_points) {
+            if (pt.y < min_y) min_y = pt.y;
+            if (pt.y > max_y) max_y = pt.y;
+        }
+        int iy_start = std::max(0, static_cast<int>(min_y));
+        int iy_end   = std::min(s->height - 1, static_cast<int>(max_y));
+
+        // Scanline fill (even-odd rule) — mark visible pixels in new_mask
+        for (int y = iy_start; y <= iy_end; y++) {
+            float scan_y = y + 0.5f;
+            std::vector<float> intersections;
+            for (auto& e : edges) {
+                float ey0 = e.y0, ey1 = e.y1;
+                if (ey0 == ey1) continue;
+                if (scan_y < std::min(ey0, ey1) || scan_y >= std::max(ey0, ey1)) continue;
+                float t = (scan_y - ey0) / (ey1 - ey0);
+                float ix = e.x0 + t * (e.x1 - e.x0);
+                intersections.push_back(ix);
+            }
+            std::sort(intersections.begin(), intersections.end());
+
+            for (size_t i = 0; i + 1 < intersections.size(); i += 2) {
+                int x_start = std::max(0, static_cast<int>(intersections[i]));
+                int x_end   = std::min(s->width, static_cast<int>(intersections[i + 1]) + 1);
+                for (int x = x_start; x < x_end; x++) {
+                    new_mask[y * s->width + x] = 0xFF;
+                }
+            }
+        }
+    }
+    // (An empty path leaves new_mask all 0x00 — clips everything, per spec.)
+
+    if (s->has_clip) {
+        // Intersect: AND the new mask with the existing mask
+        for (int i = 0; i < total; i++) {
+            s->clip_mask[i] = (s->clip_mask[i] & new_mask[i]);
+        }
+    } else {
+        // First clip: install the new mask
+        s->clip_mask = std::move(new_mask);
+        s->has_clip = true;
+    }
+    return JS_UNDEFINED;
 }
 // ---- roundRect ----
 static JSValue js_canvas2d_round_rect(JSContext* ctx, JSValueConst this_val,

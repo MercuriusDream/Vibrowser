@@ -11017,6 +11017,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->dominant_baseline = style.dominant_baseline;
     layout_node->order = style.order;
     layout_node->aspect_ratio = style.aspect_ratio;
+    layout_node->aspect_ratio_is_auto = style.aspect_ratio_is_auto;
 
     // Position
     switch (style.position) {
@@ -13649,8 +13650,13 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         render_height = std::min(render_height, 16384);
 
         // Step 6: Paint -> DisplayList
+        // Pass viewport dimensions; scroll offsets are 0 at static render time
+        // (the shell composites sticky overlays for live viewport scrolling).
         Painter painter;
-        auto display_list = painter.paint(*layout_root, static_cast<float>(render_height));
+        auto display_list = painter.paint(*layout_root,
+                                          static_cast<float>(render_height),
+                                          static_cast<float>(layout_viewport_width),
+                                          0.0f, 0.0f);
 
         // Step 7: Render to pixel buffer
         auto renderer = std::make_unique<SoftwareRenderer>(layout_viewport_width, render_height);
