@@ -16694,12 +16694,26 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                                            static_cast<float>(layout_viewport_height));
                         clever::js::populate_layout_geometry(js_engine.context(), pre_root.get());
 
-                        int html_color_scheme = resolve_color_scheme_from_layout_tag(*pre_root, "html");
-                        if (html_color_scheme == -1) {
-                            html_color_scheme = resolve_color_scheme_from_layout_tag(*pre_root, "body");
+                        // Determine prefers-color-scheme for JS matchMedia().
+                        // When no explicit dark mode override is set, always report
+                        // light mode — vibrowser is a light-mode browser and the
+                        // CSS dark-mode is already forced off. Preventing JS from
+                        // detecting dark mode stops sites like Wikipedia from
+                        // injecting their own dark-theme classes.
+                        int resolved_color_scheme;
+                        if (clever::css::get_dark_mode_override() >= 0) {
+                            // Explicit override: respect it
+                            int html_color_scheme = resolve_color_scheme_from_layout_tag(*pre_root, "html");
+                            if (html_color_scheme == -1) {
+                                html_color_scheme = resolve_color_scheme_from_layout_tag(*pre_root, "body");
+                            }
+                            resolved_color_scheme = resolve_prefers_color_scheme(
+                                html_color_scheme, document_color_scheme);
+                        } else {
+                            // No explicit override: always report light mode to JS.
+                            // This matches our forced-light CSS behavior.
+                            resolved_color_scheme = 1;
                         }
-                        int resolved_color_scheme = resolve_prefers_color_scheme(
-                            html_color_scheme, document_color_scheme);
                         js_engine.evaluate(
                             "globalThis.__vibrowser_prefers_color_scheme = " +
                             std::to_string(resolved_color_scheme) + ";",
