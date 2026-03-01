@@ -13680,6 +13680,9 @@ void flatten_layer_rules(clever::css::StyleSheet& sheet) {
 //   - (min-width: Npx), (max-width: Npx), (width: Npx)
 //   - (min-height: Npx), (max-height: Npx), (height: Npx)
 //   - (width > Npx), (width < Npx), (width >= Npx), (width <= Npx)
+//   - (aspect-ratio: 1), (aspect-ratio: 16/9)
+//   - (aspect-ratio > 0.5)
+//   - (orientation: portrait), (orientation: landscape)
 //   - Combined queries: "(min-width: 800px) and (height > 200px)" and "(width: 100cqw) or (height: 50cqh)"
 static bool is_container_cond_word_char(char ch) {
     return std::isalnum(static_cast<unsigned char>(ch)) || ch == '-';
@@ -13768,6 +13771,39 @@ static float parse_container_length_value(const std::string& value,
 static bool evaluate_single_container_condition(const std::string& c,
                                               float container_w,
                                               float container_h) {
+    auto parse_aspect_ratio = [](const std::string& value, float& ratio) -> bool {
+        std::string raw = trim(value);
+        if (raw.empty()) return false;
+
+        size_t slash = raw.find('/');
+        auto parse_number = [](const std::string& text, float& out) -> bool {
+            std::string trimmed_text = trim(text);
+            if (trimmed_text.empty()) return false;
+
+            char* end = nullptr;
+            float parsed = std::strtof(trimmed_text.c_str(), &end);
+            if (end == trimmed_text.c_str()) return false;
+            if (!trim(std::string(end)).empty()) return false;
+            out = parsed;
+            return true;
+        };
+
+        if (slash == std::string::npos) {
+            return parse_number(raw, ratio);
+        }
+
+        std::string numerator = raw.substr(0, slash);
+        std::string denominator = raw.substr(slash + 1);
+        float num = 0.0f;
+        float den = 0.0f;
+        if (!parse_number(numerator, num) || !parse_number(denominator, den) || den == 0.0f) {
+            return false;
+        }
+
+        ratio = num / den;
+        return true;
+    };
+
     // Handle comparison operators: "width > 300px", "width >= 300px", etc.
     struct OpEntry { const char* str; size_t len; };
     OpEntry ops[] = {{">=", 2}, {"<=", 2}, {">", 1}, {"<", 1}};
@@ -13778,6 +13814,20 @@ static bool evaluate_single_container_condition(const std::string& c,
             std::string val = trim(c.substr(op_pos + op.len));
 
             std::string prop_lower = to_lower(prop);
+            if (prop_lower == "aspect-ratio") {
+                float ratio_value = 0.0f;
+                if (!parse_aspect_ratio(val, ratio_value)) return false;
+                if (container_h <= 0.0f) return false;
+
+                float actual_ratio = container_w / container_h;
+
+                if (std::string(op.str) == ">=") return actual_ratio >= ratio_value;
+                if (std::string(op.str) == "<=") return actual_ratio <= ratio_value;
+                if (std::string(op.str) == ">") return actual_ratio > ratio_value;
+                if (std::string(op.str) == "<") return actual_ratio < ratio_value;
+                return false;
+            }
+
             bool uses_width = (prop_lower.find("width") != std::string::npos &&
                               prop_lower.find("height") == std::string::npos);
             float px_val = parse_container_length_value(
@@ -13798,16 +13848,32 @@ static bool evaluate_single_container_condition(const std::string& c,
         std::string val = trim(c.substr(colon + 1));
 
         std::string prop_lower = to_lower(prop);
+        bool orientation_prop = (prop_lower == "orientation");
         bool width_prop = (prop_lower == "min-width" ||
                            prop_lower == "max-width" ||
                            prop_lower == "width");
         bool height_prop = (prop_lower == "min-height" ||
                             prop_lower == "max-height" ||
                             prop_lower == "height");
-        if (!width_prop && !height_prop) return false;
+        bool aspect_ratio_prop = (prop_lower == "aspect-ratio");
+        if (!width_prop && !height_prop && !aspect_ratio_prop && !orientation_prop) return false;
+
+        if (orientation_prop) {
+            if (to_lower(val) == "portrait") return container_h >= container_w;
+            if (to_lower(val) == "landscape") return container_w > container_h;
+            return false;
+        }
 
         float px_val = parse_container_length_value(
             val, width_prop, container_w, container_h);
+
+        if (aspect_ratio_prop) {
+            float ratio_value = 0.0f;
+            if (!parse_aspect_ratio(val, ratio_value)) return false;
+            if (container_h <= 0.0f) return false;
+            float actual_ratio = container_w / container_h;
+            return std::fabs(actual_ratio - ratio_value) < 0.0001f;
+        }
 
         if (prop_lower == "min-width") return container_w >= px_val;
         if (prop_lower == "max-width") return container_w <= px_val;
@@ -13974,8 +14040,18 @@ static bool evaluate_container_queries_post_layout(
     // Walk the entire layout tree
     std::function<void(clever::layout::LayoutNode&)> walk =
         [&](clever::layout::LayoutNode& node) {
+            float saved_container_width = clever::layout::LayoutNode::s_container_width;
+            float saved_container_height = clever::layout::LayoutNode::s_container_height;
+            bool is_container = (node.container_type != 0);
+            if (is_container) {
+                clever::layout::LayoutNode::s_container_width = node.geometry.width;
+                clever::layout::LayoutNode::s_container_height = node.geometry.height;
+            }
+
             if (node.is_text) {
                 for (auto& child : node.children) walk(*child);
+                clever::layout::LayoutNode::s_container_width = saved_container_width;
+                clever::layout::LayoutNode::s_container_height = saved_container_height;
                 return;
             }
 
@@ -14035,6 +14111,11 @@ static bool evaluate_container_queries_post_layout(
             }
 
             for (auto& child : node.children) walk(*child);
+
+            if (is_container) {
+                clever::layout::LayoutNode::s_container_width = saved_container_width;
+                clever::layout::LayoutNode::s_container_height = saved_container_height;
+            }
         };
 
     walk(root);
