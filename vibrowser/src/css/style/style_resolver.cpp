@@ -5776,6 +5776,13 @@ void PropertyCascade::apply_declaration(
                 out += vals[i];
             }
         };
+        auto trim_token = [](const std::string& v) -> std::string {
+            size_t s = 0;
+            while (s < v.size() && std::isspace(static_cast<unsigned char>(v[s]))) s++;
+            size_t e = v.size();
+            while (e > s && std::isspace(static_cast<unsigned char>(v[e - 1]))) e--;
+            return v.substr(s, e - s);
+        };
 
         auto slash_pos = find_top_level_slash(value_str);
         if (slash_pos == std::string::npos) {
@@ -5792,6 +5799,7 @@ void PropertyCascade::apply_declaration(
             std::vector<std::string> area_rows;
             std::vector<std::string> implicit_rows;
             size_t ti = 0;
+            bool expecting_row_size = false;
 
             auto read_quoted = [](const std::string& s, size_t& i, char quote, std::string& out) -> bool {
                 size_t start = i;
@@ -5820,24 +5828,61 @@ void PropertyCascade::apply_declaration(
                 if (ti >= rows_and_areas.size()) break;
 
                 if (rows_and_areas[ti] == '"' || rows_and_areas[ti] == '\'') {
+                    if (expecting_row_size) {
+                        implicit_rows.push_back("auto");
+                        expecting_row_size = false;
+                    }
                     char q = rows_and_areas[ti++];
                     std::string area_row;
                     if (!read_quoted(rows_and_areas, ti, q, area_row)) break;
                     if (!area_row.empty()) area_rows.push_back(area_row);
+                    expecting_row_size = true;
 
-                    while (ti < rows_and_areas.size() && isspace(static_cast<unsigned char>(rows_and_areas[ti]))) ti++;
-                    size_t size_start = ti;
-                    while (ti < rows_and_areas.size() && !isspace(static_cast<unsigned char>(rows_and_areas[ti]))) ti++;
-                    if (size_start < ti) {
-                        implicit_rows.push_back(rows_and_areas.substr(size_start, ti - size_start));
+                    if (ti < rows_and_areas.size() && rows_and_areas[ti] != '"' && rows_and_areas[ti] != '\'') {
+                        while (ti < rows_and_areas.size() && std::isspace(static_cast<unsigned char>(rows_and_areas[ti]))) ti++;
+                        if (ti < rows_and_areas.size()) {
+                            size_t start = ti;
+                            int depth = 0;
+                            while (ti < rows_and_areas.size()) {
+                                char ch = rows_and_areas[ti];
+                                if (ch == '(') depth++;
+                                else if (ch == ')' && depth > 0) depth--;
+                                else if (std::isspace(static_cast<unsigned char>(ch)) && depth == 0) break;
+                                ti++;
+                            }
+                            if (ti > start) {
+                                implicit_rows.push_back(rows_and_areas.substr(start, ti - start));
+                                expecting_row_size = false;
+                            }
+                        }
                     }
                 } else {
+                    while (ti < rows_and_areas.size() && std::isspace(static_cast<unsigned char>(rows_and_areas[ti]))) ti++;
+                    if (ti >= rows_and_areas.size()) break;
+                    if (rows_and_areas[ti] == '"' || rows_and_areas[ti] == '\'') continue;
+
                     size_t token_start = ti;
-                    while (ti < rows_and_areas.size() && !isspace(static_cast<unsigned char>(rows_and_areas[ti]))) ti++;
+                    int depth = 0;
+                    while (ti < rows_and_areas.size()) {
+                        char ch = rows_and_areas[ti];
+                        if (ch == '(') depth++;
+                        else if (ch == ')' && depth > 0) depth--;
+                        else if (std::isspace(static_cast<unsigned char>(ch)) && depth == 0) break;
+                        ti++;
+                    }
                     std::string token = rows_and_areas.substr(token_start, ti - token_start);
-                    if (!token.empty()) implicit_rows.push_back(token);
+                    token = trim_token(token);
+                    if (!token.empty()) {
+                        if (expecting_row_size) {
+                            implicit_rows.push_back(token);
+                            expecting_row_size = false;
+                        } else {
+                            implicit_rows.push_back(token);
+                        }
+                    }
                 }
             }
+            if (expecting_row_size) implicit_rows.push_back("auto");
 
             if (!area_rows.empty()) {
                 std::string areas;
@@ -5847,20 +5892,13 @@ void PropertyCascade::apply_declaration(
                 if (implicit_rows.size() < area_rows.size()) {
                     implicit_rows.resize(area_rows.size(), "auto");
                 }
-            }
-            if (!implicit_rows.empty()) {
+                // Normalize row list size tokens as a space-separated list.
+                for (auto& row_size : implicit_rows) {
+                    row_size = trim_token(row_size);
+                }
                 std::string rows;
                 append_sizes(rows, implicit_rows);
-                style.grid_template_rows = rows;
-            }
-            if (implicit_rows.empty() && !area_rows.empty()) {
-                style.grid_template_rows = std::string(area_rows.size() * 5, 'a');
-                std::string tmp;
-                for (size_t i = 0; i < area_rows.size(); i++) {
-                    if (i > 0) tmp += ' ';
-                    tmp += "auto";
-                }
-                style.grid_template_rows = tmp;
+                style.grid_template_rows = rows.empty() ? std::string("auto") : rows;
             }
         } else {
             if (!rows_and_areas.empty()) style.grid_template_rows = rows_and_areas;

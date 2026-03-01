@@ -3712,86 +3712,207 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     float col_gap = node.column_gap > 0 ? node.column_gap : node.column_gap_val;
     float rg = node.row_gap > 0 ? node.row_gap : node.gap;
 
+    struct TrackToken {
+        std::string text;
+        bool auto_fit = false;
+    };
+
+    auto trim_ws = [](const std::string& s) -> std::string {
+        size_t start = 0;
+        while (start < s.size() && std::isspace(static_cast<unsigned char>(s[start]))) start++;
+        size_t end = s.size();
+        while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1]))) end--;
+        return s.substr(start, end - start);
+    };
+
+    // Parse a single track length token to pixels where possible.
+    // Returns 0 for auto/min-content/max-content/invalid.
+    auto parse_track_length_value = [&](const std::string& token, float avail_size) -> float {
+        std::string t = trim_ws(token);
+        if (t.empty() || t == "auto" || t == "min-content" || t == "max-content") return 0.0f;
+        if (t.find("px") != std::string::npos) {
+            try { return std::stof(t); } catch (...) {}
+        } else if (t.find('%') != std::string::npos) {
+            try {
+                float pct = std::stof(t);
+                return avail_size * pct / 100.0f;
+            } catch (...) {}
+        } else {
+            try { return std::stof(t); } catch (...) {}
+        }
+        return 0.0f;
+    };
+
+    auto parse_minmax_min_for_repeat = [&](const std::string& pattern, float avail_size) -> float {
+        std::string t = trim_ws(pattern);
+        const std::string mm = "minmax(";
+        if (t.size() >= mm.size() && t.rfind(mm, 0) == 0) {
+            size_t mm_start = mm.size();
+            int depth = 0;
+            size_t comma = std::string::npos;
+            for (size_t i = mm_start; i < t.size(); i++) {
+                char ch = t[i];
+                if (ch == '(') depth++;
+                else if (ch == ')' && depth >= 0) {
+                    if (depth == 0) break;
+                    depth--;
+                } else if (ch == ',' && depth == 0) {
+                    comma = i;
+                    break;
+                }
+            }
+            if (comma != std::string::npos) {
+                return parse_track_length_value(t.substr(mm_start, comma - mm_start), avail_size);
+            }
+        }
+        return parse_track_length_value(t, avail_size);
+    };
+
+    // Parse a segment of track tokens, optionally marking each token as from auto-fit.
+    // Optional named_lines map captures [name] bracket annotations.
+    // Named lines before track N are stored with index N (0-based).
+    auto append_track_tokens = [&](const std::string& segment,
+                                  bool track_is_auto_fit,
+                                  std::vector<TrackToken>* out,
+                                  std::unordered_map<std::string, std::vector<int>>* named_lines = nullptr) {
+        size_t ti = 0;
+        while (ti < segment.size()) {
+            while (ti < segment.size() && std::isspace(static_cast<unsigned char>(segment[ti]))) ti++;
+            if (ti >= segment.size()) break;
+            // Named grid lines in brackets: [name1 name2]
+            if (segment[ti] == '[') {
+                size_t end_bracket = segment.find(']', ti);
+                if (end_bracket != std::string::npos) {
+                    if (named_lines) {
+                        int line_idx = static_cast<int>(out->size());
+                        std::string names_str = segment.substr(ti + 1, end_bracket - ti - 1);
+                        std::istringstream nss(names_str);
+                        std::string nm;
+                        while (nss >> nm) {
+                            (*named_lines)[nm].push_back(line_idx);
+                        }
+                    }
+                    ti = end_bracket + 1;
+                } else {
+                    ti++;
+                }
+                continue;
+            }
+            size_t start = ti;
+            if (ti + 7 <= segment.size() && segment.substr(ti, 7) == "minmax(") {
+                int depth = 0;
+                while (ti < segment.size()) {
+                    if (segment[ti] == '(') depth++;
+                    else if (segment[ti] == ')' ) { depth--; if (depth == 0) { ti++; break; } }
+                    ti++;
+                }
+            } else if (ti + 12 <= segment.size() && segment.substr(ti, 12) == "fit-content(") {
+                // fit-content(value) — treat like minmax(auto, value)
+                int depth = 0;
+                size_t start = ti;
+                while (ti < segment.size()) {
+                    if (segment[ti] == '(') depth++;
+                    else if (segment[ti] == ')' ) { depth--; if (depth == 0) { ti++; break; } }
+                    ti++;
+                }
+                std::string inner = "";
+                if (ti > start + 12) {
+                    inner = trim_ws(segment.substr(start + 12, (ti - 1) - (start + 12)));
+                }
+                std::string token = "minmax(auto, " + inner + ")";
+                out->push_back({token, track_is_auto_fit});
+                continue;
+            } else {
+                int depth = 0;
+                while (ti < segment.size()) {
+                    char ch = segment[ti];
+                    if (ch == '(') depth++;
+                    else if (ch == ')' && depth > 0) depth--;
+                    else if (std::isspace(static_cast<unsigned char>(ch)) && depth == 0) break;
+                    ti++;
+                }
+            }
+            std::string token = trim_ws(segment.substr(start, ti - start));
+            if (!token.empty()) out->push_back({token, track_is_auto_fit});
+        }
+    };
+
     // -----------------------------------------------------------------------
-    // Helper: expand repeat() in a track template string
+    // Helper: expand repeat() in a track template string.
+    // Returns expanded tokens and records which tracks came from auto-fit repeats.
     // -----------------------------------------------------------------------
-    auto expand_repeat = [&](const std::string& tmpl, float avail_size) -> std::string {
-        std::string expanded;
+    auto expand_track_template = [&](const std::string& tmpl, float avail_size, float gap,
+                                    std::unordered_map<std::string, std::vector<int>>* named_lines = nullptr)
+        -> std::vector<TrackToken> {
+        std::vector<TrackToken> tokens;
         size_t pos = 0;
         while (pos < tmpl.size()) {
             size_t rep = tmpl.find("repeat(", pos);
             if (rep == std::string::npos) {
-                expanded += tmpl.substr(pos);
+                append_track_tokens(tmpl.substr(pos), false, &tokens, named_lines);
                 break;
             }
-            expanded += tmpl.substr(pos, rep - pos);
+
+            append_track_tokens(tmpl.substr(pos, rep - pos), false, &tokens, named_lines);
+
             size_t paren_start = rep + 7;
             size_t comma = tmpl.find(',', paren_start);
             if (comma == std::string::npos) {
-                expanded += tmpl.substr(pos);
+                append_track_tokens(tmpl.substr(rep), false, &tokens, named_lines);
                 break;
             }
-            std::string count_str = tmpl.substr(paren_start, comma - paren_start);
-            while (!count_str.empty() && count_str.front() == ' ') count_str.erase(count_str.begin());
-            while (!count_str.empty() && count_str.back() == ' ') count_str.pop_back();
+            std::string count_str = trim_ws(tmpl.substr(paren_start, comma - paren_start));
 
-            size_t depth = 1;
             size_t end_pos = comma + 1;
-            while (end_pos < tmpl.size() && depth > 0) {
-                if (tmpl[end_pos] == '(') depth++;
-                else if (tmpl[end_pos] == ')') depth--;
-                if (depth > 0) end_pos++;
+            int paren_depth = 1;
+            while (end_pos < tmpl.size() && paren_depth > 0) {
+                if (tmpl[end_pos] == '(') paren_depth++;
+                else if (tmpl[end_pos] == ')') paren_depth--;
+                end_pos++;
             }
-            std::string pattern = tmpl.substr(comma + 1, end_pos - comma - 1);
-            while (!pattern.empty() && pattern.front() == ' ') pattern.erase(pattern.begin());
-            while (!pattern.empty() && pattern.back() == ' ') pattern.pop_back();
+            if (end_pos > tmpl.size() || paren_depth != 0) {
+                append_track_tokens(tmpl.substr(rep), false, &tokens, named_lines);
+                break;
+            }
 
-            int count = 0;
-            if (count_str == "auto-fill" || count_str == "auto-fit") {
-                float track_size = 0;
-                if (pattern.find("px") != std::string::npos) {
-                    try { track_size = std::stof(pattern); } catch (...) {}
-                } else if (pattern.find('%') != std::string::npos) {
-                    float pct = 0;
-                    try { pct = std::stof(pattern); } catch (...) {}
-                    track_size = avail_size * pct / 100.0f;
-                } else if (pattern.find("minmax(") != std::string::npos) {
-                    size_t mmp = pattern.find("minmax(") + 7;
-                    size_t mmc = pattern.find(',', mmp);
-                    if (mmc != std::string::npos) {
-                        std::string min_str = pattern.substr(mmp, mmc - mmp);
-                        while (!min_str.empty() && min_str.front() == ' ') min_str.erase(min_str.begin());
-                        if (min_str.find("px") != std::string::npos) {
-                            try { track_size = std::stof(min_str); } catch (...) {}
-                        }
+            std::string pattern = trim_ws(tmpl.substr(comma + 1, (end_pos - 1) - (comma + 1)));
+            bool is_auto_fit = (count_str == "auto-fit");
+            bool is_auto_fill = (count_str == "auto-fill");
+
+            int count = 1;
+            if (is_auto_fill || is_auto_fit) {
+                float track_size = parse_minmax_min_for_repeat(pattern, avail_size);
+                if (track_size > 0 && gap >= 0) {
+                    float spacing = (track_size + gap);
+                    if (spacing > 0) {
+                        count = static_cast<int>((avail_size + gap) / spacing);
+                    } else {
+                        count = 1;
                     }
                 }
-                float g = col_gap;
-                if (track_size > 0) {
-                    count = static_cast<int>((avail_size + g) / (track_size + g));
-                    if (count < 1) count = 1;
-                } else {
-                    count = 1;
-                }
+                if (count < 1) count = 1;
             } else {
                 try { count = std::stoi(count_str); }
                 catch (...) { count = 1; }
             }
 
+            bool track_is_auto_fit = is_auto_fit;
             for (int i = 0; i < count; i++) {
-                if (!expanded.empty() && expanded.back() != ' ') expanded += ' ';
-                expanded += pattern;
+                std::vector<TrackToken> pattern_tokens;
+                append_track_tokens(pattern, track_is_auto_fit, &pattern_tokens, nullptr);
+                if (pattern_tokens.empty() && !pattern.empty()) {
+                    pattern_tokens.push_back({pattern, track_is_auto_fit});
+                }
+                for (const auto& tk : pattern_tokens) {
+                    tokens.push_back(tk);
+                }
             }
-            pos = end_pos + 1;
+            pos = end_pos;
         }
-        return expanded;
+        return tokens;
     };
 
-    // -----------------------------------------------------------------------
-    // Helper: tokenize a track template, keeping minmax() as single tokens.
-    // Optional named_lines map captures [name] bracket annotations.
-    // Named lines before track N are stored with index N (0-based).
-    // -----------------------------------------------------------------------
+    // Backward-compatible tokenizer used in minmax()/auto-size helpers.
     auto tokenize_tracks = [](const std::string& s,
         std::unordered_map<std::string, std::vector<int>>* named_lines = nullptr
     ) -> std::vector<std::string> {
@@ -4017,10 +4138,17 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     // Step 1: Parse grid-template-columns
     // -----------------------------------------------------------------------
     std::vector<float> col_widths;
+    std::vector<bool> col_auto_fit_tracks;
     std::string cols = node.grid_template_columns;
     if (!cols.empty()) {
-        std::string expanded = expand_repeat(cols, content_w);
-        auto tokens = tokenize_tracks(expanded, &col_named_lines);
+        auto track_tokens = expand_track_template(cols, content_w, col_gap, &col_named_lines);
+        std::vector<std::string> tokens;
+        tokens.reserve(track_tokens.size());
+        col_auto_fit_tracks.reserve(track_tokens.size());
+        for (const auto& t : track_tokens) {
+            tokens.push_back(t.text);
+            col_auto_fit_tracks.push_back(t.auto_fit);
+        }
         auto specs = parse_track_specs(tokens, content_w);
         col_widths = resolve_tracks(specs, content_w, col_gap);
     }
@@ -4043,12 +4171,18 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             if (auto_w > 0) {
                 float g = col_gap;
                 int auto_count = std::max(1, static_cast<int>((content_w + g) / (auto_w + g)));
-                for (int i = 0; i < auto_count; i++) col_widths.push_back(auto_w);
+                for (int i = 0; i < auto_count; i++) {
+                    col_widths.push_back(auto_w);
+                    col_auto_fit_tracks.push_back(false);
+                }
             }
         }
         if (col_widths.empty()) {
             col_widths.push_back(content_w); // single column fallback
+            col_auto_fit_tracks.push_back(false);
         }
+    } else {
+        while (col_auto_fit_tracks.size() < col_widths.size()) col_auto_fit_tracks.push_back(false);
     }
 
     int num_cols = static_cast<int>(col_widths.size());
@@ -4057,11 +4191,20 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     // Step 2: Parse grid-template-rows (full parsing: px, fr, %, auto, minmax, repeat)
     // -----------------------------------------------------------------------
     std::vector<TrackSpec> row_specs;
+    std::vector<bool> row_auto_fit_tracks;
     std::string rows_tmpl = node.grid_template_rows;
     if (!rows_tmpl.empty()) {
-        std::string expanded = expand_repeat(rows_tmpl, 0);
-        auto tokens = tokenize_tracks(expanded, &row_named_lines);
+        auto track_tokens = expand_track_template(rows_tmpl, 0, rg, &row_named_lines);
+        std::vector<std::string> tokens;
+        tokens.reserve(track_tokens.size());
+        row_auto_fit_tracks.reserve(track_tokens.size());
+        for (const auto& t : track_tokens) {
+            tokens.push_back(t.text);
+            row_auto_fit_tracks.push_back(t.auto_fit);
+        }
         row_specs = parse_track_specs(tokens, 0);
+    } else {
+        // No explicit rows; placeholders handled through auto-placement growth.
     }
 
     // -----------------------------------------------------------------------
@@ -4278,7 +4421,10 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             if (num_cols > 0) extra_gaps += col_gap;
             float extra_w = (remaining - extra_gaps) / static_cast<float>(extra);
             if (extra_w < 0) extra_w = 0;
-            for (int i = 0; i < extra; i++) col_widths.push_back(extra_w);
+            for (int i = 0; i < extra; i++) {
+                col_widths.push_back(extra_w);
+                col_auto_fit_tracks.push_back(false);
+            }
             num_cols = static_cast<int>(col_widths.size());
         }
 
@@ -4287,6 +4433,7 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             int extra = area_num_rows - static_cast<int>(row_specs.size());
             for (int i = 0; i < extra; i++) {
                 row_specs.push_back({0.0f, false, 0.0f}); // auto-sized implicit row
+                row_auto_fit_tracks.push_back(false);
             }
         }
 
@@ -4461,6 +4608,7 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         // Add the implicit column width
         float new_w = auto_col_size > 0 ? auto_col_size : (col_widths.empty() ? content_w : col_widths.back());
         col_widths.push_back(new_w);
+        col_auto_fit_tracks.push_back(false);
         dyn_num_cols++;
     };
 
@@ -4666,7 +4814,155 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         }
     }
 
-    // Update num_cols in case implicit columns were added
+    // Auto-fit track collapsing:
+    // remove empty tracks created by auto-fit repeats, then remap placements.
+    int placement_row_count = 0;
+    for (const auto& pl : placements) {
+        if (pl.col_start >= 0 && pl.row_start >= 0) {
+            placement_row_count = std::max(placement_row_count, pl.row_start + pl.row_span);
+        }
+    }
+    if (placement_row_count < 1) placement_row_count = 1;
+
+    while (col_auto_fit_tracks.size() < static_cast<size_t>(dyn_num_cols)) col_auto_fit_tracks.push_back(false);
+    if (col_auto_fit_tracks.size() > static_cast<size_t>(dyn_num_cols)) {
+        col_auto_fit_tracks.resize(dyn_num_cols);
+    }
+
+    std::vector<bool> used_cols(std::max(1, dyn_num_cols), false);
+
+    for (const auto& pl : placements) {
+        if (pl.col_start < 0 || pl.row_start < 0) continue;
+
+        int c_start = std::max(0, pl.col_start);
+        int c_end = std::min(dyn_num_cols, pl.col_start + std::max(1, pl.col_span));
+        for (int c = c_start; c < c_end; c++) {
+            used_cols[c] = true;
+        }
+    }
+
+    std::vector<bool> collapse_col(dyn_num_cols, false);
+    for (int i = 0; i < dyn_num_cols; i++) {
+        if (col_auto_fit_tracks[i] && i < static_cast<int>(used_cols.size())) {
+            if (!used_cols[i]) collapse_col[i] = true;
+        }
+    }
+
+    int collapsed_cols = 0;
+    for (bool c : collapse_col) if (c) collapsed_cols++;
+
+    if (collapsed_cols > 0) {
+        std::vector<int> keep_col_prefix(dyn_num_cols + 1, 0);
+        for (int i = 0; i < dyn_num_cols; i++) {
+            keep_col_prefix[i + 1] = keep_col_prefix[i] + (collapse_col[i] ? 0 : 1);
+        }
+        int new_num_cols = keep_col_prefix[dyn_num_cols];
+        if (new_num_cols == 0) new_num_cols = 1;
+
+        if (new_num_cols == 1 && new_num_cols != keep_col_prefix[dyn_num_cols]) {
+            // All auto-fit tracks were empty; collapse grid to a single zero-width track.
+            for (auto& pl : placements) {
+                if (pl.col_start >= 0) {
+                    pl.col_start = 0;
+                    pl.col_span = std::max(1, pl.col_span);
+                }
+            }
+            col_widths = {0.0f};
+            col_auto_fit_tracks = {false};
+            dyn_num_cols = 1;
+        } else {
+            for (auto& pl : placements) {
+                if (pl.col_start < 0) continue;
+                int old_start = std::max(0, std::min(pl.col_start, dyn_num_cols));
+                int old_end = std::max(old_start, std::min(pl.col_start + std::max(1, pl.col_span), dyn_num_cols));
+                int new_start = keep_col_prefix[old_start];
+                int new_end = keep_col_prefix[old_end];
+                pl.col_start = new_start;
+                pl.col_span = std::max(1, new_end - new_start);
+                if (pl.col_start >= new_num_cols) pl.col_start = std::max(0, new_num_cols - 1);
+            }
+
+            std::vector<float> new_col_widths;
+            std::vector<bool> new_col_auto_fit;
+            new_col_widths.reserve(new_num_cols);
+            new_col_auto_fit.reserve(new_num_cols);
+            for (int i = 0; i < dyn_num_cols; i++) {
+                if (!collapse_col[i]) {
+                    new_col_widths.push_back(i < static_cast<int>(col_widths.size()) ? col_widths[i] : 0.0f);
+                    new_col_auto_fit.push_back(col_auto_fit_tracks[i]);
+                }
+            }
+            if (new_col_widths.empty()) new_col_widths.push_back(0.0f);
+            if (new_col_auto_fit.empty()) new_col_auto_fit.push_back(false);
+
+            col_widths.swap(new_col_widths);
+            col_auto_fit_tracks.swap(new_col_auto_fit);
+            dyn_num_cols = new_num_cols;
+        }
+    }
+
+    // Rebuild used rows from final placements for row auto-fit collapsing.
+    while (row_auto_fit_tracks.size() < row_specs.size()) row_auto_fit_tracks.push_back(false);
+    std::vector<bool> used_rows_full(std::max<int>(1, placement_row_count), false);
+    for (const auto& pl : placements) {
+        if (pl.row_start < 0 || pl.row_span < 1) continue;
+        int r_start = std::max(0, pl.row_start);
+        int r_end = std::min(static_cast<int>(used_rows_full.size()), pl.row_start + pl.row_span);
+        for (int r = r_start; r < r_end; r++) used_rows_full[r] = true;
+    }
+
+    int explicit_rows = static_cast<int>(row_specs.size());
+    int collapse_row_size = std::max(static_cast<int>(row_auto_fit_tracks.size()), explicit_rows);
+    std::vector<bool> collapse_row(collapse_row_size, false);
+    for (int i = 0; i < collapse_row_size; i++) {
+        bool is_auto_fit = (i < static_cast<int>(row_auto_fit_tracks.size()) && row_auto_fit_tracks[i]);
+        bool used = (i < static_cast<int>(used_rows_full.size()) && used_rows_full[i]);
+        if (is_auto_fit && !used) collapse_row[i] = true;
+    }
+
+    int collapsed_rows = 0;
+    for (bool r : collapse_row) if (r) collapsed_rows++;
+
+    if (collapsed_rows > 0) {
+        std::vector<int> keep_row_prefix(collapse_row_size + 1, 0);
+        for (int i = 0; i < collapse_row_size; i++) {
+            keep_row_prefix[i + 1] = keep_row_prefix[i] + (collapse_row[i] ? 0 : 1);
+        }
+        int new_num_rows = keep_row_prefix[collapse_row_size];
+        if (new_num_rows == 0) new_num_rows = 1;
+
+        for (auto& pl : placements) {
+            if (pl.row_start < 0) continue;
+            int old_start = std::max(0, std::min(pl.row_start, collapse_row_size));
+            int old_end = std::max(old_start, std::min(pl.row_start + std::max(1, pl.row_span), collapse_row_size));
+            int new_start = keep_row_prefix[old_start];
+            int new_end = keep_row_prefix[old_end];
+            pl.row_start = new_start;
+            pl.row_span = std::max(1, new_end - new_start);
+        }
+
+        if (new_num_rows == 1 && new_num_rows != keep_row_prefix[collapse_row_size]) {
+            std::vector<TrackSpec> new_row_specs;
+            std::vector<bool> new_row_auto_fit;
+            new_row_specs.push_back(TrackSpec(0.0f, false, 0.0f));
+            new_row_auto_fit.push_back(false);
+            row_specs = std::move(new_row_specs);
+            row_auto_fit_tracks = std::move(new_row_auto_fit);
+        } else {
+            std::vector<TrackSpec> new_row_specs;
+            std::vector<bool> new_row_auto_fit;
+            for (int r = 0; r < static_cast<int>(row_specs.size()) && r < collapse_row_size; r++) {
+                if (collapse_row[r]) continue;
+                new_row_specs.push_back(row_specs[r]);
+                new_row_auto_fit.push_back(r < static_cast<int>(row_auto_fit_tracks.size()) ? row_auto_fit_tracks[r] : false);
+            }
+            if (new_row_specs.empty()) new_row_specs.push_back(TrackSpec(0.0f, false, 0.0f));
+            row_specs = std::move(new_row_specs);
+            row_auto_fit_tracks = std::move(new_row_auto_fit);
+        }
+    }
+
+    // Update num_cols in case implicit columns were added or auto-fit tracks collapsed
     num_cols = dyn_num_cols;
 
     // -----------------------------------------------------------------------
