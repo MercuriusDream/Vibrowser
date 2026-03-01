@@ -274,6 +274,14 @@ void prune_transition_runtime_state() {
 
 } // end anonymous namespace (temporarily, for easing/interpolation functions)
 
+bool render_has_active_animations() {
+    if (!g_transition_animation_controller) return false;
+    for (const auto& kv : g_transition_runtime_node_to_key) {
+        if (g_transition_animation_controller->is_animating(kv.first)) return true;
+    }
+    return false;
+}
+
 std::string extract_preferred_font_url(const std::string& src) {
     // Parse comma-separated source descriptors and return the first URL
     // whose optional format(...) is supported by the current pipeline.

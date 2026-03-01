@@ -80,6 +80,10 @@ struct RenderResult {
     uint32_t selection_bg_color = 0; // CSS ::selection background-color (0 = use system default)
     int meta_refresh_delay = -1;     // <meta http-equiv="refresh"> delay in seconds (-1 = none)
     std::string meta_refresh_url;    // <meta http-equiv="refresh"> target URL (empty = reload current)
+    std::string page_charset;        // character encoding from <meta charset> or http-equiv="Content-Type"
+    std::string page_description;    // <meta name="description"> content
+    std::string theme_color;         // <meta name="theme-color"> content (CSS color string)
+    std::string canonical_url;       // <link rel="canonical"> href
     std::vector<std::string> js_console_output; // JavaScript console.log/warn/error output
     std::vector<std::string> js_errors;         // JavaScript runtime errors
 
@@ -113,6 +117,11 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height,
                          const std::set<int>& toggled_details);
+
+// Returns true if the thread-local AnimationController has any active
+// CSS animations or transitions running. Call this after render_html() to
+// determine whether a re-render loop should be started to drive animations.
+bool render_has_active_animations();
 
 // Evaluate a @supports condition string (exposed for testing)
 bool evaluate_supports_condition(const std::string& condition);

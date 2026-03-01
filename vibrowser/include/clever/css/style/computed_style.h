@@ -295,10 +295,17 @@ struct ComputedStyle {
     std::vector<std::pair<uint32_t, float>> gradient_stops; // {argb, position_0_to_1}
     std::string bg_image_url; // background-image: url(...)
     int background_size = 0; // 0=auto, 1=cover, 2=contain, 3=explicit (use bg_size_width/height)
-    float bg_size_width = 0, bg_size_height = 0; // for explicit pixel sizes
+    float bg_size_width = 0, bg_size_height = 0; // for explicit pixel/percent sizes
+    bool bg_size_width_pct = false;  // true if bg_size_width is a percentage value
+    bool bg_size_height_pct = false; // true if bg_size_height is a percentage value
+    bool bg_size_height_auto = false; // true if bg-size height is 'auto' (maintain aspect ratio)
     int background_repeat = 0; // 0=repeat, 1=repeat-x, 2=repeat-y, 3=no-repeat
-    int background_position_x = 0; // 0=left, 1=center, 2=right (or pixel offset)
-    int background_position_y = 0; // 0=top, 1=center, 2=bottom
+    int background_position_x = 0; // 0=left, 1=center, 2=right (or use bg_position_x_val)
+    int background_position_y = 0; // 0=top, 1=center, 2=bottom (or use bg_position_y_val)
+    float bg_position_x_val = 0;    // numeric background-position-x value (px or pct)
+    float bg_position_y_val = 0;    // numeric background-position-y value (px or pct)
+    bool bg_position_x_pct = false; // true if bg_position_x_val is a percentage
+    bool bg_position_y_pct = false; // true if bg_position_y_val is a percentage
     float opacity = 1.0f;
     // Mix blend mode: 0=normal, 1=multiply, 2=screen, 3=overlay, 4=darken, 5=lighten, 6=color-dodge, 7=color-burn, 8=hard-light, 9=soft-light, 10=difference, 11=exclusion
     int mix_blend_mode = 0;

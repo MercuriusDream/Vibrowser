@@ -270,9 +270,14 @@ struct LayoutNode {
 
     // Background image layout properties
     int background_size = 0; // 0=auto, 1=cover, 2=contain, 3=explicit
-    float bg_size_width = 0, bg_size_height = 0; // for explicit pixel sizes
-    int background_repeat = 0; // 0=repeat, 1=repeat-x, 2=repeat-y, 3=no-repeat
-    float bg_position_x = 0, bg_position_y = 0; // in pixels
+    float bg_size_width = 0, bg_size_height = 0; // explicit sizes: pixels or percentage (see _pct flags)
+    bool bg_size_width_pct = false;  // true => bg_size_width is a percentage value (0..100)
+    bool bg_size_height_pct = false; // true => bg_size_height is a percentage value (0..100)
+    bool bg_size_height_auto = false; // true => height is auto (preserve aspect ratio for explicit width)
+    int background_repeat = 0; // 0=repeat, 1=repeat-x, 2=repeat-y, 3=no-repeat, 4=space, 5=round
+    float bg_position_x = 0, bg_position_y = 0; // position: pixels or percentage (see _pct flags)
+    bool bg_position_x_pct = false; // true => bg_position_x is a percentage value (0..100)
+    bool bg_position_y_pct = false; // true => bg_position_y is a percentage value (0..100)
 
     // Text transform: 0=none, 1=capitalize, 2=uppercase, 3=lowercase
     int text_transform = 0;

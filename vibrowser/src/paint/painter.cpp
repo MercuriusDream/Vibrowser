@@ -1597,52 +1597,64 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
         float draw_h = img_h;
 
         if (node.background_size == 1 && img_w > 0 && img_h > 0) {
-            // cover: scale to fill origin box, maintaining aspect ratio
+            // cover: scale to fill origin box, maintaining aspect ratio (may clip)
             float scale = std::max(origin_elem_w / img_w, origin_elem_h / img_h);
             draw_w = img_w * scale;
             draw_h = img_h * scale;
         } else if (node.background_size == 2 && img_w > 0 && img_h > 0) {
-            // contain: scale to fit within origin box, maintaining aspect ratio
+            // contain: scale to fit entirely within origin box (may leave gaps)
             float scale = std::min(origin_elem_w / img_w, origin_elem_h / img_h);
             draw_w = img_w * scale;
             draw_h = img_h * scale;
         } else if (node.background_size == 3) {
-            // explicit size
-            draw_w = node.bg_size_width > 0 ? node.bg_size_width : img_w;
-            draw_h = node.bg_size_height > 0 ? node.bg_size_height : img_h;
+            // explicit size — resolve width and height independently
+            if (node.bg_size_width_pct) {
+                draw_w = origin_elem_w * node.bg_size_width / 100.0f;
+            } else if (node.bg_size_width > 0) {
+                draw_w = node.bg_size_width;
+            } else {
+                draw_w = img_w; // auto
+            }
+            if (node.bg_size_height_auto) {
+                draw_h = (img_w > 0) ? draw_w * img_h / img_w : img_h;
+            } else if (node.bg_size_height_pct) {
+                draw_h = origin_elem_h * node.bg_size_height / 100.0f;
+            } else if (node.bg_size_height > 0) {
+                draw_h = node.bg_size_height;
+            } else {
+                draw_h = img_h; // auto
+            }
         }
         // else background_size == 0 (auto): use natural size
 
-        // Resolve background-position relative to the origin box
+        // Resolve background-position relative to the origin box.
+        // CSS spec: a percentage P positions the image so that the point at P% within
+        // the image aligns with the point at P% within the container:
+        //   offset = (container_size - image_size) * P / 100
         float pos_x = 0, pos_y = 0;
         if (node.bg_attachment == 1) {
             // fixed: position relative to viewport, not element
             float vw = clever::css::Length::s_viewport_w;
             float vh = (viewport_height_ > 0) ? viewport_height_ : clever::css::Length::s_viewport_h;
-            if (node.bg_position_x == -1) pos_x = -origin_x; // left of viewport
-            else if (node.bg_position_x == -2) pos_x = (vw - draw_w) / 2.0f - origin_x; // center of viewport
-            else if (node.bg_position_x == -3) pos_x = (vw - draw_w) - origin_x; // right of viewport
-            else pos_x = node.bg_position_x - origin_x; // px value relative to viewport
-
-            if (node.bg_position_y == -1) pos_y = -origin_y; // top of viewport
-            else if (node.bg_position_y == -2) pos_y = (vh - draw_h) / 2.0f - origin_y; // center of viewport
-            else if (node.bg_position_y == -3) pos_y = (vh - draw_h) - origin_y; // bottom of viewport
-            else pos_y = node.bg_position_y - origin_y; // px value relative to viewport
+            if (node.bg_position_x_pct)
+                pos_x = (vw - draw_w) * node.bg_position_x / 100.0f - origin_x;
+            else
+                pos_x = node.bg_position_x - origin_x;
+            if (node.bg_position_y_pct)
+                pos_y = (vh - draw_h) * node.bg_position_y / 100.0f - origin_y;
+            else
+                pos_y = node.bg_position_y - origin_y;
         } else {
             // scroll (0) or local (2): position relative to origin box
-            if (node.bg_position_x == -1) pos_x = 0; // left
-            else if (node.bg_position_x == -2) pos_x = (origin_elem_w - draw_w) / 2.0f; // center
-            else if (node.bg_position_x == -3) pos_x = origin_elem_w - draw_w; // right
-            else pos_x = node.bg_position_x; // px value
-
-            if (node.bg_position_y == -1) pos_y = 0; // top
-            else if (node.bg_position_y == -2) pos_y = (origin_elem_h - draw_h) / 2.0f; // center
-            else if (node.bg_position_y == -3) pos_y = origin_elem_h - draw_h; // bottom
-            else pos_y = node.bg_position_y; // px value
-
+            if (node.bg_position_x_pct)
+                pos_x = (origin_elem_w - draw_w) * node.bg_position_x / 100.0f;
+            else
+                pos_x = node.bg_position_x;
+            if (node.bg_position_y_pct)
+                pos_y = (origin_elem_h - draw_h) * node.bg_position_y / 100.0f;
+            else
+                pos_y = node.bg_position_y;
             // local (2): background scrolls with the element's own content.
-            // Offset the background position by the element's scroll offset so
-            // that the background image moves together with the scrolled content.
             if (node.bg_attachment == 2 && node.is_scroll_container) {
                 pos_x -= node.scroll_left;
                 pos_y -= node.scroll_top;
@@ -1651,35 +1663,69 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
 
         // Draw based on background-repeat, clipped to the clipping box (rect)
         if (node.background_repeat == 3) {
-            // no-repeat: draw once at position
+            // no-repeat: draw once at computed position
             list.draw_image({origin_x + pos_x, origin_y + pos_y, draw_w, draw_h}, img);
         } else if (node.background_repeat == 1) {
-            // repeat-x: tile horizontally within clipping box
+            // repeat-x: tile horizontally only
             if (draw_w > 0) {
-                float tile_start = rect.x - draw_w + std::fmod(origin_x + pos_x - rect.x, draw_w);
-                if (tile_start > rect.x) tile_start -= draw_w;
-                for (float tx = tile_start; tx < rect.x + rect.width; tx += draw_w) {
+                float start_x = origin_x + pos_x;
+                if (start_x > rect.x)
+                    start_x -= std::ceil((start_x - rect.x) / draw_w) * draw_w;
+                else
+                    start_x -= std::floor((rect.x - start_x) / draw_w) * draw_w;
+                for (float tx = start_x; tx < rect.x + rect.width; tx += draw_w)
                     list.draw_image({tx, origin_y + pos_y, draw_w, draw_h}, img);
-                }
             }
         } else if (node.background_repeat == 2) {
-            // repeat-y: tile vertically within clipping box
+            // repeat-y: tile vertically only
             if (draw_h > 0) {
-                float tile_start = rect.y - draw_h + std::fmod(origin_y + pos_y - rect.y, draw_h);
-                if (tile_start > rect.y) tile_start -= draw_h;
-                for (float ty = tile_start; ty < rect.y + rect.height; ty += draw_h) {
+                float start_y = origin_y + pos_y;
+                if (start_y > rect.y)
+                    start_y -= std::ceil((start_y - rect.y) / draw_h) * draw_h;
+                else
+                    start_y -= std::floor((rect.y - start_y) / draw_h) * draw_h;
+                for (float ty = start_y; ty < rect.y + rect.height; ty += draw_h)
                     list.draw_image({origin_x + pos_x, ty, draw_w, draw_h}, img);
+            }
+        } else if (node.background_repeat == 4 && draw_w > 0 && draw_h > 0) {
+            // space: distribute tiles evenly with equal spacing, no clipping
+            int n_x = std::max(1, static_cast<int>(std::floor(origin_elem_w / draw_w)));
+            int n_y = std::max(1, static_cast<int>(std::floor(origin_elem_h / draw_h)));
+            float gap_x = (n_x > 1) ? (origin_elem_w - n_x * draw_w) / (n_x - 1) : 0.0f;
+            float gap_y = (n_y > 1) ? (origin_elem_h - n_y * draw_h) / (n_y - 1) : 0.0f;
+            float off_x = (n_x == 1) ? (origin_elem_w - draw_w) / 2.0f : 0.0f;
+            float off_y = (n_y == 1) ? (origin_elem_h - draw_h) / 2.0f : 0.0f;
+            for (int iy = 0; iy < n_y; ++iy) {
+                float ty = origin_y + off_y + iy * (draw_h + gap_y);
+                for (int ix = 0; ix < n_x; ++ix) {
+                    float tx = origin_x + off_x + ix * (draw_w + gap_x);
+                    list.draw_image({tx, ty, draw_w, draw_h}, img);
                 }
             }
+        } else if (node.background_repeat == 5 && draw_w > 0 && draw_h > 0) {
+            // round: scale image so it tiles a whole number of times
+            int n_x = std::max(1, static_cast<int>(std::round(origin_elem_w / draw_w)));
+            int n_y = std::max(1, static_cast<int>(std::round(origin_elem_h / draw_h)));
+            float tile_w = origin_elem_w / n_x;
+            float tile_h = origin_elem_h / n_y;
+            for (int iy = 0; iy < n_y; ++iy)
+                for (int ix = 0; ix < n_x; ++ix)
+                    list.draw_image({origin_x + ix * tile_w, origin_y + iy * tile_h, tile_w, tile_h}, img);
         } else {
-            // repeat (default): tile in both directions within clipping box
+            // repeat (default, 0): tile in both directions within clipping box
             if (draw_w > 0 && draw_h > 0) {
-                float tile_start_x = rect.x - draw_w + std::fmod(origin_x + pos_x - rect.x, draw_w);
-                if (tile_start_x > rect.x) tile_start_x -= draw_w;
-                float tile_start_y = rect.y - draw_h + std::fmod(origin_y + pos_y - rect.y, draw_h);
-                if (tile_start_y > rect.y) tile_start_y -= draw_h;
-                for (float ty = tile_start_y; ty < rect.y + rect.height; ty += draw_h) {
-                    for (float tx = tile_start_x; tx < rect.x + rect.width; tx += draw_w) {
+                float start_x = origin_x + pos_x;
+                float start_y = origin_y + pos_y;
+                if (start_x > rect.x)
+                    start_x -= std::ceil((start_x - rect.x) / draw_w) * draw_w;
+                else
+                    start_x -= std::floor((rect.x - start_x) / draw_w) * draw_w;
+                if (start_y > rect.y)
+                    start_y -= std::ceil((start_y - rect.y) / draw_h) * draw_h;
+                else
+                    start_y -= std::floor((rect.y - start_y) / draw_h) * draw_h;
+                for (float ty = start_y; ty < rect.y + rect.height; ty += draw_h) {
+                    for (float tx = start_x; tx < rect.x + rect.width; tx += draw_w) {
                         list.draw_image({tx, ty, draw_w, draw_h}, img);
                     }
                 }

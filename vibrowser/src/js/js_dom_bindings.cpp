@@ -7543,6 +7543,8 @@ static JSValue js_input_event_constructor(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
     JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_FALSE);
 
     // InputEvent-specific defaults
     JS_SetPropertyStr(ctx, event_obj, "data", JS_NewString(ctx, ""));
@@ -12358,6 +12360,8 @@ static JSValue js_wheel_event_constructor(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
     JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "button", JS_NewInt32(ctx, 0));
     JS_SetPropertyStr(ctx, event_obj, "buttons", JS_NewInt32(ctx, 0));
     JS_SetPropertyStr(ctx, event_obj, "clientX", JS_NewFloat64(ctx, 0));
@@ -12469,6 +12473,8 @@ static JSValue js_hash_change_event_constructor(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
     JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_FALSE);
 
     // HashChangeEvent-specific defaults
     JS_SetPropertyStr(ctx, event_obj, "oldURL", JS_NewString(ctx, ""));
@@ -12547,6 +12553,8 @@ static JSValue js_pop_state_event_constructor(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
     JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_FALSE);
 
     // PopStateEvent-specific default
     JS_SetPropertyStr(ctx, event_obj, "state", JS_NULL);
@@ -12610,6 +12618,8 @@ static JSValue js_transition_event_constructor(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
     JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_FALSE);
 
     // TransitionEvent-specific defaults
     JS_SetPropertyStr(ctx, event_obj, "propertyName", JS_NewString(ctx, ""));
@@ -12699,6 +12709,8 @@ static JSValue js_animation_event_constructor(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
     JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_FALSE);
 
     // AnimationEvent-specific defaults
     JS_SetPropertyStr(ctx, event_obj, "animationName", JS_NewString(ctx, ""));
@@ -12810,6 +12822,11 @@ static JSValue js_drag_event_constructor(JSContext* ctx,
     JS_FreeCString(ctx, type);
     JS_SetPropertyStr(ctx, event_obj, "bubbles", JS_TRUE);
     JS_SetPropertyStr(ctx, event_obj, "cancelable", JS_TRUE);
+    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_FALSE);
     // DataTransfer stub
     JSValue dt = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, dt, "dropEffect", JS_NewString(ctx, "none"));
@@ -18764,6 +18781,8 @@ static JSValue create_event_object(JSContext* ctx,
         JS_NewInt32(ctx, 0)); // NONE
     JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
     JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_TRUE); // browser-dispatched
 
     // Hidden propagation state
     JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
@@ -18822,6 +18841,8 @@ static JSValue create_mouse_event_object(JSContext* ctx,
         JS_NewInt32(ctx, 0)); // NONE
     JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
     JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_TRUE); // browser-dispatched
 
     // MouseEvent-specific properties
     JS_SetPropertyStr(ctx, event_obj, "clientX", JS_NewFloat64(ctx, client_x));
@@ -18969,6 +18990,7 @@ bool dispatch_keyboard_event(JSContext* ctx, clever::html::SimpleNode* target,
     JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
     JS_SetPropertyStr(ctx, event_obj, "timeStamp",
         JS_NewFloat64(ctx, 0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_TRUE); // browser-dispatched
 
     // KeyboardEvent-specific properties
     JS_SetPropertyStr(ctx, event_obj, "key",
