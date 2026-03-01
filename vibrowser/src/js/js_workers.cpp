@@ -552,7 +552,7 @@ void WorkerThread::post_message_to_worker(const std::string& json_data, const st
         if (should_terminate_) {
             return;
         }
-        main_to_worker_.push(WorkerMessage{json_data, ports_json});
+        main_to_worker_.push(WorkerMessage{json_data, ports_json, "", "", 0, WorkerMessageKind::kMessage});
     }
     queue_cv_.notify_one();
 }

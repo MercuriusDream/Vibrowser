@@ -93,7 +93,10 @@ bool TextRenderer::register_font(const std::string& family_name,
     if (!graphics_font) return false;
 
     CFErrorRef error = nullptr;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     bool ok = CTFontManagerRegisterGraphicsFont(graphics_font, &error);
+#pragma clang diagnostic pop
     bool already_registered = false;
     if (!ok && error) {
         if (CFEqual(CFErrorGetDomain(error), kCTFontManagerErrorDomain) &&
@@ -132,7 +135,10 @@ void TextRenderer::clear_registered_fonts() {
         for (auto& v : variants) {
             if (!v.graphics_font) continue;
             CFErrorRef error = nullptr;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             CTFontManagerUnregisterGraphicsFont(v.graphics_font, &error);
+#pragma clang diagnostic pop
             if (error) CFRelease(error);
             CFRelease(v.graphics_font);
         }

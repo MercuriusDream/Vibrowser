@@ -43,7 +43,7 @@ static CFStringRef cf_font_name_for_family(const std::string& family) {
 }
 
 // Parse a CSS font string like "bold 16px Arial" into components.
-static void parse_canvas_font(const std::string& font_str,
+[[maybe_unused]] static void parse_canvas_font(const std::string& font_str,
                                float& out_size,
                                std::string& out_family,
                                int& out_weight,

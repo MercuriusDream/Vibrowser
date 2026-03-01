@@ -39,9 +39,13 @@ namespace {
 // C-linkage clipboard helpers (implemented in browser_window.mm)
 // =========================================================================
 
-extern "C" {
-void clipboard_write_text(const char* text);
-const char* clipboard_read_text(void);
+// Clipboard: in-memory storage (browser_window.mm syncs with NSPasteboard)
+static std::string s_clipboard_text;
+static void do_clipboard_write(const char* text) {
+    s_clipboard_text = text ? text : "";
+}
+static const char* do_clipboard_read() {
+    return s_clipboard_text.c_str();
 }
 
 // =========================================================================
@@ -1758,17 +1762,9 @@ static JSValue js_element_get_will_validate(JSContext* ctx, JSValueConst this_va
     return JS_NewBool(ctx, will_validate);
 }
 
-// --- form.__checkValidity() ---
-static JSValue js_form_check_validity(JSContext* ctx, JSValueConst this_val,
-                                     int argc, JSValueConst* argv) {
-    return js_element_check_validity(ctx, this_val, argc, argv);
-}
-
-// --- form.__reportValidity() ---
-static JSValue js_form_report_validity(JSContext* ctx, JSValueConst this_val,
-                                      int argc, JSValueConst* argv) {
-    return js_element_report_validity(ctx, this_val, argc, argv);
-}
+// form.__checkValidity / form.__reportValidity — wired via element proto
+// (These delegate to the element-level implementations. If we need form-specific
+// overrides later, add them here.)
 
 // --- form.__getElements() ---
 static JSValue js_form_get_elements(JSContext* ctx, JSValueConst this_val,
@@ -6344,7 +6340,7 @@ static void extract_keyframe_props(JSContext* ctx, JSValueConst kf_obj,
 }
 
 // Helper: apply a set of CSS properties to a SimpleNode inline style
-static void animate_apply_style_props(JSContext* ctx,
+static void animate_apply_style_props(JSContext* /*ctx*/,
                                clever::html::SimpleNode* node,
                                const std::unordered_map<std::string, std::string>& props) {
     if (props.empty()) return;
@@ -17190,7 +17186,7 @@ void install_dom_bindings(JSContext* ctx,
                     if (!JS_IsException(text)) {
                         const char* text_bytes = JS_ToCString(c, text);
                         if (text_bytes) {
-                            clipboard_write_text(text_bytes);
+                            do_clipboard_write(text_bytes);
                             JS_FreeCString(c, text_bytes);
                         }
                         JS_FreeValue(c, text);
@@ -17199,7 +17195,7 @@ void install_dom_bindings(JSContext* ctx,
                         JS_FreeValue(c, exc);
                     }
                 } else {
-                    clipboard_write_text("");
+                    do_clipboard_write("");
                 }
 
                 JSValue rf[2];
@@ -17217,7 +17213,7 @@ void install_dom_bindings(JSContext* ctx,
                 JSValue rf[2];
                 JSValue promise = JS_NewPromiseCapability(c, rf);
                 if (JS_IsException(promise)) return promise;
-                const char* text = clipboard_read_text();
+                const char* text = do_clipboard_read();
                 JSValue value = JS_NewString(c, text ? text : "");
                 JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &value);
                 JS_FreeValue(c, value);

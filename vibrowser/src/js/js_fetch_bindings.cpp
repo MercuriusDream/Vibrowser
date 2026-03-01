@@ -1634,7 +1634,7 @@ static std::string formdata_to_multipart(const std::vector<std::pair<std::string
 }
 
 // Serialize FormData entries as application/x-www-form-urlencoded body
-static std::string formdata_to_urlencoded(const std::vector<std::pair<std::string, std::string>>& entries) {
+[[maybe_unused]] static std::string formdata_to_urlencoded(const std::vector<std::pair<std::string, std::string>>& entries) {
     std::string out;
     for (size_t i = 0; i < entries.size(); i++) {
         if (i > 0) out += '&';

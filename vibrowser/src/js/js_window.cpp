@@ -44,7 +44,7 @@ static std::map<std::string, std::pair<std::string, std::string>> g_blob_registr
 static std::string generate_blob_uuid() {
     uint8_t bytes[16] = {};
 #ifdef __APPLE__
-    SecRandomCopyBytes(kSecRandomDefault, sizeof(bytes), bytes);
+    (void)SecRandomCopyBytes(kSecRandomDefault, sizeof(bytes), bytes);
 #else
     // Fallback: use rand() (not cryptographically secure, but sufficient for blob URLs)
     for (auto& b : bytes) b = static_cast<uint8_t>(rand() & 0xFF);
@@ -830,7 +830,7 @@ static JSValue js_window_confirm(JSContext* ctx, JSValueConst /*this_val*/,
 // window.prompt(msg, default) -- stub, always returns null
 // =========================================================================
 
-static JSValue js_window_prompt(JSContext* ctx, JSValueConst /*this_val*/,
+static JSValue js_window_prompt(JSContext* /*ctx*/, JSValueConst /*this_val*/,
                                  int /*argc*/, JSValueConst* /*argv*/) {
     return JS_NULL;
 }
@@ -3102,7 +3102,7 @@ static JSValue js_css_escape(JSContext* ctx, JSValueConst /*this_val*/,
             result += buf;
         } else if (i == 0 && c == '-' && len == 1) {
             result += "\\-";
-        } else if (c == '-' || c == '_' || c >= 0x80 ||
+        } else if (c == '-' || c == '_' || (static_cast<unsigned char>(c) >= 0x80) ||
                    (c >= '0' && c <= '9') ||
                    (c >= 'A' && c <= 'Z') ||
                    (c >= 'a' && c <= 'z')) {

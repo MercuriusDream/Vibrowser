@@ -102,10 +102,10 @@ private:
 
     uint32_t next_stream_id_ = 1;
     uint32_t remote_initial_window_size_ = kInitialWindowSize;
-    uint32_t local_initial_window_size_ = kInitialWindowSize;
+    [[maybe_unused]] uint32_t local_initial_window_size_ = kInitialWindowSize;
     int64_t connection_send_window_ = kInitialWindowSize;
-    int64_t connection_recv_window_ = kInitialWindowSize;
-    uint32_t max_frame_size_ = kDefaultMaxFrameSize;
+    [[maybe_unused]] int64_t connection_recv_window_ = kInitialWindowSize;
+    [[maybe_unused]] uint32_t max_frame_size_ = kDefaultMaxFrameSize;
 
     HpackEncoder encoder_;
     HpackDecoder decoder_;
