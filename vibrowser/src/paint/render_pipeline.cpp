@@ -7774,9 +7774,13 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     if (has_bool_attr("hidden")) {
         style.display = clever::css::Display::None;
     }
-    // HTML `popover` attribute → hidden by default in static rendering
+    // HTML `popover` attribute → hidden by default unless showPopover() was called
     if (has_bool_attr("popover")) {
-        style.display = clever::css::Display::None;
+        bool popover_showing = std::any_of(node.attributes.begin(), node.attributes.end(),
+            [](const auto& a) { return a.name == "data-popover-showing"; });
+        if (!popover_showing) {
+            style.display = clever::css::Display::None;
+        }
     }
     // HTML `inert` attribute → pointer-events: none, user-select: none
     if (has_bool_attr("inert")) {
@@ -8170,6 +8174,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     // CSS Grid layout
     layout_node->grid_template_columns = style.grid_template_columns;
     layout_node->grid_template_rows = style.grid_template_rows;
+    layout_node->grid_template_columns_is_subgrid = style.grid_template_columns_is_subgrid;
+    layout_node->grid_template_rows_is_subgrid = style.grid_template_rows_is_subgrid;
     layout_node->grid_column = style.grid_column;
     layout_node->grid_row = style.grid_row;
     layout_node->grid_column_start = style.grid_column_start;
@@ -11844,6 +11850,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     // CSS Grid layout
     layout_node->grid_template_columns = style.grid_template_columns;
     layout_node->grid_template_rows = style.grid_template_rows;
+    layout_node->grid_template_columns_is_subgrid = style.grid_template_columns_is_subgrid;
+    layout_node->grid_template_rows_is_subgrid = style.grid_template_rows_is_subgrid;
     layout_node->grid_column = style.grid_column;
     layout_node->grid_row = style.grid_row;
     layout_node->grid_column_start = style.grid_column_start;
@@ -13357,6 +13365,8 @@ static void apply_style_to_layout_node(
         node.grid_template_columns = style.grid_template_columns;
     if (!style.grid_template_rows.empty())
         node.grid_template_rows = style.grid_template_rows;
+    node.grid_template_columns_is_subgrid = style.grid_template_columns_is_subgrid;
+    node.grid_template_rows_is_subgrid = style.grid_template_rows_is_subgrid;
     if (!style.grid_template_areas.empty())
         node.grid_template_areas = style.grid_template_areas;
     if (!style.grid_auto_rows.empty())

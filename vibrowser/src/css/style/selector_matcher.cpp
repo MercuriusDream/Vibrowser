@@ -750,6 +750,12 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                     }
                 }
                 return false;
+            } else if (name == "popover-open") {
+                // :popover-open — matches popovers that are currently showing
+                for (const auto& [n, v] : element.attributes) {
+                    if (n == "data-popover-showing") return true;
+                }
+                return false;
             } else if (name == "valid" || name == "invalid") {
                 // Form validation pseudo-classes — without validation, all inputs are valid
                 if (element.tag_name != "input" && element.tag_name != "select" &&

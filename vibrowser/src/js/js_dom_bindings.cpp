@@ -15842,6 +15842,39 @@ void install_dom_bindings(JSContext* ctx,
         return undefined;
     };
 
+    // ---- Popover API ----
+    proto.showPopover = function() {
+        var popoverAttr = this.getAttribute('popover');
+        if (popoverAttr === null && popoverAttr === undefined) return;
+        this.setAttribute('data-popover-showing', '');
+        this.style.display = '';
+    };
+    proto.hidePopover = function() {
+        var popoverAttr = this.getAttribute('popover');
+        if (popoverAttr === null && popoverAttr === undefined) return;
+        this.removeAttribute('data-popover-showing');
+    };
+    proto.togglePopover = function(force) {
+        var popoverAttr = this.getAttribute('popover');
+        if (popoverAttr === null && popoverAttr === undefined) return;
+        var isShowing = this.getAttribute('data-popover-showing') !== null;
+        if (arguments.length > 0) {
+            if (force && !isShowing) { this.showPopover(); return true; }
+            if (!force && isShowing) { this.hidePopover(); return false; }
+            return isShowing;
+        }
+        if (isShowing) { this.hidePopover(); return false; }
+        else { this.showPopover(); return true; }
+    };
+    Object.defineProperty(proto, 'popover', {
+        get: function() { return this.getAttribute('popover'); },
+        set: function(v) {
+            if (v === null || v === undefined) this.removeAttribute('popover');
+            else this.setAttribute('popover', v === true ? '' : String(v));
+        },
+        configurable: true
+    });
+
     // ---- URL prototype getters ----
     if (typeof URL !== 'undefined' && URL.prototype) {
         Object.defineProperty(URL.prototype, 'href', {
@@ -16456,6 +16489,57 @@ void install_dom_bindings(JSContext* ctx,
             if (argc < 1) return JS_ThrowTypeError(c, "reportError requires 1 argument");
             return JS_Throw(c, JS_DupValue(c, argv[0]));
         }, "reportError", 1));
+
+    // ------------------------------------------------------------------
+    // customElements registry (Web Components v1)
+    // ------------------------------------------------------------------
+    {
+        const char* ce_src = R"JS(
+(function() {
+    var registry = {};
+    var whenDefinedCallbacks = {};
+    globalThis.customElements = {
+        define: function(name, ctor, options) {
+            if (typeof name !== 'string' || name.indexOf('-') === -1)
+                throw new DOMException("Custom element name must contain a hyphen", "SyntaxError");
+            if (registry[name])
+                throw new DOMException("'" + name + "' has already been defined", "NotSupportedError");
+            registry[name] = { constructor: ctor, extends: options && options.extends };
+            if (whenDefinedCallbacks[name]) {
+                var cbs = whenDefinedCallbacks[name];
+                delete whenDefinedCallbacks[name];
+                for (var i = 0; i < cbs.length; i++) cbs[i](ctor);
+            }
+        },
+        get: function(name) {
+            var entry = registry[name];
+            return entry ? entry.constructor : undefined;
+        },
+        whenDefined: function(name) {
+            if (registry[name]) return Promise.resolve(registry[name].constructor);
+            return new Promise(function(resolve) {
+                if (!whenDefinedCallbacks[name]) whenDefinedCallbacks[name] = [];
+                whenDefinedCallbacks[name].push(resolve);
+            });
+        },
+        getName: function(ctor) {
+            for (var name in registry) {
+                if (registry[name].constructor === ctor) return name;
+            }
+            return null;
+        },
+        upgrade: function(root) { /* no-op */ }
+    };
+})();
+)JS";
+        JSValue cret = JS_Eval(ctx, ce_src, std::strlen(ce_src),
+                                "<custom-elements>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(cret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, cret);
+    }
 
     // ------------------------------------------------------------------
     // performance object (basic stub)

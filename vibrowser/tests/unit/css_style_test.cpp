@@ -27086,3 +27086,114 @@ TEST(PropertyCascadeTest, FlexWrapWrapAppliedV181) {
     cascade.apply_declaration(style, make_decl("flex-wrap", "wrap"), parent);
     EXPECT_EQ(style.flex_wrap, FlexWrap::Wrap);
 }
+
+// ============================================================================
+// Scroll-Driven Animation Tests (animation-timeline and animation-range)
+// ============================================================================
+
+TEST(PropertyCascadeTest, ScrollAnimationTimelineAuto) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-timeline", "auto"), parent);
+    EXPECT_EQ(style.animation_timeline_type, 0);  // Auto
+    EXPECT_EQ(style.animation_timeline, "auto");
+}
+
+TEST(PropertyCascadeTest, ScrollAnimationTimelineNone) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-timeline", "none"), parent);
+    EXPECT_EQ(style.animation_timeline_type, 1);  // None
+    EXPECT_EQ(style.animation_timeline, "none");
+}
+
+TEST(PropertyCascadeTest, ScrollAnimationTimelineScrollDefault) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-timeline", "scroll()"), parent);
+    EXPECT_EQ(style.animation_timeline_type, 2);  // Scroll
+    EXPECT_EQ(style.animation_timeline_axis, 0);  // block (default)
+    EXPECT_EQ(style.animation_timeline_raw, "scroll()");
+}
+
+TEST(PropertyCascadeTest, ScrollAnimationTimelineScrollY) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-timeline", "scroll(y)"), parent);
+    EXPECT_EQ(style.animation_timeline_type, 2);  // Scroll
+    EXPECT_EQ(style.animation_timeline_axis, 3);  // y-axis
+    EXPECT_EQ(style.animation_timeline_raw, "scroll(y)");
+}
+
+TEST(PropertyCascadeTest, ScrollAnimationTimelineScrollX) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-timeline", "scroll(x)"), parent);
+    EXPECT_EQ(style.animation_timeline_type, 2);  // Scroll
+    EXPECT_EQ(style.animation_timeline_axis, 2);  // x-axis
+    EXPECT_EQ(style.animation_timeline_raw, "scroll(x)");
+}
+
+TEST(PropertyCascadeTest, ScrollAnimationTimelineScrollInline) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-timeline", "scroll(inline)"), parent);
+    EXPECT_EQ(style.animation_timeline_type, 2);  // Scroll
+    EXPECT_EQ(style.animation_timeline_axis, 1);  // inline-axis
+    EXPECT_EQ(style.animation_timeline_raw, "scroll(inline)");
+}
+
+TEST(PropertyCascadeTest, ScrollAnimationTimelineViewDefault) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-timeline", "view()"), parent);
+    EXPECT_EQ(style.animation_timeline_type, 3);  // View
+    EXPECT_EQ(style.animation_timeline_raw, "view()");
+}
+
+TEST(PropertyCascadeTest, AnimationRangeSimplePercentages) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-range", "0% 100%"), parent);
+    EXPECT_EQ(style.animation_range, "0% 100%");
+    EXPECT_EQ(style.animation_range_start_offset, 0.0f);
+    EXPECT_EQ(style.animation_range_end_offset, 1.0f);
+}
+
+TEST(PropertyCascadeTest, AnimationRangeEntryExit) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-range", "entry 0% exit 100%"), parent);
+    EXPECT_EQ(style.animation_range, "entry 0% exit 100%");
+    EXPECT_EQ(style.animation_range_start_offset, 0.0f);
+    EXPECT_EQ(style.animation_range_end_offset, 1.0f);
+}
+
+TEST(PropertyCascadeTest, AnimationRangeCustomPercentages) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-range", "25% 75%"), parent);
+    EXPECT_EQ(style.animation_range, "25% 75%");
+    EXPECT_EQ(style.animation_range_start_offset, 0.25f);
+    EXPECT_EQ(style.animation_range_end_offset, 0.75f);
+}

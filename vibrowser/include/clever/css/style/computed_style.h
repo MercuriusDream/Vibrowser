@@ -342,6 +342,8 @@ struct ComputedStyle {
     // CSS Grid layout
     std::string grid_template_columns;
     std::string grid_template_rows;
+    bool grid_template_columns_is_subgrid = false;
+    bool grid_template_rows_is_subgrid = false;
     std::string grid_column; // e.g. "1 / 3"
     std::string grid_row;    // e.g. "1 / 2"
     std::string grid_column_start; // individual longhand, e.g. "2"

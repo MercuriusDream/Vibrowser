@@ -6429,21 +6429,23 @@ void PropertyCascade::apply_declaration(
         auto range_lower = to_lower(value_str);
         auto tokens = split_whitespace(range_lower);
 
-        // Simple parsing: extract percentage values
+        // Track which percentage we're on (0=start, 1=end)
+        int percent_count = 0;
         for (size_t i = 0; i < tokens.size(); i++) {
             if (tokens[i].find('%') != std::string::npos) {
                 float pct = std::stof(tokens[i]);
                 pct = std::clamp(pct, 0.0f, 100.0f);
                 float offset = pct / 100.0f;
 
-                // Determine if this is start or end based on position
-                if (i == 1 || (i > 0 && tokens[i-1].find("entry") != std::string::npos)) {
+                // First percentage is start, second is end
+                if (percent_count == 0) {
                     style.animation_range_start = Length::percent(pct);
                     style.animation_range_start_offset = offset;
                 } else {
                     style.animation_range_end = Length::percent(pct);
                     style.animation_range_end_offset = offset;
                 }
+                percent_count++;
             }
         }
         return;
