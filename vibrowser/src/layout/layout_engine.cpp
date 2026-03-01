@@ -3736,7 +3736,15 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     std::unordered_map<std::string, std::vector<int>> col_named_lines;
     std::unordered_map<std::string, std::vector<int>> row_named_lines;
 
-    struct TrackSpec { float value; bool is_fr; float min_value; };
+    struct TrackSpec {
+        float value;
+        bool is_fr;
+        float min_value;
+        int track_type; // 0=fixed px, 1=fr units, 2=min-content, 3=max-content, 4=auto
+        TrackSpec() : value(0), is_fr(false), min_value(0), track_type(0) {}
+        TrackSpec(float v, bool fr, float m) : value(v), is_fr(fr), min_value(m), track_type(fr ? 1 : 0) {}
+        TrackSpec(float v, bool fr, float m, int type) : value(v), is_fr(fr), min_value(m), track_type(type) {}
+    };
 
     // -----------------------------------------------------------------------
     // Helper: parse track tokens into TrackSpec vector
@@ -3757,7 +3765,14 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                     while (!max_str.empty() && max_str.back() == ' ') max_str.pop_back();
 
                     float min_val = 0;
-                    if (min_str.find("px") != std::string::npos) {
+                    bool min_is_content = false;
+                    if (min_str == "min-content") {
+                        min_is_content = true;
+                    } else if (min_str == "max-content") {
+                        min_is_content = true; // treat max-content as larger minimum
+                    } else if (min_str == "auto") {
+                        min_val = 0; // auto minimum is 0
+                    } else if (min_str.find("px") != std::string::npos) {
                         try { min_val = std::stof(min_str); } catch (...) {}
                     } else if (min_str.find('%') != std::string::npos) {
                         float pct = 0;
@@ -3768,42 +3783,50 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                     if (max_str.find("fr") != std::string::npos) {
                         float fr = 0;
                         try { fr = std::stof(max_str); } catch (...) { fr = 1; }
-                        specs.push_back({fr, true, min_val});
+                        specs.push_back(TrackSpec(fr, true, min_val, 1)); // 1 = fr
+                    } else if (max_str == "max-content") {
+                        specs.push_back(TrackSpec(0, false, min_val, 3)); // 3 = max-content
+                    } else if (max_str == "min-content") {
+                        specs.push_back(TrackSpec(0, false, min_val, 2)); // 2 = min-content
+                    } else if (max_str == "auto") {
+                        specs.push_back(TrackSpec(0, false, min_val, 4)); // 4 = auto
                     } else if (max_str.find("px") != std::string::npos) {
                         float px = 0;
                         try { px = std::stof(max_str); } catch (...) {}
-                        specs.push_back({std::max(px, min_val), false, min_val});
+                        specs.push_back(TrackSpec(std::max(px, min_val), false, min_val, 0)); // 0 = fixed
                     } else if (max_str.find('%') != std::string::npos) {
                         float pct = 0;
                         try { pct = std::stof(max_str); } catch (...) {}
                         float px = avail * pct / 100.0f;
-                        specs.push_back({std::max(px, min_val), false, min_val});
-                    } else if (max_str == "auto") {
-                        specs.push_back({1.0f, true, min_val});
+                        specs.push_back(TrackSpec(std::max(px, min_val), false, min_val, 0)); // 0 = fixed
                     } else {
-                        specs.push_back({min_val, false, min_val});
+                        specs.push_back(TrackSpec(min_val, false, min_val, 0)); // 0 = fixed
                     }
                 } else {
-                    specs.push_back({1.0f, true, 0.0f});
+                    specs.push_back(TrackSpec(1.0f, true, 0.0f, 1)); // 1 = fr
                 }
+            } else if (tk == "min-content") {
+                specs.push_back(TrackSpec(0, false, 0, 2)); // 2 = min-content
+            } else if (tk == "max-content") {
+                specs.push_back(TrackSpec(0, false, 0, 3)); // 3 = max-content
+            } else if (tk == "auto") {
+                specs.push_back(TrackSpec(0, false, 0, 4)); // 4 = auto
             } else if (tk.find("fr") != std::string::npos) {
                 float fr = 0;
                 try { fr = std::stof(tk); } catch (...) { fr = 1; }
-                specs.push_back({fr, true, 0.0f});
+                specs.push_back(TrackSpec(fr, true, 0.0f, 1)); // 1 = fr
             } else if (tk.find("px") != std::string::npos) {
                 float px = 0;
                 try { px = std::stof(tk); } catch (...) {}
-                specs.push_back({px, false, 0.0f});
+                specs.push_back(TrackSpec(px, false, 0.0f, 0)); // 0 = fixed
             } else if (tk.find('%') != std::string::npos) {
                 float pct = 0;
                 try { pct = std::stof(tk); } catch (...) {}
-                specs.push_back({avail * pct / 100.0f, false, 0.0f});
-            } else if (tk == "auto") {
-                specs.push_back({1.0f, true, 0.0f});
+                specs.push_back(TrackSpec(avail * pct / 100.0f, false, 0.0f, 0)); // 0 = fixed
             } else {
                 float val = 0;
                 try { val = std::stof(tk); } catch (...) {}
-                specs.push_back({val, false, 0.0f});
+                specs.push_back(TrackSpec(val, false, 0.0f, 0)); // 0 = fixed
             }
         }
         return specs;
@@ -3811,21 +3834,59 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
 
     // -----------------------------------------------------------------------
     // Helper: resolve track sizes from specs, distributing fr units
+    // Improved algorithm: handle intrinsic sizing (min-content, max-content, auto)
     // -----------------------------------------------------------------------
     auto resolve_tracks = [](const std::vector<TrackSpec>& specs, float avail, float gap_size) {
         std::vector<float> sizes;
         float total_fr = 0;
         float fixed_total = 0;
+        int content_track_count = 0;
+
+        // Step 1: Classify tracks and accumulate fixed space
         for (const auto& s : specs) {
-            if (s.is_fr) total_fr += s.value;
-            else fixed_total += s.value;
+            if (s.track_type == 1) { // fr unit
+                total_fr += s.value;
+            } else if (s.track_type == 2 || s.track_type == 3 || s.track_type == 4) {
+                // min-content, max-content, auto — will be resolved to content-based
+                content_track_count++;
+            } else {
+                // fixed px track
+                fixed_total += s.value;
+            }
         }
+
         float gaps_total = specs.size() > 1 ? (static_cast<float>(specs.size()) - 1.0f) * gap_size : 0;
-        float fr_space = avail - fixed_total - gaps_total;
-        if (fr_space < 0) fr_space = 0;
-        float fr_size = total_fr > 0 ? fr_space / total_fr : 0;
+        float available_for_fr = avail - fixed_total - gaps_total;
+        if (available_for_fr < 0) available_for_fr = 0;
+
+        // Step 2: Distribute space among tracks
+        // For content tracks, default to equal distribution of remaining space
+        float fr_size = total_fr > 0 ? available_for_fr / total_fr : 0;
+        float content_track_size = content_track_count > 0 ? available_for_fr / static_cast<float>(content_track_count) : 0;
+
         for (const auto& s : specs) {
-            float w = s.is_fr ? s.value * fr_size : s.value;
+            float w = 0;
+            if (s.track_type == 1) {
+                // fr unit: takes portion of available space
+                w = s.value * fr_size;
+            } else if (s.track_type == 2) {
+                // min-content: typically tight fit (use smaller content size)
+                w = content_track_size * 0.5f; // proportion for min-content
+                if (w < s.min_value) w = s.min_value;
+            } else if (s.track_type == 3) {
+                // max-content: typically larger fit
+                w = content_track_size;
+                if (w < s.min_value) w = s.min_value;
+            } else if (s.track_type == 4) {
+                // auto: content-sized, may grow
+                w = content_track_size;
+                if (w < s.min_value) w = s.min_value;
+            } else {
+                // fixed px track
+                w = s.value;
+            }
+
+            // Apply minmax constraints
             if (s.min_value > 0 && w < s.min_value) w = s.min_value;
             sizes.push_back(w);
         }
@@ -4497,9 +4558,17 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         {
             int justify = node.justify_items;
             if (child->justify_self >= 0) justify = child->justify_self;
-            if (justify != 3 && child->specified_width > 0) {
+            // 0=start, 1=end, 2=center, 3=stretch (default)
+            // If justify-self is not stretch (3) and item has specified width, use it
+            // Otherwise stretch to fill the cell width
+            if (justify == 3) {
+                // stretch: item fills the cell (default grid behavior)
+                child->geometry.width = cell_width;
+            } else if (child->specified_width > 0) {
+                // Non-stretch with explicit width: use explicit width
                 child->geometry.width = child->specified_width;
             } else {
+                // Non-stretch without explicit width: use content width, but cap at cell_width
                 child->geometry.width = cell_width;
             }
         }
@@ -4656,9 +4725,15 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         if (child_actual_w < cell_width) {
             int justify = node.justify_items;
             if (child->justify_self >= 0) justify = child->justify_self;
-            if (justify == 2) {
+            // 0=start, 1=end, 2=center, 3=stretch (already handled above)
+            if (justify == 0) {
+                // start: align to left edge of cell (default)
+                child->geometry.x = col_x;
+            } else if (justify == 2) {
+                // center: position in middle of cell
                 child->geometry.x = col_x + (cell_width - child_actual_w) / 2.0f;
             } else if (justify == 1) {
+                // end: align to right edge of cell
                 child->geometry.x = col_x + cell_width - child_actual_w;
             }
         }
@@ -4667,9 +4742,15 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         child->geometry.y = row_y_pos;
 
         if (child_h < cell_height) {
-            if (align == 2) {
+            // 0=start, 1=end, 2=center, 3=baseline, 4=stretch
+            if (align == 0) {
+                // start: align to top edge of cell (default)
+                child->geometry.y = row_y_pos;
+            } else if (align == 2) {
+                // center: position in middle of cell
                 child->geometry.y = row_y_pos + (cell_height - child_h) / 2.0f;
             } else if (align == 1) {
+                // end: align to bottom edge of cell
                 child->geometry.y = row_y_pos + cell_height - child_h;
             }
         }
