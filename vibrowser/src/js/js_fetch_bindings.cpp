@@ -83,6 +83,17 @@ enum class FetchCredentialsMode {
     Include,
 };
 
+// FormData class ID and state — declared early for XMLHttpRequest.send() and fetch()
+static JSClassID formdata_class_id = 0;
+
+struct FormDataState {
+    std::vector<std::pair<std::string, std::string>> entries;
+};
+
+// Forward declare FormData serialization helper
+static std::string formdata_to_multipart(const std::vector<std::pair<std::string, std::string>>& entries,
+                                          std::string& boundary_out);
+
 static std::string current_document_origin(JSContext* ctx) {
     std::string origin;
     JSValue global = JS_GetGlobalObject(ctx);
@@ -193,13 +204,54 @@ static JSValue js_xhr_send(JSContext* ctx, JSValueConst this_val,
     }
 
     // Set body if provided
-    if (argc >= 1 && JS_IsString(argv[0])) {
-        const char* body_str = JS_ToCString(ctx, argv[0]);
-        if (body_str) {
-            req.body.assign(
-                reinterpret_cast<const uint8_t*>(body_str),
-                reinterpret_cast<const uint8_t*>(body_str) + std::strlen(body_str));
-            JS_FreeCString(ctx, body_str);
+    if (argc >= 1) {
+        if (JS_IsString(argv[0])) {
+            const char* body_str = JS_ToCString(ctx, argv[0]);
+            if (body_str) {
+                req.body.assign(
+                    reinterpret_cast<const uint8_t*>(body_str),
+                    reinterpret_cast<const uint8_t*>(body_str) + std::strlen(body_str));
+                JS_FreeCString(ctx, body_str);
+            }
+        } else if (JS_IsObject(argv[0])) {
+            // Try FormData
+            auto* fd_state = static_cast<FormDataState*>(
+                JS_GetOpaque(argv[0], formdata_class_id));
+            if (fd_state) {
+                std::string boundary;
+                std::string multipart_body = formdata_to_multipart(fd_state->entries, boundary);
+                req.body.assign(
+                    reinterpret_cast<const uint8_t*>(multipart_body.c_str()),
+                    reinterpret_cast<const uint8_t*>(multipart_body.c_str()) + multipart_body.size());
+                if (!state->request_headers.count("content-type") &&
+                    !state->request_headers.count("Content-Type")) {
+                    state->request_headers["Content-Type"] = "multipart/form-data; boundary=" + boundary;
+                }
+            } else {
+                // Try URLSearchParams
+                JSValue to_str_fn = JS_GetPropertyStr(ctx, argv[0], "toString");
+                JSValue params_val = JS_GetPropertyStr(ctx, argv[0], "_params");
+                bool is_usp = JS_IsArray(ctx, params_val);
+                JS_FreeValue(ctx, params_val);
+                if (is_usp && JS_IsFunction(ctx, to_str_fn)) {
+                    JSValue serialized = JS_Call(ctx, to_str_fn, argv[0], 0, nullptr);
+                    if (JS_IsString(serialized)) {
+                        const char* s = JS_ToCString(ctx, serialized);
+                        if (s) {
+                            req.body.assign(
+                                reinterpret_cast<const uint8_t*>(s),
+                                reinterpret_cast<const uint8_t*>(s) + std::strlen(s));
+                        }
+                        JS_FreeCString(ctx, s);
+                    }
+                    JS_FreeValue(ctx, serialized);
+                    if (!state->request_headers.count("content-type") &&
+                        !state->request_headers.count("Content-Type")) {
+                        state->request_headers["Content-Type"] = "application/x-www-form-urlencoded";
+                    }
+                }
+                JS_FreeValue(ctx, to_str_fn);
+            }
         }
     }
 
@@ -813,16 +865,6 @@ static JSValue create_headers_object(JSContext* ctx,
     JS_SetOpaque(obj, state);
     return obj;
 }
-
-// =========================================================================
-// FormData class ID and state — declared early so Response.formData() can use them
-// =========================================================================
-
-static JSClassID formdata_class_id = 0;
-
-struct FormDataState {
-    std::vector<std::pair<std::string, std::string>> entries;
-};
 
 // =========================================================================
 // Response class
@@ -1944,6 +1986,35 @@ static JSValue js_request_constructor(JSContext* ctx, JSValueConst new_target,
         if (JS_IsString(body_val)) {
             const char* b = JS_ToCString(ctx, body_val);
             if (b) { state->body = b; JS_FreeCString(ctx, b); }
+        } else if (JS_IsObject(body_val)) {
+            auto* fd_state = static_cast<FormDataState*>(
+                JS_GetOpaque(body_val, formdata_class_id));
+            if (fd_state) {
+                std::string boundary;
+                state->body = formdata_to_multipart(fd_state->entries, boundary);
+                if (state->headers.find("content-type") == state->headers.end() &&
+                    state->headers.find("Content-Type") == state->headers.end()) {
+                    state->headers["Content-Type"] = "multipart/form-data; boundary=" + boundary;
+                }
+            } else {
+                JSValue to_str_fn = JS_GetPropertyStr(ctx, body_val, "toString");
+                JSValue params_val = JS_GetPropertyStr(ctx, body_val, "_params");
+                bool is_usp = JS_IsArray(ctx, params_val);
+                JS_FreeValue(ctx, params_val);
+                if (is_usp && JS_IsFunction(ctx, to_str_fn)) {
+                    JSValue serialized = JS_Call(ctx, to_str_fn, body_val, 0, nullptr);
+                    if (JS_IsString(serialized)) {
+                        const char* s = JS_ToCString(ctx, serialized);
+                        if (s) { state->body = s; JS_FreeCString(ctx, s); }
+                    }
+                    JS_FreeValue(ctx, serialized);
+                    if (state->headers.find("content-type") == state->headers.end() &&
+                        state->headers.find("Content-Type") == state->headers.end()) {
+                        state->headers["Content-Type"] = "application/x-www-form-urlencoded";
+                    }
+                }
+                JS_FreeValue(ctx, to_str_fn);
+            }
         }
         JS_FreeValue(ctx, body_val);
 
@@ -3589,7 +3660,8 @@ static JSValue js_formdata_set(JSContext* ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
-// FormData.prototype.entries()
+// FormData.prototype.entries() — returns array of [name, value] pairs
+// (Web-compatible: Symbol.iterator wrapper handles true iteration)
 static JSValue js_formdata_entries(JSContext* ctx, JSValueConst this_val,
                                      int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_formdata_state(this_val);
@@ -3606,7 +3678,8 @@ static JSValue js_formdata_entries(JSContext* ctx, JSValueConst this_val,
     return arr;
 }
 
-// FormData.prototype.keys()
+// FormData.prototype.keys() — returns array of field names
+// (Web-compatible: Symbol.iterator wrapper handles true iteration)
 static JSValue js_formdata_keys(JSContext* ctx, JSValueConst this_val,
                                   int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_formdata_state(this_val);
@@ -3620,7 +3693,8 @@ static JSValue js_formdata_keys(JSContext* ctx, JSValueConst this_val,
     return arr;
 }
 
-// FormData.prototype.values()
+// FormData.prototype.values() — returns array of field values
+// (Web-compatible: Symbol.iterator wrapper handles true iteration)
 static JSValue js_formdata_values(JSContext* ctx, JSValueConst this_val,
                                     int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_formdata_state(this_val);

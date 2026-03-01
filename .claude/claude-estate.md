@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1979 — CSS scroll-snap improvements, modern JS polyfills, HTML entity expansion, picture srcset, multi-column layout, system fonts, prefers-contrast/reduced-motion media queries.
-**Momentum**: Cycle 1979 — 90+ commits pushed. 14/14 tests passing. Parallel codex-spark agents active. Adding web platform completeness features.
-**Cycle**: 1979
+**Current Focus**: Cycle 1982 — Fixed translateX(%) bug (Wikipedia sidebar), TLS connection pooling, CSS color-scheme/system colors, font-variant improvements, video bg fix, element.scrollBy(). Wikipedia still has black content area (non-transform cause — investigating).
+**Momentum**: Cycle 1982 — 99+ commits pushed. 14/14 tests passing. HN renders great. Wikipedia black area still under investigation.
+**Cycle**: 1982
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 

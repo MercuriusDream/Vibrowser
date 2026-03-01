@@ -4722,17 +4722,32 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                     pl.col_start = 0;
                 } else {
                     bool placed = false;
-                    for (int r = search_row; !placed; r++) {
-                        ensure_rows(r + pl.row_span);
-                        int c_start = (r == search_row) ? search_col : 0;
-                        if (c_start < 0) c_start = 0;
-                        for (int c = c_start; c < dyn_num_cols; c++) {
-                            if (can_place(r, c, pl.row_span, pl.col_span)) {
-                                pl.row_start = r;
-                                pl.col_start = c;
-                                placed = true;
-                                break;
+                    if (dense_flow) {
+                        for (int r = 0;; r++) {
+                            ensure_rows(r + pl.row_span);
+                            for (int c = 0; c < dyn_num_cols; c++) {
+                                if (can_place(r, c, pl.row_span, pl.col_span)) {
+                                    pl.row_start = r;
+                                    pl.col_start = c;
+                                    placed = true;
+                                    break;
+                                }
                             }
+                            if (placed) break;
+                        }
+                    } else {
+                        for (int r = search_row;; r++) {
+                            ensure_rows(r + pl.row_span);
+                            int c_start = (r == search_row) ? search_col : 0;
+                            for (int c = c_start; c < dyn_num_cols; c++) {
+                                if (can_place(r, c, pl.row_span, pl.col_span)) {
+                                    pl.row_start = r;
+                                    pl.col_start = c;
+                                    placed = true;
+                                    break;
+                                }
+                            }
+                            if (placed) break;
                         }
                     }
                 }
