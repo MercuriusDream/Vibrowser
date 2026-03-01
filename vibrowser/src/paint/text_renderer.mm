@@ -503,7 +503,7 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
     bool is_web_font = has_registered_font(font_family);
     if (!is_web_font) {
         CTFontSymbolicTraits traits = 0;
-        if (font_weight >= 700) traits |= kCTFontBoldTrait;
+        if (font_weight >= 600) traits |= kCTFontBoldTrait;
         if (font_italic) traits |= kCTFontItalicTrait;
 
         if (traits != 0) {
@@ -688,7 +688,7 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
     bool is_web_font = has_registered_font(font_family);
     if (!is_web_font) {
         CTFontSymbolicTraits traits = 0;
-        if (font_weight >= 700) traits |= kCTFontBoldTrait;
+        if (font_weight >= 600) traits |= kCTFontBoldTrait;
         if (font_italic) traits |= kCTFontItalicTrait;
 
         if (traits != 0) {
