@@ -15617,9 +15617,109 @@ void install_dom_bindings(JSContext* ctx,
         // navigator.geolocation (stub)
         JSValue geoloc = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, nav, "geolocation", geoloc);
-        // navigator.serviceWorker (stub)
-        JSValue sw = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, nav, "serviceWorker", sw);
+        // navigator.connection (NetworkInformation stub)
+        {
+            JSValue conn = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, conn, "effectiveType", JS_NewString(ctx, "4g"));
+            JS_SetPropertyStr(ctx, conn, "downlink", JS_NewFloat64(ctx, 10.0));
+            JS_SetPropertyStr(ctx, conn, "rtt", JS_NewInt32(ctx, 50));
+            JS_SetPropertyStr(ctx, conn, "saveData", JS_FALSE);
+            JS_SetPropertyStr(ctx, conn, "type", JS_NewString(ctx, "wifi"));
+            JS_SetPropertyStr(ctx, conn, "downlinkMax", JS_NewFloat64(ctx, 100.0));
+            JS_SetPropertyStr(ctx, conn, "onchange", JS_NULL);
+            JS_SetPropertyStr(ctx, conn, "addEventListener",
+                JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                    return JS_UNDEFINED;
+                }, "addEventListener", 2));
+            JS_SetPropertyStr(ctx, conn, "removeEventListener",
+                JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                    return JS_UNDEFINED;
+                }, "removeEventListener", 2));
+            JS_SetPropertyStr(ctx, nav, "connection", conn);
+        }
+        // navigator.serviceWorker (ServiceWorkerContainer stub with working register())
+        {
+            JSValue sw_container = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, sw_container, "controller", JS_NULL);
+            JS_SetPropertyStr(ctx, sw_container, "oncontrollerchange", JS_NULL);
+            JS_SetPropertyStr(ctx, sw_container, "onmessage", JS_NULL);
+            JS_SetPropertyStr(ctx, sw_container, "onmessageerror", JS_NULL);
+            JS_SetPropertyStr(ctx, sw_container, "register",
+                JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                    JSValue reg = JS_NewObject(c);
+                    JS_SetPropertyStr(c, reg, "installing", JS_NULL);
+                    JS_SetPropertyStr(c, reg, "waiting", JS_NULL);
+                    JS_SetPropertyStr(c, reg, "active", JS_NULL);
+                    JS_SetPropertyStr(c, reg, "scope", JS_NewString(c, "/"));
+                    JS_SetPropertyStr(c, reg, "updateViaCache", JS_NewString(c, "imports"));
+                    JS_SetPropertyStr(c, reg, "navigationPreload", JS_NewObject(c));
+                    JS_SetPropertyStr(c, reg, "onupdatefound", JS_NULL);
+                    JS_SetPropertyStr(c, reg, "update",
+                        JS_NewCFunction(c, [](JSContext* c2, JSValueConst, int, JSValueConst*) -> JSValue {
+                            JSValue rf[2];
+                            JSValue p = JS_NewPromiseCapability(c2, rf);
+                            if (JS_IsException(p)) return p;
+                            JSValue r = JS_Call(c2, rf[0], JS_UNDEFINED, 0, nullptr);
+                            JS_FreeValue(c2, r); JS_FreeValue(c2, rf[0]); JS_FreeValue(c2, rf[1]);
+                            return p;
+                        }, "update", 0));
+                    JS_SetPropertyStr(c, reg, "unregister",
+                        JS_NewCFunction(c, [](JSContext* c2, JSValueConst, int, JSValueConst*) -> JSValue {
+                            JSValue rf[2];
+                            JSValue p = JS_NewPromiseCapability(c2, rf);
+                            if (JS_IsException(p)) return p;
+                            JSValue t = JS_TRUE;
+                            JSValue r = JS_Call(c2, rf[0], JS_UNDEFINED, 1, &t);
+                            JS_FreeValue(c2, r); JS_FreeValue(c2, rf[0]); JS_FreeValue(c2, rf[1]);
+                            return p;
+                        }, "unregister", 0));
+                    JS_SetPropertyStr(c, reg, "addEventListener",
+                        JS_NewCFunction(c, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                            return JS_UNDEFINED;
+                        }, "addEventListener", 2));
+                    JS_SetPropertyStr(c, reg, "removeEventListener",
+                        JS_NewCFunction(c, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                            return JS_UNDEFINED;
+                        }, "removeEventListener", 2));
+                    JSValue rf[2];
+                    JSValue promise = JS_NewPromiseCapability(c, rf);
+                    if (JS_IsException(promise)) { JS_FreeValue(c, reg); return promise; }
+                    JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &reg);
+                    JS_FreeValue(c, ret); JS_FreeValue(c, rf[0]); JS_FreeValue(c, rf[1]);
+                    JS_FreeValue(c, reg);
+                    return promise;
+                }, "register", 2));
+            JS_SetPropertyStr(ctx, sw_container, "getRegistrations",
+                JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                    JSValue arr = JS_NewArray(c);
+                    JSValue rf[2];
+                    JSValue p = JS_NewPromiseCapability(c, rf);
+                    if (JS_IsException(p)) { JS_FreeValue(c, arr); return p; }
+                    JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &arr);
+                    JS_FreeValue(c, r); JS_FreeValue(c, rf[0]); JS_FreeValue(c, rf[1]);
+                    JS_FreeValue(c, arr);
+                    return p;
+                }, "getRegistrations", 0));
+            JS_SetPropertyStr(ctx, sw_container, "getRegistration",
+                JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                    JSValue rf[2];
+                    JSValue p = JS_NewPromiseCapability(c, rf);
+                    if (JS_IsException(p)) return p;
+                    JSValue undef = JS_UNDEFINED;
+                    JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &undef);
+                    JS_FreeValue(c, r); JS_FreeValue(c, rf[0]); JS_FreeValue(c, rf[1]);
+                    return p;
+                }, "getRegistration", 1));
+            JS_SetPropertyStr(ctx, sw_container, "addEventListener",
+                JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                    return JS_UNDEFINED;
+                }, "addEventListener", 2));
+            JS_SetPropertyStr(ctx, sw_container, "removeEventListener",
+                JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                    return JS_UNDEFINED;
+                }, "removeEventListener", 2));
+            JS_SetPropertyStr(ctx, nav, "serviceWorker", sw_container);
+        }
         // navigator.permissions (stub)
         JSValue perms = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, nav, "permissions", perms);
@@ -16531,26 +16631,102 @@ globalThis.structuredClone = function(obj, options) {
     }
 
     // ------------------------------------------------------------------
-    // navigator.serviceWorker (full stub)
+    // navigator.serviceWorker enhancements + ServiceWorker/ServiceWorkerRegistration classes
+    // The C++ native stub was already installed on navigator in the navigator
+    // block above. Here we add the `ready` promise property (which must be a
+    // real Promise object), define global ServiceWorker/ServiceWorkerRegistration
+    // classes for instanceof checks, and add navigator.connection if missing.
     // ------------------------------------------------------------------
     {
         const char* sw_src = R"JS(
-if (typeof navigator !== 'undefined' && navigator && !navigator.serviceWorker.register) {
-    navigator.serviceWorker = {
-        register: function() { return Promise.resolve({
-            installing: null, waiting: null, active: null,
-            scope: '/', unregister: function() { return Promise.resolve(true); },
-            update: function() { return Promise.resolve(); },
+(function() {
+    if (typeof navigator === 'undefined' || !navigator) return;
+
+    // Define ServiceWorker class (stub)
+    if (typeof globalThis.ServiceWorker === 'undefined') {
+        globalThis.ServiceWorker = function ServiceWorker() {
+            this.state = 'activated';
+            this.scriptURL = '';
+            this.onstatechange = null;
+            this.onerror = null;
+        };
+        ServiceWorker.prototype.addEventListener = function() {};
+        ServiceWorker.prototype.removeEventListener = function() {};
+        ServiceWorker.prototype.postMessage = function() {};
+    }
+
+    // Define ServiceWorkerRegistration class (stub)
+    if (typeof globalThis.ServiceWorkerRegistration === 'undefined') {
+        globalThis.ServiceWorkerRegistration = function ServiceWorkerRegistration() {
+            this.installing = null;
+            this.waiting = null;
+            this.active = null;
+            this.scope = '/';
+            this.updateViaCache = 'imports';
+            this.onupdatefound = null;
+        };
+        ServiceWorkerRegistration.prototype.update = function() { return Promise.resolve(); };
+        ServiceWorkerRegistration.prototype.unregister = function() { return Promise.resolve(true); };
+        ServiceWorkerRegistration.prototype.addEventListener = function() {};
+        ServiceWorkerRegistration.prototype.removeEventListener = function() {};
+    }
+
+    // Define ServiceWorkerContainer class (stub)
+    if (typeof globalThis.ServiceWorkerContainer === 'undefined') {
+        globalThis.ServiceWorkerContainer = function ServiceWorkerContainer() {
+            this.controller = null;
+            this.oncontrollerchange = null;
+            this.onmessage = null;
+        };
+        ServiceWorkerContainer.prototype.register = function() {
+            return Promise.resolve(new ServiceWorkerRegistration());
+        };
+        ServiceWorkerContainer.prototype.getRegistrations = function() { return Promise.resolve([]); };
+        ServiceWorkerContainer.prototype.getRegistration = function() { return Promise.resolve(undefined); };
+        ServiceWorkerContainer.prototype.addEventListener = function() {};
+        ServiceWorkerContainer.prototype.removeEventListener = function() {};
+    }
+
+    // Add `ready` promise to existing serviceWorker container
+    // (ready resolves to a ServiceWorkerRegistration with an active ServiceWorker)
+    if (navigator.serviceWorker && !navigator.serviceWorker.ready) {
+        var activeWorker = new ServiceWorker();
+        activeWorker.state = 'activated';
+        activeWorker.scriptURL = '';
+        var readyReg = new ServiceWorkerRegistration();
+        readyReg.active = activeWorker;
+        try {
+            Object.defineProperty(navigator.serviceWorker, 'ready', {
+                get: function() { return Promise.resolve(readyReg); },
+                configurable: true
+            });
+        } catch(e) {
+            navigator.serviceWorker.ready = Promise.resolve(readyReg);
+        }
+    }
+
+    // Add navigator.connection if not already present
+    if (!navigator.connection) {
+        navigator.connection = {
+            effectiveType: '4g',
+            downlink: 10,
+            rtt: 50,
+            saveData: false,
+            type: 'wifi',
+            downlinkMax: 100,
+            onchange: null,
             addEventListener: function() {},
             removeEventListener: function() {}
-        }); },
-        ready: Promise.resolve({ active: null }),
-        controller: null,
-        addEventListener: function() {},
-        removeEventListener: function() {},
-        getRegistrations: function() { return Promise.resolve([]); }
-    };
-}
+        };
+    }
+
+    // Ensure navigator.onLine is true
+    if (typeof navigator.onLine === 'undefined') {
+        try {
+            Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
+        } catch(e) {}
+    }
+})();
 )JS";
         JSValue sw_ret = JS_Eval(ctx, sw_src, std::strlen(sw_src),
                                   "<serviceWorker>", JS_EVAL_TYPE_GLOBAL);

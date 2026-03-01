@@ -2852,6 +2852,17 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                     child->geometry.width = std::min(child->geometry.width, child->max_width);
                 }
                 child->geometry.width = std::max(child->geometry.width, child->min_width);
+                // Layout internal content of column flex children.
+                // Row items call position_block_children for height; column items
+                // need layout_block so text/inline children are positioned within
+                // the computed width.
+                layout_block(*child, child->geometry.width);
+                // Restore the flex-computed height (layout_block may have overwritten it)
+                child->geometry.height = item.basis;
+                if (child->max_height < std::numeric_limits<float>::max()) {
+                    child->geometry.height = std::min(child->geometry.height, child->max_height);
+                }
+                child->geometry.height = std::max(child->geometry.height, child->min_height);
                 child->geometry.y = cursor_main + child->geometry.margin.top;
                 child->geometry.x = cross_cursor;
                 line.max_cross = std::max(line.max_cross, child->geometry.margin_box_width());

@@ -1482,11 +1482,124 @@ bool selector_matches_node(const std::string& selector, const Node& node) {
   return parsed_selector_matches_node(parsed_selector, node);
 }
 
+// Strip @import rules from CSS text and collect the imported URLs.
+// Per CSS spec, @import must appear before any other rules. We scan
+// the entire text to be tolerant of malformed stylesheets.
+//
+// Recognised forms:
+//   @import "url";
+//   @import 'url';
+//   @import url("url");
+//   @import url('url');
+//   @import url(bare-url);
+//   Any of the above may be followed by a media query before the semicolon.
+//
+// Returns the CSS text with all @import statements removed, and appends
+// the extracted import URLs to |out_import_urls| (if non-null).
+std::string strip_css_imports(const std::string& css,
+                               std::vector<std::string>* out_import_urls) {
+  std::string result;
+  result.reserve(css.size());
+  size_t i = 0;
+  const size_t n = css.size();
+
+  auto skip_ws = [&]() {
+    while (i < n && is_space(css[i])) ++i;
+  };
+
+  // Helper: consume a quoted string ("..." or '...'), return the inner text.
+  auto consume_quoted = [&](char q) -> std::string {
+    ++i;  // skip opening quote
+    std::string inner;
+    while (i < n && css[i] != q) {
+      inner += css[i++];
+    }
+    if (i < n) ++i;  // skip closing quote
+    return inner;
+  };
+
+  // Helper: consume url(...) and return the URL text.
+  auto consume_url_fn = [&]() -> std::string {
+    // Assumes "url(" has just been consumed
+    skip_ws();
+    std::string url;
+    if (i < n && (css[i] == '"' || css[i] == '\'')) {
+      url = consume_quoted(css[i]);
+    } else {
+      // bare url: collect until ')' (no whitespace inside)
+      while (i < n && css[i] != ')' && !is_space(css[i])) {
+        url += css[i++];
+      }
+    }
+    skip_ws();
+    if (i < n && css[i] == ')') ++i;  // skip ')'
+    return url;
+  };
+
+  while (i < n) {
+    // Skip comments (/* ... */)
+    if (i + 1 < n && css[i] == '/' && css[i + 1] == '*') {
+      i += 2;
+      while (i + 1 < n && !(css[i] == '*' && css[i + 1] == '/')) ++i;
+      if (i + 1 < n) i += 2;
+      continue;
+    }
+
+    // Check for @import
+    if (css[i] == '@') {
+      // Peek ahead for "import"
+      const size_t at_pos = i;
+      ++i;
+      skip_ws();
+      // Collect the at-keyword name
+      size_t kw_start = i;
+      while (i < n && (std::isalnum(static_cast<unsigned char>(css[i])) || css[i] == '-')) ++i;
+      std::string kw = css.substr(kw_start, i - kw_start);
+      // Lower-case comparison
+      std::string kw_lower;
+      for (char c : kw) kw_lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+      if (kw_lower == "import") {
+        // Parse the URL — supports url("..."), url('...'), url(bare),
+        // or a bare string literal "..." / '...'
+        skip_ws();
+        std::string url;
+        if (i + 3 < n && css.substr(i, 4) == "url(") {
+          i += 4;
+          url = consume_url_fn();
+        } else if (i < n && (css[i] == '"' || css[i] == '\'')) {
+          url = consume_quoted(css[i]);
+        }
+        // Skip to the terminating semicolon (consume optional media query)
+        while (i < n && css[i] != ';') ++i;
+        if (i < n) ++i;  // consume ';'
+
+        if (!url.empty() && out_import_urls) {
+          out_import_urls->push_back(url);
+        }
+        // Replace the @import statement with whitespace (preserve line numbers)
+        // by simply not copying it to result
+        continue;
+      } else {
+        // Not @import — copy the '@' and keyword we consumed back to result
+        // We already advanced i past the keyword; just append what we read.
+        result += css.substr(at_pos, i - at_pos);
+        continue;
+      }
+    }
+
+    result += css[i++];
+  }
+
+  return result;
+}
+
 }  // namespace
 
 Stylesheet parse_css(const std::string& css) {
   Stylesheet stylesheet;
-  const std::string_view source(css);
+  const std::string stripped = strip_css_imports(css, nullptr);
+  const std::string_view source(stripped);
 
   size_t cursor = 0;
   while (cursor < source.size()) {
@@ -1581,7 +1694,9 @@ std::map<std::string, std::string> compute_style_for_node(
 
 ParseCssResult parse_css_with_diagnostics(const std::string& css) {
   ParseCssResult result;
-  const std::string_view source(css);
+  // Strip @import rules (not fetchable in this context) before normal parsing
+  const std::string stripped = strip_css_imports(css, nullptr);
+  const std::string_view source(stripped);
 
   size_t cursor = 0;
   while (cursor < source.size()) {
@@ -1734,17 +1849,23 @@ LinkedCssLoadResult load_linked_css(const browser::html::Node& document,
                                      const std::string& inline_css) {
     LinkedCssLoadResult result;
 
-    // Start with inline CSS
-    std::string combined_css = inline_css;
+    // Extract @import URLs from the caller-supplied inline CSS first
+    std::vector<std::string> import_urls;
+    std::string combined_css = strip_css_imports(inline_css, &import_urls);
 
     auto refs = extract_linked_css(document);
     for (const auto& ref : refs) {
         if (ref.tag == "style") {
-            // Inline style block content
+            // Inline style block content: strip @import rules and collect their URLs
+            std::vector<std::string> block_imports;
+            std::string stripped_block = strip_css_imports(ref.href, &block_imports);
+            for (auto& url : block_imports) {
+                import_urls.push_back(std::move(url));
+            }
             if (!combined_css.empty()) {
                 combined_css += "\n";
             }
-            combined_css += ref.href;
+            combined_css += stripped_block;
             result.loaded_urls.push_back("<style>");
         } else {
             // External link — in this implementation, we note it as a
@@ -1755,6 +1876,13 @@ LinkedCssLoadResult load_linked_css(const browser::html::Node& document,
                 "Linked CSS not loaded (no fetch context): " + ref.href);
             result.failed_urls.push_back(ref.href);
         }
+    }
+
+    // Record @import URLs as failed loads (no fetch context in this layer)
+    for (const auto& url : import_urls) {
+        result.warnings.push_back(
+            "CSS @import not loaded (no fetch context): " + url);
+        result.failed_urls.push_back(url);
     }
 
     result.merged = parse_css(combined_css);

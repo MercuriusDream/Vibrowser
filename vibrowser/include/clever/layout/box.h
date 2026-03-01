@@ -512,6 +512,13 @@ struct LayoutNode {
     int media_type = 0;  // 0=none, 1=video, 2=audio
     std::string media_src;
 
+    // Text input (<input type="text/password/email/search/url/tel/number">)
+    bool is_text_input = false;
+    bool is_password_input = false; // true for type="password" — render bullets
+
+    // Button input (<input type="submit/reset/button"> and <button>)
+    bool is_button_input = false;
+
     // Checkbox and radio input
     bool is_checkbox = false;
     bool is_radio = false;
@@ -915,10 +922,18 @@ struct LayoutNode {
     // CSS transform-origin (percentage): default 50% 50%
     float transform_origin_x = 50.0f;
     float transform_origin_y = 50.0f;
+    // CSS transform-origin as Length values (for px/em resolution against element box)
+    clever::css::Length transform_origin_x_len = clever::css::Length::percent(50.0f);
+    clever::css::Length transform_origin_y_len = clever::css::Length::percent(50.0f);
+    // CSS transform-origin z-component: default 0px
+    float transform_origin_z = 0.0f;
 
     // CSS perspective-origin (percentage): default 50% 50%
     float perspective_origin_x = 50.0f;
     float perspective_origin_y = 50.0f;
+    // CSS perspective-origin as Length values
+    clever::css::Length perspective_origin_x_len = clever::css::Length::percent(50.0f);
+    clever::css::Length perspective_origin_y_len = clever::css::Length::percent(50.0f);
 
     // CSS scrollbar-color: 0 = auto, non-zero = explicit ARGB color
     uint32_t scrollbar_thumb_color = 0;

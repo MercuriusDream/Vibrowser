@@ -1,6 +1,7 @@
 #include <clever/paint/painter.h>
 #include <clever/layout/box.h>
 #include <clever/css/style/style_resolver.h>
+#include <clever/paint/text_renderer.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -119,9 +120,28 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     bool has_individual_transforms = has_css_translate || has_css_rotate || has_css_scale;
 
     int transform_count = 0;
-    // Use CSS transform-origin (percentage of border-box), default 50% 50%
-    float origin_x = abs_x + geom.border_box_width() * (node.transform_origin_x / 100.0f);
-    float origin_y = abs_y + geom.border_box_height() * (node.transform_origin_y / 100.0f);
+    // Resolve CSS transform-origin against the element's border-box.
+    // The Length value may be a percentage (resolved against element's own size)
+    // or an absolute length (px, em, etc.) as offset from element's top-left.
+    float border_box_w = geom.border_box_width();
+    float border_box_h = geom.border_box_height();
+    float origin_x, origin_y;
+    {
+        using Unit = clever::css::Length::Unit;
+        const auto& lx = node.transform_origin_x_len;
+        const auto& ly = node.transform_origin_y_len;
+        if (lx.unit == Unit::Percent) {
+            origin_x = abs_x + border_box_w * (lx.value / 100.0f);
+        } else {
+            // Absolute length: offset from the element's top-left corner
+            origin_x = abs_x + lx.to_px(border_box_w);
+        }
+        if (ly.unit == Unit::Percent) {
+            origin_y = abs_y + border_box_h * (ly.value / 100.0f);
+        } else {
+            origin_y = abs_y + ly.to_px(border_box_h);
+        }
+    }
 
     // CSS offset-path: translate element along a path
     if (has_offset) {
@@ -250,10 +270,18 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
                     list.push_skew(t.x, t.y, origin_x, origin_y);
                     transform_count++;
                     break;
-                case clever::css::TransformType::Matrix:
-                    list.push_matrix(t.m[0], t.m[1], t.m[2], t.m[3], t.m[4], t.m[5]);
+                case clever::css::TransformType::Matrix: {
+                    // CSS matrix(a,b,c,d,e,f) with transform-origin (ox,oy):
+                    // Effective = T(ox,oy) * M * T(-ox,-oy)
+                    // Adjusted e' = e + ox*(1 - a) - c*oy
+                    // Adjusted f' = f - b*ox + oy*(1 - d)
+                    float a = t.m[0], b = t.m[1], c = t.m[2], d = t.m[3];
+                    float e = t.m[4] + origin_x * (1.0f - a) - c * origin_y;
+                    float f = t.m[5] - b * origin_x + origin_y * (1.0f - d);
+                    list.push_matrix(a, b, c, d, e, f);
                     transform_count++;
                     break;
+                }
                 case clever::css::TransformType::None:
                     break;
             }
@@ -753,6 +781,16 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
         // Paint iframe placeholder if this is <iframe>
         if (node.is_iframe) {
             paint_iframe_placeholder(node, list, abs_x, abs_y);
+        }
+
+        // Paint native text input box decoration (background + inset border)
+        if (node.is_text_input && node.appearance != 1) {
+            paint_text_input(node, list, abs_x, abs_y);
+        }
+
+        // Paint native button decoration (gradient background + raised border)
+        if (node.is_button_input && node.appearance != 1) {
+            paint_button_input(node, list, abs_x, abs_y);
         }
 
         // Paint range input slider if this is <input type="range">
@@ -2027,21 +2065,52 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         node.parent->overflow == 1 &&
         node.parent->text_overflow == 1 &&
         node.parent->white_space_nowrap) {
-        // text-overflow: ellipsis
-        float char_width = node.font_size * 0.6f + node.letter_spacing;
+        // text-overflow: ellipsis — use actual font metrics for accurate truncation
+        static TextRenderer s_text_measurer;
+        const std::string ellipsis_str = "\xE2\x80\xA6"; // U+2026 HORIZONTAL ELLIPSIS
         float container_width = node.parent->geometry.width;
-        float text_width = static_cast<float>(text_to_render.size()) * char_width;
+
+        // Measure actual text width using font metrics
+        float text_width = s_text_measurer.measure_text_width(
+            text_to_render, effective_font_size, node.font_family,
+            eff_weight, eff_italic, node.letter_spacing);
 
         if (text_width > container_width && container_width > 0) {
-            // The ellipsis character (U+2026 "...") takes 3 bytes in UTF-8
-            // but renders as a single character width
-            float ellipsis_width = char_width; // one character width for the ellipsis
+            float ellipsis_width = s_text_measurer.measure_text_width(
+                ellipsis_str, effective_font_size, node.font_family,
+                eff_weight, eff_italic, node.letter_spacing);
             float available_width = container_width - ellipsis_width;
             if (available_width < 0) available_width = 0;
-            int max_chars = static_cast<int>(available_width / char_width);
-            if (max_chars < 0) max_chars = 0;
-            if (max_chars < static_cast<int>(text_to_render.size())) {
-                text_to_render = text_to_render.substr(0, static_cast<size_t>(max_chars)) + "\xE2\x80\xA6"; // U+2026 HORIZONTAL ELLIPSIS
+
+            // Binary search for the number of UTF-8 characters that fit
+            // We work with byte positions but need to respect UTF-8 boundaries
+            // Build a list of valid UTF-8 character end positions
+            std::vector<size_t> char_ends; // byte offsets after each UTF-8 char
+            for (size_t i = 0; i < text_to_render.size(); ) {
+                unsigned char c = static_cast<unsigned char>(text_to_render[i]);
+                size_t char_len = 1;
+                if (c >= 0xF0) char_len = 4;
+                else if (c >= 0xE0) char_len = 3;
+                else if (c >= 0xC0) char_len = 2;
+                i += char_len;
+                if (i > text_to_render.size()) i = text_to_render.size();
+                char_ends.push_back(i);
+            }
+
+            if (!char_ends.empty()) {
+                // Binary search: find largest prefix that fits in available_width
+                size_t lo = 0, hi = char_ends.size();
+                while (lo < hi) {
+                    size_t mid = lo + (hi - lo + 1) / 2;
+                    std::string prefix = text_to_render.substr(0, char_ends[mid - 1]);
+                    float w = s_text_measurer.measure_text_width(
+                        prefix, effective_font_size, node.font_family,
+                        eff_weight, eff_italic, node.letter_spacing);
+                    if (w <= available_width) lo = mid;
+                    else hi = mid - 1;
+                }
+                size_t cut_bytes = (lo > 0) ? char_ends[lo - 1] : 0;
+                text_to_render = text_to_render.substr(0, cut_bytes) + ellipsis_str;
             }
         }
     } else if (node.parent &&
@@ -3111,6 +3180,125 @@ void Painter::paint_caret(const clever::layout::LayoutNode& node, DisplayList& l
     // Caret is 1px wide, full content height, at left edge of content area
     float caret_width = 1.0f;
     list.fill_rect({content_x, content_y, caret_width, content_h}, {r, g, b, a});
+}
+
+void Painter::paint_text_input(const clever::layout::LayoutNode& node, DisplayList& list,
+                               float abs_x, float abs_y) {
+    if (!node.is_text_input) return;
+    if (node.appearance == 1) return; // appearance: none — skip native rendering
+
+    const auto& geom = node.geometry;
+    float box_w = geom.border_box_width();
+    float box_h = geom.border_box_height();
+    Rect box_rect = {abs_x, abs_y, box_w, box_h};
+
+    bool dark = (node.color_scheme == 2);
+
+    // Background fill (white / dark background)
+    Color bg_color = dark ? Color{0x1E, 0x1E, 0x1E, 0xFF} : Color{0xFF, 0xFF, 0xFF, 0xFF};
+    if (node.background_color != 0x00000000 && node.background_color != 0xFF000000) {
+        bg_color = Color::from_argb(node.background_color);
+    }
+    // Use a small border-radius for modern look (3px)
+    float radius = node.border_radius > 0 ? node.border_radius : 3.0f;
+    list.fill_rounded_rect(box_rect, bg_color, radius);
+
+    // Draw inset-style border: top/left slightly darker, bottom/right slightly lighter
+    // giving a subtle sunken appearance like native text fields
+    Color border_outer = dark ? Color{0x44, 0x44, 0x44, 0xFF} : Color{0x8A, 0x8A, 0x8A, 0xFF};
+    Color border_inner = dark ? Color{0x2E, 0x2E, 0x2E, 0xFF} : Color{0xC0, 0xC0, 0xC0, 0xFF};
+
+    // If CSS border-color is explicitly set, use it instead
+    if (node.border_color != 0 && node.border_color != 0xFF000000) {
+        border_outer = Color::from_argb(node.border_color);
+        border_inner = border_outer;
+    }
+
+    float bw_top    = geom.border.top    > 0 ? geom.border.top    : 1.0f;
+    float bw_right  = geom.border.right  > 0 ? geom.border.right  : 1.0f;
+    float bw_bottom = geom.border.bottom > 0 ? geom.border.bottom : 1.0f;
+    float bw_left   = geom.border.left   > 0 ? geom.border.left   : 1.0f;
+
+    // Top/left border segments (darker = sunken shadow effect)
+    list.fill_rect({abs_x, abs_y, box_w, bw_top}, border_outer);
+    list.fill_rect({abs_x, abs_y, bw_left, box_h}, border_outer);
+    // Bottom/right border segments (lighter = sunken highlight)
+    list.fill_rect({abs_x, abs_y + box_h - bw_bottom, box_w, bw_bottom}, border_inner);
+    list.fill_rect({abs_x + box_w - bw_right, abs_y, bw_right, box_h}, border_inner);
+
+    // The text child (value or placeholder) is painted via the normal child recursion.
+    // This method only provides the native background + border decoration.
+}
+
+void Painter::paint_button_input(const clever::layout::LayoutNode& node, DisplayList& list,
+                                 float abs_x, float abs_y) {
+    if (!node.is_button_input) return;
+    if (node.appearance == 1) return; // appearance: none — skip native rendering
+
+    const auto& geom = node.geometry;
+    float box_w = geom.border_box_width();
+    float box_h = geom.border_box_height();
+
+    bool dark = (node.color_scheme == 2);
+
+    // Use CSS background-color if set, otherwise system button gray
+    Color bg_top, bg_bot;
+    if (node.background_color != 0x00000000) {
+        Color base = Color::from_argb(node.background_color);
+        // Create a subtle vertical gradient: slightly lighter at top, base at bottom
+        bg_top = dark
+            ? Color{static_cast<uint8_t>(std::min(255, base.r + 20)),
+                    static_cast<uint8_t>(std::min(255, base.g + 20)),
+                    static_cast<uint8_t>(std::min(255, base.b + 20)),
+                    base.a}
+            : Color{static_cast<uint8_t>(std::min(255, base.r + 20)),
+                    static_cast<uint8_t>(std::min(255, base.g + 20)),
+                    static_cast<uint8_t>(std::min(255, base.b + 20)),
+                    base.a};
+        bg_bot = base;
+    } else if (dark) {
+        bg_top = Color{0x40, 0x40, 0x40, 0xFF};
+        bg_bot = Color{0x2E, 0x2E, 0x2E, 0xFF};
+    } else {
+        bg_top = Color{0xF0, 0xF0, 0xF0, 0xFF};
+        bg_bot = Color{0xD8, 0xD8, 0xD8, 0xFF};
+    }
+
+    float radius = node.border_radius > 0 ? node.border_radius : 4.0f;
+
+    // Draw vertical gradient approximated as two halves
+    float half_h = box_h / 2.0f;
+    // Top half
+    list.fill_rounded_rect({abs_x, abs_y, box_w, half_h + 1.0f}, bg_top,
+                            radius, radius, 0.0f, 0.0f);
+    // Bottom half
+    list.fill_rounded_rect({abs_x, abs_y + half_h, box_w, box_h - half_h}, bg_bot,
+                            0.0f, 0.0f, radius, radius);
+
+    // Raised border: top/left lighter (highlight), bottom/right darker (shadow)
+    Color border_tl = dark ? Color{0x66, 0x66, 0x66, 0xFF} : Color{0xC8, 0xC8, 0xC8, 0xFF};
+    Color border_br = dark ? Color{0x22, 0x22, 0x22, 0xFF} : Color{0x88, 0x88, 0x88, 0xFF};
+
+    // If CSS border-color is set, use it uniformly
+    if (node.border_color != 0 && node.border_color != 0xFF000000) {
+        border_tl = Color::from_argb(node.border_color);
+        border_br = border_tl;
+    }
+
+    float bw_top    = geom.border.top    > 0 ? geom.border.top    : 1.0f;
+    float bw_right  = geom.border.right  > 0 ? geom.border.right  : 1.0f;
+    float bw_bottom = geom.border.bottom > 0 ? geom.border.bottom : 1.0f;
+    float bw_left   = geom.border.left   > 0 ? geom.border.left   : 1.0f;
+
+    // Top/left border (lighter — raised highlight)
+    list.fill_rect({abs_x, abs_y, box_w, bw_top}, border_tl);
+    list.fill_rect({abs_x, abs_y, bw_left, box_h}, border_tl);
+    // Bottom/right border (darker — raised shadow)
+    list.fill_rect({abs_x, abs_y + box_h - bw_bottom, box_w, bw_bottom}, border_br);
+    list.fill_rect({abs_x + box_w - bw_right, abs_y, bw_right, box_h}, border_br);
+
+    // The text child (button label) is painted via the normal child recursion.
+    // This method only provides the native button background + border decoration.
 }
 
 void Painter::paint_range_input(const clever::layout::LayoutNode& node, DisplayList& list,

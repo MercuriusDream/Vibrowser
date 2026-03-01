@@ -715,10 +715,20 @@ struct ComputedStyle {
     // CSS transform-origin (percentage): default 50% 50%
     float transform_origin_x = 50.0f;
     float transform_origin_y = 50.0f;
+    // CSS transform-origin as Length values (for px/em resolution against element box)
+    // When unit is Percent, use transform_origin_x/y percentage floats above.
+    // When unit is Px (or other absolute), resolve as absolute offset from the element's top-left.
+    Length transform_origin_x_len = Length::percent(50.0f);
+    Length transform_origin_y_len = Length::percent(50.0f);
+    // CSS transform-origin z-component (3D): default 0 (px)
+    float transform_origin_z = 0.0f;
 
     // CSS perspective-origin (percentage): default 50% 50%
     float perspective_origin_x = 50.0f;
     float perspective_origin_y = 50.0f;
+    // CSS perspective-origin as Length values
+    Length perspective_origin_x_len = Length::percent(50.0f);
+    Length perspective_origin_y_len = Length::percent(50.0f);
 
     // SVG fill / stroke / opacity (CSS properties for SVG elements)
     uint32_t svg_fill_color = 0xFF000000;   // ARGB, default black

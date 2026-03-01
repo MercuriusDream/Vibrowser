@@ -28,6 +28,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <ImageIO/ImageIO.h>
+#include <zlib.h>
 #endif
 #include <algorithm>
 #include <cctype>
@@ -657,6 +658,131 @@ std::optional<std::vector<uint8_t>> decode_font_data_url(const std::string& url)
 
     if (decoded.empty()) return std::nullopt;
     return decoded;
+}
+
+// =========================================================================
+// WOFF font decompression
+// WOFF (Web Open Font Format 1.0) is a zlib-compressed container around
+// SFNT (TTF/OTF) font data. CoreText only accepts raw SFNT, so we must
+// decompress WOFF to SFNT bytes before passing to CGFontCreateWithDataProvider.
+//
+// WOFF binary layout (all fields big-endian):
+//   0:  signature      uint32  0x774F4646 ('wOFF')
+//   4:  flavor         uint32  original sfnt version tag
+//   8:  length         uint32  total WOFF file size
+//  12:  numTables      uint16  number of table entries
+//  14:  reserved       uint16
+//  16:  totalSfntSize  uint32  uncompressed SFNT size hint
+//  ... metadata fields ...
+//  44+: table directory entries (20 bytes each):
+//       tag(4) offset(4) compLength(4) origLength(4) origChecksum(4)
+// =========================================================================
+
+static inline uint32_t woff_read_u32(const uint8_t* p) {
+    return (static_cast<uint32_t>(p[0]) << 24) |
+           (static_cast<uint32_t>(p[1]) << 16) |
+           (static_cast<uint32_t>(p[2]) <<  8) |
+            static_cast<uint32_t>(p[3]);
+}
+static inline uint16_t woff_read_u16(const uint8_t* p) {
+    return static_cast<uint16_t>((static_cast<uint16_t>(p[0]) << 8) | p[1]);
+}
+static inline void woff_write_u32(uint8_t* p, uint32_t v) {
+    p[0] = static_cast<uint8_t>(v >> 24);
+    p[1] = static_cast<uint8_t>(v >> 16);
+    p[2] = static_cast<uint8_t>(v >>  8);
+    p[3] = static_cast<uint8_t>(v);
+}
+static inline void woff_write_u16(uint8_t* p, uint16_t v) {
+    p[0] = static_cast<uint8_t>(v >> 8);
+    p[1] = static_cast<uint8_t>(v);
+}
+
+// Convert WOFF1 font bytes to raw SFNT. Returns empty vector on failure.
+static std::vector<uint8_t> decompress_woff(const std::vector<uint8_t>& woff_data) {
+    // WOFF header is 44 bytes minimum
+    if (woff_data.size() < 44) return {};
+
+    const uint8_t* data = woff_data.data();
+    const size_t   data_size = woff_data.size();
+
+    // Check signature: 'wOFF' = 0x774F4646
+    if (woff_read_u32(data) != 0x774F4646u) return {};
+
+    const uint32_t sfnt_flavor = woff_read_u32(data +  4);
+    const uint16_t num_tables  = woff_read_u16(data + 12);
+    const uint32_t total_sfnt  = woff_read_u32(data + 16);
+
+    if (num_tables == 0 || num_tables > 128) return {};
+    if (data_size < 44u + static_cast<size_t>(num_tables) * 20u) return {};
+
+    // Compute SFNT searchRange / entrySelector / rangeShift
+    uint16_t sr = 1;
+    uint16_t es = 0;
+    while (static_cast<uint32_t>(sr) * 2 <= num_tables) { sr = static_cast<uint16_t>(sr * 2); ++es; }
+    const uint16_t search_range   = static_cast<uint16_t>(sr * 16);
+    const uint16_t entry_selector = es;
+    const uint16_t range_shift    = static_cast<uint16_t>(num_tables * 16 - search_range);
+
+    // Output SFNT buffer
+    std::vector<uint8_t> out;
+    out.reserve(total_sfnt > 0 ? total_sfnt : 256u * 1024u);
+    out.resize(12 + static_cast<size_t>(num_tables) * 16, 0u);
+
+    // Write SFNT offset table (12 bytes)
+    woff_write_u32(out.data(),      sfnt_flavor);
+    woff_write_u16(out.data() + 4,  num_tables);
+    woff_write_u16(out.data() + 6,  search_range);
+    woff_write_u16(out.data() + 8,  entry_selector);
+    woff_write_u16(out.data() + 10, range_shift);
+
+    // Append each table's data and fill in the SFNT table directory
+    const size_t dir_base = 12;
+    size_t write_pos = dir_base + static_cast<size_t>(num_tables) * 16;
+
+    for (uint16_t i = 0; i < num_tables; ++i) {
+        const uint8_t* entry = data + 44 + i * 20u;
+
+        const uint32_t tag         = woff_read_u32(entry +  0);
+        const uint32_t woff_offset = woff_read_u32(entry +  4);
+        const uint32_t comp_len    = woff_read_u32(entry +  8);
+        const uint32_t orig_len    = woff_read_u32(entry + 12);
+        const uint32_t checksum    = woff_read_u32(entry + 16);
+
+        if (static_cast<size_t>(woff_offset) + comp_len > data_size) return {};
+
+        // Align write position to 4 bytes
+        const size_t aligned = (write_pos + 3u) & ~static_cast<size_t>(3u);
+        if (aligned + orig_len > out.size()) out.resize(aligned + orig_len, 0u);
+
+        const uint8_t* src = data + woff_offset;
+
+        if (comp_len == orig_len) {
+            // Uncompressed table — copy directly
+            std::memcpy(out.data() + aligned, src, orig_len);
+        } else {
+#ifdef __APPLE__
+            // zlib-deflate-compressed table
+            uLongf dest_len = static_cast<uLongf>(orig_len);
+            const int zret = uncompress(out.data() + aligned, &dest_len,
+                                        src, static_cast<uLong>(comp_len));
+            if (zret != Z_OK || dest_len != static_cast<uLongf>(orig_len)) return {};
+#else
+            return {};
+#endif
+        }
+
+        // Write SFNT table directory entry at dir_base + i*16
+        uint8_t* sfnt_entry = out.data() + dir_base + i * 16u;
+        woff_write_u32(sfnt_entry +  0, tag);
+        woff_write_u32(sfnt_entry +  4, checksum);
+        woff_write_u32(sfnt_entry +  8, static_cast<uint32_t>(aligned));
+        woff_write_u32(sfnt_entry + 12, orig_len);
+
+        write_pos = aligned + orig_len;
+    }
+
+    return out;
 }
 
 // =========================================================================
@@ -5697,39 +5823,61 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "flat") style.transform_style = 0;
             else if (val_lower == "preserve-3d") style.transform_style = 1;
         } else if (d.property == "transform-origin") {
-            auto parse_origin_keyword = [](const std::string& s) -> float {
-                if (s == "left" || s == "top") return 0.0f;
-                if (s == "center") return 50.0f;
-                if (s == "right" || s == "bottom") return 100.0f;
+            auto parse_origin_token = [](const std::string& s) -> clever::css::Length {
+                if (s == "left" || s == "top") return clever::css::Length::percent(0.0f);
+                if (s == "center") return clever::css::Length::percent(50.0f);
+                if (s == "right" || s == "bottom") return clever::css::Length::percent(100.0f);
                 if (s.size() > 1 && s.back() == '%') {
-                    try { return std::stof(s.substr(0, s.size()-1)); } catch(...) {}
+                    try { return clever::css::Length::percent(std::stof(s.substr(0, s.size()-1))); } catch(...) {}
                 }
-                return 50.0f;
+                auto len = clever::css::parse_length(s);
+                if (len) return *len;
+                return clever::css::Length::percent(50.0f);
             };
             auto parts = split_whitespace(val_lower);
             if (parts.size() >= 2) {
-                style.transform_origin_x = parse_origin_keyword(parts[0]);
-                style.transform_origin_y = parse_origin_keyword(parts[1]);
+                auto lx = parse_origin_token(parts[0]);
+                auto ly = parse_origin_token(parts[1]);
+                style.transform_origin_x_len = lx;
+                style.transform_origin_y_len = ly;
+                style.transform_origin_x = (lx.unit == clever::css::Length::Unit::Percent) ? lx.value : 50.0f;
+                style.transform_origin_y = (ly.unit == clever::css::Length::Unit::Percent) ? ly.value : 50.0f;
+                if (parts.size() >= 3) {
+                    auto lz = clever::css::parse_length(parts[2]);
+                    if (lz) style.transform_origin_z = lz->to_px();
+                }
             } else if (parts.size() == 1) {
-                style.transform_origin_x = parse_origin_keyword(parts[0]);
+                auto lx = parse_origin_token(parts[0]);
+                style.transform_origin_x_len = lx;
+                style.transform_origin_y_len = clever::css::Length::percent(50.0f);
+                style.transform_origin_x = (lx.unit == clever::css::Length::Unit::Percent) ? lx.value : 50.0f;
                 style.transform_origin_y = 50.0f;
             }
         } else if (d.property == "perspective-origin") {
-            auto parse_origin_keyword = [](const std::string& s) -> float {
-                if (s == "left" || s == "top") return 0.0f;
-                if (s == "center") return 50.0f;
-                if (s == "right" || s == "bottom") return 100.0f;
+            auto parse_origin_token = [](const std::string& s) -> clever::css::Length {
+                if (s == "left" || s == "top") return clever::css::Length::percent(0.0f);
+                if (s == "center") return clever::css::Length::percent(50.0f);
+                if (s == "right" || s == "bottom") return clever::css::Length::percent(100.0f);
                 if (s.size() > 1 && s.back() == '%') {
-                    try { return std::stof(s.substr(0, s.size()-1)); } catch(...) {}
+                    try { return clever::css::Length::percent(std::stof(s.substr(0, s.size()-1))); } catch(...) {}
                 }
-                return 50.0f;
+                auto len = clever::css::parse_length(s);
+                if (len) return *len;
+                return clever::css::Length::percent(50.0f);
             };
             auto parts = split_whitespace(val_lower);
             if (parts.size() >= 2) {
-                style.perspective_origin_x = parse_origin_keyword(parts[0]);
-                style.perspective_origin_y = parse_origin_keyword(parts[1]);
+                auto lx = parse_origin_token(parts[0]);
+                auto ly = parse_origin_token(parts[1]);
+                style.perspective_origin_x_len = lx;
+                style.perspective_origin_y_len = ly;
+                style.perspective_origin_x = (lx.unit == clever::css::Length::Unit::Percent) ? lx.value : 50.0f;
+                style.perspective_origin_y = (ly.unit == clever::css::Length::Unit::Percent) ? ly.value : 50.0f;
             } else if (parts.size() == 1) {
-                style.perspective_origin_x = parse_origin_keyword(parts[0]);
+                auto lx = parse_origin_token(parts[0]);
+                style.perspective_origin_x_len = lx;
+                style.perspective_origin_y_len = clever::css::Length::percent(50.0f);
+                style.perspective_origin_x = (lx.unit == clever::css::Length::Unit::Percent) ? lx.value : 50.0f;
                 style.perspective_origin_y = 50.0f;
             }
         } else if (d.property == "fill") {
@@ -7670,8 +7818,13 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->transform_box = style.transform_box;
     layout_node->transform_origin_x = style.transform_origin_x;
     layout_node->transform_origin_y = style.transform_origin_y;
+    layout_node->transform_origin_x_len = style.transform_origin_x_len;
+    layout_node->transform_origin_y_len = style.transform_origin_y_len;
+    layout_node->transform_origin_z = style.transform_origin_z;
     layout_node->perspective_origin_x = style.perspective_origin_x;
     layout_node->perspective_origin_y = style.perspective_origin_y;
+    layout_node->perspective_origin_x_len = style.perspective_origin_x_len;
+    layout_node->perspective_origin_y_len = style.perspective_origin_y_len;
     {
         uint32_t pc = color_to_argb(style.placeholder_color);
         if (pc != 0) layout_node->placeholder_color = pc; // 0 means auto (keep default gray)
@@ -8514,6 +8667,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
         if (type == "text" || type == "password" || type == "email" ||
             type == "search" || type == "url" || type == "number" || type == "tel") {
+            // Mark as text/password input for dedicated painter rendering
+            layout_node->is_text_input = true;
+            layout_node->is_password_input = (type == "password");
             // Text input: placeholder/value text and sizing defaults.
             if (layout_node->specified_width < 0) layout_node->specified_width = 150.0f;
             if (layout_node->specified_height < 0) layout_node->specified_height = 20.0f;
@@ -8577,6 +8733,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             layout_node->append_child(std::move(text_child));
 
         } else if (type == "submit" || type == "button" || type == "reset") {
+            // Mark as button input for dedicated painter rendering
+            layout_node->is_button_input = true;
             // Button-like input
             std::string label = get_attr(node, "value");
             if (label.empty()) {
@@ -8841,6 +8999,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
     // Handle <button> element
     if (tag_lower == "button") {
+        layout_node->is_button_input = true;
         if (layout_node->specified_height < 0) layout_node->specified_height = 26;
         bool dark_btn = (layout_node->color_scheme == 2);
         layout_node->background_color = dark_btn ? 0xFF1E1E1E : 0xFFE0E0E0;
@@ -12910,33 +13069,69 @@ void flatten_scope_rules(clever::css::StyleSheet& sheet) {
     }
 }
 
-// Recursively fetch and merge @import rules into a stylesheet.
+// Internal implementation: Recursively fetch and merge @import rules into a stylesheet.
 // Imported rules are inserted before the sheet's own rules (for proper cascade order).
-// depth limits recursion to prevent infinite @import loops.
-void process_css_imports(clever::css::StyleSheet& sheet,
-                         const std::string& base_url,
-                         int viewport_width, int viewport_height,
-                         int depth = 0) {
-    static constexpr int kMaxImportDepth = 8;
+//
+// Parameters:
+//   sheet          — stylesheet to process (modified in place)
+//   base_url       — base URL for resolving relative @import URLs
+//   viewport_width / viewport_height — used to evaluate media queries on imports
+//   depth          — current recursion depth (starts at 0)
+//   visited        — set of already-imported absolute URLs (prevents circular imports)
+//   fetch_cache    — per-render CSS fetch cache (avoids re-fetching the same URL)
+static void process_css_imports_impl(clever::css::StyleSheet& sheet,
+                                     const std::string& base_url,
+                                     int viewport_width, int viewport_height,
+                                     int depth,
+                                     std::unordered_set<std::string>& visited,
+                                     std::unordered_map<std::string, std::string>& fetch_cache) {
+    // Hard limit on recursion depth (spec says browsers may limit; 10 is generous)
+    static constexpr int kMaxImportDepth = 10;
     if (depth >= kMaxImportDepth || sheet.imports.empty()) return;
 
     // Collect rules from all @import sheets (in order)
     std::vector<clever::css::StyleRule> imported_rules;
     for (auto& imp : sheet.imports) {
         if (imp.url.empty()) continue;
+
+        // Evaluate media condition before fetching
         if (!imp.media.empty() &&
             !evaluate_media_query(imp.media, viewport_width, viewport_height)) {
             continue;
         }
+
         std::string resolved = resolve_url(imp.url, base_url);
+        if (resolved.empty()) continue;
+
+        // Circular import guard: skip if we have already started processing this URL
+        if (visited.count(resolved)) continue;
+        visited.insert(resolved);
+
+        // CSS fetch cache: avoid re-fetching the same URL in one render pass
         std::string fetched_url = resolved;
-        std::string css = fetch_css(resolved, &fetched_url);
+        std::string css;
+        auto cache_it = fetch_cache.find(resolved);
+        if (cache_it != fetch_cache.end()) {
+            css = cache_it->second;
+        } else {
+            css = fetch_css(resolved, &fetched_url);
+            // Store under both the pre-redirect and post-redirect URLs
+            fetch_cache[resolved] = css;
+            if (fetched_url != resolved) {
+                fetch_cache[fetched_url] = css;
+                // Also mark the final URL as visited so a redirect target
+                // cannot be imported again under a different alias
+                visited.insert(fetched_url);
+            }
+        }
+
         if (css.empty()) continue;
 
         auto imported_sheet = clever::css::parse_stylesheet(css);
         // Recurse into the imported sheet's own @imports
-        process_css_imports(imported_sheet, fetched_url,
-                            viewport_width, viewport_height, depth + 1);
+        process_css_imports_impl(imported_sheet, fetched_url,
+                                 viewport_width, viewport_height,
+                                 depth + 1, visited, fetch_cache);
         // Flatten media/supports queries in the imported sheet
         flatten_media_queries(imported_sheet, viewport_width, viewport_height);
         flatten_supports_rules(imported_sheet);
@@ -12947,7 +13142,7 @@ void process_css_imports(clever::css::StyleSheet& sheet,
         imported_rules.insert(imported_rules.end(),
                               imported_sheet.rules.begin(),
                               imported_sheet.rules.end());
-        // Merge @font-face, @keyframes, @container, @property, etc.
+        // Merge @font-face, @keyframes, @container, @property, @counter-style, etc.
         sheet.font_faces.insert(sheet.font_faces.end(),
                                 imported_sheet.font_faces.begin(),
                                 imported_sheet.font_faces.end());
@@ -12966,11 +13161,27 @@ void process_css_imports(clever::css::StyleSheet& sheet,
     }
 
     if (!imported_rules.empty()) {
-        // Imported rules come before the sheet's own rules
+        // Imported rules come before the sheet's own rules (CSS cascade order)
         imported_rules.insert(imported_rules.end(),
                               sheet.rules.begin(), sheet.rules.end());
         sheet.rules = std::move(imported_rules);
     }
+}
+
+// Public entry point: process @import rules in a stylesheet.
+// Creates per-call visited set and fetch cache, then delegates to the implementation.
+void process_css_imports(clever::css::StyleSheet& sheet,
+                         const std::string& base_url,
+                         int viewport_width, int viewport_height,
+                         int depth = 0) {
+    // Seed visited set with the stylesheet's own base URL so a stylesheet
+    // cannot directly or indirectly import itself
+    std::unordered_set<std::string> visited;
+    if (!base_url.empty()) visited.insert(base_url);
+
+    std::unordered_map<std::string, std::string> fetch_cache;
+    process_css_imports_impl(sheet, base_url, viewport_width, viewport_height,
+                             depth, visited, fetch_cache);
 }
 
 // ---------------------------------------------------------------------------
@@ -13549,7 +13760,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
         // Download and register @font-face web fonts
         {
-            // Static cache: URL -> downloaded font data (persists across renders)
+            // Static cache: URL -> raw (possibly decompressed) font data.
+            // Persists across renders so each URL is fetched at most once.
             static std::unordered_map<std::string, std::vector<uint8_t>> font_cache;
 
             // Parse font-weight string to int
@@ -13557,6 +13769,24 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 if (w.empty() || w == "normal") return 400;
                 if (w == "bold") return 700;
                 try { return std::stoi(w); } catch (...) { return 400; }
+            };
+
+            // Prepare font bytes for CoreText: decompress WOFF1 to SFNT if needed.
+            // WOFF2 (Brotli-compressed) is passed through as-is; modern CoreText
+            // may handle it, and there is no bundled Brotli decompressor.
+            auto prepare_font_bytes = [](const std::vector<uint8_t>& raw)
+                    -> const std::vector<uint8_t>* {
+                // WOFF1 magic: 'wOFF' = 0x774F4646
+                if (raw.size() >= 4 &&
+                    raw[0] == 0x77 && raw[1] == 0x4F &&
+                    raw[2] == 0x46 && raw[3] == 0x46) {
+                    // Returns a thread-local buffer to avoid repeated heap alloc.
+                    static thread_local std::vector<uint8_t> decompressed_buf;
+                    decompressed_buf = decompress_woff(raw);
+                    if (!decompressed_buf.empty()) return &decompressed_buf;
+                    // Decompression failed — fall back to raw bytes
+                }
+                return &raw;
             };
 
             for (auto& ff : result.font_faces) {
@@ -13571,51 +13801,56 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     if (cache_it != font_cache.end()) {
                         int weight = parse_font_weight(ff.font_weight);
                         bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
+                        const auto* font_bytes = prepare_font_bytes(cache_it->second);
                         clever::paint::TextRenderer::register_font(
-                            ff.font_family, cache_it->second, weight, italic);
+                            ff.font_family, *font_bytes, weight, italic);
                         continue;
                     }
 
                     auto decoded_font_data = decode_font_data_url(font_url);
                     if (!decoded_font_data || decoded_font_data->empty()) continue;
 
+                    // Cache raw decoded bytes (WOFF decompression happens per-registration)
                     font_cache[font_url] = *decoded_font_data;
                     int weight = parse_font_weight(ff.font_weight);
                     bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
+                    const auto* font_bytes = prepare_font_bytes(*decoded_font_data);
                     clever::paint::TextRenderer::register_font(
-                        ff.font_family, *decoded_font_data, weight, italic);
+                        ff.font_family, *font_bytes, weight, italic);
                     continue;
                 }
 
-                // Resolve relative URL
+                // Resolve relative URL against the page base URL
                 font_url = resolve_url(font_url, effective_base_url);
                 if (font_url.empty()) continue;
 
                 // Check cache first
                 auto cache_it = font_cache.find(font_url);
                 if (cache_it != font_cache.end()) {
-                    // Already downloaded — register (idempotent, TextRenderer handles duplicates)
+                    // Already fetched — register (TextRenderer deduplicates internally)
                     int weight = parse_font_weight(ff.font_weight);
                     bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
+                    const auto* font_bytes = prepare_font_bytes(cache_it->second);
                     clever::paint::TextRenderer::register_font(
-                        ff.font_family, cache_it->second, weight, italic);
+                        ff.font_family, *font_bytes, weight, italic);
                     continue;
                 }
 
-                // Download the font file
+                // Download the font file (follow up to 10 redirects)
                 auto response = fetch_with_redirects(font_url, "*/*", 10);
                 if (!response || response->status != 200 || response->body.empty()) {
                     continue;
                 }
 
-                // Cache the downloaded font data
+                // Store raw bytes in cache
                 font_cache[font_url] = response->body;
 
-                // Register with CoreText
+                // Decompress WOFF1 if necessary, then register with CoreText
                 int weight = parse_font_weight(ff.font_weight);
                 bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
+                const auto* font_bytes = prepare_font_bytes(response->body);
                 clever::paint::TextRenderer::register_font(
-                    ff.font_family, response->body, weight, italic);
+                    ff.font_family, *font_bytes, weight, italic);
             }
         }
 

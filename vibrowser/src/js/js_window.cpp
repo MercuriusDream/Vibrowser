@@ -3609,6 +3609,126 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, navigator, "doNotTrack",
         JS_NewString(ctx, "1"));
     JS_SetPropertyStr(ctx, navigator, "webdriver", JS_FALSE);
+
+    // ---- navigator.connection (NetworkInformation stub) ----
+    {
+        JSValue conn = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, conn, "effectiveType", JS_NewString(ctx, "4g"));
+        JS_SetPropertyStr(ctx, conn, "downlink", JS_NewFloat64(ctx, 10.0));
+        JS_SetPropertyStr(ctx, conn, "rtt", JS_NewInt32(ctx, 50));
+        JS_SetPropertyStr(ctx, conn, "saveData", JS_FALSE);
+        JS_SetPropertyStr(ctx, conn, "type", JS_NewString(ctx, "wifi"));
+        JS_SetPropertyStr(ctx, conn, "downlinkMax", JS_NewFloat64(ctx, 100.0));
+        JS_SetPropertyStr(ctx, conn, "onchange", JS_NULL);
+        JS_SetPropertyStr(ctx, conn, "addEventListener",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "addEventListener", 2));
+        JS_SetPropertyStr(ctx, conn, "removeEventListener",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "removeEventListener", 2));
+        JS_SetPropertyStr(ctx, navigator, "connection", conn);
+    }
+
+    // ---- navigator.serviceWorker (ServiceWorkerContainer stub) ----
+    // Full stub with register/ready/controller; register returns a resolved
+    // ServiceWorkerRegistration so sites that call register() don't throw.
+    {
+        JSValue sw_container = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, sw_container, "controller", JS_NULL);
+        JS_SetPropertyStr(ctx, sw_container, "oncontrollerchange", JS_NULL);
+        JS_SetPropertyStr(ctx, sw_container, "onmessage", JS_NULL);
+        JS_SetPropertyStr(ctx, sw_container, "onmessageerror", JS_NULL);
+        JS_SetPropertyStr(ctx, sw_container, "register",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                // Build a ServiceWorkerRegistration stub
+                JSValue reg = JS_NewObject(c);
+                JS_SetPropertyStr(c, reg, "installing", JS_NULL);
+                JS_SetPropertyStr(c, reg, "waiting", JS_NULL);
+                JS_SetPropertyStr(c, reg, "active", JS_NULL);
+                JS_SetPropertyStr(c, reg, "scope", JS_NewString(c, "/"));
+                JS_SetPropertyStr(c, reg, "updateViaCache", JS_NewString(c, "imports"));
+                JS_SetPropertyStr(c, reg, "navigationPreload", JS_NewObject(c));
+                JS_SetPropertyStr(c, reg, "onupdatefound", JS_NULL);
+                JS_SetPropertyStr(c, reg, "update",
+                    JS_NewCFunction(c, [](JSContext* c2, JSValueConst, int, JSValueConst*) -> JSValue {
+                        JSValue rf[2];
+                        JSValue promise = JS_NewPromiseCapability(c2, rf);
+                        if (JS_IsException(promise)) return promise;
+                        JSValue ret = JS_Call(c2, rf[0], JS_UNDEFINED, 0, nullptr);
+                        JS_FreeValue(c2, ret);
+                        JS_FreeValue(c2, rf[0]);
+                        JS_FreeValue(c2, rf[1]);
+                        return promise;
+                    }, "update", 0));
+                JS_SetPropertyStr(c, reg, "unregister",
+                    JS_NewCFunction(c, [](JSContext* c2, JSValueConst, int, JSValueConst*) -> JSValue {
+                        JSValue rf[2];
+                        JSValue promise = JS_NewPromiseCapability(c2, rf);
+                        if (JS_IsException(promise)) return promise;
+                        JSValue t = JS_TRUE;
+                        JSValue ret = JS_Call(c2, rf[0], JS_UNDEFINED, 1, &t);
+                        JS_FreeValue(c2, ret);
+                        JS_FreeValue(c2, rf[0]);
+                        JS_FreeValue(c2, rf[1]);
+                        return promise;
+                    }, "unregister", 0));
+                JS_SetPropertyStr(c, reg, "addEventListener",
+                    JS_NewCFunction(c, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                        return JS_UNDEFINED;
+                    }, "addEventListener", 2));
+                JS_SetPropertyStr(c, reg, "removeEventListener",
+                    JS_NewCFunction(c, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                        return JS_UNDEFINED;
+                    }, "removeEventListener", 2));
+                // Return Promise.resolve(reg)
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) { JS_FreeValue(c, reg); return promise; }
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &reg);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                JS_FreeValue(c, reg);
+                return promise;
+            }, "register", 2));
+        JS_SetPropertyStr(ctx, sw_container, "getRegistrations",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue arr = JS_NewArray(c);
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) { JS_FreeValue(c, arr); return promise; }
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &arr);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                JS_FreeValue(c, arr);
+                return promise;
+            }, "getRegistrations", 0));
+        JS_SetPropertyStr(ctx, sw_container, "getRegistration",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) return promise;
+                JSValue undef = JS_UNDEFINED;
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &undef);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                return promise;
+            }, "getRegistration", 1));
+        JS_SetPropertyStr(ctx, sw_container, "addEventListener",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "addEventListener", 2));
+        JS_SetPropertyStr(ctx, sw_container, "removeEventListener",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "removeEventListener", 2));
+        JS_SetPropertyStr(ctx, navigator, "serviceWorker", sw_container);
+    }
+
     JS_SetPropertyStr(ctx, global, "navigator", navigator);
 
     // ---- window.localStorage ----

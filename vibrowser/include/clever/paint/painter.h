@@ -28,6 +28,10 @@ private:
                     float abs_x, float abs_y);
     void paint_outline(const clever::layout::LayoutNode& node, DisplayList& list,
                        float abs_x, float abs_y);
+    void paint_text_input(const clever::layout::LayoutNode& node, DisplayList& list,
+                          float abs_x, float abs_y);
+    void paint_button_input(const clever::layout::LayoutNode& node, DisplayList& list,
+                            float abs_x, float abs_y);
     void paint_range_input(const clever::layout::LayoutNode& node, DisplayList& list,
                            float abs_x, float abs_y);
     void paint_color_input(const clever::layout::LayoutNode& node, DisplayList& list,

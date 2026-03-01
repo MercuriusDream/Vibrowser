@@ -5945,21 +5945,40 @@ void PropertyCascade::apply_declaration(
 
     // ---- CSS transform-origin ----
     if (prop == "transform-origin") {
-        auto parse_origin_keyword = [](const std::string& s) -> float {
-            if (s == "left" || s == "top") return 0.0f;
-            if (s == "center") return 50.0f;
-            if (s == "right" || s == "bottom") return 100.0f;
+        // Returns a Length for a single origin component token.
+        // Keywords map to percentages; lengths (px/em/%) are returned as-is.
+        auto parse_origin_token = [](const std::string& s) -> css::Length {
+            if (s == "left" || s == "top") return css::Length::percent(0.0f);
+            if (s == "center") return css::Length::percent(50.0f);
+            if (s == "right" || s == "bottom") return css::Length::percent(100.0f);
             if (s.size() > 1 && s.back() == '%') {
-                try { return std::stof(s.substr(0, s.size()-1)); } catch(...) {}
+                try { return css::Length::percent(std::stof(s.substr(0, s.size()-1))); } catch(...) {}
             }
-            return 50.0f;
+            // Try to parse as a length (px, em, rem, etc.)
+            auto len = parse_length(s);
+            if (len) return *len;
+            // Default: center
+            return css::Length::percent(50.0f);
         };
         auto parts = split_whitespace(value_lower);
         if (parts.size() >= 2) {
-            style.transform_origin_x = parse_origin_keyword(parts[0]);
-            style.transform_origin_y = parse_origin_keyword(parts[1]);
+            auto lx = parse_origin_token(parts[0]);
+            auto ly = parse_origin_token(parts[1]);
+            style.transform_origin_x_len = lx;
+            style.transform_origin_y_len = ly;
+            // Keep legacy float field in sync (for percentage values)
+            style.transform_origin_x = (lx.unit == css::Length::Unit::Percent) ? lx.value : 50.0f;
+            style.transform_origin_y = (ly.unit == css::Length::Unit::Percent) ? ly.value : 50.0f;
+            // Optional 3rd value: z-component (only px allowed in CSS spec)
+            if (parts.size() >= 3) {
+                auto lz = parse_length(parts[2]);
+                if (lz) style.transform_origin_z = lz->to_px();
+            }
         } else if (parts.size() == 1) {
-            style.transform_origin_x = parse_origin_keyword(parts[0]);
+            auto lx = parse_origin_token(parts[0]);
+            style.transform_origin_x_len = lx;
+            style.transform_origin_y_len = css::Length::percent(50.0f);
+            style.transform_origin_x = (lx.unit == css::Length::Unit::Percent) ? lx.value : 50.0f;
             style.transform_origin_y = 50.0f;
         }
         return;
@@ -5967,21 +5986,30 @@ void PropertyCascade::apply_declaration(
 
     // ---- CSS perspective-origin ----
     if (prop == "perspective-origin") {
-        auto parse_origin_keyword = [](const std::string& s) -> float {
-            if (s == "left" || s == "top") return 0.0f;
-            if (s == "center") return 50.0f;
-            if (s == "right" || s == "bottom") return 100.0f;
+        auto parse_origin_token = [](const std::string& s) -> css::Length {
+            if (s == "left" || s == "top") return css::Length::percent(0.0f);
+            if (s == "center") return css::Length::percent(50.0f);
+            if (s == "right" || s == "bottom") return css::Length::percent(100.0f);
             if (s.size() > 1 && s.back() == '%') {
-                try { return std::stof(s.substr(0, s.size()-1)); } catch(...) {}
+                try { return css::Length::percent(std::stof(s.substr(0, s.size()-1))); } catch(...) {}
             }
-            return 50.0f;
+            auto len = parse_length(s);
+            if (len) return *len;
+            return css::Length::percent(50.0f);
         };
         auto parts = split_whitespace(value_lower);
         if (parts.size() >= 2) {
-            style.perspective_origin_x = parse_origin_keyword(parts[0]);
-            style.perspective_origin_y = parse_origin_keyword(parts[1]);
+            auto lx = parse_origin_token(parts[0]);
+            auto ly = parse_origin_token(parts[1]);
+            style.perspective_origin_x_len = lx;
+            style.perspective_origin_y_len = ly;
+            style.perspective_origin_x = (lx.unit == css::Length::Unit::Percent) ? lx.value : 50.0f;
+            style.perspective_origin_y = (ly.unit == css::Length::Unit::Percent) ? ly.value : 50.0f;
         } else if (parts.size() == 1) {
-            style.perspective_origin_x = parse_origin_keyword(parts[0]);
+            auto lx = parse_origin_token(parts[0]);
+            style.perspective_origin_x_len = lx;
+            style.perspective_origin_y_len = css::Length::percent(50.0f);
+            style.perspective_origin_x = (lx.unit == css::Length::Unit::Percent) ? lx.value : 50.0f;
             style.perspective_origin_y = 50.0f;
         }
         return;

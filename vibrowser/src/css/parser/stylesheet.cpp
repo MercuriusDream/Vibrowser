@@ -257,23 +257,42 @@ void StyleSheetParser::parse_import_rule(StyleSheet& sheet) {
     ImportRule rule;
     skip_whitespace();
 
-    // @import can be: url('...') or url("...") or '...' or "..."
+    // @import can be:
+    //   url("...")     — quoted URL inside url()
+    //   url('...')     — single-quoted URL inside url()
+    //   url(bare.css)  — bare (unquoted) URL: collect all tokens until ')'
+    //   "..."          — string literal
+    //   '...'          — single-quoted string literal
     if (!at_end() && current().type == CSSToken::Function && current().value == "url") {
         advance(); // skip 'url('
         skip_whitespace();
         if (!at_end() && current().type == CSSToken::String) {
+            // Quoted URL: the tokenizer already stripped the quotes for String tokens
             rule.url = current().value;
             advance();
-        } else if (!at_end() && current().type == CSSToken::Ident) {
-            rule.url = current().value;
-            advance();
+            skip_whitespace();
+        } else {
+            // Bare (unquoted) URL: collect all token values until ')' or ';' or EOF.
+            // Bare URLs can contain characters like '/', ':', '.' which the CSS tokenizer
+            // emits as individual Delim tokens, so we must concatenate them.
+            std::string bare;
+            while (!at_end() &&
+                   current().type != CSSToken::RightParen &&
+                   current().type != CSSToken::Semicolon) {
+                // Whitespace inside a bare url() terminates the URL
+                if (current().type == CSSToken::Whitespace) break;
+                bare += current().value;
+                advance();
+            }
+            rule.url = bare;
+            skip_whitespace();
         }
-        skip_whitespace();
         // Skip closing ')'
         if (!at_end() && current().type == CSSToken::RightParen) {
             advance();
         }
     } else if (!at_end() && current().type == CSSToken::String) {
+        // @import "url" or @import 'url'
         rule.url = current().value;
         advance();
     }
