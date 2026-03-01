@@ -10974,11 +10974,17 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     // Handle <ruby> — ruby annotation container (East Asian typography)
     if (tag_lower == "ruby") {
         layout_node->is_ruby = true;
+        layout_node->mode = clever::layout::LayoutMode::Inline;
+        layout_node->display = clever::layout::DisplayType::Inline;
+        layout_node->ruby_align = style.ruby_align;
+        layout_node->ruby_position = style.ruby_position;
     }
 
     // Handle <rt> — ruby text (annotation above base text)
     if (tag_lower == "rt") {
         layout_node->is_ruby_text = true;
+        layout_node->mode = clever::layout::LayoutMode::Inline;
+        layout_node->display = clever::layout::DisplayType::Inline;
         // Ruby text is smaller (roughly 50% of parent font size)
         layout_node->font_size = std::max(8.0f, layout_node->font_size * 0.5f);
     }
@@ -13473,6 +13479,103 @@ static bool evaluate_container_queries_post_layout(
     return any_applied;
 }
 
+static void apply_ruby_layout_pass(clever::layout::LayoutNode& root) {
+    std::function<void(clever::layout::LayoutNode&)> walk =
+        [&](clever::layout::LayoutNode& node) {
+            for (auto& child : node.children) {
+                if (child) walk(*child);
+            }
+
+            if (!node.is_ruby) return;
+
+            struct RubyPair {
+                clever::layout::LayoutNode* rt = nullptr;
+                clever::layout::LayoutNode* base = nullptr;
+                size_t base_index = 0;
+            };
+
+            std::vector<RubyPair> rt_pairs;
+            std::vector<clever::layout::LayoutNode*> base_children;
+
+            for (auto& child_ptr : node.children) {
+                auto* child = child_ptr.get();
+                if (!child || child->is_ruby_paren) continue;
+                if (child->display == clever::layout::DisplayType::None ||
+                    child->mode == clever::layout::LayoutMode::None) {
+                    continue;
+                }
+                if (child->is_ruby_text) {
+                    if (!base_children.empty()) {
+                        rt_pairs.push_back({child, base_children.back(), base_children.size() - 1});
+                    }
+                    continue;
+                }
+                base_children.push_back(child);
+            }
+
+            for (auto& pair : rt_pairs) {
+                auto* rt_node = pair.rt;
+                auto* base_node = pair.base;
+                if (!rt_node || !base_node) continue;
+
+                const float base_left = base_node->geometry.x;
+                const float base_right = base_node->geometry.x + base_node->geometry.width;
+                const float base_width = base_right - base_left;
+                const float rt_width = rt_node->geometry.width;
+                float annotation_x = base_left;
+
+                if (node.ruby_align == 1) {
+                    annotation_x = base_left;
+                } else if (node.ruby_align == 2 || node.ruby_align == 0) {
+                    annotation_x = base_left + (base_width - rt_width) * 0.5f;
+                } else if (node.ruby_align == 3) {
+                    if (base_children.size() > 1 && node.geometry.width > 0.0f) {
+                        const float slot_width =
+                            node.geometry.width / static_cast<float>(base_children.size());
+                        annotation_x = node.geometry.x + slot_width *
+                                               (static_cast<float>(pair.base_index) + 0.5f) -
+                                       (rt_width * 0.5f);
+                    } else {
+                        annotation_x = base_left + (base_width - rt_width) * 0.5f;
+                    }
+                }
+
+                rt_node->geometry.x = annotation_x;
+                rt_node->geometry.y = base_node->geometry.y - (rt_node->font_size + 1.5f);
+            }
+
+            float min_child_y = 0.0f;
+            float max_child_y = 0.0f;
+            bool has_child = false;
+            for (auto& child_ptr : node.children) {
+                auto* child = child_ptr.get();
+                if (!child || child->display == clever::layout::DisplayType::None ||
+                    child->mode == clever::layout::LayoutMode::None || child->is_ruby_paren) {
+                    continue;
+                }
+                const float child_top = child->geometry.y;
+                const float child_bottom = child->geometry.y + child->geometry.margin_box_height();
+                if (!has_child) {
+                    min_child_y = child_top;
+                    max_child_y = child_bottom;
+                    has_child = true;
+                } else {
+                    min_child_y = std::min(min_child_y, child_top);
+                    max_child_y = std::max(max_child_y, child_bottom);
+                }
+            }
+
+            if (has_child) {
+                const float needed_height = max_child_y - min_child_y;
+                if (needed_height > node.geometry.height) {
+                    node.geometry.height = needed_height;
+                }
+            }
+        };
+
+    walk(root);
+}
+
 void apply_property_rules(clever::css::StyleSheet& sheet,
                           std::unordered_map<std::string, clever::css::PropertyRule>& registry) {
     for (auto& pr : sheet.property_rules) {
@@ -14765,6 +14868,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 }
             }
         }
+
+        // Apply ruby annotation layout now that inline geometry is final.
+        apply_ruby_layout_pass(*layout_root);
 
         // Step 4b: Detect overflow indicators and compute scroll content dimensions
         {
