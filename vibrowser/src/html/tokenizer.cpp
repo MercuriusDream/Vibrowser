@@ -1708,6 +1708,72 @@ std::string Tokenizer::try_consume_entity() {
         {"therefore", "\xE2\x88\xB4"},   // U+2234 therefore
         {"because", "\xE2\x88\xB5"},   // U+2235 because
         {"measuredangle", "\xE2\x88\xA1"},   // U+2221 measured angle
+
+        // === Additional Missing HTML5 Entities ===
+        {"Ccy", "\xd0\xa6"},    // U+0426
+        {"Digamma", "\xcf\x9c"},    // U+03DC
+        {"Goppaw", "\xcf\x9c"},    // U+03DC
+        {"Hcy", "\xd0\xa5"},    // U+0425
+        {"Koppa", "\xcf\x98"},    // U+03D8
+        {"Sampi", "\xcf\xa0"},    // U+03E0
+        {"Stigma", "\xcf\x9a"},    // U+03DA
+        {"Xcy", "\xd0\xa5"},    // U+0425
+        {"abslate", "\xe2\x88\xa3"},    // U+2223
+        {"aftersymbol", "\xe2\x88\x8d"},    // U+220D
+        {"backcong", "\xe2\x89\x8c"},    // U+224C
+        {"backsimeq", "\xe2\x8b\x8d"},    // U+22CD
+        {"barsemicircle", "\xe2\x8c\x86"},    // U+2306
+        {"barvee", "\xe2\x8a\xbd"},    // U+22BD
+        {"barwedge", "\xe2\x8a\xbc"},    // U+22BC
+        {"barwedgecirc", "\xe2\x8c\x85"},    // U+2305
+        {"batik", "\xe2\x88\xbd"},    // U+223D
+        {"bemptyv", "\xe2\xa6\xb0"},    // U+29B0
+        {"bepsi", "\xe2\x88\x8b"},    // U+220B
+        {"bfpartial", "\xe2\x88\x82"},    // U+2202
+        {"boxbowtie", "\xe2\xa7\x88"},    // U+29C8
+        {"boxbslash", "\xe2\xa7\x85"},    // U+29C5
+        {"boxhd", "\xe2\x95\xa6"},    // U+2566
+        {"boxhu", "\xe2\x95\xa9"},    // U+2569
+        {"boxvl", "\xe2\x95\xa1"},    // U+2561
+        {"boxvr", "\xe2\x95\x9e"},    // U+255E
+        {"bsemi", "\xe2\x81\x8f"},    // U+204F
+        {"btimes", "\xe2\x8a\xa2"},    // U+22A2
+        {"bumpeq", "\xe2\x89\x8f"},    // U+224F
+        {"bumpnoteq", "\xe2\x89\x8e"},    // U+224E
+        {"butwedge", "\xe2\x8a\xa5"},    // U+22A5
+        {"ccy", "\xd1\x86"},    // U+0446
+        {"circeq", "\xe2\x89\x97"},    // U+2257
+        {"circleast", "\xe2\x8a\x9b"},    // U+229B
+        {"circledX", "\xe2\x8a\x98"},    // U+2298
+        {"circledash", "\xe2\x8a\x9d"},    // U+229D
+        {"circledot", "\xe2\x8a\x99"},    // U+2299
+        {"circledown", "\xe2\xa6\xa3"},    // U+29A3
+        {"circletimes", "\xe2\x8a\x97"},    // U+2297
+        {"circnearequal", "\xe2\x89\x97"},    // U+2257
+        {"goppaw", "\xcf\x9d"},    // U+03DD
+        {"hbar", "\xe2\x84\x8f"},    // U+210F
+        {"hcy", "\xd1\x85"},    // U+0445
+        {"hslash", "\xe2\x84\x8f"},    // U+210F
+        {"romnumeralC", "\xe2\x85\xbd"},    // U+217D
+        {"romnumeralD", "\xe2\x85\xbe"},    // U+217E
+        {"romnumeralL", "\xe2\x85\xbc"},    // U+217C
+        {"romnumeralM", "\xe2\x85\xbf"},    // U+217F
+        {"romnumerali", "\xe2\x85\xb0"},    // U+2170
+        {"romnumeralii", "\xe2\x85\xb1"},    // U+2171
+        {"romnumeraliii", "\xe2\x85\xb2"},    // U+2172
+        {"romnumeraliv", "\xe2\x85\xb3"},    // U+2173
+        {"romnumeralix", "\xe2\x85\xb8"},    // U+2178
+        {"romnumeralv", "\xe2\x85\xb4"},    // U+2174
+        {"romnumeralvi", "\xe2\x85\xb5"},    // U+2175
+        {"romnumeralvii", "\xe2\x85\xb6"},    // U+2176
+        {"romnumeralviii", "\xe2\x85\xb7"},    // U+2177
+        {"romnumeralx", "\xe2\x85\xb9"},    // U+2179
+        {"romnumeralxi", "\xe2\x85\xba"},    // U+217A
+        {"romnumeralxii", "\xe2\x85\xbb"},    // U+217B
+        {"sampi", "\xcf\xa1"},    // U+03E1
+        {"stigma", "\xcf\x9b"},    // U+03DB
+        {"xcy", "\xd1\x85"},    // U+0445
+
     };
 
 

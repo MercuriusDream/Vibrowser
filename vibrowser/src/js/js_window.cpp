@@ -4762,6 +4762,210 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_SetPropertyStr(ctx, navigator, "serviceWorker", sw_container);
     }
 
+    // ---- navigator.clipboard (Clipboard API stub) ----
+    {
+        JSValue clipboard = JS_NewObject(ctx);
+        // writeText: copies text to clipboard (stub — resolves immediately)
+        JS_SetPropertyStr(ctx, clipboard, "writeText",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int argc, JSValueConst* argv) -> JSValue {
+                // On macOS we could use pasteboard, but for now just resolve
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) return promise;
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 0, nullptr);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                return promise;
+            }, "writeText", 1));
+        // readText: returns empty string (can't access OS clipboard without perms)
+        JS_SetPropertyStr(ctx, clipboard, "readText",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) return promise;
+                JSValue empty = JS_NewString(c, "");
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &empty);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                JS_FreeValue(c, empty);
+                return promise;
+            }, "readText", 0));
+        // write/read for complex data
+        JS_SetPropertyStr(ctx, clipboard, "write",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) return promise;
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 0, nullptr);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                return promise;
+            }, "write", 1));
+        JS_SetPropertyStr(ctx, clipboard, "read",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) return promise;
+                JSValue arr = JS_NewArray(c);
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &arr);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                JS_FreeValue(c, arr);
+                return promise;
+            }, "read", 0));
+        JS_SetPropertyStr(ctx, navigator, "clipboard", clipboard);
+    }
+
+    // ---- navigator.permissions (Permissions API stub) ----
+    {
+        JSValue permissions = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, permissions, "query",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int argc, JSValueConst* argv) -> JSValue {
+                // Return a PermissionStatus with state "granted" for most permissions
+                JSValue status = JS_NewObject(c);
+                JS_SetPropertyStr(c, status, "state", JS_NewString(c, "granted"));
+                JS_SetPropertyStr(c, status, "onchange", JS_NULL);
+                JS_SetPropertyStr(c, status, "addEventListener",
+                    JS_NewCFunction(c, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                        return JS_UNDEFINED;
+                    }, "addEventListener", 2));
+                JS_SetPropertyStr(c, status, "removeEventListener",
+                    JS_NewCFunction(c, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                        return JS_UNDEFINED;
+                    }, "removeEventListener", 2));
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) { JS_FreeValue(c, status); return promise; }
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &status);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                JS_FreeValue(c, status);
+                return promise;
+            }, "query", 1));
+        JS_SetPropertyStr(ctx, navigator, "permissions", permissions);
+    }
+
+    // ---- navigator.sendBeacon (stub - returns true, no-op) ----
+    JS_SetPropertyStr(ctx, navigator, "sendBeacon",
+        JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+            return JS_TRUE;  // spec: returns true if queued successfully
+        }, "sendBeacon", 2));
+
+    // ---- navigator.mediaSession (MediaSession API stub) ----
+    {
+        JSValue ms = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, ms, "metadata", JS_NULL);
+        JS_SetPropertyStr(ctx, ms, "playbackState", JS_NewString(ctx, "none"));
+        JS_SetPropertyStr(ctx, ms, "setActionHandler",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "setActionHandler", 2));
+        JS_SetPropertyStr(ctx, ms, "setPositionState",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "setPositionState", 1));
+        JS_SetPropertyStr(ctx, ms, "setCameraActive",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "setCameraActive", 1));
+        JS_SetPropertyStr(ctx, ms, "setMicrophoneActive",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "setMicrophoneActive", 1));
+        JS_SetPropertyStr(ctx, navigator, "mediaSession", ms);
+    }
+
+    // ---- navigator.share (Web Share API stub) ----
+    JS_SetPropertyStr(ctx, navigator, "share",
+        JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+            // Reject with NotSupportedError (no native share sheet in desktop)
+            JSValue err = JS_NewError(c);
+            JS_SetPropertyStr(c, err, "name", JS_NewString(c, "NotSupportedError"));
+            JS_SetPropertyStr(c, err, "message", JS_NewString(c, "Share not supported"));
+            JSValue rf[2];
+            JSValue promise = JS_NewPromiseCapability(c, rf);
+            if (JS_IsException(promise)) { JS_FreeValue(c, err); return promise; }
+            JSValue ret = JS_Call(c, rf[1], JS_UNDEFINED, 1, &err);
+            JS_FreeValue(c, ret);
+            JS_FreeValue(c, rf[0]);
+            JS_FreeValue(c, rf[1]);
+            JS_FreeValue(c, err);
+            return promise;
+        }, "share", 1));
+    JS_SetPropertyStr(ctx, navigator, "canShare",
+        JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+            return JS_FALSE;
+        }, "canShare", 1));
+
+    // ---- navigator.getBattery (Battery Status API stub) ----
+    JS_SetPropertyStr(ctx, navigator, "getBattery",
+        JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+            JSValue battery = JS_NewObject(c);
+            JS_SetPropertyStr(c, battery, "charging", JS_TRUE);
+            JS_SetPropertyStr(c, battery, "chargingTime", JS_NewInt32(c, 0));
+            JS_SetPropertyStr(c, battery, "dischargingTime",
+                JS_NewFloat64(c, std::numeric_limits<double>::infinity()));
+            JS_SetPropertyStr(c, battery, "level", JS_NewFloat64(c, 1.0));
+            JS_SetPropertyStr(c, battery, "onchargingchange", JS_NULL);
+            JS_SetPropertyStr(c, battery, "onchargingtimechange", JS_NULL);
+            JS_SetPropertyStr(c, battery, "ondischargingtimechange", JS_NULL);
+            JS_SetPropertyStr(c, battery, "onlevelchange", JS_NULL);
+            JS_SetPropertyStr(c, battery, "addEventListener",
+                JS_NewCFunction(c, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                    return JS_UNDEFINED;
+                }, "addEventListener", 2));
+            JSValue rf[2];
+            JSValue promise = JS_NewPromiseCapability(c, rf);
+            if (JS_IsException(promise)) { JS_FreeValue(c, battery); return promise; }
+            JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &battery);
+            JS_FreeValue(c, ret);
+            JS_FreeValue(c, rf[0]);
+            JS_FreeValue(c, rf[1]);
+            JS_FreeValue(c, battery);
+            return promise;
+        }, "getBattery", 0));
+
+    // ---- navigator.wakeLock (Screen Wake Lock API stub) ----
+    {
+        JSValue wl = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, wl, "request",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue sentinel = JS_NewObject(c);
+                JS_SetPropertyStr(c, sentinel, "type", JS_NewString(c, "screen"));
+                JS_SetPropertyStr(c, sentinel, "released", JS_FALSE);
+                JS_SetPropertyStr(c, sentinel, "release",
+                    JS_NewCFunction(c, [](JSContext* c2, JSValueConst, int, JSValueConst*) -> JSValue {
+                        JSValue rf[2];
+                        JSValue p = JS_NewPromiseCapability(c2, rf);
+                        if (JS_IsException(p)) return p;
+                        JSValue ret = JS_Call(c2, rf[0], JS_UNDEFINED, 0, nullptr);
+                        JS_FreeValue(c2, ret);
+                        JS_FreeValue(c2, rf[0]);
+                        JS_FreeValue(c2, rf[1]);
+                        return p;
+                    }, "release", 0));
+                JS_SetPropertyStr(c, sentinel, "addEventListener",
+                    JS_NewCFunction(c, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                        return JS_UNDEFINED;
+                    }, "addEventListener", 2));
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) { JS_FreeValue(c, sentinel); return promise; }
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &sentinel);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                JS_FreeValue(c, sentinel);
+                return promise;
+            }, "request", 1));
+        JS_SetPropertyStr(ctx, navigator, "wakeLock", wl);
+    }
+
     JS_SetPropertyStr(ctx, global, "navigator", navigator);
 
     // ---- window.localStorage ----
