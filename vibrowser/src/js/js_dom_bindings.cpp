@@ -14068,6 +14068,28 @@ void install_dom_bindings(JSContext* ctx,
     JS_SetPropertyStr(ctx, doc_obj, "writeln",
         JS_NewCFunction(ctx, js_document_writeln, "writeln", 1));
 
+    // document.startViewTransition(callback) — View Transitions API stub
+    {
+        const char* vt_src = R"JS(
+(function() {
+    document.startViewTransition = function(callback) {
+        var result = { finished: Promise.resolve(), ready: Promise.resolve(), updateCallbackDone: Promise.resolve() };
+        if (typeof callback === 'function') {
+            try { callback(); } catch(e) {}
+        }
+        return result;
+    };
+})();
+)JS";
+        JSValue vret = JS_Eval(ctx, vt_src, std::strlen(vt_src),
+                                "<view-transition>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(vret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, vret);
+    }
+
     // document.createRange() — returns a stub Range object
     {
         const char* createRange_code = R"JS(

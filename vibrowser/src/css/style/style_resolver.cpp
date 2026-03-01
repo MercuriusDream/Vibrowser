@@ -5552,12 +5552,32 @@ void PropertyCascade::apply_declaration(
     }
 
     // ---- CSS Grid layout ----
-    if (prop == "grid-template-columns") {
-        style.grid_template_columns = value_str;
-        return;
-    }
-    if (prop == "grid-template-rows") {
-        style.grid_template_rows = value_str;
+    if (prop == "grid-template-columns" || prop == "grid-template-rows") {
+        auto parse_subgrid_template = [&](std::string &target, bool &is_subgrid_flag) {
+            std::string lower = to_lower(value_str);
+            bool is_subgrid = false;
+
+            if (lower == "subgrid") {
+                is_subgrid = true;
+            } else if (lower.size() > 7 && lower.substr(0, 7) == "subgrid" &&
+                      std::isspace(static_cast<unsigned char>(lower[7]))) {
+                is_subgrid = true;
+            }
+
+            if (is_subgrid) {
+                is_subgrid_flag = true;
+                target = value_str.size() > 7 ? trim(value_str.substr(7)) : "";
+            } else {
+                is_subgrid_flag = false;
+                target = value_str;
+            }
+        };
+
+        if (prop == "grid-template-columns") {
+            parse_subgrid_template(style.grid_template_columns, style.grid_template_columns_is_subgrid);
+        } else {
+            parse_subgrid_template(style.grid_template_rows, style.grid_template_rows_is_subgrid);
+        }
         return;
     }
     if (prop == "grid-column") {
@@ -6455,6 +6475,13 @@ void PropertyCascade::apply_declaration(
     if (prop == "rotate") {
         if (value_lower == "none") style.css_rotate = "none";
         else style.css_rotate = value_str;
+        return;
+    }
+
+    // ---- CSS view-transition-name (NOT inherited) ----
+    if (prop == "view-transition-name") {
+        if (value_lower == "none") style.view_transition_name.clear();
+        else style.view_transition_name = value_str;
         return;
     }
 

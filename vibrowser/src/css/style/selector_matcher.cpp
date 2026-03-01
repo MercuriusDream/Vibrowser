@@ -305,49 +305,52 @@ bool SelectorMatcher::has_selector_matches(const ElementView& element,
         }
     };
 
-    std::vector<const ElementView*> current_matches;
-
     const auto& first_part = selector.parts[0];
     const auto first_combinator =
         first_part.combinator.value_or(Combinator::Descendant); // default is descendant
-    std::vector<const ElementView*> candidates;
-    add_targets_for_combinator(element, first_combinator, candidates);
-    for (const auto* candidate : candidates) {
-        if (candidate && matches_compound(*candidate, first_part.compound)) {
-            current_matches.push_back(candidate);
-        }
-    }
 
-    if (current_matches.empty()) {
-        return false;
-    }
-
-    for (size_t i = 1; i < selector.parts.size(); ++i) {
-        std::vector<const ElementView*> next_matches;
-        const auto& part = selector.parts[i];
-        const auto combinator = part.combinator.value_or(Combinator::Descendant);
-
-        for (const auto* current : current_matches) {
-            if (!current) {
-                continue;
-            }
-            std::vector<const ElementView*> relation_nodes;
-            add_targets_for_combinator(*current, combinator, relation_nodes);
-            for (const auto* node : relation_nodes) {
-                if (node && matches_compound(*node, part.compound)) {
-                    next_matches.push_back(node);
-                }
-            }
-        }
-
-        if (next_matches.empty()) {
+    auto matches_remaining = [&](const ElementView& base, size_t part_index, auto&& self_ref) -> bool {
+        if (part_index >= selector.parts.size()) {
             return false;
         }
 
-        current_matches = std::move(next_matches);
+        const auto& part = selector.parts[part_index];
+        const auto combinator = part.combinator.value_or(Combinator::Descendant);
+        std::vector<const ElementView*> candidates;
+        add_targets_for_combinator(base, combinator, candidates);
+
+        for (const auto* candidate : candidates) {
+            if (!candidate || !matches_compound(*candidate, part.compound)) {
+                continue;
+            }
+
+            if (part_index + 1 >= selector.parts.size()) {
+                return true;
+            }
+
+            if (self_ref(*candidate, part_index + 1, self_ref)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    std::vector<const ElementView*> initial_candidates;
+    add_targets_for_combinator(element, first_combinator, initial_candidates);
+    for (const auto* candidate : initial_candidates) {
+        if (!candidate || !matches_compound(*candidate, first_part.compound)) {
+            continue;
+        }
+        if (selector.parts.size() == 1) {
+            return true;
+        }
+        if (matches_remaining(*candidate, 1, matches_remaining)) {
+            return true;
+        }
     }
 
-    return !current_matches.empty();
+    return false;
 }
 
 bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSelector& simple) const {

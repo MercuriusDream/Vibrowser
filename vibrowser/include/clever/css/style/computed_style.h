@@ -861,6 +861,9 @@ struct ComputedStyle {
     Length animation_range_end = Length::percent(100);
     float animation_range_end_offset = 1.0f;  // 0.0-1.0 for percentage offsets
 
+    // CSS View Transitions
+    std::string view_transition_name;  // empty = none
+
     // CSS individual transform properties (CSS Transforms Level 2)
     std::string css_rotate = "none";     // e.g. "45deg", "x 30deg", "none"
     std::string css_scale = "none";      // e.g. "1.5", "2 3", "none"

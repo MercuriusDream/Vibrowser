@@ -5317,6 +5317,155 @@ TEST(SelectorMatcherTest, HasPseudoClass) {
 }
 
 // ============================================================================
+// Cycle 424: :has() with direct child combinator (>)
+// ============================================================================
+TEST(SelectorMatcherTest, HasDirectChildCombinator) {
+    SelectorMatcher matcher;
+
+    // div:has(> img) should match div with direct img child
+    ElementView img_child;
+    img_child.tag_name = "img";
+
+    ElementView container;
+    container.tag_name = "div";
+    container.children = {&img_child};
+
+    // Parse selector "div:has(> img)"
+    auto list = parse_selector_list("div:has(> img)");
+    EXPECT_FALSE(list.selectors.empty());
+    const auto& selector = list.selectors[0];
+
+    EXPECT_TRUE(matcher.matches(container, selector));
+
+    // div without direct img child should not match
+    ElementView span_child;
+    span_child.tag_name = "span";
+
+    ElementView container2;
+    container2.tag_name = "div";
+    container2.children = {&span_child};
+
+    EXPECT_FALSE(matcher.matches(container2, selector));
+}
+
+// ============================================================================
+// Cycle 424: :has() with adjacent sibling combinator (+)
+// ============================================================================
+TEST(SelectorMatcherTest, HasAdjacentSiblingCombinator) {
+    SelectorMatcher matcher;
+
+    // div:has(+ .sibling) should match div with adjacent sibling having class "sibling"
+    ElementView sibling_next;
+    sibling_next.tag_name = "span";
+    sibling_next.classes = {"sibling"};
+
+    ElementView div_elem;
+    div_elem.tag_name = "div";
+
+    // Set up sibling relationship: div followed by span.sibling
+    sibling_next.prev_sibling = &div_elem;
+
+    ElementView parent;
+    parent.tag_name = "body";
+    parent.children = {&div_elem, &sibling_next};
+    div_elem.parent = &parent;
+    sibling_next.parent = &parent;
+
+    auto list = parse_selector_list("div:has(+ .sibling)");
+    EXPECT_FALSE(list.selectors.empty());
+    const auto& selector = list.selectors[0];
+
+    EXPECT_TRUE(matcher.matches(div_elem, selector));
+
+    // div without adjacent sibling should not match
+    ElementView unrelated;
+    unrelated.tag_name = "span";
+
+    ElementView div_elem2;
+    div_elem2.tag_name = "div";
+
+    ElementView parent2;
+    parent2.tag_name = "body";
+    parent2.children = {&div_elem2, &unrelated};
+    div_elem2.parent = &parent2;
+    unrelated.parent = &parent2;
+    unrelated.prev_sibling = &div_elem2;
+
+    EXPECT_FALSE(matcher.matches(div_elem2, selector));
+}
+
+// ============================================================================
+// Cycle 424: :has() with pseudo-class inside (e.g., :has(.descendant:hover))
+// ============================================================================
+TEST(SelectorMatcherTest, HasWithPseudoClassInside) {
+    SelectorMatcher matcher;
+
+    // div:has(.descendant:hover) should match if div has descendant with data-clever-hover
+    ElementView hovered_child;
+    hovered_child.tag_name = "span";
+    hovered_child.classes = {"descendant"};
+    hovered_child.attributes = {{"data-clever-hover", ""}};
+
+    ElementView container;
+    container.tag_name = "div";
+    container.children = {&hovered_child};
+    hovered_child.parent = &container;
+
+    auto list = parse_selector_list("div:has(.descendant:hover)");
+    EXPECT_FALSE(list.selectors.empty());
+    const auto& selector = list.selectors[0];
+
+    EXPECT_TRUE(matcher.matches(container, selector));
+
+    // div without hovered descendant should not match
+    ElementView not_hovered_child;
+    not_hovered_child.tag_name = "span";
+    not_hovered_child.classes = {"descendant"};
+
+    ElementView container2;
+    container2.tag_name = "div";
+    container2.children = {&not_hovered_child};
+    not_hovered_child.parent = &container2;
+
+    EXPECT_FALSE(matcher.matches(container2, selector));
+}
+
+// ============================================================================
+// Cycle 424: :has() with :not() inside (e.g., :has(:not(.class)))
+// ============================================================================
+TEST(SelectorMatcherTest, HasWithNegationInside) {
+    SelectorMatcher matcher;
+
+    // div:has(:not(.excluded)) should match if div has any descendant without class "excluded"
+    ElementView included_child;
+    included_child.tag_name = "span";
+    included_child.classes = {"included"};
+
+    ElementView container;
+    container.tag_name = "div";
+    container.children = {&included_child};
+    included_child.parent = &container;
+
+    auto list = parse_selector_list("div:has(:not(.excluded))");
+    EXPECT_FALSE(list.selectors.empty());
+    const auto& selector = list.selectors[0];
+
+    EXPECT_TRUE(matcher.matches(container, selector));
+
+    // div with only excluded children should not match
+    ElementView excluded_child;
+    excluded_child.tag_name = "span";
+    excluded_child.classes = {"excluded"};
+
+    ElementView container2;
+    container2.tag_name = "div";
+    container2.children = {&excluded_child};
+    excluded_child.parent = &container2;
+
+    EXPECT_FALSE(matcher.matches(container2, selector));
+}
+
+// ============================================================================
 // Cycle 424: :last-of-type and :only-of-type pseudo-classes
 // ============================================================================
 TEST(SelectorMatcherTest, LastOfTypePseudoClass) {

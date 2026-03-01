@@ -179,10 +179,12 @@ ComplexSelector SelectorParser::parse_complex_selector() {
 
     // Parse the first compound selector
     skip_whitespace();
+    auto leading_combinator = try_parse_combinator();
+
     CompoundSelector first = parse_compound_selector();
     ComplexSelector::Part first_part;
     first_part.compound = std::move(first);
-    first_part.combinator = std::nullopt; // no combinator before the first part
+    first_part.combinator = leading_combinator;
     result.parts.push_back(std::move(first_part));
 
     while (!at_end()) {
