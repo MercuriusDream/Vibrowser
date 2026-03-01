@@ -1959,6 +1959,10 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
         if (!visible.empty()) {
             lines.push_back({0, visible.size(), cx, cy});
         }
+        // Prevent the catch-all below from adding a duplicate line entry.
+        // The flattened path uses cx (not cursor_x), so the catch-all would
+        // record width=0, causing text-align centering to be applied twice.
+        line_start = visible.size();
 
     } else {
     // --- Original (non-flattened) inline wrapping path ---
