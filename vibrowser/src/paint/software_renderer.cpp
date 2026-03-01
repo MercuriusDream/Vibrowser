@@ -1682,6 +1682,14 @@ void SoftwareRenderer::draw_text_simple(const std::string& text, float x, float 
     // For translate-only transforms, we can offset the coords and use CoreText.
     // For rotate/scale, we fall back to bitmap rendering with transform.
     bool use_coretext = (text_renderer_ != nullptr);
+    float text_clip_x = -1, text_clip_y = -1, text_clip_w = -1, text_clip_h = -1;
+    if (!clip_stack_.empty()) {
+        const auto& clip = clip_stack_.top();
+        text_clip_x = clip.x;
+        text_clip_y = clip.y;
+        text_clip_w = clip.width;
+        text_clip_h = clip.height;
+    }
 
     if (!current_transform_.is_identity()) {
         // Check if it's a simple translation
@@ -1695,7 +1703,8 @@ void SoftwareRenderer::draw_text_simple(const std::string& text, float x, float 
                                          pixels_.data(), width_, height_, font_family,
                                          font_weight, font_italic, letter_spacing,
                                          font_feature_settings, font_variation_settings,
-                                         text_rendering, font_kerning, font_optical_sizing);
+                                         text_rendering, font_kerning, font_optical_sizing, 0,
+                                         text_clip_x, text_clip_y, text_clip_w, text_clip_h);
             return;
         }
 
@@ -1735,7 +1744,8 @@ void SoftwareRenderer::draw_text_simple(const std::string& text, float x, float 
                                      pixels_.data(), width_, height_, font_family,
                                      font_weight, font_italic, letter_spacing,
                                      font_feature_settings, font_variation_settings,
-                                     text_rendering, font_kerning, font_optical_sizing);
+                                     text_rendering, font_kerning, font_optical_sizing, 0,
+                                     text_clip_x, text_clip_y, text_clip_w, text_clip_h);
         return;
     }
 

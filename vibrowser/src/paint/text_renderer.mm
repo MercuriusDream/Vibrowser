@@ -226,7 +226,9 @@ void TextRenderer::render_single_line(const std::string& text, float x, float y,
                                        float /*font_size*/, const Color& /*color*/,
                                        uint8_t* buffer, int buffer_width, int buffer_height,
                                        CTFontRef font, CGColorRef cg_color, CGColorSpaceRef colorspace,
-                                       float letter_spacing, int text_rendering, int font_kerning, float word_spacing) {
+                                       float letter_spacing, int text_rendering, int font_kerning,
+                                       float word_spacing, float clip_x, float clip_y,
+                                       float clip_w, float clip_h) {
     if (text.empty()) return;
 
     // Create attributed string for this line
@@ -285,6 +287,11 @@ void TextRenderer::render_single_line(const std::string& text, float x, float y,
         CFRelease(cf_text);
         if (kern_value) CFRelease(kern_value);
         return;
+    }
+
+    if (clip_x >= 0 && clip_w > 0 && clip_h > 0) {
+        float cg_clip_y = static_cast<float>(buffer_height) - (clip_y + clip_h);
+        CGContextClipToRect(ctx, CGRectMake(clip_x, cg_clip_y, clip_w, clip_h));
     }
 
     // Apply text-rendering hints
@@ -530,7 +537,8 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
                                 const std::string& font_feature_settings,
                                 const std::string& font_variation_settings,
                                 int text_rendering, int font_kerning,
-                                int font_optical_sizing, float word_spacing) {
+                                int font_optical_sizing, float word_spacing,
+                                float clip_x, float clip_y, float clip_w, float clip_h) {
     (void)font_optical_sizing;
     if (text.empty() || buffer_width <= 0 || buffer_height <= 0) return;
     if (!buffer) return;
@@ -635,7 +643,8 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
                 render_single_line(line_text, x, current_y, font_size, color,
                                    buffer, buffer_width, buffer_height,
                                    font, cg_color, colorspace, letter_spacing,
-                                   text_rendering, font_kerning, word_spacing);
+                                   text_rendering, font_kerning, word_spacing,
+                                   clip_x, clip_y, clip_w, clip_h);
             }
             current_y += line_height;
             prev = pos + 1;
@@ -645,7 +654,8 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
         render_single_line(text, x, y, font_size, color,
                            buffer, buffer_width, buffer_height,
                            font, cg_color, colorspace, letter_spacing,
-                           text_rendering, font_kerning, word_spacing);
+                           text_rendering, font_kerning, word_spacing,
+                           clip_x, clip_y, clip_w, clip_h);
     }
 
     CGColorRelease(cg_color);

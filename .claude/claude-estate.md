@@ -7,9 +7,12 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1982 — Fixed translateX(%) bug (Wikipedia sidebar), TLS connection pooling, CSS color-scheme/system colors, font-variant improvements, video bg fix, element.scrollBy(). Wikipedia still has black content area (non-transform cause — investigating).
-**Momentum**: Cycle 1982 — 99+ commits pushed. 14/14 tests passing. HN renders great. Wikipedia black area still under investigation.
-**Cycle**: 1982
+**Current Focus**: Cycle 1983 — Fixed critical CSS var() inheritance bug (parent→child chain), fixed prefers-color-scheme to use is_dark_mode(), fixed JSClassDef initializers (IDB/WebAudio), fixed paint_tests TIMEOUT, fixed z-index stacking context, fixed object-fit/object-position, improved border-box test expectations. Wikipedia black area: under active investigation (minimal test reproducer being created).
+**Momentum**: Cycle 1983 — 105+ commits. 14/14 tests at 100%. CSS var inheritance fix = major impact on all sites using custom properties. Spawned agents for clip-path, sticky, counter() features.
+**Cycle**: 1983
+
+**SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
+Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
