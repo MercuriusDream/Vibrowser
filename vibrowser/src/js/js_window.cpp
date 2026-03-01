@@ -5406,6 +5406,226 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_FreeValue(ctx, pm_ret);
     }
 
+    // ------------------------------------------------------------------
+    // ES2022+ / modern API polyfills
+    // ------------------------------------------------------------------
+    {
+        const char* polyfill_structuredclone_src = R"JS(
+        if (typeof globalThis.structuredClone === 'undefined') {
+            globalThis.structuredClone = function(obj) {
+                return JSON.parse(JSON.stringify(obj));
+            };
+        }
+)JS";
+        JSValue polyfill_structuredclone = JS_Eval(ctx, polyfill_structuredclone_src, std::strlen(polyfill_structuredclone_src),
+                                                  "<polyfill-structuredClone>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_structuredclone)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_structuredclone);
+    }
+
+    {
+        const char* polyfill_queuemicrotask_src = R"JS(
+        if (typeof globalThis.queueMicrotask === 'undefined') {
+            globalThis.queueMicrotask = function(fn) {
+                Promise.resolve().then(fn);
+            };
+        }
+)JS";
+        JSValue polyfill_queuemicrotask = JS_Eval(ctx, polyfill_queuemicrotask_src, std::strlen(polyfill_queuemicrotask_src),
+                                                  "<polyfill-queueMicrotask>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_queuemicrotask)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_queuemicrotask);
+    }
+
+    {
+        const char* polyfill_hasown_src = R"JS(
+        if (!Object.hasOwn) {
+            Object.hasOwn = function(obj, prop) {
+                return Object.prototype.hasOwnProperty.call(obj, prop);
+            };
+        }
+)JS";
+        JSValue polyfill_hasown = JS_Eval(ctx, polyfill_hasown_src, std::strlen(polyfill_hasown_src),
+                                         "<polyfill-ObjectHasOwn>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_hasown)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_hasown);
+    }
+
+    {
+        const char* polyfill_array_string_at_src = R"JS(
+        if (!Array.prototype.at) {
+            Array.prototype.at = function(index) {
+                index = Math.trunc(index) || 0;
+                if (index < 0) index += this.length;
+                if (index < 0 || index >= this.length) return undefined;
+                return this[index];
+            };
+        }
+        if (!String.prototype.at) {
+            String.prototype.at = function(index) {
+                index = Math.trunc(index) || 0;
+                if (index < 0) index += this.length;
+                if (index < 0 || index >= this.length) return undefined;
+                return this[index];
+            };
+        }
+)JS";
+        JSValue polyfill_array_string_at = JS_Eval(ctx, polyfill_array_string_at_src, std::strlen(polyfill_array_string_at_src),
+                                                  "<polyfill-array-string-at>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_array_string_at)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_array_string_at);
+    }
+
+    {
+        const char* polyfill_findlast_src = R"JS(
+        if (!Array.prototype.findLast) {
+            Array.prototype.findLast = function(fn) {
+                for (var i = this.length - 1; i >= 0; i--) {
+                    if (fn(this[i], i, this)) return this[i];
+                }
+            };
+            Array.prototype.findLastIndex = function(fn) {
+                for (var i = this.length - 1; i >= 0; i--) {
+                    if (fn(this[i], i, this)) return i;
+                }
+                return -1;
+            };
+        }
+)JS";
+        JSValue polyfill_findlast = JS_Eval(ctx, polyfill_findlast_src, std::strlen(polyfill_findlast_src),
+                                           "<polyfill-findLast>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_findlast)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_findlast);
+    }
+
+    {
+        const char* polyfill_fromentries_src = R"JS(
+        if (!Object.fromEntries) {
+            Object.fromEntries = function(entries) {
+                return Array.from(entries).reduce(function(acc, kv) {
+                    acc[kv[0]] = kv[1];
+                    return acc;
+                }, {});
+            };
+        }
+)JS";
+        JSValue polyfill_fromentries = JS_Eval(ctx, polyfill_fromentries_src, std::strlen(polyfill_fromentries_src),
+                                              "<polyfill-fromEntries>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_fromentries)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_fromentries);
+    }
+
+    {
+        const char* polyfill_abortsignal_src = R"JS(
+        if (typeof globalThis.AbortSignal !== 'undefined' && !globalThis.AbortSignal.timeout) {
+            globalThis.AbortSignal.timeout = function(ms) {
+                var controller = new AbortController();
+                setTimeout(function() { controller.abort(new DOMException('TimeoutError', 'TimeoutError')); }, ms);
+                return controller.signal;
+            };
+            globalThis.AbortSignal.any = function(signals) {
+                var controller = new AbortController();
+                signals.forEach(function(s) {
+                    if (s.aborted) { controller.abort(s.reason); return; }
+                    s.addEventListener('abort', function() { controller.abort(s.reason); });
+                });
+                return controller.signal;
+            };
+        }
+)JS";
+        JSValue polyfill_abortsignal = JS_Eval(ctx, polyfill_abortsignal_src, std::strlen(polyfill_abortsignal_src),
+                                              "<polyfill-abortSignal>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_abortsignal)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_abortsignal);
+    }
+
+    {
+        const char* polyfill_reporterror_src = R"JS(
+        if (typeof globalThis.reportError === 'undefined') {
+            globalThis.reportError = function(err) { console.error(err); };
+        }
+)JS";
+        JSValue polyfill_reporterror = JS_Eval(ctx, polyfill_reporterror_src, std::strlen(polyfill_reporterror_src),
+                                              "<polyfill-reportError>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_reporterror)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_reporterror);
+    }
+
+    {
+        const char* polyfill_useragentdata_src = R"JS(
+        if (typeof navigator !== 'undefined' && !navigator.userAgentData) {
+            Object.defineProperty(navigator, 'userAgentData', {
+                get: function() {
+                    return {
+                        brands: [
+                            {brand: 'Chromium', version: '120'},
+                            {brand: 'Not A;Brand', version: '99'}
+                        ],
+                        mobile: false,
+                        platform: 'macOS',
+                        getHighEntropyValues: function(hints) {
+                            return Promise.resolve({
+                                platform: 'macOS', platformVersion: '14.0',
+                                architecture: 'arm', model: '', uaFullVersion: '120.0.0.0'
+                            });
+                        },
+                        toJSON: function() { return {}; }
+                    };
+                }
+            });
+        }
+)JS";
+        JSValue polyfill_useragentdata = JS_Eval(ctx, polyfill_useragentdata_src, std::strlen(polyfill_useragentdata_src),
+                                                "<polyfill-userAgentData>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_useragentdata)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_useragentdata);
+    }
+
+    {
+        const char* polyfill_scheduler_src = R"JS(
+        if (typeof globalThis.scheduler === 'undefined') {
+            globalThis.scheduler = {
+                postTask: function(fn, opts) { return Promise.resolve().then(fn); },
+                yield: function() { return Promise.resolve(); }
+            };
+        }
+)JS";
+        JSValue polyfill_scheduler = JS_Eval(ctx, polyfill_scheduler_src, std::strlen(polyfill_scheduler_src),
+                                            "<polyfill-scheduler>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_scheduler)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_scheduler);
+    }
+
     // ---- window.localStorage and window.sessionStorage ----
     ParsedURL parsed_url = parse_url(url);
     install_web_storage_bindings(ctx, parsed_url.origin);
