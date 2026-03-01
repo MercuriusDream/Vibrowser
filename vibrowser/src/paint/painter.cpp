@@ -348,10 +348,17 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     if (has_transforms) {
         auto resolve_translate_value = [&](const clever::css::Transform& t, bool is_x) -> float {
             if (is_x && t.x_length.unit == clever::css::Length::Unit::Percent) {
-                return (t.x_length.value / 100.0f) * node.geometry.width;
+                // Per CSS spec: translateX percentage is relative to the element's own border-box width.
+                // Use border_box_width() which includes content + padding + border.
+                // Fall back to geometry.width if border_box_width is 0.
+                float bw = geom.border_box_width();
+                if (bw <= 0) bw = node.geometry.width;
+                return (t.x_length.value / 100.0f) * bw;
             }
             if (!is_x && t.y_length.unit == clever::css::Length::Unit::Percent) {
-                return (t.y_length.value / 100.0f) * node.geometry.height;
+                float bh = geom.border_box_height();
+                if (bh <= 0) bh = node.geometry.height;
+                return (t.y_length.value / 100.0f) * bh;
             }
             return is_x ? t.x : t.y;
         };
