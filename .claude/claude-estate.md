@@ -7,11 +7,11 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
-**Current Focus**: Centering/layout bug fixes, then Round 21
-**Momentum**: Cycle 1958 — 13 commits pushed across sessions. 13/13 tests passing.
-**Cycle**: 1958
+**Current Focus**: Round 23 feature implementation
+**Momentum**: Cycle 1961 — 18 commits pushed across sessions. 13/13 tests passing.
+**Cycle**: 1961
 **Workflow**: Multi-phase feature implementation. Use 4-6 Sonnet subagents in parallel. Commit and push after each round.
-**User Issue**: Flex layout + inline-block centering FIXED (67ece72). Remaining: text centering slightly off, Mac UI issues.
+**User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
 ## Implementation Roadmap
 
@@ -154,6 +154,30 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycle 1961 (Round 22 Feature Implementation) — 2026-03-01
+
+- **Theme**: 6 Sonnet subagent feature round — conic gradients, border-image, vertical-align, table layout, deep-nesting guards, shell UX
+- **Commit**: 78d1eb8
+- **Features Implemented**:
+  - Conic gradients: complete CSS conic-gradient() parsing (deg/turn/rad/grad, hard stops, repeating-conic-gradient)
+  - Border-image: 9-slice rendering with URL image sources, outset, 4 repeat modes (stretch/repeat/round/space)
+  - Vertical-align: proper baseline with font ascent, sub/super/text-top/text-bottom/length offsets, two-pass line box algorithm
+  - Table layout: fixed coordinate double-offset, rowspan occupancy tracking, colspan width distribution, row height expansion
+  - Deep-nesting guard: kMaxTreeDepth 256→64, depth guards in layout_block() and paint_node() — fixes SIGSEGV on 300-deep nesting
+  - Shell UX: CLI URL argument support (http/https/file), window screen-centering, activate-on-launch
+- **Validation**: 13/13 suites pass, 0 failures
+
+### Cycle 1960 (Round 21 Feature Implementation) — 2026-03-01
+
+- **Theme**: 6 Sonnet subagent feature round — @font-face WOFF, flex column layout, text-overflow, CSS @import, ServiceWorker, transform-origin
+- **Commit**: b0ad874
+- **Validation**: 13/13 suites pass
+
+### Cycle 1959 (DPR + Double-Centering Fix) — 2026-03-01
+
+- **Theme**: DPR viewport scaling fix + text-align centering double-offset bug
+- **Commits**: 727d93d (DPR fix), 03bc3a2 (centering double-offset fix)
 
 ### Cycle 1958 (Centering Fix Round) — 2026-03-01
 
@@ -8483,30 +8507,27 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 185 |
-| Total Cycles | 1957 |
+| Total Cycles | 1961 |
 | Files Created | ~137 |
-| Files Modified | 175+ |
-| Lines Added (est.) | 235000+ |
+| Files Modified | 195+ |
+| Lines Added (est.) | 237500+ |
 | Tests Added | 10844 |
-| Bugs Fixed | 301 |
-| Features Added | 2722 |
+| Bugs Fixed | 308 |
+| Features Added | 2740 |
 
 ## Tell The Next Claude
 
-**LATEST (Cycle 1958) — Flex/Inline-Block Centering Fixes + User TODOs**
+**LATEST (Cycle 1961) — Round 22 Feature Implementation**
 
-- Cycle 1958 (67ece72): Flex layout margin-box positioning, inline-block shrink-wrap re-layout. Test 5 now matches Chrome.
-- Round 20 (3048ab3): FIX <center> tag text-align inheritance to ComputedStyle, CSS transitions 20+ props, XHR arraybuffer/blob, navigator.permissions.query, real structuredClone, elementsFromPoint, BroadcastChannel, IndexedDB in-memory, ReadableStream body, scroll-snap parsing, legacy align attribute on div/p/h1-h6
-- Round 19 (b0b556d, 0c8fbac): IntersectionObserver real viewport, rAF queued model, crypto.getRandomValues native, matchMedia 28 features, document.fonts, URL.createObjectURL blob registry, popstate direct dispatch, Connection: keep-alive
-- 9 commits pushed this session: 5cc6622, 4b1a739, 0b0f625, b0b556d, 0c8fbac, 3048ab3, 67ece72
-- USER TODO LIST:
-  - [ ] Mac UI white blank area — investigate NSWindow/NSView sizing
-  - [ ] Google rendering too small — viewport meta/DPR/media queries
-  - [ ] Text-align:center slightly off — font measurement discrepancy
-  - [ ] Flex column align-items visual issues
-- LESSON LEARNED: Inline-block shrink-wrap must re-layout children — first layout uses containing_width for text-align centering, but shrink-wrapped width is much smaller. Without re-layout, internal children are positioned for the wrong width.
-- LESSON LEARNED: Always test with screenshots using `http://localhost:8888/test.html` (python3 -m http.server 8888). file:// protocol not supported.
-- Top remaining: USER TODOs above, then incremental render pipeline, GPU compositing
+- Cycle 1961 (78d1eb8): Round 22 — conic gradients, border-image 9-slice, vertical-align proper baseline, table layout fixes, deep-nesting stack overflow guard, shell CLI URL + window centering.
+- Cycle 1960 (b0ad874): Round 21 — @font-face WOFF decompression, flex column layout, text-overflow ellipsis, CSS @import circular prevention, ServiceWorker stub, transform-origin Length fields.
+- Cycle 1959 (727d93d, 03bc3a2): DPR viewport scaling fix + text-align centering double-offset fix.
+- 18 commits pushed this session.
+- All user-reported TODOs resolved (Mac UI, Google rendering, text centering, flex column).
+- LESSON LEARNED: Background agents can revert each other's changes to shared files (box.h, main.mm). Always verify fields exist after agents finish. Apply main.mm shell changes LAST.
+- LESSON LEARNED: kMaxTreeDepth=256 causes SIGSEGV on deeply nested HTML. Reduced to 64 (each frame ~4KB = ~256KB stack). Added depth guards to layout_block() and paint_node() too.
+- LESSON LEARNED: macOS Developer Tools Access dialog blocks app when launched from terminal. Use `open -n -a` instead of running binary directly.
+- Top remaining: More feature rounds (Round 23+), incremental render pipeline refactor, GPU compositing
 
 **STATUS: 13 COMMITS THIS SESSION — 12,080 TESTS, 13/13 PASS** — Launch with `open vibrowser/build/src/shell/vibrowser.app`
 
