@@ -6024,6 +6024,36 @@ static JSValue js_element_append(JSContext* ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
+// --- element.replaceChildren(...nodes) ---
+static JSValue js_element_replace_children(JSContext* ctx, JSValueConst this_val,
+                                            int argc, JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    auto* state = get_dom_state(ctx);
+    if (!node || !state) return JS_UNDEFINED;
+
+    // Remove all existing children
+    for (auto& child : node->children) {
+        if (child) child->parent = nullptr;
+    }
+    node->children.clear();
+
+    // Add new nodes
+    for (int i = 0; i < argc; i++) {
+        auto* elem = unwrap_element(ctx, argv[i]);
+        if (elem) {
+            detach_and_insert(state, elem, node, node->children, node->children.size());
+        } else if (JS_IsString(argv[i])) {
+            const char* str = JS_ToCString(ctx, argv[i]);
+            if (str) {
+                insert_text_node(node, node->children, node->children.size(), str);
+                JS_FreeCString(ctx, str);
+            }
+        }
+    }
+    state->modified = true;
+    return JS_UNDEFINED;
+}
+
 // --- element.replaceWith(...nodes) ---
 static JSValue js_element_replace_with(JSContext* ctx, JSValueConst this_val,
                                         int argc, JSValueConst* argv) {
@@ -14047,6 +14077,8 @@ void install_dom_bindings(JSContext* ctx,
         JS_NewCFunction(ctx, js_element_append, "append", 1));
     JS_SetPropertyStr(ctx, element_proto, "replaceWith",
         JS_NewCFunction(ctx, js_element_replace_with, "replaceWith", 1));
+    JS_SetPropertyStr(ctx, element_proto, "replaceChildren",
+        JS_NewCFunction(ctx, js_element_replace_children, "replaceChildren", 0));
     JS_SetPropertyStr(ctx, element_proto, "toggleAttribute",
         JS_NewCFunction(ctx, js_element_toggle_attribute, "toggleAttribute", 1));
     JS_SetPropertyStr(ctx, element_proto, "insertAdjacentElement",
