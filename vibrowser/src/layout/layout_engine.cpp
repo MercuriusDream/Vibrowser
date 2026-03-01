@@ -359,11 +359,12 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
     }
 }
 
-// Returns the effective aspect ratio for a node, respecting the "auto" flag.
-// When aspect_ratio_is_auto is true, prefer the element's intrinsic ratio
-// (from image_width/image_height for replaced content like img/video/canvas).
-// Fall back to the specified aspect_ratio only if no intrinsic ratio exists.
-// When aspect_ratio_is_auto is false, always use the specified ratio directly.
+// Aspect-ratio resolution:
+// - "auto" prefers intrinsic ratio when available (image/contain intrinsic dimensions),
+//   then falls back to the specified ratio.
+// - Explicit ratio always uses the computed style ratio directly.
+// - Consumers derive missing width/height with width = height * ratio and
+//   height = width / ratio, then apply min/max constraints.
 static float effective_aspect_ratio(const LayoutNode& node) {
     if (node.aspect_ratio_is_auto) {
         // Replaced elements with known intrinsic dimensions
@@ -517,6 +518,24 @@ float LayoutEngine::compute_height(LayoutNode& node, float containing_height) {
         h = std::min(h, node.max_height);
         return h;
     }
+
+    float ratio = effective_aspect_ratio(node);
+    if (ratio > 0) {
+        float ratio_width = -1;
+        if (node.geometry.width > 0) {
+            ratio_width = node.geometry.width;
+        } else if (node.specified_width >= 0) {
+            ratio_width = node.specified_width;
+        }
+
+        if (ratio_width >= 0) {
+            float h = ratio_width / ratio;
+            h = std::max(h, node.min_height);
+            h = std::min(h, node.max_height);
+            return h;
+        }
+    }
+
     return -1; // signal: compute from children
 }
 

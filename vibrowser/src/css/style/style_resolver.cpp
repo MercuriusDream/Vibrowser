@@ -805,34 +805,36 @@ void PropertyCascade::apply_declaration(
         style.aspect_ratio = 0;
         style.aspect_ratio_is_auto = false;
 
+        auto parse_aspect_ratio_value = [](const std::string& ratio_text, float& out_ratio) {
+            std::string ratio = trim(ratio_text);
+            if (ratio.empty()) return;
+
+            auto slash = ratio.find('/');
+            try {
+                if (slash != std::string::npos) {
+                    float w = std::stof(trim(ratio.substr(0, slash)));
+                    float h = std::stof(trim(ratio.substr(slash + 1)));
+                    if (w > 0 && h > 0) {
+                        out_ratio = w / h;
+                    }
+                } else {
+                    float parsed = std::stof(ratio);
+                    if (parsed > 0) {
+                        out_ratio = parsed;
+                    }
+                }
+            } catch (...) {}
+        };
+
         if (value_lower == "auto") {
             style.aspect_ratio_is_auto = true;
         } else if (value_lower.substr(0, 5) == "auto ") {
             // "auto <ratio>" format
             style.aspect_ratio_is_auto = true;
-            std::string ratio_part = value_lower.substr(5);
-            auto slash = ratio_part.find('/');
-            if (slash != std::string::npos) {
-                try {
-                    float w = std::stof(ratio_part.substr(0, slash));
-                    float h = std::stof(ratio_part.substr(slash + 1));
-                    if (h > 0) style.aspect_ratio = w / h;
-                } catch (...) {}
-            } else {
-                try { style.aspect_ratio = std::stof(ratio_part); } catch (...) {}
-            }
+            parse_aspect_ratio_value(value_lower.substr(5), style.aspect_ratio);
         } else {
             // "<ratio>" format (decimal or fraction)
-            auto slash = value_lower.find('/');
-            if (slash != std::string::npos) {
-                try {
-                    float w = std::stof(value_str.substr(0, slash));
-                    float h = std::stof(value_str.substr(slash + 1));
-                    if (h > 0) style.aspect_ratio = w / h;
-                } catch (...) {}
-            } else {
-                try { style.aspect_ratio = std::stof(value_str); } catch (...) {}
-            }
+            parse_aspect_ratio_value(value_lower, style.aspect_ratio);
         }
         return;
     }
