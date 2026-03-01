@@ -97,7 +97,11 @@ struct PaintCommand {
     int tab_size = 4;
     std::string font_family;  // e.g. "monospace", "sans-serif"
     int text_decoration = 0;  // 0=none, 1=underline, 2=line-through
-    float border_radius = 0;            // corner radius
+    float border_radius = 0;            // corner radius (uniform fallback)
+    float border_radius_tl = 0;         // top-left corner radius
+    float border_radius_tr = 0;         // top-right corner radius
+    float border_radius_bl = 0;         // bottom-left corner radius
+    float border_radius_br = 0;         // bottom-right corner radius
     float border_widths[4] = {0,0,0,0}; // top, right, bottom, left
     int border_style = 1;               // 0=none, 1=solid, 2=dashed, 3=dotted
     std::shared_ptr<ImageData> image;    // for DrawImage
@@ -181,11 +185,21 @@ class DisplayList {
 public:
     void fill_rect(const Rect& rect, const Color& color);
     void fill_rounded_rect(const Rect& rect, const Color& color, float radius);
+    // Per-corner border-radius overload (tl=top-left, tr=top-right, bl=bottom-left, br=bottom-right)
+    void fill_rounded_rect(const Rect& rect, const Color& color,
+                           float r_tl, float r_tr, float r_bl, float r_br);
     void fill_box_shadow(const Rect& shadow_rect, const Rect& element_rect,
                          const Color& color, float blur_radius, float border_radius);
+    void fill_box_shadow(const Rect& shadow_rect, const Rect& element_rect,
+                         const Color& color, float blur_radius,
+                         float r_tl, float r_tr, float r_bl, float r_br);
     void fill_gradient(const Rect& rect, float angle,
                        const std::vector<std::pair<uint32_t, float>>& stops,
                        float border_radius = 0,
+                       int gradient_type = 1, int radial_shape = 0);
+    void fill_gradient(const Rect& rect, float angle,
+                       const std::vector<std::pair<uint32_t, float>>& stops,
+                       float r_tl, float r_tr, float r_bl, float r_br,
                        int gradient_type = 1, int radial_shape = 0);
     void draw_text(const std::string& text, float x, float y, float font_size, const Color& color,
                    const std::string& font_family = "", int font_weight = 400, bool font_italic = false,
@@ -193,6 +207,8 @@ public:
                    float text_shadow_blur = 0);
     void draw_border(const Rect& rect, const Color& color, float top, float right, float bottom, float left,
                      float border_radius = 0, int border_style = 1);
+    void draw_border(const Rect& rect, const Color& color, float top, float right, float bottom, float left,
+                     float r_tl, float r_tr, float r_bl, float r_br, int border_style = 1);
     void draw_image(const Rect& dest, std::shared_ptr<ImageData> image, int image_rendering = 0);
     void set_last_font_features(const std::string& features, const std::string& variations);
     void set_last_text_hints(int text_rendering, int font_kerning, int font_optical_sizing);

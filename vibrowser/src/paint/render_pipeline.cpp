@@ -1057,9 +1057,36 @@ std::string strip_matching_quotes(const std::string& s) {
     return trimmed;
 }
 
-int parse_counter_list_style_type(const std::string& /* style_str */) {
-    // stub: return 0 for "decimal" style (0=decimal, 1=lower-alpha, etc.)
-    return 0;
+// Map CSS list-style-type string to the integer type used in LayoutNode
+// 0=disc, 1=circle, 2=square, 3=decimal, 4=decimal-leading-zero,
+// 5=lower-roman, 6=upper-roman, 7=lower-alpha, 8=upper-alpha, 9=none,
+// 10=lower-greek, 11=lower-latin, 12=upper-latin
+int parse_counter_list_style_type(const std::string& style_str) {
+    std::string s = style_str;
+    // Strip surrounding quotes
+    if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') ||
+                           (s.front() == '\'' && s.back() == '\''))) {
+        s = s.substr(1, s.size() - 2);
+    }
+    // Lowercase and trim
+    for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
+
+    if (s == "disc")                  return 0;
+    if (s == "circle")                return 1;
+    if (s == "square")                return 2;
+    if (s == "decimal")               return 3;
+    if (s == "decimal-leading-zero")  return 4;
+    if (s == "lower-roman")           return 5;
+    if (s == "upper-roman")           return 6;
+    if (s == "lower-alpha")           return 7;
+    if (s == "upper-alpha")           return 8;
+    if (s == "none")                  return 9;
+    if (s == "lower-greek")           return 10;
+    if (s == "lower-latin")           return 11;
+    if (s == "upper-latin")           return 12;
+    return 3; // default to decimal
 }
 
 int get_css_counter_value(const std::string& counter_name) {
@@ -1067,10 +1094,78 @@ int get_css_counter_value(const std::string& counter_name) {
     return it != css_counters.end() ? it->second : 0;
 }
 
+// Convert a positive integer to roman numeral string (lower or upper case).
+// Handles full range: 1-3999+
+static std::string int_to_roman(int n, bool upper) {
+    if (n <= 0) return std::to_string(n);
+    const std::pair<int,const char*> tbl_lower[] = {
+        {1000,"m"},{900,"cm"},{500,"d"},{400,"cd"},{100,"c"},{90,"xc"},
+        {50,"l"},{40,"xl"},{10,"x"},{9,"ix"},{5,"v"},{4,"iv"},{1,"i"}
+    };
+    const std::pair<int,const char*> tbl_upper[] = {
+        {1000,"M"},{900,"CM"},{500,"D"},{400,"CD"},{100,"C"},{90,"XC"},
+        {50,"L"},{40,"XL"},{10,"X"},{9,"IX"},{5,"V"},{4,"IV"},{1,"I"}
+    };
+    std::string r;
+    if (upper) {
+        for (auto& [val, sym] : tbl_upper) { while (n >= val) { r += sym; n -= val; } }
+    } else {
+        for (auto& [val, sym] : tbl_lower) { while (n >= val) { r += sym; n -= val; } }
+    }
+    return r;
+}
+
+// Convert a positive integer to alphabetic string.
+// 1=a, 2=b, ..., 26=z, 27=aa, 28=ab, ... (spreadsheet-column style)
+static std::string int_to_alpha(int n, bool upper) {
+    if (n <= 0) return std::to_string(n);
+    std::string r;
+    while (n > 0) {
+        int rem = (n - 1) % 26;
+        char c = upper ? static_cast<char>('A' + rem) : static_cast<char>('a' + rem);
+        r = c + r;
+        n = (n - 1) / 26;
+    }
+    return r;
+}
+
+// Format a counter value according to its list-style-type integer code.
 std::string format_css_counter_value(int value, int style_type) {
-    // stub: just convert to decimal string
-    (void)style_type;  // unused parameter
-    return std::to_string(value);
+    switch (style_type) {
+        case 0: return "\xE2\x80\xA2"; // disc: U+2022 BULLET
+        case 1: return "\xE2\x97\xA6"; // circle: U+25E6 WHITE BULLET
+        case 2: return "\xE2\x96\xAA"; // square: U+25AA BLACK SMALL SQUARE
+        case 3: // decimal
+            return std::to_string(value);
+        case 4: // decimal-leading-zero
+            if (value >= 0 && value < 10) return "0" + std::to_string(value);
+            return std::to_string(value);
+        case 5: // lower-roman
+            return int_to_roman(value, false);
+        case 6: // upper-roman
+            return int_to_roman(value, true);
+        case 7:  // lower-alpha
+        case 11: // lower-latin (alias)
+            return int_to_alpha(value, false);
+        case 8:  // upper-alpha
+        case 12: // upper-latin (alias)
+            return int_to_alpha(value, true);
+        case 9: // none
+            return "";
+        case 10: { // lower-greek
+            static const char* greek[] = {
+                "\xCE\xB1","\xCE\xB2","\xCE\xB3","\xCE\xB4","\xCE\xB5",
+                "\xCE\xB6","\xCE\xB7","\xCE\xB8","\xCE\xB9","\xCE\xBA",
+                "\xCE\xBB","\xCE\xBC","\xCE\xBD","\xCE\xBE","\xCE\xBF",
+                "\xCF\x80","\xCF\x81","\xCF\x83","\xCF\x84","\xCF\x85",
+                "\xCF\x86","\xCF\x87","\xCF\x88","\xCF\x89"
+            };
+            if (value <= 0) return std::to_string(value);
+            return std::string(greek[(value - 1) % 24]);
+        }
+        default:
+            return std::to_string(value);
+    }
 }
 
 std::string resolve_content_value(
@@ -10481,22 +10576,30 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (list_style == "none") {
             // No marker
         } else if (list_style == "disc") {
-            marker = "\xE2\x80\xA2 "; // •
+            marker = "\xE2\x80\xA2 "; // • U+2022 BULLET
         } else if (list_style == "circle") {
-            marker = "\xE2\x97\x8B "; // ○
+            marker = "\xE2\x97\x8B "; // ○ U+25CB WHITE CIRCLE
         } else if (list_style == "square") {
-            marker = "\xE2\x96\xAA "; // ▪
+            marker = "\xE2\x96\xAA "; // ▪ U+25AA BLACK SMALL SQUARE
         } else {
-            // Ordered list types — use already-computed index
+            // Ordered (and named) list types — use already-computed index
             int index = layout_node->list_item_index;
             if (list_style == "decimal") {
                 marker = std::to_string(index) + ". ";
             } else if (list_style == "decimal-leading-zero") {
                 if (index < 10) marker = "0" + std::to_string(index) + ". ";
                 else marker = std::to_string(index) + ". ";
+            } else if (list_style == "lower-roman") {
+                marker = int_to_roman(index, false) + ". ";
+            } else if (list_style == "upper-roman") {
+                marker = int_to_roman(index, true) + ". ";
+            } else if (list_style == "lower-alpha" || list_style == "lower-latin") {
+                marker = int_to_alpha(index, false) + ". ";
+            } else if (list_style == "upper-alpha" || list_style == "upper-latin") {
+                marker = int_to_alpha(index, true) + ". ";
             } else if (list_style == "lower-greek") {
-                // Greek lowercase letters: alpha, beta, gamma, ...
-                const char* greek[] = {
+                // Greek lowercase letters: alpha=1, beta=2, ...
+                static const char* greek[] = {
                     "\xCE\xB1","\xCE\xB2","\xCE\xB3","\xCE\xB4","\xCE\xB5",
                     "\xCE\xB6","\xCE\xB7","\xCE\xB8","\xCE\xB9","\xCE\xBA",
                     "\xCE\xBB","\xCE\xBC","\xCE\xBD","\xCE\xBE","\xCE\xBF",
@@ -10505,35 +10608,6 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 };
                 int gi = (index - 1) % 24;
                 marker = std::string(greek[gi]) + ". ";
-            } else if (list_style == "lower-alpha" || list_style == "lower-latin") {
-                marker = std::string(1, 'a' + ((index - 1) % 26)) + ". ";
-            } else if (list_style == "upper-alpha" || list_style == "upper-latin") {
-                marker = std::string(1, 'A' + ((index - 1) % 26)) + ". ";
-            } else if (list_style == "lower-roman") {
-                // Simple roman numeral conversion for 1-20
-                auto to_roman = [](int n) -> std::string {
-                    const std::pair<int,const char*> table[] = {
-                        {10,"x"},{9,"ix"},{5,"v"},{4,"iv"},{1,"i"}
-                    };
-                    std::string r;
-                    for (auto& [val, sym] : table) {
-                        while (n >= val) { r += sym; n -= val; }
-                    }
-                    return r;
-                };
-                marker = to_roman(index) + ". ";
-            } else if (list_style == "upper-roman") {
-                auto to_roman = [](int n) -> std::string {
-                    const std::pair<int,const char*> table[] = {
-                        {10,"X"},{9,"IX"},{5,"V"},{4,"IV"},{1,"I"}
-                    };
-                    std::string r;
-                    for (auto& [val, sym] : table) {
-                        while (n >= val) { r += sym; n -= val; }
-                    }
-                    return r;
-                };
-                marker = to_roman(index) + ". ";
             } else if (is_ordered) {
                 marker = std::to_string(index) + ". "; // fallback decimal for <ol>
             } else {

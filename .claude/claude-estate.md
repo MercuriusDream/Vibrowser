@@ -7,14 +7,16 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
-**Current Focus**: Implementing real browser features from comprehensive audit roadmap
-**Momentum**: Cycle 936 — Round 11 complete (10 Codex subagents), Web APIs + CSS features. 13/13 tests passing.
-**Cycle**: 936
-**Workflow**: Multi-phase feature implementation. Use 10 Codex subagents (Haiku-orchestrated) in parallel. Commit and push after each implementation round.
+**Current Focus**: Rendering correctness + CSS gap closure + Canvas 2D completion
+**Momentum**: Cycle 1949 — 4 commits pushed (transition runtime, Canvas 2D, flex centering, JS DOM major upgrade). 13/13 tests passing.
+**Cycle**: 1949
+**Workflow**: Multi-phase feature implementation. Use 6 Sonnet subagents in parallel. Commit and push after each round.
+**User Issue**: Centering bug FIXED — flex cross-axis now uses min-height for alignment
 
 ## Implementation Roadmap
 
 ### Phase 1 — "Make real sites load" (Tier 1 Quick Wins)
+
 1. [x] HTTP Keep-Alive + ConnectionPool — Connection: keep-alive + ConnectionPool wiring (Round 5)
 2. [x] Parallel resource fetching — ThreadPool wired for parallel resource loading (Round 8)
 3. [x] Text decoration rendering — underline/overline/line-through with offset and position (Round 5)
@@ -23,12 +25,14 @@
 6. [x] Complete HTML entity table — expanded to 520+ entities (Rounds 5+8)
 
 ### Phase 2 — "Make real sites look right"
+
 7. [x] Stacking contexts + z-index — Z_INDEX_AUTO sentinel, stacking context detection, z-index paint ordering (Round 7)
-8. [x] Overflow + scrolling — scroll containers, clip, proportional scrollbar thumbs (Round 3)
-9. [x] CSS Grid layout algorithm — already implemented (verified Round 8)
-10. [x] BFC + margin collapsing — flow-root, negative margins, mixed cases (Round 3)
+2. [x] Overflow + scrolling — scroll containers, clip, proportional scrollbar thumbs (Round 3)
+3. [x] CSS Grid layout algorithm — already implemented (verified Round 8)
+4. [x] BFC + margin collapsing — flow-root, negative margins, mixed cases (Round 3)
 
 ### Bug Fixes (User-reported)
+
 - [x] Fix Google rendering left-aligned layout — ROOT CAUSE: mixed block/inline context lost text-align center (ea81bd6)
 - [x] Fix centering: webkit-center (text_align==4) handled same as center in position_inline_children (ea81bd6)
 - [x] Fix centering: <center> margin check relaxed from ==0 to !=-1 (ea81bd6)
@@ -37,20 +41,24 @@
 ### P0 — Centering Bugs (User Root-Cause Analysis)
 
 #### P0-1: Mixed block/inline container skips text-align offset in block flow
+
 - **Root cause**: Block-flow path selected when children are mixed (layout_engine.cpp:522-533). Inline-like children positioned left only. Centering/right offset NOT applied in block positioning (layout_engine.cpp:1201, see also 1199-1218).
 - **Effect**: `text-align:center` ignored when block + inline-like siblings coexist.
 - **Status**: [x] VERIFIED FIXED — position_block_children handles inline centering (Round 9)
 
 #### P0-2: Legacy `<center>` requires exact zero margins for auto-centering
+
 - **Root cause**: Auto-centering condition at render_pipeline.cpp:10641 only triggers when child margins are explicitly non-zero (defaults usually zero).
 - **Effect**: `<center>` fails to center children with explicitly non-zero margins.
 - **Status**: [ ] SECONDARY — conditional/edge
 
 #### P0-3: -webkit-center fallthrough (weak)
+
 - **Root cause**: Normalized to `center` during style resolution (render_pipeline.cpp:7092, 10651). Layout does not depend on distinct handling in layout_engine.cpp:2053.
 - **Status**: [ ] WEAK — unlikely primary issue
 
 #### P0-4: Negative margins collide with auto-margin sentinel
+
 - **Root cause**: Auto detected via `margin < 0` (layout_engine.cpp:470, 940, 2397). Auto encoded as -1 (render_pipeline.cpp:10041). Negative gutters misinterpreted as auto-centering.
 - **Effect**: Elements with negative margins get incorrectly auto-centered.
 - **Status**: [x] FIXED — MARGIN_AUTO sentinel + is_margin_auto() helper (Round 9)
@@ -58,10 +66,12 @@
 ### Rendering Issue Mitigations (Comprehensive Diagnosis)
 
 #### CRITICAL — Table Width (Landing Page Tables Narrow)
+
 - [x] **Table column width distribution** — proportional expansion of non-explicit columns (Round 5)
 - [x] **Table cell percentage width resolution** — css_width priority fix for table cells (Round 8)
 
 #### HIGH — Layout Correctness
+
 - [x] **Anonymous block boxes** — CSS 2.1 §9.2.1.1 wrapping of inline children in anonymous blocks (067fb5f)
 - [x] **Form element default sizing** — input/textarea/select/button sizing, display:table mapping (Round 5)
 - [x] **CSS display:table on non-table elements** — display_to_type() maps TableRow/TableCell, layout predicates check DisplayType (Round 7)
@@ -69,6 +79,7 @@
 - [x] **Table cell vertical alignment** — content_y_offset for middle/bottom alignment in table cells (Round 7)
 
 #### MEDIUM — CSS Application
+
 - [x] **User-Agent string** — Chrome/120.0.0.0 UA string set in request.cpp (Round 7)
 - [x] **CSS external stylesheet fetching** — 3 bug fixes for fetch + parse + cascade integration (Round 8)
 - [x] **CSS !important overrides** — inline style cascade + tier-based !important priority (Round 7)
@@ -76,54 +87,59 @@
 - [x] **CSS inherit/initial keywords** — inherit, initial, unset keyword handling with inherited property detection (Round 7)
 
 #### LOW — Paint/Rendering Polish
+
 - [x] **Whitespace collapsing between inline elements** — collapse_whitespace() for normal/nowrap/pre-line modes, skip for br (Round 7)
 - [x] **Line-height in table cells** — inheritance chain fix for table rows/cells (Round 8)
 - [x] **Border-collapse table painting** — CSS 2.1 §17.6.2 conflict resolution (Round 8)
 - [x] **Background-clip/origin in table cells** — paint_background() padding-box/content-box fix (Round 8)
 
 ### Phase 3 — "Make real sites interactive"
+
 11. [x] Event default actions — click→navigate for &lt;a&gt; tags, form submission with data collection (Round 7)
-12. [x] Typed HTML elements — img width/height, input value/type/checked, contentEditable (Round 5)
-13. [x] URL constructor + TextEncoder/TextDecoder in JS (Round 8)
-14. [x] ES Modules — QuickJS module loader with fetch/caching (Round 8)
+2. [x] Typed HTML elements — img width/height, input value/type/checked, contentEditable (Round 5)
+3. [x] URL constructor + TextEncoder/TextDecoder in JS (Round 8)
+4. [x] ES Modules — QuickJS module loader with fetch/caching (Round 8)
 
 ### Phase 4 — "Make it fast"
+
 15. [ ] Incremental/async rendering pipeline — break 12,345-line monolithic render_html()
-16. [ ] GPU compositing — Metal or Core Animation layers
-17. [x] HTTP/2 support — HPACK encoder/decoder, frame layer, stream multiplexing (Round 9)
-18. [x] CSS Animations & Transitions runtime — AnimationController, cubic-bezier, keyframes (Round 9)
+2. [ ] GPU compositing — Metal or Core Animation layers
+3. [x] HTTP/2 support — HPACK encoder/decoder, frame layer, stream multiplexing (Round 9)
+4. [x] CSS Animations & Transitions runtime — AnimationController, cubic-bezier, keyframes (Round 9)
 
 ### Phase 5 — "Modern Web Platform"
+
 19. [x] CSS calc() evaluation — line_height propagation through calc expressions (Round 9)
-20. [x] CSS @media queries runtime — evaluate_media_condition() wired to style resolver (Round 9)
-21. [x] CSS Custom Properties (variables) — var() resolution with fallbacks (already implemented)
-22. [x] Cookie jar + Set-Cookie — RFC 6265 compliant, document.cookie (already implemented)
-23. [x] localStorage + sessionStorage — Web Storage API with disk persistence (Round 9)
-24. [x] SVG rendering — gradient fill for circles/ellipses, comprehensive shape support (Round 9)
-25. [x] P0-1 centering fix — already implemented in position_block_children (verified Round 9)
-26. [x] P0-4 margin sentinel — MARGIN_AUTO constant, is_margin_auto() helper (Round 9)
-27. [x] Flexbox gap (row-gap, column-gap) — cross-axis gap in flex wrap layout (Round 10)
-28. [x] CSS object-fit/object-position — percentage parsing fix for object-position (Round 10)
-29. [x] CSS position:sticky — layout + paint integration for sticky positioning (Round 10)
-30. [x] MutationObserver API — JS bindings, observer registration, DOM mutation hooks (Round 10)
-31. [x] CSS contain + content-visibility — containment + content-visibility:hidden/auto (Round 10)
-32. [x] CSS Color Level 4 — relative color syntax support (Round 10)
-33. [x] IntersectionObserver — verified already implemented (Round 10)
-34. [x] Fetch API — verified already implemented (Round 10)
-35. [x] CSS aspect-ratio — verified already implemented (Round 10)
-36. [x] CSS filter/backdrop-filter — verified already implemented (Round 10)
-37. [x] Web Workers API — dedicated workers, thread-safe message queues (Round 11)
-38. [x] WebSocket API — RFC 6455 frames, background receive thread (Round 11)
-39. [x] History API — pushState/replaceState/popstate with state serialization (Round 11)
-40. [x] CSS multi-column layout — column-width + column-count algorithm (Round 11)
-41. [x] CSS scroll-snap — structured type/align parsing (Round 11)
-42. [x] CSS writing-mode/direction — property transfer wired to LayoutNode (Round 11)
-43. [x] CSS flexbox order — verified already implemented (Round 11)
-44. [x] Canvas 2D API — verified already implemented with comprehensive coverage (Round 11)
-45. [x] CSS clip-path — verified already implemented (Round 11)
-46. [x] ResizeObserver — enhanced with size change detection (Round 11)
+2. [x] CSS @media queries runtime — evaluate_media_condition() wired to style resolver (Round 9)
+3. [x] CSS Custom Properties (variables) — var() resolution with fallbacks (already implemented)
+4. [x] Cookie jar + Set-Cookie — RFC 6265 compliant, document.cookie (already implemented)
+5. [x] localStorage + sessionStorage — Web Storage API with disk persistence (Round 9)
+6. [x] SVG rendering — gradient fill for circles/ellipses, comprehensive shape support (Round 9)
+7. [x] P0-1 centering fix — already implemented in position_block_children (verified Round 9)
+8. [x] P0-4 margin sentinel — MARGIN_AUTO constant, is_margin_auto() helper (Round 9)
+9. [x] Flexbox gap (row-gap, column-gap) — cross-axis gap in flex wrap layout (Round 10)
+10. [x] CSS object-fit/object-position — percentage parsing fix for object-position (Round 10)
+11. [x] CSS position:sticky — layout + paint integration for sticky positioning (Round 10)
+12. [x] MutationObserver API — JS bindings, observer registration, DOM mutation hooks (Round 10)
+13. [x] CSS contain + content-visibility — containment + content-visibility:hidden/auto (Round 10)
+14. [x] CSS Color Level 4 — relative color syntax support (Round 10)
+15. [x] IntersectionObserver — verified already implemented (Round 10)
+16. [x] Fetch API — verified already implemented (Round 10)
+17. [x] CSS aspect-ratio — verified already implemented (Round 10)
+18. [x] CSS filter/backdrop-filter — verified already implemented (Round 10)
+19. [x] Web Workers API — dedicated workers, thread-safe message queues (Round 11)
+20. [x] WebSocket API — RFC 6455 frames, background receive thread (Round 11)
+21. [x] History API — pushState/replaceState/popstate with state serialization (Round 11)
+22. [x] CSS multi-column layout — column-width + column-count algorithm (Round 11)
+23. [x] CSS scroll-snap — structured type/align parsing (Round 11)
+24. [x] CSS writing-mode/direction — property transfer wired to LayoutNode (Round 11)
+25. [x] CSS flexbox order — verified already implemented (Round 11)
+26. [x] Canvas 2D API — verified already implemented with comprehensive coverage (Round 11)
+27. [x] CSS clip-path — verified already implemented (Round 11)
+28. [x] ResizeObserver — enhanced with size change detection (Round 11)
 
 ### Architecture Debt
+
 - Dual DOM (C++ dom::Node unused, SimpleNode is actual DOM) → unify
 - Monolithic render_pipeline.cpp (12,345 lines) → break into stages
 - LayoutNode bloat (~200+ fields, ~4-5KB per node) → split structs
@@ -131,6 +147,52 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycles 1947-1948 (Feature Round 14) — 2026-03-01
+
+- **Theme**: JS DOM APIs major upgrade + Canvas patterns + AbortController
+- **Agents**: 6 Sonnet subagents
+- **Features Implemented**:
+  - getComputedStyle() returns 50+ CSS properties from layout tree (display, position, color, font, flex, etc.)
+  - DOMRect/DOMRectReadOnly/DOMRectList constructors, improved getBoundingClientRect
+  - classList upgraded to full DOMTokenList (replace, entries, keys, Symbol.iterator, Proxy indexing)
+  - AbortController/AbortSignal full spec (timeout, any, onabort, addEventListener once)
+  - fetch() AbortSignal integration (pre-abort check)
+  - Canvas strokeText via CoreText stroke mode (kCGTextStroke)
+  - Canvas createPattern with real pixel tiling (repeat/repeat-x/repeat-y/no-repeat)
+  - queueMicrotask via JS_EnqueueJob + JS_ExecutePendingJob drain after evaluate()
+  - element.id setter, offsetParent real implementation, offsetLeft/Top relative positioning
+- **Manual work**:
+  - CSS hyphens:auto wired to layout overflow-wrap path
+  - RTL direction support for text-align default flip
+- **Commits**: b40ca73
+- **Validation**: 13/13 suites pass, 0 failures
+
+### Cycles 1943-1946 (Feature Rounds 12-13) — 2026-03-01
+
+- **Theme**: Canvas 2D completion + CSS visual correctness + centering bug fix
+- **Agents**: 12 Sonnet subagents across 2 rounds
+- **Round 12 (6 agents)**:
+  - Canvas transform/setTransform/resetTransform — affine matrix wiring
+  - Canvas setLineDash/getLineDash — dash-aware Bresenham line drawing
+  - Canvas gradient fill/stroke — linear/radial/conic CanvasGradient sampling
+  - Canvas fillText — CoreText bridge for real glyph rendering (canvas_text_bridge.mm)
+  - elementFromPoint — real hit-testing against layout tree
+  - break-spaces whitespace mode in painter
+- **Round 13 (6 agents)**:
+  - Canvas clip() — bitmap mask compositing
+  - CSS aspect-ratio auto flag wiring
+  - background-attachment:local scroll offset
+  - CSS mask sub-properties (mask-repeat, mask-origin, mask-clip)
+  - CSS position:sticky viewport-level sticking
+  - Performance.now() high-resolution timing
+- **Manual work**:
+  - CSS @keyframes animation wiring — walk layout tree, match animation_name, call AnimationController
+  - Flex centering bug ROOT CAUSE FIX — min-height now used for cross-axis alignment
+  - white-space-collapse CSS Text Level 4 support
+  - Unused variable cleanup (range_class_id, selection_class_id)
+- **Commits**: a419359, bd12d86, da58361
+- **Validation**: 13/13 suites pass, 0 failures
 
 ### Cycle 936 (Feature Implementation Round 11) — 2026-03-01
 
@@ -420,7 +482,7 @@
 - **Tests Added**: 72 (8 DOM + 8 CORS + 8 IPC + 8 URL + 8 Net + 4 CSS Parser + 4 CSS Style + 8 HTML + 8 Layout + 8 JS)
 - **Validation**: 13/13 suites pass, 20,135 total tests, 0 failures
 
-### Cycle 2256-2264 (Round 163) — 2026-02-28 — 20K MILESTONE!
+### Cycle 2256-2264 (Round 163) — 2026-02-28 — 20K MILESTONE
 
 - **Theme**: Testing Blitz Round 163 — 20,000 TEST MILESTONE!
 - **Phase 2 Implementation**: 6 Opus subagents wrote 72 new tests in parallel
@@ -8368,27 +8430,24 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Sessions | 182 |
-| Total Cycles | 1942 |
-| Files Created | ~135 |
-| Files Modified | 142+ |
-| Lines Added (est.) | 223700+ |
+| Total Sessions | 184 |
+| Total Cycles | 1949 |
+| Files Created | ~137 |
+| Files Modified | 160+ |
+| Lines Added (est.) | 228000+ |
 | Tests Added | 10844 |
-| Bugs Fixed | 286 |
-| Features Added | 2625 |
+| Bugs Fixed | 295 |
+| Features Added | 2665 |
 
 ## Tell The Next Claude
 
-**LATEST (Cycle 1942) — Build Target Rename (clever_* → vibrowser_*)**
+**LATEST (Cycle 1949) — JS DOM Major Upgrade + Canvas Patterns + RTL + Hyphens**
 
-- Renamed module and test target identifiers in CMake from `clever_*` to `vibrowser_*`.
-- Updated all inter-target links (including shell executable dependencies) to the new names.
-- Kept CTest test-case names stable (`url_tests`, `paint_tests`, etc.) to avoid workflow disruption.
-- Verified:
-  - `./build_launch_app.sh` builds and launches successfully,
-  - build logs now show `vibrowser_*` targets,
-  - `ctest -N` is intact,
-  - `ctest -R "url_tests|paint_tests"` passes.
+- Round 14 (b40ca73): getComputedStyle 50+ CSS properties, classList full DOMTokenList with Proxy, DOMRect/getBoundingClientRect, AbortController full spec, Canvas createPattern with real tiling, Canvas strokeText with CoreText stroke mode
+- Round 13 (da58361): Flex centering fix, sticky positioning, canvas clip bitmap mask, aspect-ratio auto, mask sub-properties
+- Manual: CSS hyphens:auto wired to overflow-wrap, RTL direction text-align flip
+- 4 commits pushed this session: a419359, bd12d86, da58361, b40ca73
+- Top remaining gaps: per-corner border-radius, canvas stroke lineWidth, scrollIntoView, focus model, CSS counter styles
 
 **STATUS: WORKING BROWSER WITH MAJOR RENDERING FIXES — 12,080 TESTS!!!** — Launch with `open vibrowser/build/src/shell/vibrowser.app`
 
@@ -9572,6 +9631,7 @@ Cycle 37: CSS @media runtime evaluation, SVG `<text>` rendering, `<input type="c
 ## Codex Estate Incremental Log
 
 ### Cycle 915 — 2026-02-28
+
 - Work focus: Broken/incomplete request URL fallback parsing safety.
 - Shipped code:
   - `vibrowser/src/net/request.cpp`: hardened fallback explicit-port parsing in `Request::parse_url()`.
@@ -9590,9 +9650,11 @@ Cycle 37: CSS @media runtime evaluation, SVG `<text>` rendering, `<input type="c
   - Full-suite test failures: 0
 
 ### Tell The Next Claude
+
 - The root-level `/Users/seong-useog/vibrowser/build` cache currently points at a different source tree and fails `cmake -S . -B build` from repo root unless cleaned.
 - For the browser engine work, run the required full command from `/Users/seong-useog/vibrowser/vibrowser`.
 - High-value next target: continue request/response hardening around malformed header token parsing and fail-closed behavior with focused net tests.
 
 ### Tell The Next Codex
+
 - `.codex/codex-estate.md` is write-blocked in this runtime (`operation not permitted`), so Cycle 915 is recorded in `.claude/claude-estate.md` as source of truth for sync-forward.

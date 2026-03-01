@@ -22,18 +22,26 @@ void SoftwareRenderer::render(const DisplayList& list) {
                     if (cmd.gradient_type == 3 || cmd.gradient_type == 6) {
                         draw_conic_gradient_rect(cmd.bounds, cmd.gradient_angle,
                                                   cmd.gradient_stops, cmd.border_radius,
-                                                  cmd.gradient_type == 6);
+                                                  cmd.gradient_type == 6,
+                                                  cmd.border_radius_tl, cmd.border_radius_tr,
+                                                  cmd.border_radius_bl, cmd.border_radius_br);
                     } else if (cmd.gradient_type == 2 || cmd.gradient_type == 5) {
                         draw_radial_gradient_rect(cmd.bounds, cmd.radial_shape,
                                                    cmd.gradient_stops, cmd.border_radius,
-                                                   cmd.gradient_type == 5);
+                                                   cmd.gradient_type == 5,
+                                                   cmd.border_radius_tl, cmd.border_radius_tr,
+                                                   cmd.border_radius_bl, cmd.border_radius_br);
                     } else {
                         draw_gradient_rect(cmd.bounds, cmd.gradient_angle,
                                            cmd.gradient_stops, cmd.border_radius,
-                                           cmd.gradient_type == 4);
+                                           cmd.gradient_type == 4,
+                                           cmd.border_radius_tl, cmd.border_radius_tr,
+                                           cmd.border_radius_bl, cmd.border_radius_br);
                     }
                 } else {
-                    draw_filled_rect(cmd.bounds, cmd.color, cmd.border_radius);
+                    draw_filled_rect(cmd.bounds, cmd.color, cmd.border_radius,
+                                     cmd.border_radius_tl, cmd.border_radius_tr,
+                                     cmd.border_radius_bl, cmd.border_radius_br);
                 }
                 break;
             case PaintCommand::DrawText: {
@@ -242,12 +250,85 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 float bb = cmd.border_widths[2];
                 float bl = cmd.border_widths[3];
 
+                // Resolve per-corner radii for borders (per-corner takes precedence over uniform)
+                auto resolve_border_radii = [&](float r_unif,
+                                                float& r_tl, float& r_tr, float& r_bl, float& r_br) {
+                    bool has_per = (cmd.border_radius_tl > 0 || cmd.border_radius_tr > 0 ||
+                                    cmd.border_radius_bl > 0 || cmd.border_radius_br > 0);
+                    if (has_per) {
+                        r_tl = cmd.border_radius_tl;
+                        r_tr = cmd.border_radius_tr;
+                        r_bl = cmd.border_radius_bl;
+                        r_br = cmd.border_radius_br;
+                    } else {
+                        r_tl = r_tr = r_bl = r_br = r_unif;
+                    }
+                    // Clamp each corner radius to half-dimensions
+                    float half_w = w / 2.0f, half_h = h / 2.0f;
+                    r_tl = std::min(r_tl, std::min(half_w, half_h));
+                    r_tr = std::min(r_tr, std::min(half_w, half_h));
+                    r_bl = std::min(r_bl, std::min(half_w, half_h));
+                    r_br = std::min(r_br, std::min(half_w, half_h));
+                };
+
                 if (cmd.border_style == 1) {
                     // Solid border (original behavior)
-                    if (cmd.border_radius > 0) {
-                        float ro = std::min(cmd.border_radius, std::min(w, h) / 2.0f);
-                        float bw_min = std::min({bt, br, bb, bl});
-                        float ri = std::max(0.0f, ro - bw_min);
+                    bool has_any_radius = (cmd.border_radius > 0 || cmd.border_radius_tl > 0 ||
+                                           cmd.border_radius_tr > 0 || cmd.border_radius_bl > 0 ||
+                                           cmd.border_radius_br > 0);
+                    if (has_any_radius) {
+                        // Per-corner SDF for rounded border
+                        float r_tl, r_tr, r_bl, r_br;
+                        resolve_border_radii(cmd.border_radius, r_tl, r_tr, r_bl, r_br);
+
+                        // Outer SDF: per-corner
+                        auto sdf_per_corner = [](float fx, float fy, float rx, float ry,
+                                                  float rw, float rh,
+                                                  float rtl, float rtr, float rbl, float rbr) -> float {
+                            // Determine which corner quadrant the point is in
+                            float mid_x = rx + rw / 2.0f;
+                            float mid_y = ry + rh / 2.0f;
+                            float r;
+                            float ccx, ccy;
+                            if (fx <= mid_x && fy <= mid_y) {
+                                // top-left
+                                r = rtl; ccx = rx + rtl; ccy = ry + rtl;
+                            } else if (fx > mid_x && fy <= mid_y) {
+                                // top-right
+                                r = rtr; ccx = rx + rw - rtr; ccy = ry + rtr;
+                            } else if (fx <= mid_x && fy > mid_y) {
+                                // bottom-left
+                                r = rbl; ccx = rx + rbl; ccy = ry + rh - rbl;
+                            } else {
+                                // bottom-right
+                                r = rbr; ccx = rx + rw - rbr; ccy = ry + rh - rbr;
+                            }
+                            if (r > 0) {
+                                bool in_corner = (fx < rx + r || fx > rx + rw - r) &&
+                                                 (fy < ry + r || fy > ry + rh - r);
+                                if (in_corner) {
+                                    return std::sqrt((fx - ccx) * (fx - ccx) + (fy - ccy) * (fy - ccy)) - r;
+                                }
+                            }
+                            float dl = rx - fx, dr = fx - (rx + rw);
+                            float dt = ry - fy, db = fy - (ry + rh);
+                            return std::max({dl, dr, dt, db});
+                        };
+
+                        float bw_avg = (bt + br + bb + bl) / 4.0f;
+                        float bw_min_val = (bt > 0 || br > 0 || bb > 0 || bl > 0)
+                            ? std::max(0.0f, std::min({bt > 0 ? bt : 1e9f,
+                                                       br > 0 ? br : 1e9f,
+                                                       bb > 0 ? bb : 1e9f,
+                                                       bl > 0 ? bl : 1e9f}))
+                            : 0.0f;
+                        (void)bw_avg;
+
+                        // Inner radii (shrink by min border width on each corner)
+                        float ri_tl = std::max(0.0f, r_tl - bw_min_val);
+                        float ri_tr = std::max(0.0f, r_tr - bw_min_val);
+                        float ri_bl = std::max(0.0f, r_bl - bw_min_val);
+                        float ri_br = std::max(0.0f, r_br - bw_min_val);
 
                         int x0 = std::max(0, static_cast<int>(std::floor(x)));
                         int y0 = std::max(0, static_cast<int>(std::floor(y)));
@@ -261,22 +342,11 @@ void SoftwareRenderer::render(const DisplayList& list) {
                             float fy = static_cast<float>(py) + 0.5f;
                             for (int px = x0; px < x1; px++) {
                                 float fx = static_cast<float>(px) + 0.5f;
-                                auto sdf = [](float fx, float fy, float rx, float ry,
-                                              float rw, float rh, float r) -> float {
-                                    float cl = rx + r, cr = rx + rw - r;
-                                    float ct = ry + r, cb = ry + rh - r;
-                                    if (fx < cl && fy < ct) return std::sqrt((fx-cl)*(fx-cl)+(fy-ct)*(fy-ct)) - r;
-                                    if (fx > cr && fy < ct) return std::sqrt((fx-cr)*(fx-cr)+(fy-ct)*(fy-ct)) - r;
-                                    if (fx < cl && fy > cb) return std::sqrt((fx-cl)*(fx-cl)+(fy-cb)*(fy-cb)) - r;
-                                    if (fx > cr && fy > cb) return std::sqrt((fx-cr)*(fx-cr)+(fy-cb)*(fy-cb)) - r;
-                                    float dl = rx - fx, dr = fx - (rx + rw);
-                                    float dt = ry - fy, db = fy - (ry + rh);
-                                    return std::max({dl, dr, dt, db});
-                                };
-                                float d_outer = sdf(fx, fy, x, y, w, h, ro);
+                                float d_outer = sdf_per_corner(fx, fy, x, y, w, h, r_tl, r_tr, r_bl, r_br);
                                 if (d_outer > 0.5f) continue;
                                 float d_inner = (iw > 0 && ih > 0)
-                                    ? sdf(fx, fy, ix, iy, iw, ih, ri) : 1.0f;
+                                    ? sdf_per_corner(fx, fy, ix, iy, iw, ih, ri_tl, ri_tr, ri_bl, ri_br)
+                                    : 1.0f;
                                 if (d_inner < -0.5f) continue;
                                 float ao = std::min(1.0f, 0.5f - d_outer);
                                 float ai = std::min(1.0f, d_inner + 0.5f);
@@ -400,7 +470,9 @@ void SoftwareRenderer::render(const DisplayList& list) {
             }
             case PaintCommand::FillBoxShadow:
                 draw_box_shadow(cmd.bounds, cmd.element_rect, cmd.color,
-                                cmd.blur_radius, cmd.border_radius);
+                                cmd.blur_radius, cmd.border_radius,
+                                cmd.border_radius_tl, cmd.border_radius_tr,
+                                cmd.border_radius_bl, cmd.border_radius_br);
                 break;
             case PaintCommand::PushClip:
                 if (clip_stack_.empty()) {
@@ -665,7 +737,59 @@ bool SoftwareRenderer::save_png(const std::string& filename) const {
     return stbi_write_png(filename.c_str(), width_, height_, 4, pixels_.data(), width_ * 4) != 0;
 }
 
-void SoftwareRenderer::draw_filled_rect(const Rect& rect, const Color& color, float border_radius) {
+void SoftwareRenderer::draw_filled_rect(const Rect& rect, const Color& color, float border_radius,
+                                         float r_tl, float r_tr, float r_bl, float r_br) {
+    // Resolve effective per-corner radii. Per-corner values take precedence over the uniform radius.
+    bool has_per_corner = (r_tl > 0 || r_tr > 0 || r_bl > 0 || r_br > 0);
+    float half_min = std::min(rect.width, rect.height) / 2.0f;
+    float eff_tl, eff_tr, eff_bl, eff_br;
+    if (has_per_corner) {
+        eff_tl = std::min(r_tl, half_min);
+        eff_tr = std::min(r_tr, half_min);
+        eff_bl = std::min(r_bl, half_min);
+        eff_br = std::min(r_br, half_min);
+    } else {
+        float r = std::min(border_radius, half_min);
+        eff_tl = eff_tr = eff_bl = eff_br = r;
+    }
+    bool has_radius = (eff_tl > 0 || eff_tr > 0 || eff_bl > 0 || eff_br > 0);
+
+    // Corner center coordinates
+    float cx_tl = rect.x + eff_tl,       cy_tl = rect.y + eff_tl;
+    float cx_tr = rect.x + rect.width - eff_tr,  cy_tr = rect.y + eff_tr;
+    float cx_bl = rect.x + eff_bl,       cy_bl = rect.y + rect.height - eff_bl;
+    float cx_br = rect.x + rect.width - eff_br,  cy_br = rect.y + rect.height - eff_br;
+
+    // Helper: per-corner rounded rect test, returns (inside, aa_alpha)
+    // Returns false if outside, true if inside (aa_alpha is 0..1 for anti-aliasing edge)
+    auto corner_test = [&](float px, float py) -> std::pair<bool, float> {
+        if (!has_radius) return {true, 1.0f};
+        float dx = 0, dy = 0;
+        float r = 0;
+        bool in_corner_zone = false;
+
+        if (px < cx_tl && py < cy_tl) {
+            dx = px - cx_tl; dy = py - cy_tl; r = eff_tl; in_corner_zone = true;
+        } else if (px > cx_tr && py < cy_tr) {
+            dx = px - cx_tr; dy = py - cy_tr; r = eff_tr; in_corner_zone = true;
+        } else if (px < cx_bl && py > cy_bl) {
+            dx = px - cx_bl; dy = py - cy_bl; r = eff_bl; in_corner_zone = true;
+        } else if (px > cx_br && py > cy_br) {
+            dx = px - cx_br; dy = py - cy_br; r = eff_br; in_corner_zone = true;
+        }
+
+        if (in_corner_zone) {
+            if (r <= 0) return {false, 0.0f}; // corner has zero radius — sharp corner, outside if in zone
+            float dist2 = dx * dx + dy * dy;
+            if (dist2 > r * r) return {false, 0.0f};
+            float dist = std::sqrt(dist2);
+            if (dist > r - 1.0f) {
+                return {true, std::max(0.0f, std::min(1.0f, r - dist))};
+            }
+        }
+        return {true, 1.0f};
+    };
+
     // When a non-identity transform is active, we need to:
     // 1. Compute the bounding box of the transformed rect in screen space
     // 2. For each screen pixel in that bounding box, inverse-transform to local coords
@@ -693,18 +817,6 @@ void SoftwareRenderer::draw_filled_rect(const Rect& rect, const Color& color, fl
         int x1 = std::min(width_, static_cast<int>(std::ceil(max_x)));
         int y1 = std::min(height_, static_cast<int>(std::ceil(max_y)));
 
-        float r = 0;
-        float r2 = 0;
-        float cx_left = 0, cx_right = 0, cy_top = 0, cy_bottom = 0;
-        if (border_radius > 0) {
-            r = std::min(border_radius, std::min(rect.width, rect.height) / 2.0f);
-            r2 = r * r;
-            cx_left = rect.x + r;
-            cx_right = rect.x + rect.width - r;
-            cy_top = rect.y + r;
-            cy_bottom = rect.y + rect.height - r;
-        }
-
         for (int y = y0; y < y1; y++) {
             for (int x = x0; x < x1; x++) {
                 float screen_x = static_cast<float>(x) + 0.5f;
@@ -719,40 +831,27 @@ void SoftwareRenderer::draw_filled_rect(const Rect& rect, const Color& color, fl
                     continue;
                 }
 
-                if (border_radius > 0) {
-                    bool in_corner = false;
-                    float dx = 0, dy = 0;
-                    if (lx < cx_left && ly < cy_top) { dx = lx - cx_left; dy = ly - cy_top; in_corner = true; }
-                    else if (lx > cx_right && ly < cy_top) { dx = lx - cx_right; dy = ly - cy_top; in_corner = true; }
-                    else if (lx < cx_left && ly > cy_bottom) { dx = lx - cx_left; dy = ly - cy_bottom; in_corner = true; }
-                    else if (lx > cx_right && ly > cy_bottom) { dx = lx - cx_right; dy = ly - cy_bottom; in_corner = true; }
-                    if (in_corner) {
-                        float dist2 = dx * dx + dy * dy;
-                        if (dist2 > r2) continue;
-                        float dist = std::sqrt(dist2);
-                        if (dist > r - 1.0f) {
-                            float alpha = r - dist;
-                            Color aa_color = {color.r, color.g, color.b,
-                                              static_cast<uint8_t>(color.a * std::max(0.0f, std::min(1.0f, alpha)))};
-                            set_pixel(x, y, aa_color);
-                            continue;
-                        }
-                    }
+                auto [inside, aa] = corner_test(lx, ly);
+                if (!inside) continue;
+                if (aa < 1.0f) {
+                    Color aa_color = {color.r, color.g, color.b,
+                                      static_cast<uint8_t>(color.a * aa)};
+                    set_pixel(x, y, aa_color);
+                    continue;
                 }
-
                 set_pixel(x, y, color);
             }
         }
         return;
     }
 
-    // Non-transformed path (original code)
+    // Non-transformed path
     int x0 = std::max(0, static_cast<int>(std::floor(rect.x)));
     int y0 = std::max(0, static_cast<int>(std::floor(rect.y)));
     int x1 = std::min(width_, static_cast<int>(std::ceil(rect.x + rect.width)));
     int y1 = std::min(height_, static_cast<int>(std::ceil(rect.y + rect.height)));
 
-    if (border_radius <= 0) {
+    if (!has_radius) {
         for (int y = y0; y < y1; y++) {
             for (int x = x0; x < x1; x++) {
                 set_pixel(x, y, color);
@@ -761,61 +860,18 @@ void SoftwareRenderer::draw_filled_rect(const Rect& rect, const Color& color, fl
         return;
     }
 
-    // Clamp radius to half the smallest dimension
-    float r = std::min(border_radius, std::min(rect.width, rect.height) / 2.0f);
-    float r2 = r * r;
-
-    // Corner centers (in absolute coords)
-    float cx_left = rect.x + r;
-    float cx_right = rect.x + rect.width - r;
-    float cy_top = rect.y + r;
-    float cy_bottom = rect.y + rect.height - r;
-
     for (int y = y0; y < y1; y++) {
         float py = static_cast<float>(y) + 0.5f;
         for (int x = x0; x < x1; x++) {
             float px = static_cast<float>(x) + 0.5f;
-
-            // Check if pixel is in a corner region
-            bool in_corner = false;
-            float dx = 0, dy = 0;
-
-            if (px < cx_left && py < cy_top) {
-                // Top-left corner
-                dx = px - cx_left;
-                dy = py - cy_top;
-                in_corner = true;
-            } else if (px > cx_right && py < cy_top) {
-                // Top-right corner
-                dx = px - cx_right;
-                dy = py - cy_top;
-                in_corner = true;
-            } else if (px < cx_left && py > cy_bottom) {
-                // Bottom-left corner
-                dx = px - cx_left;
-                dy = py - cy_bottom;
-                in_corner = true;
-            } else if (px > cx_right && py > cy_bottom) {
-                // Bottom-right corner
-                dx = px - cx_right;
-                dy = py - cy_bottom;
-                in_corner = true;
+            auto [inside, aa] = corner_test(px, py);
+            if (!inside) continue;
+            if (aa < 1.0f) {
+                Color aa_color = {color.r, color.g, color.b,
+                                  static_cast<uint8_t>(color.a * aa)};
+                set_pixel(x, y, aa_color);
+                continue;
             }
-
-            if (in_corner) {
-                float dist2 = dx * dx + dy * dy;
-                if (dist2 > r2) continue; // Outside the rounded corner
-                // Anti-aliasing at the edge
-                float dist = std::sqrt(dist2);
-                if (dist > r - 1.0f) {
-                    float alpha = r - dist;
-                    Color aa_color = {color.r, color.g, color.b,
-                                      static_cast<uint8_t>(color.a * std::max(0.0f, std::min(1.0f, alpha)))};
-                    set_pixel(x, y, aa_color);
-                    continue;
-                }
-            }
-
             set_pixel(x, y, color);
         }
     }
@@ -823,7 +879,8 @@ void SoftwareRenderer::draw_filled_rect(const Rect& rect, const Color& color, fl
 
 void SoftwareRenderer::draw_box_shadow(const Rect& shadow_rect, const Rect& element_rect,
                                         const Color& color, float blur_radius,
-                                        float border_radius) {
+                                        float border_radius,
+                                        float r_tl, float r_tr, float r_bl, float r_br) {
     // Gaussian blur for box-shadow using signed distance field approach.
     // For each pixel in the expanded shadow_rect, compute the distance from
     // the element_rect boundary, then apply Gaussian falloff.
@@ -848,9 +905,20 @@ void SoftwareRenderer::draw_box_shadow(const Rect& shadow_rect, const Rect& elem
     float el_right = element_rect.x + element_rect.width;
     float el_bottom = element_rect.y + element_rect.height;
 
-    // Clamp border radius
-    float r = std::min(border_radius,
-                       std::min(element_rect.width, element_rect.height) / 2.0f);
+    // Resolve per-corner radii: per-corner takes precedence over uniform
+    bool has_per = (r_tl > 0 || r_tr > 0 || r_bl > 0 || r_br > 0);
+    float half_min = std::min(element_rect.width, element_rect.height) / 2.0f;
+    float eff_tl, eff_tr, eff_bl, eff_br;
+    if (has_per) {
+        eff_tl = std::min(r_tl, half_min);
+        eff_tr = std::min(r_tr, half_min);
+        eff_bl = std::min(r_bl, half_min);
+        eff_br = std::min(r_br, half_min);
+    } else {
+        float r = std::min(border_radius, half_min);
+        eff_tl = eff_tr = eff_bl = eff_br = r;
+    }
+    bool has_radius = (eff_tl > 0 || eff_tr > 0 || eff_bl > 0 || eff_br > 0);
 
     for (int y = y0; y < y1; y++) {
         float py = static_cast<float>(y) + 0.5f;
@@ -860,32 +928,30 @@ void SoftwareRenderer::draw_box_shadow(const Rect& shadow_rect, const Rect& elem
             // Compute signed distance from the element rect.
             // Negative = inside the rect, positive = outside.
             float dist;
-            if (r > 0) {
-                // Rounded rect signed distance function
-                // Corner centers
-                float cx_left = el_left + r;
-                float cx_right = el_right - r;
-                float cy_top = el_top + r;
-                float cy_bottom = el_bottom - r;
-
-                // Find the closest point on the rounded rect
-                float dx = 0, dy = 0;
-                bool in_corner = false;
-
-                if (px < cx_left && py < cy_top) {
-                    dx = px - cx_left; dy = py - cy_top; in_corner = true;
-                } else if (px > cx_right && py < cy_top) {
-                    dx = px - cx_right; dy = py - cy_top; in_corner = true;
-                } else if (px < cx_left && py > cy_bottom) {
-                    dx = px - cx_left; dy = py - cy_bottom; in_corner = true;
-                } else if (px > cx_right && py > cy_bottom) {
-                    dx = px - cx_right; dy = py - cy_bottom; in_corner = true;
+            if (has_radius) {
+                // Per-corner rounded rect SDF
+                // Determine which corner quadrant to use
+                float mid_x = el_left + element_rect.width / 2.0f;
+                float mid_y = el_top + element_rect.height / 2.0f;
+                float r_corner;
+                float ccx, ccy;
+                if (px <= mid_x && py <= mid_y) {
+                    r_corner = eff_tl; ccx = el_left + eff_tl; ccy = el_top + eff_tl;
+                } else if (px > mid_x && py <= mid_y) {
+                    r_corner = eff_tr; ccx = el_right - eff_tr; ccy = el_top + eff_tr;
+                } else if (px <= mid_x && py > mid_y) {
+                    r_corner = eff_bl; ccx = el_left + eff_bl; ccy = el_bottom - eff_bl;
+                } else {
+                    r_corner = eff_br; ccx = el_right - eff_br; ccy = el_bottom - eff_br;
                 }
 
-                if (in_corner) {
-                    dist = std::sqrt(dx * dx + dy * dy) - r;
+                bool in_corner = (px < el_left + r_corner || px > el_right - r_corner) &&
+                                 (py < el_top + r_corner || py > el_bottom - r_corner);
+                if (in_corner && r_corner > 0) {
+                    float dx = px - ccx, dy = py - ccy;
+                    dist = std::sqrt(dx * dx + dy * dy) - r_corner;
                 } else {
-                    // Distance to nearest edge of the (non-rounded) rect
+                    // Distance to nearest edge of the non-rounded rect
                     float d_left = el_left - px;
                     float d_right = px - el_right;
                     float d_top = el_top - py;
@@ -946,7 +1012,8 @@ void SoftwareRenderer::draw_box_shadow(const Rect& shadow_rect, const Rect& elem
 
 void SoftwareRenderer::draw_gradient_rect(const Rect& rect, float angle,
                                           const std::vector<std::pair<uint32_t, float>>& stops,
-                                          float border_radius, bool repeating) {
+                                          float border_radius, bool repeating,
+                                          float r_tl, float r_tr, float r_bl, float r_br) {
     if (stops.size() < 2) return;
 
     int x0 = std::max(0, static_cast<int>(std::floor(rect.x)));
@@ -969,31 +1036,50 @@ void SoftwareRenderer::draw_gradient_rect(const Rect& rect, float angle,
     float gradient_length = std::abs(half_w * cos_a) + std::abs(half_h * sin_a);
     if (gradient_length < 0.001f) gradient_length = 1.0f;
 
-    // Rounded corner data
-    float r = std::min(border_radius, std::min(rect.width, rect.height) / 2.0f);
-    float r2 = r * r;
-    float cx_left = rect.x + r;
-    float cx_right = rect.x + rect.width - r;
-    float cy_top = rect.y + r;
-    float cy_bottom = rect.y + rect.height - r;
+    // Resolve per-corner radii
+    bool has_per = (r_tl > 0 || r_tr > 0 || r_bl > 0 || r_br > 0);
+    float half_min = std::min(rect.width, rect.height) / 2.0f;
+    float eff_tl, eff_tr, eff_bl, eff_br;
+    if (has_per) {
+        eff_tl = std::min(r_tl, half_min);
+        eff_tr = std::min(r_tr, half_min);
+        eff_bl = std::min(r_bl, half_min);
+        eff_br = std::min(r_br, half_min);
+    } else {
+        float r = std::min(border_radius, half_min);
+        eff_tl = eff_tr = eff_bl = eff_br = r;
+    }
+    bool has_radius = (eff_tl > 0 || eff_tr > 0 || eff_bl > 0 || eff_br > 0);
+
+    // Corner centers
+    float ccx_tl = rect.x + eff_tl,              ccy_tl = rect.y + eff_tl;
+    float ccx_tr = rect.x + rect.width - eff_tr,  ccy_tr = rect.y + eff_tr;
+    float ccx_bl = rect.x + eff_bl,              ccy_bl = rect.y + rect.height - eff_bl;
+    float ccx_br = rect.x + rect.width - eff_br,  ccy_br = rect.y + rect.height - eff_br;
 
     for (int y = y0; y < y1; y++) {
         float py = static_cast<float>(y) + 0.5f;
         for (int x = x0; x < x1; x++) {
             float px = static_cast<float>(x) + 0.5f;
 
-            // Rounded corner check
+            // Per-corner rounded clip check
             float aa_factor = 1.0f;
-            if (r > 0) {
-                bool in_corner = false;
-                float dx = 0, dy = 0;
-                if (px < cx_left && py < cy_top) { dx = px - cx_left; dy = py - cy_top; in_corner = true; }
-                else if (px > cx_right && py < cy_top) { dx = px - cx_right; dy = py - cy_top; in_corner = true; }
-                else if (px < cx_left && py > cy_bottom) { dx = px - cx_left; dy = py - cy_bottom; in_corner = true; }
-                else if (px > cx_right && py > cy_bottom) { dx = px - cx_right; dy = py - cy_bottom; in_corner = true; }
-                if (in_corner) {
+            if (has_radius) {
+                float dx = 0, dy = 0, r = 0;
+                bool in_corner_zone = false;
+                if (px < ccx_tl && py < ccy_tl) {
+                    dx = px - ccx_tl; dy = py - ccy_tl; r = eff_tl; in_corner_zone = true;
+                } else if (px > ccx_tr && py < ccy_tr) {
+                    dx = px - ccx_tr; dy = py - ccy_tr; r = eff_tr; in_corner_zone = true;
+                } else if (px < ccx_bl && py > ccy_bl) {
+                    dx = px - ccx_bl; dy = py - ccy_bl; r = eff_bl; in_corner_zone = true;
+                } else if (px > ccx_br && py > ccy_br) {
+                    dx = px - ccx_br; dy = py - ccy_br; r = eff_br; in_corner_zone = true;
+                }
+                if (in_corner_zone) {
+                    if (r <= 0) continue;
                     float dist2 = dx * dx + dy * dy;
-                    if (dist2 > r2) continue;
+                    if (dist2 > r * r) continue;
                     float dist = std::sqrt(dist2);
                     if (dist > r - 1.0f) aa_factor = std::max(0.0f, r - dist);
                 }
@@ -1050,7 +1136,8 @@ void SoftwareRenderer::draw_gradient_rect(const Rect& rect, float angle,
 
 void SoftwareRenderer::draw_radial_gradient_rect(const Rect& rect, int radial_shape,
                                                   const std::vector<std::pair<uint32_t, float>>& stops,
-                                                  float border_radius, bool repeating) {
+                                                  float border_radius, bool repeating,
+                                                  float r_tl, float r_tr, float r_bl, float r_br) {
     if (stops.size() < 2) return;
 
     int x0 = std::max(0, static_cast<int>(std::floor(rect.x)));
@@ -1069,31 +1156,50 @@ void SoftwareRenderer::draw_radial_gradient_rect(const Rect& rect, int radial_sh
     // For circle: use the smaller half-dimension as the radius
     float radius = std::min(half_w, half_h);
 
-    // Rounded corner data
-    float r = std::min(border_radius, std::min(rect.width, rect.height) / 2.0f);
-    float r2 = r * r;
-    float cx_left = rect.x + r;
-    float cx_right = rect.x + rect.width - r;
-    float cy_top = rect.y + r;
-    float cy_bottom = rect.y + rect.height - r;
+    // Resolve per-corner radii
+    bool has_per = (r_tl > 0 || r_tr > 0 || r_bl > 0 || r_br > 0);
+    float half_min = std::min(rect.width, rect.height) / 2.0f;
+    float eff_tl, eff_tr, eff_bl, eff_br;
+    if (has_per) {
+        eff_tl = std::min(r_tl, half_min);
+        eff_tr = std::min(r_tr, half_min);
+        eff_bl = std::min(r_bl, half_min);
+        eff_br = std::min(r_br, half_min);
+    } else {
+        float r = std::min(border_radius, half_min);
+        eff_tl = eff_tr = eff_bl = eff_br = r;
+    }
+    bool has_radius = (eff_tl > 0 || eff_tr > 0 || eff_bl > 0 || eff_br > 0);
+
+    // Corner centers
+    float ccx_tl = rect.x + eff_tl,              ccy_tl = rect.y + eff_tl;
+    float ccx_tr = rect.x + rect.width - eff_tr,  ccy_tr = rect.y + eff_tr;
+    float ccx_bl = rect.x + eff_bl,              ccy_bl = rect.y + rect.height - eff_bl;
+    float ccx_br = rect.x + rect.width - eff_br,  ccy_br = rect.y + rect.height - eff_br;
 
     for (int y = y0; y < y1; y++) {
         float py = static_cast<float>(y) + 0.5f;
         for (int x = x0; x < x1; x++) {
             float px = static_cast<float>(x) + 0.5f;
 
-            // Rounded corner check
+            // Per-corner rounded clip check
             float aa_factor = 1.0f;
-            if (r > 0) {
-                bool in_corner = false;
-                float dx = 0, dy = 0;
-                if (px < cx_left && py < cy_top) { dx = px - cx_left; dy = py - cy_top; in_corner = true; }
-                else if (px > cx_right && py < cy_top) { dx = px - cx_right; dy = py - cy_top; in_corner = true; }
-                else if (px < cx_left && py > cy_bottom) { dx = px - cx_left; dy = py - cy_bottom; in_corner = true; }
-                else if (px > cx_right && py > cy_bottom) { dx = px - cx_right; dy = py - cy_bottom; in_corner = true; }
-                if (in_corner) {
+            if (has_radius) {
+                float dx = 0, dy = 0, r = 0;
+                bool in_corner_zone = false;
+                if (px < ccx_tl && py < ccy_tl) {
+                    dx = px - ccx_tl; dy = py - ccy_tl; r = eff_tl; in_corner_zone = true;
+                } else if (px > ccx_tr && py < ccy_tr) {
+                    dx = px - ccx_tr; dy = py - ccy_tr; r = eff_tr; in_corner_zone = true;
+                } else if (px < ccx_bl && py > ccy_bl) {
+                    dx = px - ccx_bl; dy = py - ccy_bl; r = eff_bl; in_corner_zone = true;
+                } else if (px > ccx_br && py > ccy_br) {
+                    dx = px - ccx_br; dy = py - ccy_br; r = eff_br; in_corner_zone = true;
+                }
+                if (in_corner_zone) {
+                    if (r <= 0) continue;
                     float dist2 = dx * dx + dy * dy;
-                    if (dist2 > r2) continue;
+                    if (dist2 > r * r) continue;
                     float dist = std::sqrt(dist2);
                     if (dist > r - 1.0f) aa_factor = std::max(0.0f, r - dist);
                 }
@@ -1158,7 +1264,8 @@ void SoftwareRenderer::draw_radial_gradient_rect(const Rect& rect, int radial_sh
 
 void SoftwareRenderer::draw_conic_gradient_rect(const Rect& rect, float from_angle,
                                                   const std::vector<std::pair<uint32_t, float>>& stops,
-                                                  float border_radius, bool repeating) {
+                                                  float border_radius, bool repeating,
+                                                  float r_tl, float r_tr, float r_bl, float r_br) {
     if (stops.size() < 2) return;
 
     int x0 = std::max(0, static_cast<int>(std::floor(rect.x)));
@@ -1172,31 +1279,50 @@ void SoftwareRenderer::draw_conic_gradient_rect(const Rect& rect, float from_ang
     // from_angle is in degrees, convert to radians
     float from_rad = from_angle * static_cast<float>(M_PI) / 180.0f;
 
-    // Rounded corner data
-    float r = std::min(border_radius, std::min(rect.width, rect.height) / 2.0f);
-    float r2 = r * r;
-    float cx_left = rect.x + r;
-    float cx_right = rect.x + rect.width - r;
-    float cy_top = rect.y + r;
-    float cy_bottom = rect.y + rect.height - r;
+    // Resolve per-corner radii
+    bool has_per = (r_tl > 0 || r_tr > 0 || r_bl > 0 || r_br > 0);
+    float half_min = std::min(rect.width, rect.height) / 2.0f;
+    float eff_tl, eff_tr, eff_bl, eff_br;
+    if (has_per) {
+        eff_tl = std::min(r_tl, half_min);
+        eff_tr = std::min(r_tr, half_min);
+        eff_bl = std::min(r_bl, half_min);
+        eff_br = std::min(r_br, half_min);
+    } else {
+        float r = std::min(border_radius, half_min);
+        eff_tl = eff_tr = eff_bl = eff_br = r;
+    }
+    bool has_radius = (eff_tl > 0 || eff_tr > 0 || eff_bl > 0 || eff_br > 0);
+
+    // Corner centers
+    float ccx_tl = rect.x + eff_tl,              ccy_tl = rect.y + eff_tl;
+    float ccx_tr = rect.x + rect.width - eff_tr,  ccy_tr = rect.y + eff_tr;
+    float ccx_bl = rect.x + eff_bl,              ccy_bl = rect.y + rect.height - eff_bl;
+    float ccx_br = rect.x + rect.width - eff_br,  ccy_br = rect.y + rect.height - eff_br;
 
     for (int y = y0; y < y1; y++) {
         float py = static_cast<float>(y) + 0.5f;
         for (int x = x0; x < x1; x++) {
             float px = static_cast<float>(x) + 0.5f;
 
-            // Rounded corner check
+            // Per-corner rounded clip check
             float aa_factor = 1.0f;
-            if (r > 0) {
-                bool in_corner = false;
-                float dx = 0, dy = 0;
-                if (px < cx_left && py < cy_top) { dx = px - cx_left; dy = py - cy_top; in_corner = true; }
-                else if (px > cx_right && py < cy_top) { dx = px - cx_right; dy = py - cy_top; in_corner = true; }
-                else if (px < cx_left && py > cy_bottom) { dx = px - cx_left; dy = py - cy_bottom; in_corner = true; }
-                else if (px > cx_right && py > cy_bottom) { dx = px - cx_right; dy = py - cy_bottom; in_corner = true; }
-                if (in_corner) {
+            if (has_radius) {
+                float dx = 0, dy = 0, r = 0;
+                bool in_corner_zone = false;
+                if (px < ccx_tl && py < ccy_tl) {
+                    dx = px - ccx_tl; dy = py - ccy_tl; r = eff_tl; in_corner_zone = true;
+                } else if (px > ccx_tr && py < ccy_tr) {
+                    dx = px - ccx_tr; dy = py - ccy_tr; r = eff_tr; in_corner_zone = true;
+                } else if (px < ccx_bl && py > ccy_bl) {
+                    dx = px - ccx_bl; dy = py - ccy_bl; r = eff_bl; in_corner_zone = true;
+                } else if (px > ccx_br && py > ccy_br) {
+                    dx = px - ccx_br; dy = py - ccy_br; r = eff_br; in_corner_zone = true;
+                }
+                if (in_corner_zone) {
+                    if (r <= 0) continue;
                     float dist2 = dx * dx + dy * dy;
-                    if (dist2 > r2) continue;
+                    if (dist2 > r * r) continue;
                     float dist = std::sqrt(dist2);
                     if (dist > r - 1.0f) aa_factor = std::max(0.0f, r - dist);
                 }

@@ -318,17 +318,25 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
                 float w = geom.border_box_width() + spread * 2;
                 float h = geom.border_box_height() + spread * 2;
                 float blur = bs.blur;
+                // Resolve per-corner radii for shadow shape
+                bool shadow_has_per = (node.border_radius_tl > 0 || node.border_radius_tr > 0 ||
+                                       node.border_radius_bl > 0 || node.border_radius_br > 0);
+                float s_tl = shadow_has_per ? node.border_radius_tl : node.border_radius;
+                float s_tr = shadow_has_per ? node.border_radius_tr : node.border_radius;
+                float s_bl = shadow_has_per ? node.border_radius_bl : node.border_radius;
+                float s_br = shadow_has_per ? node.border_radius_br : node.border_radius;
                 if (blur > 0) {
                     float expand = blur * 3.0f;
                     Rect shadow_rect = {shadow_x - expand, shadow_y - expand,
                                         w + expand * 2, h + expand * 2};
                     Rect element_rect = {shadow_x, shadow_y, w, h};
                     list.fill_box_shadow(shadow_rect, element_rect,
-                                         {sr, sg, sb_c, sa}, blur, node.border_radius);
+                                         {sr, sg, sb_c, sa}, blur, s_tl, s_tr, s_bl, s_br);
                 } else {
                     Rect shadow_rect = {shadow_x, shadow_y, w, h};
-                    if (node.border_radius > 0) {
-                        list.fill_rounded_rect(shadow_rect, {sr, sg, sb_c, sa}, node.border_radius);
+                    bool any_radius = (s_tl > 0 || s_tr > 0 || s_bl > 0 || s_br > 0);
+                    if (any_radius) {
+                        list.fill_rounded_rect(shadow_rect, {sr, sg, sb_c, sa}, s_tl, s_tr, s_bl, s_br);
                     } else {
                         list.fill_rect(shadow_rect, {sr, sg, sb_c, sa});
                     }
@@ -347,17 +355,24 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
             float w = geom.border_box_width() + spread * 2;
             float h = geom.border_box_height() + spread * 2;
             float blur = node.shadow_blur;
+            bool leg_has_per = (node.border_radius_tl > 0 || node.border_radius_tr > 0 ||
+                                node.border_radius_bl > 0 || node.border_radius_br > 0);
+            float l_tl = leg_has_per ? node.border_radius_tl : node.border_radius;
+            float l_tr = leg_has_per ? node.border_radius_tr : node.border_radius;
+            float l_bl = leg_has_per ? node.border_radius_bl : node.border_radius;
+            float l_br = leg_has_per ? node.border_radius_br : node.border_radius;
             if (blur > 0) {
                 float expand = blur * 3.0f;
                 Rect shadow_rect = {shadow_x - expand, shadow_y - expand,
                                     w + expand * 2, h + expand * 2};
                 Rect element_rect = {shadow_x, shadow_y, w, h};
                 list.fill_box_shadow(shadow_rect, element_rect,
-                                     {sr, sg, sb_c, sa}, blur, node.border_radius);
+                                     {sr, sg, sb_c, sa}, blur, l_tl, l_tr, l_bl, l_br);
             } else {
                 Rect shadow_rect = {shadow_x, shadow_y, w, h};
-                if (node.border_radius > 0) {
-                    list.fill_rounded_rect(shadow_rect, {sr, sg, sb_c, sa}, node.border_radius);
+                bool any_radius = (l_tl > 0 || l_tr > 0 || l_bl > 0 || l_br > 0);
+                if (any_radius) {
+                    list.fill_rounded_rect(shadow_rect, {sr, sg, sb_c, sa}, l_tl, l_tr, l_bl, l_br);
                 } else {
                     list.fill_rect(shadow_rect, {sr, sg, sb_c, sa});
                 }
@@ -1505,19 +1520,46 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
                 static_cast<uint8_t>(bgc & 0xFF),
                 static_cast<uint8_t>((bgc >> 24) & 0xFF)
             };
-            if (node.border_radius > 0 || node.border_radius_tl > 0) {
-                float r = node.border_radius > 0 ? node.border_radius : node.border_radius_tl;
-                list.fill_rounded_rect(rect, bg_color, r);
-            } else {
-                list.fill_rect(rect, bg_color);
+            {
+                bool bg_has_per = (node.border_radius_tl > 0 || node.border_radius_tr > 0 ||
+                                   node.border_radius_bl > 0 || node.border_radius_br > 0);
+                if (bg_has_per) {
+                    list.fill_rounded_rect(rect, bg_color,
+                                           node.border_radius_tl, node.border_radius_tr,
+                                           node.border_radius_bl, node.border_radius_br);
+                } else if (node.border_radius > 0) {
+                    list.fill_rounded_rect(rect, bg_color, node.border_radius);
+                } else {
+                    list.fill_rect(rect, bg_color);
+                }
             }
             list.save_backdrop(rect);
-            list.fill_gradient(rect, node.gradient_angle, node.gradient_stops, node.border_radius,
-                               node.gradient_type, node.radial_shape);
+            {
+                bool grad_has_per = (node.border_radius_tl > 0 || node.border_radius_tr > 0 ||
+                                     node.border_radius_bl > 0 || node.border_radius_br > 0);
+                if (grad_has_per) {
+                    list.fill_gradient(rect, node.gradient_angle, node.gradient_stops,
+                                       node.border_radius_tl, node.border_radius_tr,
+                                       node.border_radius_bl, node.border_radius_br,
+                                       node.gradient_type, node.radial_shape);
+                } else {
+                    list.fill_gradient(rect, node.gradient_angle, node.gradient_stops,
+                                       node.border_radius, node.gradient_type, node.radial_shape);
+                }
+            }
             list.apply_blend_mode(rect, node.background_blend_mode);
         } else {
-            list.fill_gradient(rect, node.gradient_angle, node.gradient_stops, node.border_radius,
-                               node.gradient_type, node.radial_shape);
+            bool grad_has_per = (node.border_radius_tl > 0 || node.border_radius_tr > 0 ||
+                                 node.border_radius_bl > 0 || node.border_radius_br > 0);
+            if (grad_has_per) {
+                list.fill_gradient(rect, node.gradient_angle, node.gradient_stops,
+                                   node.border_radius_tl, node.border_radius_tr,
+                                   node.border_radius_bl, node.border_radius_br,
+                                   node.gradient_type, node.radial_shape);
+            } else {
+                list.fill_gradient(rect, node.gradient_angle, node.gradient_stops,
+                                   node.border_radius, node.gradient_type, node.radial_shape);
+            }
         }
         return;
     }
@@ -1646,14 +1688,14 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
     if (a == 0) return;
 
     // Use per-corner radius if any set, otherwise generic
-    float bg_radius = node.border_radius;
-    if (bg_radius == 0) {
-        bg_radius = std::max({node.border_radius_tl, node.border_radius_tr,
-                              node.border_radius_bl, node.border_radius_br});
-    }
-
-    if (bg_radius > 0) {
-        list.fill_rounded_rect(rect, {r, g, b, a}, bg_radius);
+    bool bg_has_per = (node.border_radius_tl > 0 || node.border_radius_tr > 0 ||
+                       node.border_radius_bl > 0 || node.border_radius_br > 0);
+    if (bg_has_per) {
+        list.fill_rounded_rect(rect, {r, g, b, a},
+                               node.border_radius_tl, node.border_radius_tr,
+                               node.border_radius_bl, node.border_radius_br);
+    } else if (node.border_radius > 0) {
+        list.fill_rounded_rect(rect, {r, g, b, a}, node.border_radius);
     } else {
         list.fill_rect(rect, {r, g, b, a});
     }
@@ -1806,49 +1848,84 @@ void Painter::paint_borders(const clever::layout::LayoutNode& node, DisplayList&
     }
 
     // Use per-corner border radius if any non-zero, else fall back to generic
-    float radius = node.border_radius;
     bool has_per_corner = (node.border_radius_tl > 0 || node.border_radius_tr > 0 ||
                            node.border_radius_bl > 0 || node.border_radius_br > 0);
-    if (has_per_corner && radius == 0) {
-        // Use average of per-corner radii for the single-radius draw_border API
-        radius = std::max({node.border_radius_tl, node.border_radius_tr,
-                           node.border_radius_bl, node.border_radius_br});
-    }
 
     if (same_color && same_style) {
         // All sides same color and style — single draw_border command
         Color color = extract_color(ct);
         int style = node.border_style_top;
         if (style == 0) return;
-        list.draw_border(border_box, color,
-                         geom.border.top, geom.border.right,
-                         geom.border.bottom, geom.border.left,
-                         radius, style);
+        if (has_per_corner) {
+            list.draw_border(border_box, color,
+                             geom.border.top, geom.border.right,
+                             geom.border.bottom, geom.border.left,
+                             node.border_radius_tl, node.border_radius_tr,
+                             node.border_radius_bl, node.border_radius_br,
+                             style);
+        } else {
+            list.draw_border(border_box, color,
+                             geom.border.top, geom.border.right,
+                             geom.border.bottom, geom.border.left,
+                             node.border_radius, style);
+        }
     } else {
         // Per-side rendering: draw each side as a separate border with only that side's width
         // Top border
         if (geom.border.top > 0 && node.border_style_top != 0) {
-            list.draw_border(border_box, extract_color(ct),
-                             geom.border.top, 0, 0, 0,
-                             radius, node.border_style_top);
+            if (has_per_corner) {
+                list.draw_border(border_box, extract_color(ct),
+                                 geom.border.top, 0, 0, 0,
+                                 node.border_radius_tl, node.border_radius_tr,
+                                 node.border_radius_bl, node.border_radius_br,
+                                 node.border_style_top);
+            } else {
+                list.draw_border(border_box, extract_color(ct),
+                                 geom.border.top, 0, 0, 0,
+                                 node.border_radius, node.border_style_top);
+            }
         }
         // Right border
         if (geom.border.right > 0 && node.border_style_right != 0) {
-            list.draw_border(border_box, extract_color(cr_c),
-                             0, geom.border.right, 0, 0,
-                             radius, node.border_style_right);
+            if (has_per_corner) {
+                list.draw_border(border_box, extract_color(cr_c),
+                                 0, geom.border.right, 0, 0,
+                                 node.border_radius_tl, node.border_radius_tr,
+                                 node.border_radius_bl, node.border_radius_br,
+                                 node.border_style_right);
+            } else {
+                list.draw_border(border_box, extract_color(cr_c),
+                                 0, geom.border.right, 0, 0,
+                                 node.border_radius, node.border_style_right);
+            }
         }
         // Bottom border
         if (geom.border.bottom > 0 && node.border_style_bottom != 0) {
-            list.draw_border(border_box, extract_color(cb_c),
-                             0, 0, geom.border.bottom, 0,
-                             radius, node.border_style_bottom);
+            if (has_per_corner) {
+                list.draw_border(border_box, extract_color(cb_c),
+                                 0, 0, geom.border.bottom, 0,
+                                 node.border_radius_tl, node.border_radius_tr,
+                                 node.border_radius_bl, node.border_radius_br,
+                                 node.border_style_bottom);
+            } else {
+                list.draw_border(border_box, extract_color(cb_c),
+                                 0, 0, geom.border.bottom, 0,
+                                 node.border_radius, node.border_style_bottom);
+            }
         }
         // Left border
         if (geom.border.left > 0 && node.border_style_left != 0) {
-            list.draw_border(border_box, extract_color(cl_c),
-                             0, 0, 0, geom.border.left,
-                             radius, node.border_style_left);
+            if (has_per_corner) {
+                list.draw_border(border_box, extract_color(cl_c),
+                                 0, 0, 0, geom.border.left,
+                                 node.border_radius_tl, node.border_radius_tr,
+                                 node.border_radius_bl, node.border_radius_br,
+                                 node.border_style_left);
+            } else {
+                list.draw_border(border_box, extract_color(cl_c),
+                                 0, 0, 0, geom.border.left,
+                                 node.border_radius, node.border_style_left);
+            }
         }
     }
 }
@@ -4461,6 +4538,19 @@ void Painter::paint_list_marker(const clever::layout::LayoutNode& node, DisplayL
             return r;
         };
 
+        // Helper: spreadsheet-style alpha encoding (1=a, 27=aa, 28=ab...)
+        auto to_alpha = [](int n, bool upper) -> std::string {
+            if (n <= 0) return std::to_string(n);
+            std::string r;
+            while (n > 0) {
+                int rem = (n - 1) % 26;
+                char c = upper ? static_cast<char>('A' + rem) : static_cast<char>('a' + rem);
+                r = c + r;
+                n = (n - 1) / 26;
+            }
+            return r;
+        };
+
         switch (node.list_style_type) {
             case 3: // decimal
                 marker_str = std::to_string(idx) + ".";
@@ -4475,14 +4565,16 @@ void Painter::paint_list_marker(const clever::layout::LayoutNode& node, DisplayL
             case 6: // upper-roman
                 marker_str = to_roman(idx, true) + ".";
                 break;
-            case 7: // lower-alpha
-                marker_str = std::string(1, 'a' + ((idx - 1) % 26)) + ".";
+            case 7:  // lower-alpha
+            case 11: // lower-latin (alias)
+                marker_str = to_alpha(idx, false) + ".";
                 break;
-            case 8: // upper-alpha
-                marker_str = std::string(1, 'A' + ((idx - 1) % 26)) + ".";
+            case 8:  // upper-alpha
+            case 12: // upper-latin (alias)
+                marker_str = to_alpha(idx, true) + ".";
                 break;
             case 10: { // lower-greek
-                const char* greek[] = {
+                static const char* greek[] = {
                     "\xCE\xB1","\xCE\xB2","\xCE\xB3","\xCE\xB4","\xCE\xB5",
                     "\xCE\xB6","\xCE\xB7","\xCE\xB8","\xCE\xB9","\xCE\xBA",
                     "\xCE\xBB","\xCE\xBC","\xCE\xBD","\xCE\xBE","\xCE\xBF",
@@ -4492,12 +4584,6 @@ void Painter::paint_list_marker(const clever::layout::LayoutNode& node, DisplayL
                 marker_str = std::string(greek[(idx - 1) % 24]) + ".";
                 break;
             }
-            case 11: // lower-latin (same as lower-alpha)
-                marker_str = std::string(1, 'a' + ((idx - 1) % 26)) + ".";
-                break;
-            case 12: // upper-latin (same as upper-alpha)
-                marker_str = std::string(1, 'A' + ((idx - 1) % 26)) + ".";
-                break;
             default:
                 marker_str = std::to_string(idx) + "."; // fallback decimal
                 break;

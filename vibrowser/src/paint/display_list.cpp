@@ -21,6 +21,19 @@ void DisplayList::fill_rounded_rect(const Rect& rect, const Color& color, float 
     commands_.push_back(cmd);
 }
 
+void DisplayList::fill_rounded_rect(const Rect& rect, const Color& color,
+                                     float r_tl, float r_tr, float r_bl, float r_br) {
+    PaintCommand cmd;
+    cmd.type = PaintCommand::FillRect;
+    cmd.bounds = rect;
+    cmd.color = color;
+    cmd.border_radius_tl = r_tl;
+    cmd.border_radius_tr = r_tr;
+    cmd.border_radius_bl = r_bl;
+    cmd.border_radius_br = r_br;
+    commands_.push_back(cmd);
+}
+
 void DisplayList::fill_box_shadow(const Rect& shadow_rect, const Rect& element_rect,
                                    const Color& color, float blur_radius, float border_radius) {
     PaintCommand cmd;
@@ -30,6 +43,22 @@ void DisplayList::fill_box_shadow(const Rect& shadow_rect, const Rect& element_r
     cmd.color = color;
     cmd.blur_radius = blur_radius;
     cmd.border_radius = border_radius;
+    commands_.push_back(cmd);
+}
+
+void DisplayList::fill_box_shadow(const Rect& shadow_rect, const Rect& element_rect,
+                                   const Color& color, float blur_radius,
+                                   float r_tl, float r_tr, float r_bl, float r_br) {
+    PaintCommand cmd;
+    cmd.type = PaintCommand::FillBoxShadow;
+    cmd.bounds = shadow_rect;
+    cmd.element_rect = element_rect;
+    cmd.color = color;
+    cmd.blur_radius = blur_radius;
+    cmd.border_radius_tl = r_tl;
+    cmd.border_radius_tr = r_tr;
+    cmd.border_radius_bl = r_bl;
+    cmd.border_radius_br = r_br;
     commands_.push_back(cmd);
 }
 
@@ -70,6 +99,26 @@ void DisplayList::draw_border(const Rect& rect, const Color& color,
     cmd.border_widths[2] = bottom;
     cmd.border_widths[3] = left;
     cmd.border_radius = border_radius;
+    cmd.border_style = border_style;
+    commands_.push_back(cmd);
+}
+
+void DisplayList::draw_border(const Rect& rect, const Color& color,
+                              float top, float right, float bottom, float left,
+                              float r_tl, float r_tr, float r_bl, float r_br,
+                              int border_style) {
+    PaintCommand cmd;
+    cmd.type = PaintCommand::DrawBorder;
+    cmd.bounds = rect;
+    cmd.color = color;
+    cmd.border_widths[0] = top;
+    cmd.border_widths[1] = right;
+    cmd.border_widths[2] = bottom;
+    cmd.border_widths[3] = left;
+    cmd.border_radius_tl = r_tl;
+    cmd.border_radius_tr = r_tr;
+    cmd.border_radius_bl = r_bl;
+    cmd.border_radius_br = r_br;
     cmd.border_style = border_style;
     commands_.push_back(cmd);
 }
@@ -117,6 +166,25 @@ void DisplayList::fill_gradient(const Rect& rect, float angle,
     cmd.bounds = rect;
     cmd.color = {0, 0, 0, 0}; // unused when gradient_stops is set
     cmd.border_radius = border_radius;
+    cmd.gradient_type = gradient_type;
+    cmd.gradient_angle = angle;
+    cmd.radial_shape = radial_shape;
+    cmd.gradient_stops = stops;
+    commands_.push_back(std::move(cmd));
+}
+
+void DisplayList::fill_gradient(const Rect& rect, float angle,
+                                const std::vector<std::pair<uint32_t, float>>& stops,
+                                float r_tl, float r_tr, float r_bl, float r_br,
+                                int gradient_type, int radial_shape) {
+    PaintCommand cmd;
+    cmd.type = PaintCommand::FillRect;
+    cmd.bounds = rect;
+    cmd.color = {0, 0, 0, 0}; // unused when gradient_stops is set
+    cmd.border_radius_tl = r_tl;
+    cmd.border_radius_tr = r_tr;
+    cmd.border_radius_bl = r_bl;
+    cmd.border_radius_br = r_br;
     cmd.gradient_type = gradient_type;
     cmd.gradient_angle = angle;
     cmd.radial_shape = radial_shape;

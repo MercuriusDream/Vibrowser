@@ -228,6 +228,9 @@ struct DOMState {
     std::vector<DOMState::PendingMutation> pending_mutations;
 
     int viewport_width = 800, viewport_height = 600;
+
+    // Focus tracking: pointer to the currently focused SimpleNode (may be nullptr)
+    clever::html::SimpleNode* focused_element = nullptr;
 };
 
 struct URLState {
@@ -541,6 +544,14 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
 
 // Forward-declare serialize_node (defined later near outerHTML getter)
 static std::string serialize_node(const clever::html::SimpleNode* node);
+
+// Forward-declare focus management helper (defined after event dispatch infrastructure)
+static void do_focus_element(JSContext* ctx, DOMState* state,
+                              clever::html::SimpleNode* new_focus,
+                              clever::html::SimpleNode* related = nullptr);
+static void do_blur_element(JSContext* ctx, DOMState* state,
+                             clever::html::SimpleNode* element,
+                             clever::html::SimpleNode* related = nullptr);
 
 // --- element.innerHTML (getter) ---
 static JSValue js_element_get_inner_html(JSContext* ctx, JSValueConst this_val,
@@ -4956,17 +4967,30 @@ static JSValue js_element_scroll(JSContext* /*ctx*/,
     return JS_UNDEFINED;
 }
 
-static JSValue js_element_focus(JSContext* /*ctx*/,
-                                 JSValueConst /*this_val*/,
+static JSValue js_element_focus(JSContext* ctx,
+                                 JSValueConst this_val,
                                  int /*argc*/,
                                  JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node) return JS_UNDEFINED;
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_UNDEFINED;
+    do_focus_element(ctx, state, node);
     return JS_UNDEFINED;
 }
 
-static JSValue js_element_blur(JSContext* /*ctx*/,
-                                JSValueConst /*this_val*/,
+static JSValue js_element_blur(JSContext* ctx,
+                                JSValueConst this_val,
                                 int /*argc*/,
                                 JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node) return JS_UNDEFINED;
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_UNDEFINED;
+    // Only blur if this element is actually focused
+    if (state->focused_element == node) {
+        do_blur_element(ctx, state, node);
+    }
     return JS_UNDEFINED;
 }
 
@@ -5727,7 +5751,7 @@ static JSValue js_document_get_scripts(JSContext* ctx,
 }
 
 // =========================================================================
-// document.activeElement — returns body
+// document.activeElement — returns the focused element, or body if none
 // =========================================================================
 
 static JSValue js_document_get_active_element(JSContext* ctx,
@@ -5736,6 +5760,11 @@ static JSValue js_document_get_active_element(JSContext* ctx,
                                                JSValueConst* /*argv*/) {
     auto* state = get_dom_state(ctx);
     if (!state || !state->root) return JS_NULL;
+    // Return the focused element if one is tracked
+    if (state->focused_element) {
+        return wrap_element(ctx, state->focused_element);
+    }
+    // Fall back to document.body per spec
     auto* body = state->root->find_element("body");
     if (body) return wrap_element(ctx, body);
     return JS_NULL;
@@ -7490,6 +7519,173 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
 }
 
 // =========================================================================
+// Focus event helper: create a FocusEvent object with relatedTarget
+// =========================================================================
+
+static JSValue create_focus_event_object(JSContext* ctx,
+                                          const std::string& event_type,
+                                          bool bubbles,
+                                          clever::html::SimpleNode* related_target) {
+    JSValue event_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "type",
+        JS_NewString(ctx, event_type.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "bubbles",
+        JS_NewBool(ctx, bubbles));
+    JS_SetPropertyStr(ctx, event_obj, "cancelable", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "eventPhase",
+        JS_NewInt32(ctx, 0)); // NONE
+    JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+
+    // FocusEvent-specific: relatedTarget
+    if (related_target) {
+        JS_SetPropertyStr(ctx, event_obj, "relatedTarget",
+            wrap_element(ctx, related_target));
+    } else {
+        JS_SetPropertyStr(ctx, event_obj, "relatedTarget", JS_NULL);
+    }
+
+    // Hidden propagation state
+    JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
+
+    // Install methods via eval
+    const char* method_code = R"JS(
+        (function() {
+            var evt = this;
+            evt.preventDefault = function() { evt.defaultPrevented = true; };
+            evt.stopPropagation = function() { evt.__stopped = true; };
+            evt.stopImmediatePropagation = function() {
+                evt.__stopped = true;
+                evt.__immediate_stopped = true;
+            };
+            evt.composedPath = function() {
+                var arr = evt.__composedPathArray;
+                if (!arr) return [];
+                var result = [];
+                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
+                return result;
+            };
+        })
+    )JS";
+    JSValue setup_fn = JS_Eval(ctx, method_code, std::strlen(method_code),
+                                "<focus-event-setup>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsFunction(ctx, setup_fn)) {
+        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
+        JS_FreeValue(ctx, setup_ret);
+    }
+    JS_FreeValue(ctx, setup_fn);
+
+    return event_obj;
+}
+
+// =========================================================================
+// do_focus_element / do_blur_element — focus management implementation
+//
+// Focus sequence (per spec):
+//   1. If same element is already focused, do nothing.
+//   2. Fire "focusout" (bubbles) on old element, with relatedTarget = new element
+//   3. Fire "blur" (does not bubble) on old element, with relatedTarget = new element
+//   4. Update focused_element and __focused attributes
+//   5. Fire "focusin" (bubbles) on new element, with relatedTarget = old element
+//   6. Fire "focus" (does not bubble) on new element, with relatedTarget = old element
+// =========================================================================
+
+static void do_focus_element(JSContext* ctx, DOMState* state,
+                              clever::html::SimpleNode* new_focus,
+                              clever::html::SimpleNode* related) {
+    if (!state || !new_focus) return;
+
+    // Skip if element is already focused
+    if (state->focused_element == new_focus) return;
+
+    clever::html::SimpleNode* old_focus = state->focused_element;
+
+    // --- Step 1: blur the old element ---
+    if (old_focus) {
+        // Remove __focused marker
+        if (has_attr(*old_focus, "__focused")) {
+            remove_attr(*old_focus, "__focused");
+        }
+
+        // Fire "focusout" (bubbles) on old element
+        {
+            JSValue evt = create_focus_event_object(ctx, "focusout", true, new_focus);
+            dispatch_event_propagated(ctx, state, old_focus, evt, "focusout", true);
+            execute_default_action(ctx, state, old_focus, "focusout");
+            JS_FreeValue(ctx, evt);
+        }
+
+        // Fire "blur" (does not bubble) on old element
+        {
+            JSValue evt = create_focus_event_object(ctx, "blur", false, new_focus);
+            dispatch_event_propagated(ctx, state, old_focus, evt, "blur", false);
+            execute_default_action(ctx, state, old_focus, "blur");
+            JS_FreeValue(ctx, evt);
+        }
+    }
+
+    // --- Step 2: update focused element ---
+    state->focused_element = new_focus;
+
+    // Set __focused marker on new element
+    set_attr(*new_focus, "__focused", "true");
+    state->modified = true;
+
+    // --- Step 3: focus the new element ---
+    clever::html::SimpleNode* rel = related ? related : old_focus;
+
+    // Fire "focusin" (bubbles) on new element
+    {
+        JSValue evt = create_focus_event_object(ctx, "focusin", true, rel);
+        dispatch_event_propagated(ctx, state, new_focus, evt, "focusin", true);
+        execute_default_action(ctx, state, new_focus, "focusin");
+        JS_FreeValue(ctx, evt);
+    }
+
+    // Fire "focus" (does not bubble) on new element
+    {
+        JSValue evt = create_focus_event_object(ctx, "focus", false, rel);
+        dispatch_event_propagated(ctx, state, new_focus, evt, "focus", false);
+        execute_default_action(ctx, state, new_focus, "focus");
+        JS_FreeValue(ctx, evt);
+    }
+}
+
+static void do_blur_element(JSContext* ctx, DOMState* state,
+                             clever::html::SimpleNode* element,
+                             clever::html::SimpleNode* related) {
+    if (!state || !element) return;
+    if (state->focused_element != element) return;
+
+    // Remove __focused marker
+    if (has_attr(*element, "__focused")) {
+        remove_attr(*element, "__focused");
+    }
+
+    // Clear the focused element pointer
+    state->focused_element = nullptr;
+    state->modified = true;
+
+    // Fire "focusout" (bubbles)
+    {
+        JSValue evt = create_focus_event_object(ctx, "focusout", true, related);
+        dispatch_event_propagated(ctx, state, element, evt, "focusout", true);
+        execute_default_action(ctx, state, element, "focusout");
+        JS_FreeValue(ctx, evt);
+    }
+
+    // Fire "blur" (does not bubble)
+    {
+        JSValue evt = create_focus_event_object(ctx, "blur", false, related);
+        dispatch_event_propagated(ctx, state, element, evt, "blur", false);
+        execute_default_action(ctx, state, element, "blur");
+        JS_FreeValue(ctx, evt);
+    }
+}
+
+// =========================================================================
 // element.dispatchEvent(event) -- invokes handlers registered via
 // addEventListener for the given event type on the element.
 // Now uses full three-phase propagation.
@@ -7990,7 +8186,166 @@ static void clear_rect_buffer(Canvas2DState* s, int x, int y, int w, int h) {
     }
 }
 
-// Draw a line using Bresenham's algorithm, respecting the dash pattern
+// ---------------------------------------------------------------------------
+// Stroke pixel helper — shared by thick-line and Bresenham paths.
+// Handles pattern, gradient, and solid color blending.
+// ---------------------------------------------------------------------------
+static inline void stroke_set_pixel(Canvas2DState* s,
+                                    int px, int py,
+                                    uint8_t r, uint8_t g, uint8_t b, uint8_t a,
+                                    float alpha) {
+    if (px < 0 || py < 0 || px >= s->width || py >= s->height) return;
+    if (s->has_clip && s->clip_mask[py * s->width + px] == 0x00) return;
+    int idx = (py * s->width + px) * 4;
+    if (s->stroke_pattern.active()) {
+        uint32_t col = s->stroke_pattern.sample(px, py);
+        uint8_t cr = (col >> 16) & 0xFF;
+        uint8_t cg = (col >> 8) & 0xFF;
+        uint8_t cb = col & 0xFF;
+        uint8_t ca = static_cast<uint8_t>(((col >> 24) & 0xFF) * alpha);
+        float palpha = ca / 255.0f;
+        if (palpha >= 1.0f) {
+            (*s->buffer)[idx]     = cr;
+            (*s->buffer)[idx + 1] = cg;
+            (*s->buffer)[idx + 2] = cb;
+            (*s->buffer)[idx + 3] = 255;
+        } else if (palpha > 0.0f) {
+            float inv = 1.0f - palpha;
+            (*s->buffer)[idx]     = static_cast<uint8_t>(cr * palpha + (*s->buffer)[idx]     * inv);
+            (*s->buffer)[idx + 1] = static_cast<uint8_t>(cg * palpha + (*s->buffer)[idx + 1] * inv);
+            (*s->buffer)[idx + 2] = static_cast<uint8_t>(cb * palpha + (*s->buffer)[idx + 2] * inv);
+            (*s->buffer)[idx + 3] = static_cast<uint8_t>(std::min(255.0f, ca * palpha + (*s->buffer)[idx + 3] * inv));
+        }
+    } else if (s->stroke_gradient.active()) {
+        uint32_t col = s->stroke_gradient.sample(static_cast<float>(px) + 0.5f,
+                                                  static_cast<float>(py) + 0.5f);
+        (*s->buffer)[idx]     = (col >> 16) & 0xFF;
+        (*s->buffer)[idx + 1] = (col >> 8) & 0xFF;
+        (*s->buffer)[idx + 2] = col & 0xFF;
+        (*s->buffer)[idx + 3] = static_cast<uint8_t>(((col >> 24) & 0xFF) * alpha);
+    } else {
+        (*s->buffer)[idx]     = r;
+        (*s->buffer)[idx + 1] = g;
+        (*s->buffer)[idx + 2] = b;
+        (*s->buffer)[idx + 3] = a;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Paint a filled circle — used for round caps and round joins.
+// ---------------------------------------------------------------------------
+static void paint_filled_circle(Canvas2DState* s,
+                                 float cx, float cy, float radius,
+                                 uint8_t r, uint8_t g, uint8_t b, uint8_t a,
+                                 float alpha) {
+    int ix0 = static_cast<int>(std::floor(cx - radius));
+    int iy0 = static_cast<int>(std::floor(cy - radius));
+    int ix1 = static_cast<int>(std::ceil(cx + radius)) + 1;
+    int iy1 = static_cast<int>(std::ceil(cy + radius)) + 1;
+    float r2 = radius * radius;
+    for (int py = iy0; py < iy1; py++) {
+        float fdy = static_cast<float>(py) + 0.5f - cy;
+        for (int px = ix0; px < ix1; px++) {
+            float fdx = static_cast<float>(px) + 0.5f - cx;
+            if (fdx * fdx + fdy * fdy <= r2)
+                stroke_set_pixel(s, px, py, r, g, b, a, alpha);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Thick line rasterizer (line_width > 1).
+//
+// Algorithm: the stroke of a segment is a rectangle (rotated by the line
+// direction) with optional cap decorations.
+//
+//   cap == 0 (butt)   -- rectangle exactly between endpoints, no extension
+//   cap == 1 (round)  -- rectangle + filled semicircles at both endpoints
+//   cap == 2 (square) -- rectangle extended by half-width at both endpoints
+//
+// Per-pixel test: project candidate pixel onto the segment axis and
+// perpendicular.  Inside the rectangle if:
+//   along-axis in [t_start, t_end]  AND  |perp| <= half_width
+// For round caps also accept pixels within radius half_width of either endpoint.
+// ---------------------------------------------------------------------------
+static void draw_thick_line(Canvas2DState* s,
+                             float x0, float y0, float x1, float y1,
+                             float lw, int cap,
+                             uint8_t r, uint8_t g, uint8_t b, uint8_t a,
+                             float alpha) {
+    float ddx = x1 - x0;
+    float ddy = y1 - y0;
+    float len = std::sqrt(ddx * ddx + ddy * ddy);
+    float half = lw * 0.5f;
+
+    // Degenerate zero-length segment -- draw a dot
+    if (len < 0.0001f) {
+        if (cap == 1) {
+            paint_filled_circle(s, x0, y0, half, r, g, b, a, alpha);
+        } else {
+            int ix = static_cast<int>(std::floor(x0 - half));
+            int iy = static_cast<int>(std::floor(y0 - half));
+            int iw = static_cast<int>(std::ceil(lw)) + 1;
+            for (int py = iy; py < iy + iw; py++)
+                for (int px = ix; px < ix + iw; px++)
+                    stroke_set_pixel(s, px, py, r, g, b, a, alpha);
+        }
+        return;
+    }
+
+    // Unit direction along line and perpendicular normal
+    float ux = ddx / len, uy = ddy / len;
+
+    // t range along the line axis (in pixel units from p0)
+    float t_lo = 0.0f, t_hi = len;
+    if (cap == 2) { // square: extend each end by half
+        t_lo = -half;
+        t_hi = len + half;
+    }
+
+    // Bounding box (expanded by half perpendicular + cap extension)
+    float ext = (cap == 1) ? half : ((cap == 2) ? half : 0.0f);
+    float bx0 = std::min(x0, x1) - half - ext;
+    float by0 = std::min(y0, y1) - half - ext;
+    float bx1 = std::max(x0, x1) + half + ext;
+    float by1 = std::max(y0, y1) + half + ext;
+
+    int ix0 = static_cast<int>(std::floor(bx0));
+    int iy0 = static_cast<int>(std::floor(by0));
+    int ix1 = static_cast<int>(std::ceil(bx1)) + 1;
+    int iy1 = static_cast<int>(std::ceil(by1)) + 1;
+
+    float half2 = half * half;
+
+    for (int py = iy0; py < iy1; py++) {
+        float fpy = static_cast<float>(py) + 0.5f;
+        float py0 = fpy - y0;
+        for (int px = ix0; px < ix1; px++) {
+            float fpx = static_cast<float>(px) + 0.5f;
+            float px0 = fpx - x0;
+
+            // Project onto segment axis and perpendicular
+            float t = px0 * ux + py0 * uy;   // along-line distance from p0
+            float d = px0 * (-uy) + py0 * ux; // perpendicular distance
+
+            bool inside = (t >= t_lo && t <= t_hi && std::abs(d) <= half);
+
+            // Round caps: accept pixels within radius of each endpoint
+            if (!inside && cap == 1) {
+                float dx0 = fpx - x0, dy0 = fpy - y0;
+                float dx1 = fpx - x1, dy1 = fpy - y1;
+                if (dx0 * dx0 + dy0 * dy0 <= half2) inside = true;
+                else if (dx1 * dx1 + dy1 * dy1 <= half2) inside = true;
+            }
+
+            if (inside)
+                stroke_set_pixel(s, px, py, r, g, b, a, alpha);
+        }
+    }
+}
+
+// Draw a line using Bresenham's algorithm (1-px), or the thick-line rasterizer
+// when line_width > 1.  Dashed lines always use Bresenham regardless of width.
 static void draw_line_buffer(Canvas2DState* s, int x0, int y0, int x1, int y1,
                              uint32_t color, float alpha) {
     if (!s->buffer) return;
@@ -7999,42 +8354,18 @@ static void draw_line_buffer(Canvas2DState* s, int x0, int y0, int x1, int y1,
     uint8_t b = color & 0xFF;
     uint8_t a = static_cast<uint8_t>(((color >> 24) & 0xFF) * alpha);
 
+    // Thick-line fast dispatch (solid strokes only)
+    if (s->line_width > 1.0f && s->line_dash.empty()) {
+        draw_thick_line(s,
+                        static_cast<float>(x0), static_cast<float>(y0),
+                        static_cast<float>(x1), static_cast<float>(y1),
+                        s->line_width, s->line_cap,
+                        r, g, b, a, alpha);
+        return;
+    }
+
     auto set_pixel = [&](int px, int py) {
-        if (px < 0 || py < 0 || px >= s->width || py >= s->height) return;
-        if (s->has_clip && s->clip_mask[py * s->width + px] == 0x00) return;
-        int idx = (py * s->width + px) * 4;
-        if (s->stroke_pattern.active()) {
-            uint32_t col = s->stroke_pattern.sample(px, py);
-            uint8_t cr = (col >> 16) & 0xFF;
-            uint8_t cg = (col >> 8) & 0xFF;
-            uint8_t cb = col & 0xFF;
-            uint8_t ca = static_cast<uint8_t>(((col >> 24) & 0xFF) * alpha);
-            float palpha = ca / 255.0f;
-            if (palpha >= 1.0f) {
-                (*s->buffer)[idx]     = cr;
-                (*s->buffer)[idx + 1] = cg;
-                (*s->buffer)[idx + 2] = cb;
-                (*s->buffer)[idx + 3] = 255;
-            } else if (palpha > 0.0f) {
-                float inv = 1.0f - palpha;
-                (*s->buffer)[idx]     = static_cast<uint8_t>(cr * palpha + (*s->buffer)[idx]     * inv);
-                (*s->buffer)[idx + 1] = static_cast<uint8_t>(cg * palpha + (*s->buffer)[idx + 1] * inv);
-                (*s->buffer)[idx + 2] = static_cast<uint8_t>(cb * palpha + (*s->buffer)[idx + 2] * inv);
-                (*s->buffer)[idx + 3] = static_cast<uint8_t>(std::min(255.0f, ca * palpha + (*s->buffer)[idx + 3] * inv));
-            }
-        } else if (s->stroke_gradient.active()) {
-            uint32_t col = s->stroke_gradient.sample(static_cast<float>(px) + 0.5f,
-                                                      static_cast<float>(py) + 0.5f);
-            (*s->buffer)[idx]     = (col >> 16) & 0xFF;
-            (*s->buffer)[idx + 1] = (col >> 8) & 0xFF;
-            (*s->buffer)[idx + 2] = col & 0xFF;
-            (*s->buffer)[idx + 3] = static_cast<uint8_t>(((col >> 24) & 0xFF) * alpha);
-        } else {
-            (*s->buffer)[idx]     = r;
-            (*s->buffer)[idx + 1] = g;
-            (*s->buffer)[idx + 2] = b;
-            (*s->buffer)[idx + 3] = a;
-        }
+        stroke_set_pixel(s, px, py, r, g, b, a, alpha);
     };
 
     int dx = std::abs(x1 - x0);
@@ -8914,17 +9245,58 @@ static JSValue js_canvas2d_stroke(JSContext* /*ctx*/, JSValueConst this_val,
     auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
     if (!s || !s->buffer || s->path_points.empty()) return JS_UNDEFINED;
 
+    uint8_t sr = (s->stroke_color >> 16) & 0xFF;
+    uint8_t sg = (s->stroke_color >> 8) & 0xFF;
+    uint8_t sb = s->stroke_color & 0xFF;
+    uint8_t sa = static_cast<uint8_t>(((s->stroke_color >> 24) & 0xFF) * s->global_alpha);
+    float alpha = s->global_alpha;
+    float lw = s->line_width;
+    bool thick = (lw > 1.0f && s->line_dash.empty());
+
+    // For join rendering we need to know three consecutive points.
+    // Collect sub-paths, then iterate over consecutive segment pairs.
+    // join_style: 0=miter, 1=round, 2=bevel
+    // We implement round and bevel joins by painting a filled circle at
+    // each interior join point (covers round and makes bevel approximate).
+    // Miter joins are naturally filled by the overlapping thick segments.
+
     float prev_x = 0, prev_y = 0;
+    float pprev_x = 0, pprev_y = 0;  // point before prev (for join detection)
     bool have_prev = false;
+    bool have_pprev = false;
+
     for (auto& pt : s->path_points) {
         if (pt.is_move) {
             prev_x = pt.x; prev_y = pt.y;
             have_prev = true;
+            have_pprev = false;
         } else if (have_prev) {
-            draw_line_buffer(s, static_cast<int>(prev_x), static_cast<int>(prev_y),
-                            static_cast<int>(pt.x), static_cast<int>(pt.y),
-                            s->stroke_color, s->global_alpha);
+            // Draw the segment
+            if (thick) {
+                draw_thick_line(s,
+                                prev_x, prev_y,
+                                pt.x, pt.y,
+                                lw, s->line_cap,
+                                sr, sg, sb, sa, alpha);
+                // Paint a join circle at the shared interior vertex between
+                // the previous segment and this one.  This correctly handles
+                // round and bevel joins; miter is approximated (no gap).
+                if (have_pprev && s->line_join != 0 /* not miter */) {
+                    paint_filled_circle(s, prev_x, prev_y, lw * 0.5f,
+                                        sr, sg, sb, sa, alpha);
+                } else if (have_pprev) {
+                    // Miter: painting a small circle fills the inner gap cleanly
+                    paint_filled_circle(s, prev_x, prev_y, lw * 0.5f,
+                                        sr, sg, sb, sa, alpha);
+                }
+            } else {
+                draw_line_buffer(s, static_cast<int>(prev_x), static_cast<int>(prev_y),
+                                static_cast<int>(pt.x), static_cast<int>(pt.y),
+                                s->stroke_color, s->global_alpha);
+            }
+            pprev_x = prev_x; pprev_y = prev_y;
             prev_x = pt.x; prev_y = pt.y;
+            have_pprev = true;
         }
     }
     return JS_UNDEFINED;
@@ -9453,9 +9825,191 @@ static JSValue js_canvas2d_ellipse(JSContext* ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
-// ---- isPointInPath (stub — always returns false) ----
-static JSValue js_canvas2d_is_point_in_path(JSContext* ctx, JSValueConst /*this_val*/,
-                                             int /*argc*/, JSValueConst* /*argv*/) {
+// ---- isPointInPath — ray-casting with even-odd or nonzero winding ----
+static JSValue js_canvas2d_is_point_in_path(JSContext* ctx, JSValueConst this_val,
+                                             int argc, JSValueConst* argv) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s || argc < 2) return JS_NewBool(ctx, 0);
+
+    double test_x, test_y;
+    JS_ToFloat64(ctx, &test_x, argv[0]);
+    JS_ToFloat64(ctx, &test_y, argv[1]);
+
+    // Optional fill rule: "nonzero" (default) or "evenodd"
+    bool use_evenodd = false;
+    if (argc >= 3) {
+        const char* fr = JS_ToCString(ctx, argv[2]);
+        if (fr) {
+            if (std::strcmp(fr, "evenodd") == 0) use_evenodd = true;
+            JS_FreeCString(ctx, fr);
+        }
+    }
+
+    // Apply inverse of the current transform to bring the test point into path space.
+    // Forward transform: px' = a*x + c*y + e,  py' = b*x + d*y + f
+    // Inverse (assuming non-singular):
+    //   det = a*d - b*c
+    //   inv_a =  d/det, inv_b = -b/det
+    //   inv_c = -c/det, inv_d =  a/det
+    //   inv_e = (c*f - d*e)/det, inv_f = (b*e - a*f)/det
+    double a = s->tx_a, b = s->tx_b, c = s->tx_c, d = s->tx_d, e = s->tx_e, f = s->tx_f;
+    double det = a * d - b * c;
+    if (std::fabs(det) > 1e-10) {
+        double inv_a =  d / det;
+        double inv_b = -b / det;
+        double inv_c = -c / det;
+        double inv_d =  a / det;
+        double inv_e = (c * f - d * e) / det;
+        double inv_f = (b * e - a * f) / det;
+        double nx = inv_a * test_x + inv_c * test_y + inv_e;
+        double ny = inv_b * test_x + inv_d * test_y + inv_f;
+        test_x = nx;
+        test_y = ny;
+    }
+
+    // Ray-casting: cast a horizontal ray to +X from (test_x, test_y).
+    // Iterate over segments formed by consecutive non-move path points.
+    // A new sub-path starts at each point where is_move == true.
+    // We implicitly close each sub-path back to its start for the containment test.
+    int winding = 0;   // nonzero winding number
+    int crossings = 0; // even-odd crossing count
+
+    const auto& pts = s->path_points;
+    const size_t n = pts.size();
+
+    // Helper: process one edge (x0,y0) -> (x1,y1)
+    auto process_edge = [&](double x0, double y0, double x1, double y1) {
+        // Skip horizontal edges
+        if (y0 == y1) return;
+
+        double min_y = std::min(y0, y1);
+        double max_y = std::max(y0, y1);
+
+        // Ray is at test_y; edge must straddle it (exclusive on the bottom vertex)
+        if (test_y < min_y || test_y >= max_y) return;
+
+        // Compute x coordinate of edge at test_y
+        double t = (test_y - y0) / (y1 - y0);
+        double intersect_x = x0 + t * (x1 - x0);
+
+        if (intersect_x > test_x) {
+            ++crossings;
+            if (y1 > y0)
+                ++winding;  // upward crossing
+            else
+                --winding;  // downward crossing
+        }
+    };
+
+    // Walk the path, tracking the start of each sub-path so we can close it.
+    double sub_start_x = 0, sub_start_y = 0;
+    double prev_x = 0, prev_y = 0;
+    bool have_prev = false;
+
+    for (size_t i = 0; i < n; ++i) {
+        const auto& pt = pts[i];
+        double px = pt.x, py = pt.y;
+
+        if (pt.is_move) {
+            // Close the previous sub-path before starting a new one
+            if (have_prev) {
+                process_edge(prev_x, prev_y, sub_start_x, sub_start_y);
+            }
+            sub_start_x = px;
+            sub_start_y = py;
+            prev_x = px;
+            prev_y = py;
+            have_prev = true;
+        } else {
+            if (have_prev) {
+                process_edge(prev_x, prev_y, px, py);
+            }
+            prev_x = px;
+            prev_y = py;
+            have_prev = true;
+        }
+    }
+    // Close the final sub-path
+    if (have_prev) {
+        process_edge(prev_x, prev_y, sub_start_x, sub_start_y);
+    }
+
+    bool inside = use_evenodd ? ((crossings % 2) != 0) : (winding != 0);
+    return JS_NewBool(ctx, inside ? 1 : 0);
+}
+
+// ---- isPointInStroke — distance-from-path test ----
+static JSValue js_canvas2d_is_point_in_stroke(JSContext* ctx, JSValueConst this_val,
+                                               int argc, JSValueConst* argv) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s || argc < 2) return JS_NewBool(ctx, 0);
+
+    double test_x, test_y;
+    JS_ToFloat64(ctx, &test_x, argv[0]);
+    JS_ToFloat64(ctx, &test_y, argv[1]);
+
+    // Apply inverse transform (same as isPointInPath)
+    double a = s->tx_a, b = s->tx_b, c = s->tx_c, d = s->tx_d, e = s->tx_e, f = s->tx_f;
+    double det = a * d - b * c;
+    if (std::fabs(det) > 1e-10) {
+        double inv_a =  d / det;
+        double inv_b = -b / det;
+        double inv_c = -c / det;
+        double inv_d =  a / det;
+        double inv_e = (c * f - d * e) / det;
+        double inv_f = (b * e - a * f) / det;
+        double nx = inv_a * test_x + inv_c * test_y + inv_e;
+        double ny = inv_b * test_x + inv_d * test_y + inv_f;
+        test_x = nx;
+        test_y = ny;
+    }
+
+    double half_width = s->line_width * 0.5;
+    double threshold_sq = half_width * half_width;
+
+    const auto& pts = s->path_points;
+    const size_t n = pts.size();
+
+    // Minimum squared distance from point (px,py) to segment (ax,ay)-(bx,by)
+    auto seg_dist_sq = [](double px, double py,
+                          double ax, double ay,
+                          double bx, double by) -> double {
+        double dx = bx - ax, dy = by - ay;
+        double len_sq = dx * dx + dy * dy;
+        if (len_sq < 1e-20) {
+            double ex = px - ax, ey = py - ay;
+            return ex * ex + ey * ey;
+        }
+        double t = ((px - ax) * dx + (py - ay) * dy) / len_sq;
+        t = std::max(0.0, std::min(1.0, t));
+        double cx = ax + t * dx - px;
+        double cy = ay + t * dy - py;
+        return cx * cx + cy * cy;
+    };
+
+    double prev_x = 0, prev_y = 0;
+    bool have_prev = false;
+
+    for (size_t i = 0; i < n; ++i) {
+        const auto& pt = pts[i];
+        double px = pt.x, py = pt.y;
+
+        if (pt.is_move) {
+            // Don't draw a segment on a move
+            prev_x = px;
+            prev_y = py;
+            have_prev = true;
+        } else {
+            if (have_prev) {
+                double d_sq = seg_dist_sq(test_x, test_y, prev_x, prev_y, px, py);
+                if (d_sq <= threshold_sq) return JS_NewBool(ctx, 1);
+            }
+            prev_x = px;
+            prev_y = py;
+            have_prev = true;
+        }
+    }
+
     return JS_NewBool(ctx, 0);
 }
 
@@ -10216,6 +10770,8 @@ static JSValue create_canvas2d_context(JSContext* ctx, Canvas2DState* state) {
         JS_NewCFunction(ctx, js_canvas2d_ellipse, "ellipse", 7));
     JS_SetPropertyStr(ctx, obj, "isPointInPath",
         JS_NewCFunction(ctx, js_canvas2d_is_point_in_path, "isPointInPath", 2));
+    JS_SetPropertyStr(ctx, obj, "isPointInStroke",
+        JS_NewCFunction(ctx, js_canvas2d_is_point_in_stroke, "isPointInStroke", 2));
     JS_SetPropertyStr(ctx, obj, "setLineDash",
         JS_NewCFunction(ctx, js_canvas2d_set_line_dash, "setLineDash", 1));
     JS_SetPropertyStr(ctx, obj, "getLineDash",
@@ -13287,13 +13843,24 @@ void install_dom_bindings(JSContext* ctx,
         configurable: true
     });
 
-    // ---- tabIndex (int attribute mapping, default -1) ----
+    // ---- tabIndex (int attribute mapping) ----
+    // Interactive elements default to 0 (natively focusable), others to -1
     Object.defineProperty(proto, 'tabIndex', {
         get: function() {
             var raw = this.getAttribute('tabindex');
-            if (raw === null || raw === '') return -1;
-            var parsed = parseInt(raw, 10);
-            return isNaN(parsed) ? -1 : parsed;
+            if (raw !== null && raw !== '') {
+                var parsed = parseInt(raw, 10);
+                return isNaN(parsed) ? -1 : parsed;
+            }
+            // Natively focusable elements default to 0 when no tabindex attr set
+            var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+            var nativeFocusable = ['input', 'button', 'select', 'textarea', 'summary'];
+            if (nativeFocusable.indexOf(tag) >= 0) return 0;
+            // <a> and <area> with href default to 0
+            if ((tag === 'a' || tag === 'area') && this.hasAttribute('href')) return 0;
+            // contenteditable elements are focusable
+            if (this.hasAttribute('contenteditable')) return 0;
+            return -1;
         },
         set: function(v) {
             var parsed = parseInt(v, 10);
@@ -16134,6 +16701,34 @@ globalThis.WebGL2RenderingContext = WebGLRenderingContext;
     // Scan for inline event attributes (onclick, onload, etc.)
     // ------------------------------------------------------------------
     scan_inline_event_attributes(ctx, document_root);
+
+    // ------------------------------------------------------------------
+    // Handle autofocus attribute: focus the first element with autofocus
+    // ------------------------------------------------------------------
+    {
+        auto* state = get_dom_state(ctx);
+        if (state && document_root) {
+            // BFS/DFS to find first element with autofocus attribute
+            std::function<clever::html::SimpleNode*(clever::html::SimpleNode*)> find_autofocus =
+                [&](clever::html::SimpleNode* node) -> clever::html::SimpleNode* {
+                if (!node) return nullptr;
+                if (node->type == clever::html::SimpleNode::Element &&
+                    has_attr(*node, "autofocus")) {
+                    return node;
+                }
+                for (auto& child : node->children) {
+                    auto* result = find_autofocus(child.get());
+                    if (result) return result;
+                }
+                return nullptr;
+            };
+
+            auto* autofocus_el = find_autofocus(document_root);
+            if (autofocus_el) {
+                do_focus_element(ctx, state, autofocus_el, nullptr);
+            }
+        }
+    }
 }
 
 std::string get_document_title(JSContext* ctx) {

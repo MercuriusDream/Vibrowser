@@ -98,18 +98,23 @@ private:
     // Set pixel with transform applied (maps through current_transform_)
     void set_pixel_transformed(float fx, float fy, const Color& color);
 
-    void draw_filled_rect(const Rect& rect, const Color& color, float border_radius = 0);
+    void draw_filled_rect(const Rect& rect, const Color& color, float border_radius = 0,
+                          float r_tl = 0, float r_tr = 0, float r_bl = 0, float r_br = 0);
     void draw_box_shadow(const Rect& shadow_rect, const Rect& element_rect,
-                         const Color& color, float blur_radius, float border_radius);
+                         const Color& color, float blur_radius, float border_radius,
+                         float r_tl = 0, float r_tr = 0, float r_bl = 0, float r_br = 0);
     void draw_gradient_rect(const Rect& rect, float angle,
                             const std::vector<std::pair<uint32_t, float>>& stops,
-                            float border_radius = 0, bool repeating = false);
+                            float border_radius = 0, bool repeating = false,
+                            float r_tl = 0, float r_tr = 0, float r_bl = 0, float r_br = 0);
     void draw_radial_gradient_rect(const Rect& rect, int radial_shape,
                                     const std::vector<std::pair<uint32_t, float>>& stops,
-                                    float border_radius = 0, bool repeating = false);
+                                    float border_radius = 0, bool repeating = false,
+                                    float r_tl = 0, float r_tr = 0, float r_bl = 0, float r_br = 0);
     void draw_conic_gradient_rect(const Rect& rect, float from_angle,
                                    const std::vector<std::pair<uint32_t, float>>& stops,
-                                   float border_radius = 0, bool repeating = false);
+                                   float border_radius = 0, bool repeating = false,
+                                   float r_tl = 0, float r_tr = 0, float r_bl = 0, float r_br = 0);
     void draw_image(const Rect& dest, const ImageData& image, int image_rendering = 0);
     void draw_text_simple(const std::string& text, float x, float y, float font_size, const Color& color,
                           const std::string& font_family = "", int font_weight = 400, bool font_italic = false,

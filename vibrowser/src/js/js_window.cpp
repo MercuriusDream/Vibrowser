@@ -1218,17 +1218,6 @@ static HistoryState* get_history_state(JSContext* ctx) {
     return hs;
 }
 
-static std::string history_extract_path_component(const std::string& url) {
-    if (url.empty()) return "/";
-    if (url.find("://") == std::string::npos) return url;
-
-    ParsedURL parsed = parse_url(url);
-    std::string path = parsed.pathname.empty() ? "/" : parsed.pathname;
-    path += parsed.search;
-    path += parsed.hash;
-    return path;
-}
-
 static bool history_serialize_state(JSContext* ctx, JSValueConst state_val,
                                     std::string& out_serialized_state) {
     out_serialized_state.clear();
@@ -1300,33 +1289,148 @@ static JSValue history_deserialize_state(JSContext* ctx,
     return result;
 }
 
+// Helper: check if a string starts with a given character
+static inline bool str_starts_with_char(const std::string& s, char c) {
+    return !s.empty() && s[0] == c;
+}
+
+// Resolve a URL (relative path, absolute path, or full URL) against the
+// current location's full href and return the resolved full URL.
+static std::string history_resolve_url(JSContext* ctx, const std::string& url) {
+    if (url.empty()) return url;
+
+    // If it's already an absolute URL (has scheme), return as-is
+    if (url.find("://") != std::string::npos) return url;
+
+    // Get the current location href to resolve relative URLs against
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue location = JS_GetPropertyStr(ctx, global, "location");
+    std::string base_href;
+    if (JS_IsObject(location)) {
+        JSValue href_val = JS_GetPropertyStr(ctx, location, "href");
+        if (JS_IsString(href_val)) {
+            const char* href_cstr = JS_ToCString(ctx, href_val);
+            if (href_cstr) {
+                base_href = href_cstr;
+                JS_FreeCString(ctx, href_cstr);
+            }
+        }
+        JS_FreeValue(ctx, href_val);
+    }
+    JS_FreeValue(ctx, location);
+    JS_FreeValue(ctx, global);
+
+    if (base_href.empty()) return url;
+
+    ParsedURL base = parse_url(base_href);
+
+    if (str_starts_with_char(url, '/')) {
+        // Absolute path: resolve against origin
+        return base.origin + url;
+    } else if (str_starts_with_char(url, '#')) {
+        // Hash-only: append to base path+search (strip existing hash)
+        std::string without_hash = base_href;
+        auto hash_pos = without_hash.find('#');
+        if (hash_pos != std::string::npos) without_hash = without_hash.substr(0, hash_pos);
+        return without_hash + url;
+    } else if (str_starts_with_char(url, '?')) {
+        // Query-only: append to base path
+        return base.origin + base.pathname + url;
+    } else {
+        // Relative path: resolve against base directory
+        std::string base_dir = base.origin + base.pathname;
+        auto last_slash = base_dir.rfind('/');
+        if (last_slash != std::string::npos) {
+            return base_dir.substr(0, last_slash + 1) + url;
+        }
+        return base_dir + "/" + url;
+    }
+}
+
+// Update window.location with the new URL. This triggers the location object's
+// JS setter (if present), which updates all sub-properties (pathname, search,
+// hash, etc.) atomically. Falls back to updating href directly if needed.
 static void history_update_displayed_url(JSContext* ctx, const std::string& url) {
     if (url.empty()) return;
 
     JSValue global = JS_GetGlobalObject(ctx);
-    JSValue location = JS_GetPropertyStr(ctx, global, "location");
-    if (JS_IsObject(location)) {
-        JS_SetPropertyStr(ctx, location, "href", JS_NewString(ctx, url.c_str()));
+
+    // Use JS evaluation to trigger the location setter properly.
+    // This ensures pathname, search, hash etc. are all updated.
+    // We pass the URL as a JS string and let the location setter resolve
+    // relative URLs against the current origin.
+    JSValue js_url = JS_NewString(ctx, url.c_str());
+    JS_SetPropertyStr(ctx, global, "__history_new_url__", js_url);
+
+    const char* update_src = "(function(){"
+        "var u = __history_new_url__; delete __history_new_url__;"
+        "if (typeof location !== 'undefined' && location) {"
+        "  try { location.href = u; } catch(e) {}"
+        "}"
+        "})()";
+    JSValue ret = JS_Eval(ctx, update_src, std::strlen(update_src),
+                          "<history-update-url>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(ret)) {
+        JSValue exc = JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+        // Fallback: set href directly
+        JSValue location = JS_GetPropertyStr(ctx, global, "location");
+        if (JS_IsObject(location)) {
+            JS_SetPropertyStr(ctx, location, "href", JS_NewString(ctx, url.c_str()));
+        }
+        JS_FreeValue(ctx, location);
     }
-    JS_FreeValue(ctx, location);
+    JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, global);
 }
 
 static void fire_popstate_event(JSContext* ctx, JSValue state_val) {
     JSValue global = JS_GetGlobalObject(ctx);
+
+    // Build the PopStateEvent object.
+    // Note: JS_SetPropertyStr "steals" the value reference, so we must
+    // JS_DupValue for any value we set as a property AND use afterwards.
+    JSValue event = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "popstate"));
+    JS_SetPropertyStr(ctx, event, "state", JS_DupValue(ctx, state_val));
+    JS_SetPropertyStr(ctx, event, "bubbles", JS_TRUE);
+    JS_SetPropertyStr(ctx, event, "cancelable", JS_FALSE);
+    JS_SetPropertyStr(ctx, event, "defaultPrevented", JS_FALSE);
+    // Dup global for each property since SetPropertyStr steals the reference
+    JS_SetPropertyStr(ctx, event, "target", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, event, "currentTarget", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, event, "eventPhase", JS_NewInt32(ctx, 2)); // AT_TARGET
+
+    // 1. Call window.onpopstate if set
     JSValue handler = JS_GetPropertyStr(ctx, global, "onpopstate");
     if (JS_IsFunction(ctx, handler)) {
-        JSValue event = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, event, "state", JS_DupValue(ctx, state_val));
         JSValue result = JS_Call(ctx, handler, global, 1, &event);
         if (JS_IsException(result)) {
             JSValue exc = JS_GetException(ctx);
             JS_FreeValue(ctx, exc);
         }
         JS_FreeValue(ctx, result);
-        JS_FreeValue(ctx, event);
     }
     JS_FreeValue(ctx, handler);
+
+    // 2. Dispatch to window.addEventListener('popstate', ...) listeners via JS eval.
+    // We stash the event object on the global and then call dispatchEvent.
+    JS_SetPropertyStr(ctx, global, "__popstate_event__", JS_DupValue(ctx, event));
+    const char* dispatch_src = "(function(){"
+        "var evt = __popstate_event__; delete __popstate_event__;"
+        "if (typeof dispatchEvent === 'function') {"
+        "  try { dispatchEvent(evt); } catch(e) {}"
+        "}"
+        "})()";
+    JSValue ret = JS_Eval(ctx, dispatch_src, std::strlen(dispatch_src),
+                          "<popstate-dispatch>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(ret)) {
+        JSValue exc = JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+    }
+    JS_FreeValue(ctx, ret);
+
+    JS_FreeValue(ctx, event);
     JS_FreeValue(ctx, global);
 }
 
@@ -1354,7 +1458,8 @@ static JSValue js_history_push_state(JSContext* ctx, JSValueConst /*this_val*/,
     if (has_url_arg) {
         const char* u = JS_ToCString(ctx, argv[2]);
         if (!u) return JS_EXCEPTION;
-        url = history_extract_path_component(u);
+        // Resolve the URL against the current location (handles relative URLs)
+        url = history_resolve_url(ctx, std::string(u));
         JS_FreeCString(ctx, u);
     } else {
         if (hs->current_index >= 0 &&
@@ -1376,6 +1481,7 @@ static JSValue js_history_push_state(JSContext* ctx, JSValueConst /*this_val*/,
     hs->current_index = static_cast<int>(hs->entries.size()) - 1;
 
     // Update displayed URL when provided.
+    // Per spec: pushState does NOT fire popstate.
     if (has_url_arg) {
         history_update_displayed_url(ctx, url);
     }
@@ -1414,7 +1520,8 @@ static JSValue js_history_replace_state(JSContext* ctx, JSValueConst /*this_val*
     if (argc >= 3 && !JS_IsUndefined(argv[2]) && !JS_IsNull(argv[2])) {
         const char* u = JS_ToCString(ctx, argv[2]);
         if (!u) return JS_EXCEPTION;
-        current.url = history_extract_path_component(u);
+        // Resolve the URL against the current location (handles relative URLs)
+        current.url = history_resolve_url(ctx, std::string(u));
         JS_FreeCString(ctx, u);
         history_update_displayed_url(ctx, current.url);
     }
@@ -2722,8 +2829,10 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     });
 
     // Methods
-    loc.assign = function(url) { loc.href = url; };
-    loc.replace = function(url) { loc.href = url; };
+    // assign(url): navigate to url, adding to history (same-origin only per spec)
+    loc.assign = function(url) { loc.href = String(url); };
+    // replace(url): navigate to url, replacing current history entry
+    loc.replace = function(url) { loc.href = String(url); };
     loc.reload = function() { loc.href = _href; };
     loc.toString = function() { return _href; };
 
@@ -2839,8 +2948,9 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // ---- window.history (full History API) ----
     {
         // Create HistoryState and seed with the initial page entry.
+        // Store the full URL (not just path component) so back/forward restore correctly.
         auto* hs = new HistoryState();
-        hs->entries.push_back({"", "", history_extract_path_component(url)});
+        hs->entries.push_back({"", "", url});
         hs->current_index = 0;
 
         // Stash pointer on global for later retrieval

@@ -370,6 +370,32 @@ void PropertyCascade::apply_declaration(
         return;
     }
 
+    // Resolve env() references — CSS Environment Variables (safe-area-inset-*, etc.)
+    // On desktop, all env() values resolve to 0px (no notch/safe area).
+    for (int env_pass = 0; env_pass < 4; env_pass++) {
+        auto epos = value_str.find("env(");
+        if (epos == std::string::npos) break;
+        int edepth = 1;
+        size_t eend = epos + 4;
+        while (eend < value_str.size() && edepth > 0) {
+            if (value_str[eend] == '(') edepth++;
+            else if (value_str[eend] == ')') edepth--;
+            if (edepth > 0) eend++;
+        }
+        if (edepth != 0) break;
+        std::string env_inner = value_str.substr(epos + 4, eend - epos - 4);
+        // Check for fallback value after comma
+        std::string env_fallback = "0px";
+        auto env_comma = env_inner.find(',');
+        if (env_comma != std::string::npos) {
+            env_fallback = env_inner.substr(env_comma + 1);
+            while (!env_fallback.empty() && env_fallback.front() == ' ') env_fallback.erase(0, 1);
+            while (!env_fallback.empty() && env_fallback.back() == ' ') env_fallback.pop_back();
+        }
+        // Desktop: all env() values (safe-area-inset-top/right/bottom/left) are 0
+        value_str = value_str.substr(0, epos) + env_fallback + value_str.substr(eend + 1);
+    }
+
     std::string value_lower = to_lower(value_str);
 
     // Handle 'inherit' keyword for any property
