@@ -15595,6 +15595,133 @@ void install_dom_bindings(JSContext* ctx,
     // by JS, and is also in the owned_nodes list. We leave it there;
     // it's harmless.
 
+    // ---- HTMLOptionElement properties ----
+    // option.text — text content of the option (no nested element tags)
+    Object.defineProperty(proto, 'text', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'option') return this.textContent.trim();
+            if (tag === 'script' || tag === 'style') return this.textContent;
+            return this.textContent;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'option') { this.textContent = String(v); return; }
+            this.textContent = String(v);
+        },
+        configurable: true
+    });
+
+    // option.label — label attribute or text content
+    Object.defineProperty(proto, 'label', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'option' || tag === 'optgroup') {
+                var lbl = this.getAttribute('label');
+                if (lbl !== null && lbl !== '') return lbl;
+                if (tag === 'option') return this.textContent.trim();
+                return '';
+            }
+            // For <label> elements
+            if (tag === 'label') return this.textContent;
+            return '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'option' || tag === 'optgroup' || tag === 'label') {
+                this.setAttribute('label', String(v));
+            }
+        },
+        configurable: true
+    });
+
+    // option.selected — whether this option is currently selected
+    Object.defineProperty(proto, 'selected', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'option') return false;
+            var sel = this.parentNode;
+            if (!sel || sel.tagName.toLowerCase() !== 'select') {
+                // Might be inside <optgroup>
+                if (sel) sel = sel.parentNode;
+                if (!sel || sel.tagName.toLowerCase() !== 'select') {
+                    return this.hasAttribute('selected');
+                }
+            }
+            var idx = sel.selectedIndex;
+            var opts = sel.querySelectorAll('option');
+            for (var i = 0; i < opts.length; i++) {
+                if (opts[i] === this) return i === idx;
+            }
+            return false;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'option') return;
+            var sel = this.parentNode;
+            if (!sel || sel.tagName.toLowerCase() !== 'select') {
+                if (sel) sel = sel.parentNode;
+            }
+            if (sel && sel.tagName.toLowerCase() === 'select') {
+                if (v) {
+                    var opts = sel.querySelectorAll('option');
+                    for (var i = 0; i < opts.length; i++) {
+                        if (opts[i] === this) { sel.selectedIndex = i; break; }
+                    }
+                }
+            }
+            if (v) this.setAttribute('selected', '');
+            else this.removeAttribute('selected');
+        },
+        configurable: true
+    });
+
+    // option.index — ordinal position within parent select
+    Object.defineProperty(proto, 'index', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'option') return 0;
+            var sel = this.parentNode;
+            if (!sel || sel.tagName.toLowerCase() !== 'select') {
+                if (sel) sel = sel.parentNode;
+            }
+            if (sel && sel.tagName.toLowerCase() === 'select') {
+                var opts = sel.querySelectorAll('option');
+                for (var i = 0; i < opts.length; i++) {
+                    if (opts[i] === this) return i;
+                }
+            }
+            return 0;
+        },
+        configurable: true
+    });
+
+    // option.form — owning form element
+    Object.defineProperty(proto, 'form', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'option') return null;
+            var el = this.parentNode;
+            while (el) {
+                if (el.tagName && el.tagName.toLowerCase() === 'form') return el;
+                el = el.parentNode;
+            }
+            return null;
+        },
+        configurable: true
+    });
+
+    // Option() constructor — creates option elements
+    globalThis.Option = function(text, value, defaultSelected, selected) {
+        var opt = document.createElement('option');
+        if (text !== undefined) opt.textContent = String(text);
+        if (value !== undefined) opt.setAttribute('value', String(value));
+        if (defaultSelected) opt.setAttribute('selected', '');
+        if (selected) opt.selected = true;
+        return opt;
+    };
+    globalThis.Option.prototype = proto;
+
     // ---- HTML5 Form Validation API ----
     // Per-element custom validity message storage (keyed by a unique per-element marker)
     var __customValidityMap = {};
