@@ -7,7 +7,9 @@ add_library(vibrowser_js STATIC
     js_dom_bindings.cpp
     js_fetch_bindings.cpp
     js_timers.cpp
+    js_indexed_db.cpp
     js_web_storage.cpp
+    js_web_audio.cpp
     js_window.cpp
     js_workers.cpp
 )

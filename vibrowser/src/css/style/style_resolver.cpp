@@ -1685,7 +1685,22 @@ void PropertyCascade::apply_declaration(
 
     // ---- Font ----
     if (prop == "font-family") {
-        style.font_family = strip_quotes(trim(value_str));
+        std::string font_name = strip_quotes(trim(value_str));
+        std::string font_lower = font_name;
+        std::transform(font_lower.begin(), font_lower.end(), font_lower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+
+        if (font_lower == "system-ui") {
+            style.font_family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        } else if (font_lower == "ui-serif") {
+            style.font_family = "Georgia, serif";
+        } else if (font_lower == "ui-sans-serif") {
+            style.font_family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        } else if (font_lower == "ui-monospace") {
+            style.font_family = "Menlo, 'Courier New', monospace";
+        } else {
+            style.font_family = font_name;
+        }
         return;
     }
     if (prop == "font-size") {
@@ -4509,29 +4524,23 @@ void PropertyCascade::apply_declaration(
 
     // ---- Scroll snap type ----
     if (prop == "scroll-snap-type") {
-        if (value_lower.find("none") != std::string::npos &&
-            value_lower.find("x") == std::string::npos &&
-            value_lower.find("y") == std::string::npos &&
-            value_lower.find("both") == std::string::npos &&
-            value_lower.find("inline") == std::string::npos &&
-            value_lower.find("block") == std::string::npos) {
-            style.scroll_snap_type_axis = 0;
-            style.scroll_snap_type_strictness = 0;
-            return;
+        auto parts = split_whitespace(value_lower);
+        style.scroll_snap_type_axis = 0;
+        style.scroll_snap_type_strictness = 0;
+
+        for (const auto& part : parts) {
+            if (part == "none") {
+                style.scroll_snap_type_axis = 0;
+                style.scroll_snap_type_strictness = 0;
+                return;
+            }
+            if (part == "x" || part == "inline") style.scroll_snap_type_axis = 1;
+            else if (part == "y" || part == "block") style.scroll_snap_type_axis = 2;
+            else if (part == "both") style.scroll_snap_type_axis = 3;
+            else if (part == "mandatory") style.scroll_snap_type_strictness = 1;
+            else if (part == "proximity") style.scroll_snap_type_strictness = 2;
         }
-        if (value_lower.find("x") != std::string::npos || value_lower.find("inline") != std::string::npos)
-            style.scroll_snap_type_axis = 1;
-        else if (value_lower.find("y") != std::string::npos || value_lower.find("block") != std::string::npos)
-            style.scroll_snap_type_axis = 2;
-        else if (value_lower.find("both") != std::string::npos)
-            style.scroll_snap_type_axis = 3;
-        else
-            style.scroll_snap_type_axis = 0;
-        if (value_lower.find("mandatory") != std::string::npos)
-            style.scroll_snap_type_strictness = 1;
-        else if (value_lower.find("proximity") != std::string::npos)
-            style.scroll_snap_type_strictness = 2;
-        else if (style.scroll_snap_type_axis != 0)
+        if (style.scroll_snap_type_axis != 0 && style.scroll_snap_type_strictness == 0)
             style.scroll_snap_type_strictness = 2; // default proximity
         return;
     }
@@ -4546,8 +4555,10 @@ void PropertyCascade::apply_declaration(
             return 0; // none or unknown
         };
         int first = 0, second = 0;
-        if (!tokens.empty()) first = parse_token(tokens[0]);
-        second = (tokens.size() > 1) ? parse_token(tokens[1]) : first;
+        if (!tokens.empty()) {
+            first = parse_token(tokens[0]);
+            second = (tokens.size() > 1) ? parse_token(tokens[1]) : first;
+        }
         // first value = x (inline axis), second value = y (block axis)
         style.scroll_snap_align_x = first;
         style.scroll_snap_align_y = second;
@@ -4691,12 +4702,32 @@ void PropertyCascade::apply_declaration(
 
     // ---- CSS Touch Action ----
     if (prop == "touch-action") {
-        if (value_lower == "none") style.touch_action = 1;
-        else if (value_lower == "pan-x") style.touch_action = 2;
-        else if (value_lower == "pan-y") style.touch_action = 3;
-        else if (value_lower == "pan-x pan-y" || value_lower == "pan-y pan-x") style.touch_action = 4;
-        else if (value_lower == "manipulation") style.touch_action = 5;
-        else if (value_lower == "pinch-zoom") style.touch_action = 6;
+        if (value_lower == "auto") {
+            style.touch_action = 0;
+            return;
+        }
+        if (value_lower == "none") {
+            style.touch_action = 1;
+            return;
+        }
+        if (value_lower == "manipulation") {
+            style.touch_action = 5;
+            return;
+        }
+        if (value_lower == "pinch-zoom") {
+            style.touch_action = 6;
+            return;
+        }
+
+        bool pan_x = false, pan_y = false;
+        auto tokens = split_whitespace(value_lower);
+        for (const auto& token : tokens) {
+            if (token == "pan-x" || token == "pan-left" || token == "pan-right") pan_x = true;
+            else if (token == "pan-y" || token == "pan-up" || token == "pan-down") pan_y = true;
+        }
+        if (pan_x && pan_y) style.touch_action = 4;
+        else if (pan_x) style.touch_action = 2;
+        else if (pan_y) style.touch_action = 3;
         else style.touch_action = 0;
         return;
     }
@@ -4805,17 +4836,31 @@ void PropertyCascade::apply_declaration(
 
     // ---- CSS overscroll-behavior-x ----
     if (prop == "overscroll-behavior-x") {
-        if (value_lower == "auto") style.overscroll_behavior_x = 0;
-        else if (value_lower == "contain") style.overscroll_behavior_x = 1;
-        else if (value_lower == "none") style.overscroll_behavior_x = 2;
+        if (value_lower == "auto") {
+            style.overscroll_behavior_x = 0;
+            style.overscroll_behavior = style.overscroll_behavior_x;
+        } else if (value_lower == "contain") {
+            style.overscroll_behavior_x = 1;
+            style.overscroll_behavior = style.overscroll_behavior_x;
+        } else if (value_lower == "none") {
+            style.overscroll_behavior_x = 2;
+            style.overscroll_behavior = style.overscroll_behavior_x;
+        }
         return;
     }
 
     // ---- CSS overscroll-behavior-y ----
     if (prop == "overscroll-behavior-y") {
-        if (value_lower == "auto") style.overscroll_behavior_y = 0;
-        else if (value_lower == "contain") style.overscroll_behavior_y = 1;
-        else if (value_lower == "none") style.overscroll_behavior_y = 2;
+        if (value_lower == "auto") {
+            style.overscroll_behavior_y = 0;
+            style.overscroll_behavior = style.overscroll_behavior_y;
+        } else if (value_lower == "contain") {
+            style.overscroll_behavior_y = 1;
+            style.overscroll_behavior = style.overscroll_behavior_y;
+        } else if (value_lower == "none") {
+            style.overscroll_behavior_y = 2;
+            style.overscroll_behavior = style.overscroll_behavior_y;
+        }
         return;
     }
 
@@ -5880,7 +5925,7 @@ void PropertyCascade::apply_declaration(
         auto parts = split_whitespace(value_lower);
         float t=0, r=0, b=0, l=0;
         if (parts.size() == 1) {
-            auto v = parse_length(parts[0]);
+            auto v = parse_length(value_str);
             if (v) t = r = b = l = v->to_px(0);
         } else if (parts.size() == 2) {
             auto v1 = parse_length(parts[0]);
@@ -5952,13 +5997,45 @@ void PropertyCascade::apply_declaration(
         if (v) style.scroll_margin_right = v->to_px(0); // maps to right in LTR
         return;
     }
+    if (prop == "scroll-margin-inline") {
+        auto parts = split_whitespace(value_lower);
+        float inline_start = 0, inline_end = 0;
+        if (parts.size() == 1) {
+            auto v = parse_length(value_str);
+            if (v) inline_start = inline_end = v->to_px(0);
+        } else if (parts.size() >= 2) {
+            auto v1 = parse_length(parts[0]);
+            auto v2 = parse_length(parts[1]);
+            if (v1) inline_start = v1->to_px(0);
+            if (v2) inline_end = v2->to_px(0);
+        }
+        style.scroll_margin_left = inline_start;
+        style.scroll_margin_right = inline_end;
+        return;
+    }
+    if (prop == "scroll-margin-block") {
+        auto parts = split_whitespace(value_lower);
+        float block_start = 0, block_end = 0;
+        if (parts.size() == 1) {
+            auto v = parse_length(value_str);
+            if (v) block_start = block_end = v->to_px(0);
+        } else if (parts.size() >= 2) {
+            auto v1 = parse_length(parts[0]);
+            auto v2 = parse_length(parts[1]);
+            if (v1) block_start = v1->to_px(0);
+            if (v2) block_end = v2->to_px(0);
+        }
+        style.scroll_margin_top = block_start;
+        style.scroll_margin_bottom = block_end;
+        return;
+    }
 
     // ---- Scroll padding shorthand + longhands ----
     if (prop == "scroll-padding") {
         auto parts = split_whitespace(value_lower);
         float t=0, r=0, b=0, l=0;
         if (parts.size() == 1) {
-            auto v = parse_length(parts[0]);
+            auto v = parse_length(value_str);
             if (v) t = r = b = l = v->to_px(0);
         } else if (parts.size() == 2) {
             auto v1 = parse_length(parts[0]);
@@ -6009,13 +6086,35 @@ void PropertyCascade::apply_declaration(
         return;
     }
     if (prop == "scroll-padding-inline") {
-        auto v = parse_length(value_str);
-        if (v) { style.scroll_padding_left = v->to_px(0); style.scroll_padding_right = v->to_px(0); }
+        auto parts = split_whitespace(value_lower);
+        float inline_start = 0, inline_end = 0;
+        if (parts.size() == 1) {
+            auto v = parse_length(value_str);
+            if (v) inline_start = inline_end = v->to_px(0);
+        } else if (parts.size() >= 2) {
+            auto v1 = parse_length(parts[0]);
+            auto v2 = parse_length(parts[1]);
+            if (v1) inline_start = v1->to_px(0);
+            if (v2) inline_end = v2->to_px(0);
+        }
+        style.scroll_padding_left = inline_start;
+        style.scroll_padding_right = inline_end;
         return;
     }
     if (prop == "scroll-padding-block") {
-        auto v = parse_length(value_str);
-        if (v) { style.scroll_padding_top = v->to_px(0); style.scroll_padding_bottom = v->to_px(0); }
+        auto parts = split_whitespace(value_lower);
+        float block_start = 0, block_end = 0;
+        if (parts.size() == 1) {
+            auto v = parse_length(value_str);
+            if (v) block_start = block_end = v->to_px(0);
+        } else if (parts.size() >= 2) {
+            auto v1 = parse_length(parts[0]);
+            auto v2 = parse_length(parts[1]);
+            if (v1) block_start = v1->to_px(0);
+            if (v2) block_end = v2->to_px(0);
+        }
+        style.scroll_padding_top = block_start;
+        style.scroll_padding_bottom = block_end;
         return;
     }
 
@@ -6951,7 +7050,14 @@ bool StyleResolver::evaluate_media_condition(const std::string& condition) const
             if (value == "light") return !is_dark_mode();
         }
         if (feature == "prefers-reduced-motion") {
-            return value == "no-preference";
+            if (value == "reduce") return false;
+            else if (value == "no-preference") return true;
+            else return true;
+        }
+        if (feature == "prefers-contrast") {
+            if (value == "more") return false;
+            if (value == "less") return false;
+            return true;
         }
         if (feature == "display-mode") {
             return value == "browser";

@@ -488,12 +488,12 @@ struct ComputedStyle {
     // Scroll behavior: 0=auto, 1=smooth
     int scroll_behavior = 0;
 
-    // Scroll snap type: 0=none, 1=x, 2=y, 3=both
+    // CSS scroll-snap-type axis: 0=none, 1=x/inline, 2=y/block, 3=both
     int scroll_snap_type_axis = 0;
-    // Scroll snap type strictness: 0=none, 1=mandatory, 2=proximity
+    // CSS scroll-snap-type strictness: 0=auto default, 1=mandatory, 2=proximity
     int scroll_snap_type_strictness = 0;
 
-    // Scroll snap align: 0=none, 1=start, 2=center, 3=end
+    // CSS scroll-snap-align: 0=none, 1=start, 2=center, 3=end
     int scroll_snap_align_x = 0;
     int scroll_snap_align_y = 0;
 
@@ -514,7 +514,8 @@ struct ComputedStyle {
     // CSS appearance / -webkit-appearance: 0=auto, 1=none, 2=menulist-button, 3=textfield, 4=button
     int appearance = 0;
 
-    // CSS touch-action: 0=auto, 1=none, 2=pan-x, 3=pan-y, 4=pan-x pan-y, 5=manipulation, 6=pinch-zoom
+    // CSS touch-action: 0=auto, 1=none, 2=pan-x (left/right), 3=pan-y (up/down),
+    //                   4=pan-x pan-y, 5=manipulation, 6=pinch-zoom
     int touch_action = 0;
 
     // CSS will-change: "auto" stored as empty string, otherwise the property name(s)
