@@ -1464,6 +1464,7 @@ static std::string build_shell_message_html(const std::string& page_title,
         [tab setFocusedInputNode:nullptr];
 
         [tab.renderView updateWithRenderer:result.renderer.get()];
+        [tab.renderView setLayoutRoot:result.root.get()];
         [tab.renderView updateLinks:result.links];
         [tab.renderView updateCursorRegions:result.cursor_regions];
         [tab.renderView updateTextRegions:result.text_commands];
@@ -1860,6 +1861,7 @@ static std::string build_shell_message_html(const std::string& page_title,
         auto fallback = clever::paint::render_html(error_html, renderWidth, renderHeight);
         if (fallback.success && fallback.renderer) {
             [tab.renderView updateWithRenderer:fallback.renderer.get()];
+            [tab.renderView setLayoutRoot:fallback.root.get()];
         }
         self.window.title = [NSString stringWithFormat:@"Error - %@", kBrowserAppName];
     }

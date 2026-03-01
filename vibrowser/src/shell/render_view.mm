@@ -116,6 +116,9 @@ struct TextRegion {
     std::vector<uint8_t> _basePixels;
     int _baseWidth;
     int _baseHeight;
+
+    // Scroll snap support: keep reference to layout_root for snap point calculation
+    clever::layout::LayoutNode* _layoutRoot;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -135,6 +138,7 @@ struct TextRegion {
         _scrollAnimationIsMomentum = NO;
         _scrollAnimationTimer = nil;
         _scrollAnimationDuration = 0.3; // 300ms smooth scroll
+        _layoutRoot = nullptr;
 
         // Set up a tracking area so we receive mouseMoved: events and
         // the system re-evaluates cursor rects as the mouse moves.
@@ -224,6 +228,10 @@ struct TextRegion {
     CGColorSpaceRelease(colorSpace);
 
     [self setNeedsDisplay:YES];
+}
+
+- (void)setLayoutRoot:(clever::layout::LayoutNode*)layoutRoot {
+    _layoutRoot = layoutRoot;
 }
 
 - (CGFloat)viewOffsetForRendererY:(CGFloat)rendererY {
@@ -675,7 +683,118 @@ struct TextRegion {
     if (event.phase == NSEventPhaseEnded || event.phase == NSEventPhaseNone ||
         event.momentumPhase == NSEventPhaseEnded) {
         [self.window invalidateCursorRectsForView:self];
+
+        // Apply scroll snap at the end of momentum/user scroll
+        if (event.momentumPhase == NSEventPhaseEnded || event.phase == NSEventPhaseEnded) {
+            CGFloat snapTarget = [self calculateScrollSnapTarget:_scrollOffset];
+            if (std::abs(snapTarget - _scrollOffset) > 0.5) {
+                // Snap to the target with a smooth animation
+                _targetScrollOffset = snapTarget;
+                _scrollAnimationStartOffset = _scrollOffset;
+                _scrollAnimationStartTime = CFAbsoluteTimeGetCurrent();
+                _scrollAnimationIsMomentum = NO;
+                if (!_isAnimatingScroll) {
+                    _isAnimatingScroll = YES;
+                    _scrollAnimationTimer = [NSTimer scheduledTimerWithTimeInterval:kSmoothScrollFrameInterval
+                                                                            target:self
+                                                                          selector:@selector(smoothScrollTick:)
+                                                                          userInfo:nil
+                                                                           repeats:YES];
+                    [[NSRunLoop currentRunLoop] addTimer:_scrollAnimationTimer
+                                                 forMode:NSEventTrackingRunLoopMode];
+                }
+            }
+        }
     }
+}
+
+// Calculate scroll snap points from layout tree and find the nearest snap target
+// Returns the Y offset to snap to, or current scroll offset if no snap applies
+- (CGFloat)calculateScrollSnapTarget:(CGFloat)currentOffset {
+    if (!_layoutRoot || _layoutRoot->scroll_snap_type_axis == 0) {
+        return currentOffset;  // No scroll-snap active
+    }
+
+    int axis = _layoutRoot->scroll_snap_type_axis;
+    int strictness = _layoutRoot->scroll_snap_type_strictness;
+    CGFloat viewportHeight = self.bounds.size.height;
+    CGFloat containerHeight = _contentHeight * _pageScale;
+    CGFloat scrollableHeight = containerHeight - viewportHeight;
+
+    if (axis != 2 && axis != 3) {  // Only handle vertical snapping (y=2, both=3)
+        return currentOffset;
+    }
+
+    // Collect snap points from children
+    std::vector<CGFloat> snapPoints;
+    std::vector<int> snapStops;
+
+    std::function<void(const clever::layout::LayoutNode*)> collect_snap_points =
+        [&](const clever::layout::LayoutNode* node) {
+            if (!node) return;
+
+            if (node->scroll_snap_align_y != 0) {
+                // This node has a snap alignment
+                float abs_y = node->geometry.y;
+                float snap_y = currentOffset;
+
+                switch (node->scroll_snap_align_y) {
+                    case 1:  // start: child top aligns with container top + scroll_padding_top
+                        snap_y = abs_y - _layoutRoot->scroll_padding_top;
+                        break;
+                    case 2:  // center: child center aligns with viewport center
+                        snap_y = abs_y + node->geometry.height / 2.0f - viewportHeight / 2.0f;
+                        break;
+                    case 3:  // end: child bottom aligns with container bottom - scroll_padding_bottom
+                        snap_y = abs_y + node->geometry.height - viewportHeight + _layoutRoot->scroll_padding_bottom;
+                        break;
+                    default:
+                        return;
+                }
+
+                // Clamp to valid scroll range
+                snap_y = std::max(0.0f, std::min(snap_y, static_cast<float>(scrollableHeight)));
+                snapPoints.push_back(snap_y);
+                snapStops.push_back(node->scroll_snap_stop);
+            }
+
+            // Recurse to children
+            for (auto& child : node->children) {
+                if (child) collect_snap_points(child.get());
+            }
+        };
+
+    collect_snap_points(_layoutRoot);
+
+    if (snapPoints.empty()) {
+        return currentOffset;
+    }
+
+    // Find the closest snap point
+    CGFloat closestSnapPoint = snapPoints[0];
+    CGFloat minDistance = std::abs(currentOffset - snapPoints[0]);
+
+    for (size_t i = 1; i < snapPoints.size(); i++) {
+        CGFloat distance = std::abs(currentOffset - snapPoints[i]);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestSnapPoint = snapPoints[i];
+        }
+    }
+
+    // Apply snap behavior
+    if (strictness == 1) {
+        // mandatory: always snap
+        return closestSnapPoint;
+    } else if (strictness == 2) {
+        // proximity: snap only if within ~85% of container height
+        CGFloat snapProximity = containerHeight * 0.85f;
+        if (minDistance < snapProximity) {
+            return closestSnapPoint;
+        }
+    }
+
+    return currentOffset;
 }
 
 - (void)smoothScrollTick:(NSTimer*)timer {

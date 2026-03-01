@@ -128,6 +128,7 @@ struct PixelTransition {
 @property (nonatomic) BOOL scrollBehaviorSmooth;
 
 - (void)updateWithRenderer:(const clever::paint::SoftwareRenderer*)renderer;
+- (void)setLayoutRoot:(clever::layout::LayoutNode*)layoutRoot;
 - (void)updateLinks:(const std::vector<clever::paint::LinkRegion>&)links;
 - (void)updateCursorRegions:(const std::vector<clever::paint::CursorRegion>&)regions;
 - (void)updateTextRegions:(const std::vector<clever::paint::PaintCommand>&)commands;
