@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
-**Current Focus**: Round 23 feature implementation
-**Momentum**: Cycle 1961 — 18 commits pushed across sessions. 13/13 tests passing.
-**Cycle**: 1961
+**Current Focus**: Round 24 feature implementation
+**Momentum**: Cycle 1962 — 19 commits pushed across sessions. 13/13 tests passing.
+**Cycle**: 1962
 **Workflow**: Multi-phase feature implementation. Use 4-6 Sonnet subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
@@ -154,6 +154,20 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycle 1962 (Round 23 Feature Implementation) — 2026-03-01
+
+- **Theme**: 6 Sonnet subagent feature round — inset box-shadow, pointer-events, word-spacing, textarea, outline, form visuals
+- **Commit**: 0316a9d
+- **Features Implemented**:
+  - Inset box-shadow: FillInsetShadow PaintCommand with Gaussian falloff, spread/offset, border-radius aware
+  - Pointer-events: none — skip in click/mousemove/hover/context-menu hit testing (4 paths)
+  - Word-spacing: replaced crude font_size*0.6 with proper CoreText space measurement
+  - Textarea: is_textarea flag, rows/cols attributes, paint_textarea rendering
+  - Outline rendering: paint_outline with solid/dashed/dotted/double styles + outline-offset
+  - Form element visuals: improved checkbox/radio/select rendering
+  - List-style: marker positioning improvements
+- **Validation**: 13/13 suites pass, 0 failures
 
 ### Cycle 1961 (Round 22 Feature Implementation) — 2026-03-01
 
@@ -8507,27 +8521,27 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 185 |
-| Total Cycles | 1961 |
+| Total Cycles | 1962 |
 | Files Created | ~137 |
-| Files Modified | 195+ |
-| Lines Added (est.) | 237500+ |
+| Files Modified | 205+ |
+| Lines Added (est.) | 238900+ |
 | Tests Added | 10844 |
-| Bugs Fixed | 308 |
-| Features Added | 2740 |
+| Bugs Fixed | 310 |
+| Features Added | 2751 |
 
 ## Tell The Next Claude
 
-**LATEST (Cycle 1961) — Round 22 Feature Implementation**
+**LATEST (Cycle 1962) — Round 23 Feature Implementation**
 
-- Cycle 1961 (78d1eb8): Round 22 — conic gradients, border-image 9-slice, vertical-align proper baseline, table layout fixes, deep-nesting stack overflow guard, shell CLI URL + window centering.
-- Cycle 1960 (b0ad874): Round 21 — @font-face WOFF decompression, flex column layout, text-overflow ellipsis, CSS @import circular prevention, ServiceWorker stub, transform-origin Length fields.
-- Cycle 1959 (727d93d, 03bc3a2): DPR viewport scaling fix + text-align centering double-offset fix.
-- 18 commits pushed this session.
-- All user-reported TODOs resolved (Mac UI, Google rendering, text centering, flex column).
-- LESSON LEARNED: Background agents can revert each other's changes to shared files (box.h, main.mm). Always verify fields exist after agents finish. Apply main.mm shell changes LAST.
-- LESSON LEARNED: kMaxTreeDepth=256 causes SIGSEGV on deeply nested HTML. Reduced to 64 (each frame ~4KB = ~256KB stack). Added depth guards to layout_block() and paint_node() too.
-- LESSON LEARNED: macOS Developer Tools Access dialog blocks app when launched from terminal. Use `open -n -a` instead of running binary directly.
-- Top remaining: More feature rounds (Round 23+), incremental render pipeline refactor, GPU compositing
+- Cycle 1962 (0316a9d): Round 23 — inset box-shadow with Gaussian falloff, pointer-events:none hit-test skip, CoreText word-spacing, textarea rendering, outline styles, form element visuals.
+- Cycle 1961 (78d1eb8): Round 22 — conic gradients, border-image 9-slice, vertical-align baseline, table layout, deep-nesting guard, shell UX.
+- Cycle 1960 (b0ad874): Round 21 — @font-face WOFF, flex column, text-overflow, CSS @import, ServiceWorker, transform-origin.
+- 19 commits pushed this session.
+- All user-reported TODOs resolved.
+- LESSON LEARNED: Background agents can revert each other's changes to shared files (box.h, main.mm). Always verify fields exist after agents finish.
+- LESSON LEARNED: kMaxTreeDepth 256→64 prevents stack overflow. Depth guards in layout_block/paint_node.
+- LESSON LEARNED: macOS Developer Tools Access dialog blocks app when running binary directly. Use `open -n -a` instead.
+- Top remaining: More feature rounds, incremental render pipeline refactor, GPU compositing
 
 **STATUS: 13 COMMITS THIS SESSION — 12,080 TESTS, 13/13 PASS** — Launch with `open vibrowser/build/src/shell/vibrowser.app`
 
