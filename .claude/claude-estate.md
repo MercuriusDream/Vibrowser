@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
-**Current Focus**: Round 18 — deeper web platform APIs + rendering polish
-**Momentum**: Cycle 1952 — 8 commits pushed across sessions. 13/13 tests passing.
-**Cycle**: 1952
+**Current Focus**: Round 20 — next gap-hunting cycle
+**Momentum**: Cycle 1955 — 11 commits pushed across sessions. 13/13 tests passing.
+**Cycle**: 1955
 **Workflow**: Multi-phase feature implementation. Use 6 Sonnet subagents in parallel. Commit and push after each round.
 **User Issue**: Centering bug FIXED — flex cross-axis now uses min-height for alignment
 
@@ -147,6 +147,36 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycles 1954-1955 (Feature Round 19) — 2026-03-01
+
+- **Theme**: Deep web platform — IntersectionObserver, rAF queue, crypto, matchMedia, document.fonts, blob URLs, popstate fix
+- **Agents**: 6 Sonnet subagents (concurrent file conflicts required re-apply agent)
+- **Features Implemented**:
+  - IntersectionObserver real viewport intersection (prev_ratio/prev_intersecting tracking, threshold crossing)
+  - requestAnimationFrame queued model (flush_animation_frames/cleanup_animation_frames) replacing immediate execution
+  - crypto.getRandomValues native C++ with arc4random_buf (replacing Math.random)
+  - crypto.randomUUID with version-4 UUID generation
+  - matchMedia expanded from 4 to 28 media features (prefers-reduced-motion, hover, pointer, color-gamut, etc.)
+  - document.fonts (FontFaceSet API) — ready, check, load, FontFace constructor
+  - URL.createObjectURL real blob registry with SecRandomCopyBytes UUIDs
+  - dispatch_window_listeners for popstate direct C++ dispatch
+  - Connection: keep-alive in fetch_with_redirects (was hardcoded Connection: close)
+  - Removed 8+ unused functions from js_window.cpp
+- **Commits**: b0b556d, 0c8fbac
+- **Validation**: 13/13 suites pass, 0 failures
+
+### Cycle 1953 (Feature Round 18) — 2026-03-01
+
+- **Theme**: CSS.supports, Response.formData, custom properties, Shadow DOM, MutationObserver, Clipboard/Selection/Range
+- **Agents**: 6 Sonnet subagents
+- **Commits**: 0b0f625
+- **Validation**: 13/13 suites pass
+
+### Cycles 1950-1952 (Feature Rounds 16-17) — 2026-03-01
+
+- **Round 16** (5cc6622): Image decode/load events, Performance API, CSS float layout, FormData, grid improvements, element.animate
+- **Round 17** (4b1a739): scrollIntoView, form validation, HTMLSelectElement, getComputedStyle props, ResizeObserver, media queries
 
 ### Cycles 1947-1948 (Feature Round 14) — 2026-03-01
 
@@ -8431,23 +8461,25 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 184 |
-| Total Cycles | 1949 |
+| Total Cycles | 1955 |
 | Files Created | ~137 |
-| Files Modified | 160+ |
-| Lines Added (est.) | 228000+ |
+| Files Modified | 170+ |
+| Lines Added (est.) | 234000+ |
 | Tests Added | 10844 |
-| Bugs Fixed | 295 |
-| Features Added | 2665 |
+| Bugs Fixed | 300 |
+| Features Added | 2710 |
 
 ## Tell The Next Claude
 
-**LATEST (Cycle 1949) — JS DOM Major Upgrade + Canvas Patterns + RTL + Hyphens**
+**LATEST (Cycle 1955) — Rounds 16-19: Deep Web Platform APIs**
 
-- Round 14 (b40ca73): getComputedStyle 50+ CSS properties, classList full DOMTokenList with Proxy, DOMRect/getBoundingClientRect, AbortController full spec, Canvas createPattern with real tiling, Canvas strokeText with CoreText stroke mode
-- Round 13 (da58361): Flex centering fix, sticky positioning, canvas clip bitmap mask, aspect-ratio auto, mask sub-properties
-- Manual: CSS hyphens:auto wired to overflow-wrap, RTL direction text-align flip
-- 4 commits pushed this session: a419359, bd12d86, da58361, b40ca73
-- Top remaining gaps: per-corner border-radius, canvas stroke lineWidth, scrollIntoView, focus model, CSS counter styles
+- Round 19 (b0b556d, 0c8fbac): IntersectionObserver real viewport, rAF queued model, crypto.getRandomValues native, matchMedia 28 features, document.fonts, URL.createObjectURL blob registry, popstate direct dispatch, Connection: keep-alive
+- Round 18 (0b0f625): CSS.supports 260+ props, Response.formData, custom CSS properties, Shadow DOM rendering, MutationObserver, Clipboard/Selection/Range
+- Round 17 (4b1a739): scrollIntoView, form validation, HTMLSelectElement, getComputedStyle, ResizeObserver, media queries
+- Round 16 (5cc6622): Image decode, Performance API, float layout, FormData, grid, element.animate
+- 7 commits pushed this session: 5cc6622, 4b1a739, 0b0f625, b0b556d, 0c8fbac
+- LESSON LEARNED: Concurrent agents on same file cause overwrites. Use single large agent or isolate by file.
+- Top remaining: incremental render pipeline, GPU compositing, :has() selector, CanvasGradient class
 
 **STATUS: WORKING BROWSER WITH MAJOR RENDERING FIXES — 12,080 TESTS!!!** — Launch with `open vibrowser/build/src/shell/vibrowser.app`
 

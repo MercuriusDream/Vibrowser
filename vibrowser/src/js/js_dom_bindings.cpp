@@ -13974,6 +13974,35 @@ void install_dom_bindings(JSContext* ctx,
         JS_NewCFunction(ctx, js_document_element_from_point,
                         "elementFromPoint", 2));
 
+    // document.elementsFromPoint(x, y) — returns element and all ancestors
+    {
+        const char* efp_src = R"JS(
+(function() {
+    if (document && !document.elementsFromPoint) {
+        document.elementsFromPoint = function(x, y) {
+            var el = document.elementFromPoint(x, y);
+            if (!el) return [];
+            var result = [];
+            var current = el;
+            while (current && current !== document.documentElement) {
+                result.push(current);
+                current = current.parentElement;
+            }
+            if (document.documentElement) result.push(document.documentElement);
+            return result;
+        };
+    }
+})();
+)JS";
+        JSValue efp_ret = JS_Eval(ctx, efp_src, std::strlen(efp_src),
+                                   "<elementsFromPoint>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(efp_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, efp_ret);
+    }
+
     // document.addEventListener / removeEventListener
     JS_SetPropertyStr(ctx, doc_obj, "addEventListener",
         JS_NewCFunction(ctx, js_document_add_event_listener,
@@ -15599,6 +15628,37 @@ void install_dom_bindings(JSContext* ctx,
     }
 
     // ------------------------------------------------------------------
+    // navigator.permissions.query() polyfill
+    // ------------------------------------------------------------------
+    {
+        const char* perms_src = R"JS(
+(function() {
+    if (navigator && navigator.permissions && !navigator.permissions.query) {
+        navigator.permissions.query = function(desc) {
+            var name = desc && desc.name ? desc.name : '';
+            var state = 'prompt';
+            if (name === 'clipboard-read' || name === 'clipboard-write' || name === 'notifications') {
+                state = 'granted';
+            } else if (name === 'geolocation' || name === 'camera' || name === 'microphone') {
+                state = 'denied';
+            } else {
+                state = 'prompt';
+            }
+            return Promise.resolve({ state: state, onchange: null, name: name });
+        };
+    }
+})();
+)JS";
+        JSValue perms_ret = JS_Eval(ctx, perms_src, std::strlen(perms_src),
+                                     "<permissions>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(perms_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, perms_ret);
+    }
+
+    // ------------------------------------------------------------------
     // navigator.sendBeacon and extra navigator APIs
     // ------------------------------------------------------------------
     {
@@ -16427,15 +16487,39 @@ AbortController.prototype.abort = function(reason) {
     }
 
     // ------------------------------------------------------------------
-    // structuredClone polyfill (JSON round-trip)
+    // structuredClone polyfill (recursive deep clone)
     // ------------------------------------------------------------------
     {
         const char* clone_src = R"JS(
-if (typeof structuredClone === 'undefined') {
-    globalThis.structuredClone = function(obj) {
-        return JSON.parse(JSON.stringify(obj));
-    };
-}
+globalThis.structuredClone = function(obj, options) {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (obj instanceof Date) return new Date(obj.getTime());
+    if (obj instanceof RegExp) return new RegExp(obj.source, obj.flags);
+    if (obj instanceof Map) {
+        var m = new Map();
+        obj.forEach(function(v, k) { m.set(structuredClone(k), structuredClone(v)); });
+        return m;
+    }
+    if (obj instanceof Set) {
+        var s = new Set();
+        obj.forEach(function(v) { s.add(structuredClone(v)); });
+        return s;
+    }
+    if (typeof ArrayBuffer !== 'undefined' && obj instanceof ArrayBuffer) {
+        return obj.slice(0);
+    }
+    if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(obj)) {
+        return new obj.constructor(obj.buffer.slice(0), obj.byteOffset, obj.length);
+    }
+    if (Array.isArray(obj)) {
+        return obj.map(function(item) { return structuredClone(item); });
+    }
+    var result = {};
+    Object.keys(obj).forEach(function(key) {
+        result[key] = structuredClone(obj[key]);
+    });
+    return result;
+};
 )JS";
         JSValue clone_ret = JS_Eval(ctx, clone_src, std::strlen(clone_src),
                                      "<structuredClone>", JS_EVAL_TYPE_GLOBAL);
@@ -16478,21 +16562,46 @@ if (typeof navigator !== 'undefined' && navigator && !navigator.serviceWorker.re
     }
 
     // ------------------------------------------------------------------
-    // BroadcastChannel stub
+    // BroadcastChannel with real in-memory dispatch
     // ------------------------------------------------------------------
     {
         const char* bc_src = R"JS(
-if (typeof globalThis.BroadcastChannel === 'undefined') {
-    globalThis.BroadcastChannel = function(name) {
+(function() {
+    var channels = {};
+    var BC = function(name) {
         this.name = name;
         this.onmessage = null;
         this.onmessageerror = null;
+        this._closed = false;
+        if (!channels[name]) channels[name] = [];
+        channels[name].push(this);
     };
-    BroadcastChannel.prototype.postMessage = function() {};
-    BroadcastChannel.prototype.close = function() {};
-    BroadcastChannel.prototype.addEventListener = function() {};
-    BroadcastChannel.prototype.removeEventListener = function() {};
-}
+    BC.prototype.postMessage = function(msg) {
+        if (this._closed) return;
+        var self = this;
+        var listeners = channels[this.name] || [];
+        for (var i = 0; i < listeners.length; i++) {
+            if (listeners[i] !== self && !listeners[i]._closed && listeners[i].onmessage) {
+                (function(target, data) {
+                    Promise.resolve().then(function() {
+                        if (target.onmessage) target.onmessage({ data: data, origin: '', source: null });
+                    });
+                })(listeners[i], msg);
+            }
+        }
+    };
+    BC.prototype.close = function() {
+        this._closed = true;
+        var arr = channels[this.name];
+        if (arr) {
+            var idx = arr.indexOf(this);
+            if (idx >= 0) arr.splice(idx, 1);
+        }
+    };
+    BC.prototype.addEventListener = function(type, fn) { if (type === 'message') this.onmessage = fn; };
+    BC.prototype.removeEventListener = function() {};
+    globalThis.BroadcastChannel = BC;
+})();
 )JS";
         JSValue bc_ret = JS_Eval(ctx, bc_src, std::strlen(bc_src),
                                   "<BroadcastChannel>", JS_EVAL_TYPE_GLOBAL);
@@ -16770,6 +16879,9 @@ if (typeof queueMicrotask === 'undefined') {
         (function() {
             if (typeof indexedDB !== 'undefined') return;
 
+            // Global in-memory store: key = "dbName/storeName", value = object of key->value
+            var __idb_stores = {};
+
             function IDBRequest() {
                 this.result = null;
                 this.error = null;
@@ -16795,27 +16907,88 @@ if (typeof queueMicrotask === 'undefined') {
                 this.onversionchange = null;
             }
             IDBDatabase.prototype.close = function() {};
-            IDBDatabase.prototype.createObjectStore = function(name) {
-                return { name: name, keyPath: null, indexNames: [],
-                    put: function() { return new IDBRequest(); },
-                    add: function() { return new IDBRequest(); },
-                    get: function() { return new IDBRequest(); },
-                    delete: function() { return new IDBRequest(); },
-                    clear: function() { return new IDBRequest(); },
-                    count: function() { var r = new IDBRequest(); r.result = 0; return r; },
-                    createIndex: function() { return {}; },
+            IDBDatabase.prototype.createObjectStore = function(storeName, options) {
+                var dbName = this.name;
+                var keyPath = (options && options.keyPath) || null;
+                var storeKey = dbName + '/' + storeName;
+                if (!__idb_stores[storeKey]) __idb_stores[storeKey] = {};
+                var objectStore = {
+                    name: storeName,
+                    keyPath: keyPath,
+                    _dbName: dbName,
+                    indexNames: [],
+                    put: function(value, key) {
+                        var k = key !== undefined ? key : (value && keyPath && value[keyPath]) || String(Date.now());
+                        var sk = dbName + '/' + storeName;
+                        if (!__idb_stores[sk]) __idb_stores[sk] = {};
+                        try { __idb_stores[sk][String(k)] = JSON.parse(JSON.stringify(value)); } catch(e) { __idb_stores[sk][String(k)] = value; }
+                        var req = { result: k, error: null, readyState: 'pending', onsuccess: null, onerror: null };
+                        Promise.resolve().then(function() { req.readyState = 'done'; if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    add: function(value, key) {
+                        return objectStore.put(value, key);
+                    },
+                    get: function(key) {
+                        var sk = dbName + '/' + storeName;
+                        var store = __idb_stores[sk] || {};
+                        var raw = store[String(key)];
+                        var value = raw !== undefined ? (function() { try { return JSON.parse(JSON.stringify(raw)); } catch(e) { return raw; } })() : undefined;
+                        var req = { result: value !== undefined ? value : null, error: null, readyState: 'pending', onsuccess: null, onerror: null };
+                        Promise.resolve().then(function() { req.readyState = 'done'; if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    getAll: function(query) {
+                        var sk = dbName + '/' + storeName;
+                        var store = __idb_stores[sk] || {};
+                        var values = Object.keys(store).map(function(k) { try { return JSON.parse(JSON.stringify(store[k])); } catch(e) { return store[k]; } });
+                        var req = { result: values, error: null, readyState: 'pending', onsuccess: null, onerror: null };
+                        Promise.resolve().then(function() { req.readyState = 'done'; if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    getAllKeys: function() {
+                        var sk = dbName + '/' + storeName;
+                        var store = __idb_stores[sk] || {};
+                        var keys = Object.keys(store);
+                        var req = { result: keys, error: null, readyState: 'pending', onsuccess: null, onerror: null };
+                        Promise.resolve().then(function() { req.readyState = 'done'; if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    delete: function(key) {
+                        var sk = dbName + '/' + storeName;
+                        if (__idb_stores[sk]) delete __idb_stores[sk][String(key)];
+                        var req = { result: undefined, error: null, readyState: 'pending', onsuccess: null, onerror: null };
+                        Promise.resolve().then(function() { req.readyState = 'done'; if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    clear: function() {
+                        var sk = dbName + '/' + storeName;
+                        __idb_stores[sk] = {};
+                        var req = { result: undefined, error: null, readyState: 'pending', onsuccess: null, onerror: null };
+                        Promise.resolve().then(function() { req.readyState = 'done'; if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    count: function() {
+                        var req = { result: 0, error: null, readyState: 'pending', onsuccess: null, onerror: null };
+                        Promise.resolve().then(function() { req.readyState = 'done'; if (req.onsuccess) req.onsuccess({ target: req }); });
+                        return req;
+                    },
+                    createIndex: function(indexName) { return { name: indexName, get: function() { return new IDBRequest(); }, getAll: function() { var r = new IDBRequest(); r.result = []; return r; } }; },
                     deleteIndex: function() {},
-                    getAll: function() { var r = new IDBRequest(); r.result = []; return r; },
-                    getAllKeys: function() { var r = new IDBRequest(); r.result = []; return r; },
                     openCursor: function() { return new IDBRequest(); },
                     openKeyCursor: function() { return new IDBRequest(); },
-                    index: function() { return { get: function() { return new IDBRequest(); } }; }
+                    index: function() { return { get: function() { return new IDBRequest(); }, getAll: function() { var r = new IDBRequest(); r.result = []; return r; } }; }
                 };
+                return objectStore;
             };
-            IDBDatabase.prototype.deleteObjectStore = function() {};
+            IDBDatabase.prototype.deleteObjectStore = function(storeName) {
+                var storeKey = this.name + '/' + storeName;
+                delete __idb_stores[storeKey];
+            };
             IDBDatabase.prototype.transaction = function(stores, mode) {
+                var db = this;
                 return {
-                    objectStore: function(name) { return IDBDatabase.prototype.createObjectStore(name); },
+                    objectStore: function(name) { return db.createObjectStore(name); },
                     abort: function() {},
                     oncomplete: null, onerror: null, onabort: null,
                     mode: mode || 'readonly'
@@ -16841,6 +17014,10 @@ if (typeof queueMicrotask === 'undefined') {
                     return req;
                 },
                 deleteDatabase: function(name) {
+                    // Remove all stores for this db
+                    Object.keys(__idb_stores).forEach(function(k) {
+                        if (k.indexOf(name + '/') === 0) delete __idb_stores[k];
+                    });
                     var req = new IDBRequest();
                     req.readyState = 'done';
                     _defer(function() { if (req.onsuccess) req.onsuccess({ target: req }); });
@@ -16891,8 +17068,13 @@ if (typeof queueMicrotask === 'undefined') {
             ReadableStream.prototype.getReader = function() {
                 this.locked = true;
                 var stream = this;
+                var _read = false;
                 return {
-                    read: function() { return Promise.resolve({ done: true, value: undefined }); },
+                    read: function() {
+                        if (_read || !stream._bodyBytes) return Promise.resolve({ done: true, value: undefined });
+                        _read = true;
+                        return Promise.resolve({ done: false, value: new Uint8Array(stream._bodyBytes) });
+                    },
                     releaseLock: function() { stream.locked = false; },
                     cancel: function() { return Promise.resolve(); },
                     closed: Promise.resolve()

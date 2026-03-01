@@ -392,7 +392,38 @@ static JSValue js_xhr_get_response(JSContext* ctx, JSValueConst this_val) {
         return JS_ParseJSON(ctx, state->response_text.c_str(),
                             state->response_text.size(), "<xhr-json>");
     }
-    // For other types (arraybuffer, blob, document), return null stub
+    if (state->response_type == "arraybuffer") {
+        return JS_NewArrayBufferCopy(ctx,
+            reinterpret_cast<const uint8_t*>(state->response_text.data()),
+            state->response_text.size());
+    }
+    if (state->response_type == "blob") {
+        // Try to create a Blob from the response data
+        JSValue global = JS_GetGlobalObject(ctx);
+        JSValue blob_ctor = JS_GetPropertyStr(ctx, global, "Blob");
+        JS_FreeValue(ctx, global);
+        if (JS_IsFunction(ctx, blob_ctor)) {
+            JSValue parts = JS_NewArray(ctx);
+            JSValue body_str = JS_NewStringLen(ctx, state->response_text.data(),
+                                               state->response_text.size());
+            JS_SetPropertyUint32(ctx, parts, 0, body_str);
+            JSValue options = JS_NewObject(ctx);
+            JSValue args[2] = { parts, options };
+            JSValue blob = JS_CallConstructor(ctx, blob_ctor, 2, args);
+            JS_FreeValue(ctx, parts);
+            JS_FreeValue(ctx, options);
+            JS_FreeValue(ctx, blob_ctor);
+            if (!JS_IsException(blob)) return blob;
+            JS_FreeValue(ctx, blob);
+        } else {
+            JS_FreeValue(ctx, blob_ctor);
+        }
+        // Fallback: return an ArrayBuffer if Blob is unavailable
+        return JS_NewArrayBufferCopy(ctx,
+            reinterpret_cast<const uint8_t*>(state->response_text.data()),
+            state->response_text.size());
+    }
+    // For document and other types, return null
     return JS_NULL;
 }
 
@@ -1210,6 +1241,106 @@ static JSValue js_response_form_data(JSContext* ctx, JSValueConst this_val,
     return promise;
 }
 
+// response.body — native ReadableStream-like getter that streams body bytes
+static JSValue js_response_get_body(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_response_state(ctx, this_val);
+    if (!state) return JS_NULL;
+
+    // Build a Uint8Array containing the body bytes
+    JSValue array_buf = JS_NewArrayBufferCopy(ctx,
+        reinterpret_cast<const uint8_t*>(state->body.data()),
+        state->body.size());
+    if (JS_IsException(array_buf)) return array_buf;
+
+    // Create Uint8Array(arrayBuf)
+    JSValue global_obj = JS_GetGlobalObject(ctx);
+    JSValue uint8_ctor = JS_GetPropertyStr(ctx, global_obj, "Uint8Array");
+    JS_FreeValue(ctx, global_obj);
+
+    JSValue chunk;
+    if (JS_IsFunction(ctx, uint8_ctor)) {
+        JSValue ctor_args[1] = { array_buf };
+        chunk = JS_CallConstructor(ctx, uint8_ctor, 1, ctor_args);
+        JS_FreeValue(ctx, uint8_ctor);
+        JS_FreeValue(ctx, array_buf);
+        if (JS_IsException(chunk)) return chunk;
+    } else {
+        JS_FreeValue(ctx, uint8_ctor);
+        chunk = array_buf; // fall back to raw ArrayBuffer
+    }
+
+    // Construct reader object: { _chunk, _done: false, read(), cancel(), releaseLock(), closed }
+    JSValue reader = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, reader, "_chunk", JS_DupValue(ctx, chunk));
+    JS_SetPropertyStr(ctx, reader, "_done", JS_FALSE);
+
+    // read() method: returns Promise<{done, value}>
+    // We use eval to define read() on the reader because it needs closure access to _chunk/_done
+    // Instead, we define it as a C function via a small JS trampoline
+    const char* read_fn_src = R"JS(
+(function(reader) {
+    reader.read = function() {
+        if (this._done) return Promise.resolve({ done: true, value: undefined });
+        this._done = true;
+        return Promise.resolve({ done: false, value: this._chunk });
+    };
+    reader.cancel = function() { return Promise.resolve(); };
+    reader.releaseLock = function() {};
+    reader.closed = Promise.resolve();
+    return reader;
+})
+)JS";
+    JSValue trampoline = JS_Eval(ctx, read_fn_src, std::strlen(read_fn_src),
+                                  "<body-reader>", JS_EVAL_TYPE_GLOBAL);
+    if (!JS_IsException(trampoline) && JS_IsFunction(ctx, trampoline)) {
+        JSValue args[1] = { reader };
+        JSValue result = JS_Call(ctx, trampoline, JS_UNDEFINED, 1, args);
+        if (!JS_IsException(result)) {
+            JS_FreeValue(ctx, reader);
+            reader = result;
+        } else {
+            JS_FreeValue(ctx, result);
+        }
+        JS_FreeValue(ctx, trampoline);
+    } else {
+        JS_FreeValue(ctx, trampoline);
+    }
+    JS_FreeValue(ctx, chunk);
+
+    // Construct stream object: { locked: false, getReader(), cancel(), pipeThrough(), pipeTo(), tee() }
+    JSValue stream = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, stream, "locked", JS_FALSE);
+    JS_SetPropertyStr(ctx, stream, "_reader", reader); // embed reader
+
+    const char* stream_fn_src = R"JS(
+(function(stream) {
+    stream.getReader = function() { return this._reader; };
+    stream.cancel = function() { return Promise.resolve(); };
+    stream.pipeThrough = function(transform) { return transform.readable; };
+    stream.pipeTo = function() { return Promise.resolve(); };
+    stream.tee = function() { return [this, this]; };
+    return stream;
+})
+)JS";
+    JSValue stream_trampoline = JS_Eval(ctx, stream_fn_src, std::strlen(stream_fn_src),
+                                         "<body-stream>", JS_EVAL_TYPE_GLOBAL);
+    if (!JS_IsException(stream_trampoline) && JS_IsFunction(ctx, stream_trampoline)) {
+        JSValue args2[1] = { stream };
+        JSValue result2 = JS_Call(ctx, stream_trampoline, JS_UNDEFINED, 1, args2);
+        if (!JS_IsException(result2)) {
+            JS_FreeValue(ctx, stream);
+            stream = result2;
+        } else {
+            JS_FreeValue(ctx, result2);
+        }
+        JS_FreeValue(ctx, stream_trampoline);
+    } else {
+        JS_FreeValue(ctx, stream_trampoline);
+    }
+
+    return stream;
+}
+
 static const JSCFunctionListEntry response_proto_funcs[] = {
     // Property getters
     JS_CGETSET_DEF("ok", js_response_get_ok, nullptr),
@@ -1219,6 +1350,7 @@ static const JSCFunctionListEntry response_proto_funcs[] = {
     JS_CGETSET_DEF("type", js_response_get_type, nullptr),
     JS_CGETSET_DEF("bodyUsed", js_response_get_body_used, nullptr),
     JS_CGETSET_DEF("headers", js_response_get_headers, nullptr),
+    JS_CGETSET_DEF("body", js_response_get_body, nullptr),
 
     // Methods
     JS_CFUNC_DEF("text", 0, js_response_text),
@@ -3395,45 +3527,9 @@ void install_fetch_bindings(JSContext* ctx) {
     }
 
     // ------------------------------------------------------------------
-    // Response.body (ReadableStream stub)
+    // Response.body is now implemented as a native C++ getter (js_response_get_body)
+    // in response_proto_funcs — no JS eval stub needed here.
     // ------------------------------------------------------------------
-    {
-        const char* body_stub_src = R"JS(
-        (function() {
-            if (typeof Response !== 'undefined' && Response.prototype) {
-                Object.defineProperty(Response.prototype, 'body', {
-                    get: function() {
-                        return {
-                            locked: false,
-                            cancel: function() { return Promise.resolve(); },
-                            getReader: function() {
-                                return {
-                                    read: function() {
-                                        return Promise.resolve({ done: true, value: undefined });
-                                    },
-                                    cancel: function() { return Promise.resolve(); },
-                                    releaseLock: function() {},
-                                    closed: Promise.resolve()
-                                };
-                            },
-                            pipeThrough: function(transform) { return transform.readable; },
-                            pipeTo: function(dest) { return Promise.resolve(); },
-                            tee: function() { return [this, this]; }
-                        };
-                    },
-                    configurable: true
-                });
-            }
-        })();
-)JS";
-        JSValue bd_ret = JS_Eval(ctx, body_stub_src, std::strlen(body_stub_src),
-                                  "<response-body>", JS_EVAL_TYPE_GLOBAL);
-        if (JS_IsException(bd_ret)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        }
-        JS_FreeValue(ctx, bd_ret);
-    }
 
     // ------------------------------------------------------------------
     // XMLHttpRequest.responseXML (returns null) and .upload (stub object)

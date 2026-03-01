@@ -801,6 +801,174 @@ std::vector<std::string> detect_changed_transition_properties(
     if (float_changed(old_style.border_radius, new_style.border_radius)) {
         changed.push_back("border-radius");
     }
+
+    // Width and height
+    if (!old_style.width.is_auto() && !new_style.width.is_auto() &&
+        float_changed(old_style.width.to_px(), new_style.width.to_px())) {
+        changed.push_back("width");
+    }
+    if (!old_style.height.is_auto() && !new_style.height.is_auto() &&
+        float_changed(old_style.height.to_px(), new_style.height.to_px())) {
+        changed.push_back("height");
+    }
+
+    // Margin edges
+    if (float_changed(old_style.margin.top.to_px(), new_style.margin.top.to_px())) {
+        changed.push_back("margin-top");
+    }
+    if (float_changed(old_style.margin.right.to_px(), new_style.margin.right.to_px())) {
+        changed.push_back("margin-right");
+    }
+    if (float_changed(old_style.margin.bottom.to_px(), new_style.margin.bottom.to_px())) {
+        changed.push_back("margin-bottom");
+    }
+    if (float_changed(old_style.margin.left.to_px(), new_style.margin.left.to_px())) {
+        changed.push_back("margin-left");
+    }
+
+    // Padding edges
+    if (float_changed(old_style.padding.top.to_px(), new_style.padding.top.to_px())) {
+        changed.push_back("padding-top");
+    }
+    if (float_changed(old_style.padding.right.to_px(), new_style.padding.right.to_px())) {
+        changed.push_back("padding-right");
+    }
+    if (float_changed(old_style.padding.bottom.to_px(), new_style.padding.bottom.to_px())) {
+        changed.push_back("padding-bottom");
+    }
+    if (float_changed(old_style.padding.left.to_px(), new_style.padding.left.to_px())) {
+        changed.push_back("padding-left");
+    }
+
+    // Positioning (top/left/right/bottom)
+    if (!old_style.top.is_auto() && !new_style.top.is_auto() &&
+        float_changed(old_style.top.to_px(), new_style.top.to_px())) {
+        changed.push_back("top");
+    }
+    if (!old_style.left_pos.is_auto() && !new_style.left_pos.is_auto() &&
+        float_changed(old_style.left_pos.to_px(), new_style.left_pos.to_px())) {
+        changed.push_back("left");
+    }
+    if (!old_style.right_pos.is_auto() && !new_style.right_pos.is_auto() &&
+        float_changed(old_style.right_pos.to_px(), new_style.right_pos.to_px())) {
+        changed.push_back("right");
+    }
+    if (!old_style.bottom.is_auto() && !new_style.bottom.is_auto() &&
+        float_changed(old_style.bottom.to_px(), new_style.bottom.to_px())) {
+        changed.push_back("bottom");
+    }
+
+    // Border widths
+    if (float_changed(old_style.border_top.width.to_px(), new_style.border_top.width.to_px())) {
+        changed.push_back("border-top-width");
+    }
+    if (float_changed(old_style.border_right.width.to_px(), new_style.border_right.width.to_px())) {
+        changed.push_back("border-right-width");
+    }
+    if (float_changed(old_style.border_bottom.width.to_px(), new_style.border_bottom.width.to_px())) {
+        changed.push_back("border-bottom-width");
+    }
+    if (float_changed(old_style.border_left.width.to_px(), new_style.border_left.width.to_px())) {
+        changed.push_back("border-left-width");
+    }
+
+    // Letter-spacing and word-spacing
+    if (float_changed(old_style.letter_spacing.to_px(), new_style.letter_spacing.to_px())) {
+        changed.push_back("letter-spacing");
+    }
+    if (float_changed(old_style.word_spacing.to_px(), new_style.word_spacing.to_px())) {
+        changed.push_back("word-spacing");
+    }
+
+    // Min/max width and height (only compare when not set to extremes)
+    if (!old_style.min_width.is_zero() || !new_style.min_width.is_zero()) {
+        if (float_changed(old_style.min_width.to_px(), new_style.min_width.to_px())) {
+            changed.push_back("min-width");
+        }
+    }
+    if (!old_style.min_height.is_zero() || !new_style.min_height.is_zero()) {
+        if (float_changed(old_style.min_height.to_px(), new_style.min_height.to_px())) {
+            changed.push_back("min-height");
+        }
+    }
+    {
+        float old_mw = old_style.max_width.to_px();
+        float new_mw = new_style.max_width.to_px();
+        if (old_mw < 1e8f || new_mw < 1e8f) {
+            if (float_changed(old_mw, new_mw)) {
+                changed.push_back("max-width");
+            }
+        }
+    }
+    {
+        float old_mh = old_style.max_height.to_px();
+        float new_mh = new_style.max_height.to_px();
+        if (old_mh < 1e8f || new_mh < 1e8f) {
+            if (float_changed(old_mh, new_mh)) {
+                changed.push_back("max-height");
+            }
+        }
+    }
+
+    // Outline width and offset
+    if (float_changed(old_style.outline_width.to_px(), new_style.outline_width.to_px())) {
+        changed.push_back("outline-width");
+    }
+    if (float_changed(old_style.outline_offset.to_px(), new_style.outline_offset.to_px())) {
+        changed.push_back("outline-offset");
+    }
+
+    // Box shadow (detect any change, even if interpolation is limited)
+    bool box_shadow_changed = false;
+    if (old_style.box_shadows.size() != new_style.box_shadows.size()) {
+        box_shadow_changed = true;
+    } else {
+        for (size_t i = 0; i < old_style.box_shadows.size() && !box_shadow_changed; ++i) {
+            const auto& os = old_style.box_shadows[i];
+            const auto& ns = new_style.box_shadows[i];
+            if (float_changed(os.offset_x, ns.offset_x) ||
+                float_changed(os.offset_y, ns.offset_y) ||
+                float_changed(os.blur, ns.blur) ||
+                float_changed(os.spread, ns.spread) ||
+                os.color != ns.color) {
+                box_shadow_changed = true;
+            }
+        }
+        // Also check legacy single shadow fields if no multi-shadow
+        if (old_style.box_shadows.empty() && new_style.box_shadows.empty()) {
+            if (float_changed(old_style.shadow_offset_x, new_style.shadow_offset_x) ||
+                float_changed(old_style.shadow_offset_y, new_style.shadow_offset_y) ||
+                float_changed(old_style.shadow_blur, new_style.shadow_blur) ||
+                float_changed(old_style.shadow_spread, new_style.shadow_spread) ||
+                old_style.shadow_color != new_style.shadow_color) {
+                box_shadow_changed = true;
+            }
+        }
+    }
+    if (box_shadow_changed) {
+        changed.push_back("box-shadow");
+    }
+
+    // Transform (compare transform vectors)
+    bool transform_changed = false;
+    if (old_style.transforms.size() != new_style.transforms.size()) {
+        transform_changed = true;
+    } else {
+        for (size_t i = 0; i < old_style.transforms.size() && !transform_changed; ++i) {
+            const auto& ot = old_style.transforms[i];
+            const auto& nt = new_style.transforms[i];
+            if (ot.type != nt.type ||
+                float_changed(ot.x, nt.x) ||
+                float_changed(ot.y, nt.y) ||
+                float_changed(ot.angle, nt.angle)) {
+                transform_changed = true;
+            }
+        }
+    }
+    if (transform_changed) {
+        changed.push_back("transform");
+    }
+
     return changed;
 }
 
@@ -7714,6 +7882,188 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                                     prev_it->second.color,
                                     style.color,
                                     transition_def);
+                            } else if (property == "width") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.width.to_px(),
+                                    style.width.to_px(),
+                                    transition_def);
+                            } else if (property == "height") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.height.to_px(),
+                                    style.height.to_px(),
+                                    transition_def);
+                            } else if (property == "margin-top") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.margin.top.to_px(),
+                                    style.margin.top.to_px(),
+                                    transition_def);
+                            } else if (property == "margin-right") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.margin.right.to_px(),
+                                    style.margin.right.to_px(),
+                                    transition_def);
+                            } else if (property == "margin-bottom") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.margin.bottom.to_px(),
+                                    style.margin.bottom.to_px(),
+                                    transition_def);
+                            } else if (property == "margin-left") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.margin.left.to_px(),
+                                    style.margin.left.to_px(),
+                                    transition_def);
+                            } else if (property == "padding-top") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.padding.top.to_px(),
+                                    style.padding.top.to_px(),
+                                    transition_def);
+                            } else if (property == "padding-right") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.padding.right.to_px(),
+                                    style.padding.right.to_px(),
+                                    transition_def);
+                            } else if (property == "padding-bottom") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.padding.bottom.to_px(),
+                                    style.padding.bottom.to_px(),
+                                    transition_def);
+                            } else if (property == "padding-left") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.padding.left.to_px(),
+                                    style.padding.left.to_px(),
+                                    transition_def);
+                            } else if (property == "top") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.top.to_px(),
+                                    style.top.to_px(),
+                                    transition_def);
+                            } else if (property == "left") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.left_pos.to_px(),
+                                    style.left_pos.to_px(),
+                                    transition_def);
+                            } else if (property == "right") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.right_pos.to_px(),
+                                    style.right_pos.to_px(),
+                                    transition_def);
+                            } else if (property == "bottom") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.bottom.to_px(),
+                                    style.bottom.to_px(),
+                                    transition_def);
+                            } else if (property == "border-top-width") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.border_top.width.to_px(),
+                                    style.border_top.width.to_px(),
+                                    transition_def);
+                            } else if (property == "border-right-width") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.border_right.width.to_px(),
+                                    style.border_right.width.to_px(),
+                                    transition_def);
+                            } else if (property == "border-bottom-width") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.border_bottom.width.to_px(),
+                                    style.border_bottom.width.to_px(),
+                                    transition_def);
+                            } else if (property == "border-left-width") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.border_left.width.to_px(),
+                                    style.border_left.width.to_px(),
+                                    transition_def);
+                            } else if (property == "letter-spacing") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.letter_spacing.to_px(),
+                                    style.letter_spacing.to_px(),
+                                    transition_def);
+                            } else if (property == "word-spacing") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.word_spacing.to_px(),
+                                    style.word_spacing.to_px(),
+                                    transition_def);
+                            } else if (property == "min-width") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.min_width.to_px(),
+                                    style.min_width.to_px(),
+                                    transition_def);
+                            } else if (property == "min-height") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.min_height.to_px(),
+                                    style.min_height.to_px(),
+                                    transition_def);
+                            } else if (property == "max-width") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.max_width.to_px(),
+                                    style.max_width.to_px(),
+                                    transition_def);
+                            } else if (property == "max-height") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.max_height.to_px(),
+                                    style.max_height.to_px(),
+                                    transition_def);
+                            } else if (property == "outline-width") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.outline_width.to_px(),
+                                    style.outline_width.to_px(),
+                                    transition_def);
+                            } else if (property == "outline-offset") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.outline_offset.to_px(),
+                                    style.outline_offset.to_px(),
+                                    transition_def);
+                            } else if (property == "box-shadow") {
+                                // For box-shadow, transition the blur radius of the first shadow
+                                // as a proxy for the overall shadow transition
+                                float old_blur = prev_it->second.box_shadows.empty()
+                                    ? prev_it->second.shadow_blur
+                                    : prev_it->second.box_shadows[0].blur;
+                                float new_blur = style.box_shadows.empty()
+                                    ? style.shadow_blur
+                                    : style.box_shadows[0].blur;
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    old_blur, new_blur,
+                                    transition_def);
+                            } else if (property == "transform") {
+                                // Transition transform if both old and new have at least one
+                                // transform of the same type; otherwise skip interpolation
+                                const auto& old_transforms = prev_it->second.transforms;
+                                const auto& new_transforms = style.transforms;
+                                if (!old_transforms.empty() && !new_transforms.empty() &&
+                                    old_transforms[0].type == new_transforms[0].type) {
+                                    g_transition_animation_controller->start_transform_transition(
+                                        runtime_node, property,
+                                        old_transforms[0],
+                                        new_transforms[0],
+                                        transition_def);
+                                }
                             }
                         }
                     }
@@ -10111,6 +10461,23 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->mode = clever::layout::LayoutMode::Block;
         layout_node->display = clever::layout::DisplayType::Block;
         layout_node->text_align = 1; // center
+        // Also update ComputedStyle so children inherit text-align: center
+        style.text_align = clever::css::TextAlign::Center;
+    }
+
+    // Handle legacy HTML `align` attribute on generic block elements
+    // (div, p, h1-h6, blockquote, etc.) — common in legacy markup and Google's homepage
+    if (tag_lower == "div" || tag_lower == "p" || tag_lower == "blockquote" ||
+        (tag_lower.size() == 2 && tag_lower[0] == 'h' && tag_lower[1] >= '1' && tag_lower[1] <= '6')) {
+        std::string align_attr = get_attr(node, "align");
+        if (!align_attr.empty()) {
+            std::string al = align_attr;
+            for (auto& c : al) c = std::tolower(c);
+            if (al == "center") { layout_node->text_align = 1; style.text_align = clever::css::TextAlign::Center; }
+            else if (al == "right") { layout_node->text_align = 2; style.text_align = clever::css::TextAlign::Right; }
+            else if (al == "left") { layout_node->text_align = 0; style.text_align = clever::css::TextAlign::Left; }
+            else if (al == "justify") { layout_node->text_align = 3; style.text_align = clever::css::TextAlign::Justify; }
+        }
     }
 
     // Handle <body> — legacy presentational attributes
@@ -10416,9 +10783,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
         // Legacy HTML align attribute on <tr>
         std::string tr_align = get_attr(node, "align");
-        if (tr_align == "center") layout_node->text_align = 1;
-        else if (tr_align == "right") layout_node->text_align = 2;
-        else if (tr_align == "left") layout_node->text_align = 0;
+        if (tr_align == "center") { layout_node->text_align = 1; style.text_align = clever::css::TextAlign::Center; }
+        else if (tr_align == "right") { layout_node->text_align = 2; style.text_align = clever::css::TextAlign::Right; }
+        else if (tr_align == "left") { layout_node->text_align = 0; style.text_align = clever::css::TextAlign::Left; }
     }
 
     // Handle <td>/<th> — render as flex items with border and padding
@@ -10455,9 +10822,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
         // Legacy HTML align attribute on <td>/<th>
         std::string td_align = get_attr(node, "align");
-        if (td_align == "center") layout_node->text_align = 1;
-        else if (td_align == "right") layout_node->text_align = 2;
-        else if (td_align == "left") layout_node->text_align = 0;
+        if (td_align == "center") { layout_node->text_align = 1; style.text_align = clever::css::TextAlign::Center; }
+        else if (td_align == "right") { layout_node->text_align = 2; style.text_align = clever::css::TextAlign::Right; }
+        else if (td_align == "left") { layout_node->text_align = 0; style.text_align = clever::css::TextAlign::Left; }
         // Legacy HTML valign attribute on <td>/<th>
         std::string td_valign = get_attr(node, "valign");
         if (td_valign == "middle") layout_node->vertical_align = 2; // middle
