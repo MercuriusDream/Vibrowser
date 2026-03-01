@@ -1662,49 +1662,12 @@ void TreeBuilder::handle_after_after_body(const Token& token) {
 }
 
 void TreeBuilder::handle_in_template(const Token& token) {
-    // Handle tokens while inside a <template> element
-    if (token.type == Token::Character) {
-        if (current_node() && current_node()->type == SimpleNode::DocumentFragment) {
-            insert_text(token.data);
-        }
-        return;
-    }
-    if (token.type == Token::Comment) {
-        if (current_node() && current_node()->type == SimpleNode::DocumentFragment) {
-            insert_comment(token.data);
-        }
-        return;
-    }
-    if (token.type == Token::StartTag) {
-        if (token.name == "template") {
-            // Nested template: handle like in head
-            handle_in_head(token);
-            return;
-        }
-        // Other tags go into template content
-        if (current_node() && current_node()->type == SimpleNode::DocumentFragment) {
-            insert_element(token);
-        }
-        return;
-    }
-    if (token.type == Token::EndTag && token.name == "template") {
-        // End of template: pop the template_content fragment
-        if (!open_elements_.empty() && open_elements_.back()->type == SimpleNode::DocumentFragment) {
-            open_elements_.pop_back();
-            // Restore the previous mode
-            if (!open_elements_.empty()) {
-                mode_ = original_mode_;
-            }
-        }
-        return;
-    }
-    if (token.type == Token::EndTag) {
-        // Any other end tag inside template goes into content
-        if (current_node() && current_node()->type == SimpleNode::DocumentFragment) {
-            insert_element(token);
-        }
-        return;
-    }
+    // Handle tokens while inside a <template> element.
+    // For now, we treat templates the same as InBody mode - children are parsed
+    // normally into the template element's children[] array.
+    // The template_content DocumentFragment is created but children parse normally;
+    // the render pipeline skips templates automatically.
+    handle_in_body(token);
 }
 
 // ============================================================================
