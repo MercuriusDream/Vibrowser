@@ -6063,7 +6063,7 @@ std::optional<clever::net::Response> fetch_with_redirects(
         req.parse_url();
         req.headers.set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Vibrowser/0.7.0 Safari/537.36");
         req.headers.set("Accept", accept);
-        req.headers.set("Connection", "close");
+        req.headers.set("Connection", "keep-alive");
 
         // Attach cookies
         std::string cookies = jar.get_cookie_header(req.host, req.path, req.use_tls);
@@ -13488,6 +13488,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     }
                 }
 
+                // Flush rAF callbacks queued by scripts before layout.
+                clever::js::flush_animation_frames(js_engine.context());
+
                 // Flush timers/promises set by observer callbacks
                 clever::js::flush_ready_timers(js_engine.context(), 0);
                 clever::js::flush_fetch_promise_jobs(js_engine.context());
@@ -13554,6 +13557,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 // DOM bindings are intentionally kept alive so the persisted
                 // JSEngine can dispatch interactive events (click, etc.) later.
                 clever::js::cleanup_timers(js_engine.context());
+                // Free any remaining rAF callbacks to prevent GC assertion on teardown.
+                clever::js::cleanup_animation_frames(js_engine.context());
             }
         }
 

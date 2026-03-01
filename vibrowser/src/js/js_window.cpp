@@ -17,9 +17,126 @@ extern "C" {
 #include <mutex>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#ifdef __APPLE__
+#include <Security/SecRandom.h>
+#endif
+
 namespace clever::js {
+
+// Forward declaration: dispatch_window_listeners is defined in js_dom_bindings.cpp.
+// It iterates the window sentinel listeners (stored under nullptr key in DOMState::listeners)
+// and calls each registered handler with the given event object.
+void dispatch_window_listeners(JSContext* ctx, const std::string& event_type, JSValue event_obj);
+
+// =========================================================================
+// Blob URL registry — maps "blob:<uuid>" -> (mime_type, raw_data)
+// Thread-safe: guarded by g_blob_registry_mutex.
+// =========================================================================
+
+static std::mutex g_blob_registry_mutex;
+static std::map<std::string, std::pair<std::string, std::string>> g_blob_registry;
+
+// Generate a UUID v4 string suitable for blob: URLs.
+static std::string generate_blob_uuid() {
+    uint8_t bytes[16] = {};
+#ifdef __APPLE__
+    SecRandomCopyBytes(kSecRandomDefault, sizeof(bytes), bytes);
+#else
+    // Fallback: use rand() (not cryptographically secure, but sufficient for blob URLs)
+    for (auto& b : bytes) b = static_cast<uint8_t>(rand() & 0xFF);
+#endif
+    // Set UUID v4 version and variant bits.
+    bytes[6] = (bytes[6] & 0x0F) | 0x40;
+    bytes[8] = (bytes[8] & 0x3F) | 0x80;
+
+    char buf[37];
+    snprintf(buf, sizeof(buf),
+             "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+             bytes[0], bytes[1], bytes[2], bytes[3],
+             bytes[4], bytes[5],
+             bytes[6], bytes[7],
+             bytes[8], bytes[9],
+             bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+    return std::string(buf);
+}
+
+// Public accessor: look up blob data by URL.
+const std::pair<std::string, std::string>* get_blob_data(const std::string& url) {
+    std::lock_guard<std::mutex> lock(g_blob_registry_mutex);
+    auto it = g_blob_registry.find(url);
+    if (it == g_blob_registry.end()) return nullptr;
+    return &it->second;
+}
+
+// C++ native implementation of URL.createObjectURL(blob).
+// Reads blob._parts (array of string parts) and blob.type (MIME type),
+// assembles the data, stores it in the registry, and returns the blob: URL.
+static JSValue js_url_create_object_url(JSContext* ctx, JSValueConst /*this_val*/,
+                                         int argc, JSValueConst* argv) {
+    if (argc < 1 || !JS_IsObject(argv[0]))
+        return JS_ThrowTypeError(ctx, "URL.createObjectURL requires a Blob argument");
+
+    // Read MIME type from blob.type
+    JSValue type_val = JS_GetPropertyStr(ctx, argv[0], "type");
+    const char* type_cstr = JS_ToCString(ctx, type_val);
+    std::string mime_type = type_cstr ? type_cstr : "application/octet-stream";
+    if (type_cstr) JS_FreeCString(ctx, type_cstr);
+    JS_FreeValue(ctx, type_val);
+
+    // Read blob._parts (array of string/ArrayBuffer parts)
+    std::string data;
+    JSValue parts_val = JS_GetPropertyStr(ctx, argv[0], "_parts");
+    if (JS_IsArray(ctx, parts_val)) {
+        JSValue len_val = JS_GetPropertyStr(ctx, parts_val, "length");
+        uint32_t len = 0;
+        JS_ToUint32(ctx, &len, len_val);
+        JS_FreeValue(ctx, len_val);
+
+        for (uint32_t i = 0; i < len; ++i) {
+            JSValue part = JS_GetPropertyUint32(ctx, parts_val, i);
+            if (JS_IsString(part)) {
+                const char* s = JS_ToCString(ctx, part);
+                if (s) { data += s; JS_FreeCString(ctx, s); }
+            } else {
+                // ArrayBuffer or other binary part — try to read as string
+                size_t byte_len = 0;
+                uint8_t* buf = JS_GetArrayBuffer(ctx, &byte_len, part);
+                if (buf && byte_len > 0) {
+                    data.append(reinterpret_cast<char*>(buf), byte_len);
+                }
+            }
+            JS_FreeValue(ctx, part);
+        }
+    }
+    JS_FreeValue(ctx, parts_val);
+
+    // Generate URL and store in registry.
+    std::string blob_url = "blob:" + generate_blob_uuid();
+    {
+        std::lock_guard<std::mutex> lock(g_blob_registry_mutex);
+        g_blob_registry[blob_url] = { mime_type, std::move(data) };
+    }
+
+    return JS_NewString(ctx, blob_url.c_str());
+}
+
+// C++ native implementation of URL.revokeObjectURL(url).
+// Removes the blob URL from the registry, freeing the stored data.
+static JSValue js_url_revoke_object_url(JSContext* ctx, JSValueConst /*this_val*/,
+                                         int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_UNDEFINED;
+    const char* url_cstr = JS_ToCString(ctx, argv[0]);
+    if (url_cstr) {
+        std::string url(url_cstr);
+        JS_FreeCString(ctx, url_cstr);
+        std::lock_guard<std::mutex> lock(g_blob_registry_mutex);
+        g_blob_registry.erase(url);
+    }
+    return JS_UNDEFINED;
+}
 
 namespace {
 
@@ -460,12 +577,6 @@ static RAFState* get_raf_state(JSContext* ctx) {
     return state;
 }
 
-// Recursion depth guard for requestAnimationFrame — real websites schedule
-// the next frame inside the callback, which recurses infinitely in our
-// synchronous engine.
-static thread_local int s_raf_depth = 0;
-static constexpr int kMaxRAFDepth = 4;
-
 static JSValue js_request_animation_frame(JSContext* ctx, JSValueConst /*this_val*/,
                                            int argc, JSValueConst* argv) {
     if (argc < 1 || !JS_IsFunction(ctx, argv[0]))
@@ -476,33 +587,18 @@ static JSValue js_request_animation_frame(JSContext* ctx, JSValueConst /*this_va
 
     int id = state->next_id++;
 
-    // Limit recursion depth — animation loops call rAF from inside rAF
-    if (s_raf_depth >= kMaxRAFDepth)
-        return JS_NewInt32(ctx, id);
-
-    ++s_raf_depth;
-
-    // In our synchronous engine, execute the callback immediately
-    // with a DOMHighResTimeStamp argument (performance.now())
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-        now - page_start_time);
-    double ms = static_cast<double>(elapsed.count()) / 1000.0;
-    JSValue timestamp = JS_NewFloat64(ctx, ms);
-    JSValue ret = JS_Call(ctx, argv[0], JS_UNDEFINED, 1, &timestamp);
-    JS_FreeValue(ctx, ret);
-    JS_FreeValue(ctx, timestamp);
-
-    --s_raf_depth;
+    // Queue the callback for the next flush_animation_frames() call.
+    RAFEntry raf_entry;
+    raf_entry.id = id;
+    raf_entry.callback = JS_DupValue(ctx, argv[0]);
+    raf_entry.cancelled = false;
+    state->entries.push_back(std::move(raf_entry));
 
     return JS_NewInt32(ctx, id);
 }
 
 static JSValue js_cancel_animation_frame(JSContext* ctx, JSValueConst /*this_val*/,
                                           int argc, JSValueConst* argv) {
-    (void)ctx;
-    // Since we execute immediately, cancel is essentially a no-op,
-    // but we maintain the API contract.
     auto* state = get_raf_state(ctx);
     if (!state || argc < 1) return JS_UNDEFINED;
 
@@ -1426,6 +1522,17 @@ static JSValue js_window_dispatch_event(JSContext* /*ctx*/, JSValueConst /*this_
 }
 
 // =========================================================================
+// window.removeEventListener -- no-op stub
+// (window.addEventListener is in js_dom_bindings.cpp; this is a fallback
+//  for when DOM bindings are not installed or for non-DOMContentLoaded events)
+// =========================================================================
+
+static JSValue js_window_remove_event_listener(JSContext* /*ctx*/, JSValueConst /*this_val*/,
+                                                int /*argc*/, JSValueConst* /*argv*/) {
+    return JS_UNDEFINED;
+}
+
+// =========================================================================
 // History API — session history management
 // =========================================================================
 
@@ -1651,22 +1758,9 @@ static void fire_popstate_event(JSContext* ctx, JSValue state_val) {
     }
     JS_FreeValue(ctx, handler);
 
-    // 2. Dispatch to window.addEventListener('popstate', ...) listeners via JS eval.
-    // We stash the event object on the global and then call dispatchEvent.
-    JS_SetPropertyStr(ctx, global, "__popstate_event__", JS_DupValue(ctx, event));
-    const char* dispatch_src = "(function(){"
-        "var evt = __popstate_event__; delete __popstate_event__;"
-        "if (typeof dispatchEvent === 'function') {"
-        "  try { dispatchEvent(evt); } catch(e) {}"
-        "}"
-        "})()";
-    JSValue ret = JS_Eval(ctx, dispatch_src, std::strlen(dispatch_src),
-                          "<popstate-dispatch>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsException(ret)) {
-        JSValue exc = JS_GetException(ctx);
-        JS_FreeValue(ctx, exc);
-    }
-    JS_FreeValue(ctx, ret);
+    // 2. Dispatch to window.addEventListener('popstate', ...) listeners.
+    // Call directly into js_dom_bindings which holds the real listener registry.
+    dispatch_window_listeners(ctx, "popstate", event);
 
     JS_FreeValue(ctx, event);
     JS_FreeValue(ctx, global);
@@ -1848,17 +1942,6 @@ static JSValue js_history_get_state(JSContext* ctx, JSValueConst /*this_val*/,
         hs->current_index >= static_cast<int>(hs->entries.size()))
         return JS_NULL;
     return history_deserialize_state(ctx, hs->entries[hs->current_index].state);
-}
-
-// =========================================================================
-// window.removeEventListener -- no-op stub
-// (window.addEventListener is in js_dom_bindings.cpp; this is a fallback
-//  for when DOM bindings are not installed or for non-DOMContentLoaded events)
-// =========================================================================
-
-static JSValue js_window_remove_event_listener(JSContext* /*ctx*/, JSValueConst /*this_val*/,
-                                                int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_UNDEFINED;
 }
 
 // =========================================================================
@@ -3573,13 +3656,13 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, global, "dispatchEvent",
         JS_NewCFunction(ctx, js_window_dispatch_event, "dispatchEvent", 1));
 
-    // ---- window.removeEventListener (fallback stub) ----
-    // NOTE: If js_dom_bindings is installed *after* this, it may override
-    // window.addEventListener. This removeEventListener covers the case
-    // where DOM bindings set addEventListener but not removeEventListener.
+    // ---- window.removeEventListener (fallback) ----
+    // Provides a no-op removeEventListener when DOM bindings are not installed.
+    // When js_dom_bindings is installed later it overrides this with the real impl.
     JS_SetPropertyStr(ctx, global, "removeEventListener",
-        JS_NewCFunction(ctx, js_window_remove_event_listener,
-                        "removeEventListener", 2));
+        JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+            return JS_UNDEFINED;
+        }, "removeEventListener", 2));
 
     // ---- window.history (full History API) ----
     {
@@ -4032,6 +4115,23 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_FreeValue(ctx, ret);
 
     // ------------------------------------------------------------------
+    // Replace JS stubs for URL.createObjectURL / URL.revokeObjectURL with
+    // real C++ native functions backed by the blob registry.
+    // ------------------------------------------------------------------
+    {
+        JSValue g2 = JS_GetGlobalObject(ctx);
+        JSValue url_ctor = JS_GetPropertyStr(ctx, g2, "URL");
+        if (JS_IsObject(url_ctor)) {
+            JS_SetPropertyStr(ctx, url_ctor, "createObjectURL",
+                JS_NewCFunction(ctx, js_url_create_object_url, "createObjectURL", 1));
+            JS_SetPropertyStr(ctx, url_ctor, "revokeObjectURL",
+                JS_NewCFunction(ctx, js_url_revoke_object_url, "revokeObjectURL", 1));
+        }
+        JS_FreeValue(ctx, url_ctor);
+        JS_FreeValue(ctx, g2);
+    }
+
+    // ------------------------------------------------------------------
     // SharedWorker stub
     // ------------------------------------------------------------------
     {
@@ -4107,6 +4207,53 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
 
     // ---- Worker API ----
     install_worker_bindings(ctx);
+}
+
+void flush_animation_frames(JSContext* ctx) {
+    auto* raf_s = get_raf_state(ctx);
+    if (!raf_s || raf_s->entries.empty()) return;
+
+    // Snapshot pending entries — callbacks registered during this flush go to next frame.
+    std::vector<RAFEntry> raf_snap = std::move(raf_s->entries);
+    raf_s->entries.clear();
+
+    // Compute DOMHighResTimeStamp (milliseconds since page load).
+    auto raf_now = std::chrono::steady_clock::now();
+    auto raf_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+        raf_now - page_start_time);
+    double raf_ms = static_cast<double>(raf_elapsed.count()) / 1000.0;
+    JSValue raf_ts = JS_NewFloat64(ctx, raf_ms);
+
+    for (auto& raf_e : raf_snap) {
+        if (!raf_e.cancelled && JS_IsFunction(ctx, raf_e.callback)) {
+            JSValue raf_r = JS_Call(ctx, raf_e.callback, JS_UNDEFINED, 1, &raf_ts);
+            if (JS_IsException(raf_r)) {
+                JSValue exc = JS_GetException(ctx);
+                JS_FreeValue(ctx, exc);
+            }
+            JS_FreeValue(ctx, raf_r);
+        }
+        JS_FreeValue(ctx, raf_e.callback);
+    }
+
+    JS_FreeValue(ctx, raf_ts);
+}
+
+void cleanup_animation_frames(JSContext* ctx) {
+    auto* state = get_raf_state(ctx);
+    if (!state) return;
+
+    // Free any still-pending callback references to avoid GC leaks.
+    for (auto& entry : state->entries) {
+        JS_FreeValue(ctx, entry.callback);
+    }
+    state->entries.clear();
+
+    // Remove the pointer stored on the global and delete the RAFState.
+    delete state;
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "__raf_state_ptr", JS_NewInt64(ctx, 0));
+    JS_FreeValue(ctx, global);
 }
 
 } // namespace clever::js

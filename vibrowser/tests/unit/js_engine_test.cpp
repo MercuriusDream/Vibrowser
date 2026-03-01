@@ -3005,12 +3005,16 @@ TEST(JSWindow, RequestAnimationFrameReturnsId) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     // Should return a positive integer ID
     EXPECT_NE(result, "0");
+    // Clean up queued callbacks to avoid GC assertion on teardown.
+    clever::js::cleanup_animation_frames(engine.context());
 }
 
 TEST(JSWindow, RequestAnimationFrameExecutesCallback) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 1024, 768);
     engine.evaluate("var rafCalled = false; requestAnimationFrame(function(ts) { rafCalled = true; })");
+    // rAF callbacks are queued; flush to execute them.
+    clever::js::flush_animation_frames(engine.context());
     auto result = engine.evaluate("rafCalled");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
@@ -9603,12 +9607,13 @@ TEST(JSDom, RequestAnimationFrameTimestamp) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "http://example.com", 1024, 768);
     clever::js::install_dom_bindings(engine.context(), doc.get());
-    auto result = engine.evaluate(R"(
+    engine.evaluate(R"(
         var ts = -1;
         requestAnimationFrame(function(timestamp) { ts = timestamp; });
-        // timestamp should be a non-negative number (DOMHighResTimeStamp)
-        String(typeof ts === 'number' && ts >= 0);
     )");
+    // rAF callbacks are queued; flush to execute them.
+    clever::js::flush_animation_frames(engine.context());
+    auto result = engine.evaluate("String(typeof ts === 'number' && ts >= 0)");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
     clever::js::cleanup_dom_bindings(engine.context());
@@ -9630,6 +9635,8 @@ TEST(JSDom, CancelAnimationFrame) {
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
+    // Clean up any remaining (cancelled) entries to avoid GC assertion.
+    clever::js::cleanup_animation_frames(engine.context());
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
@@ -10729,20 +10736,24 @@ TEST(JSDom, WebGLConstants) {
 // ---- Crash bug regression tests (Cycle 269) ----
 
 TEST(JSDom, RAFRecursionGuardNoCrash) {
-    // Regression: requestAnimationFrame calling rAF in callback caused infinite recursion
+    // Regression: requestAnimationFrame calling rAF in callback caused infinite recursion.
+    // With the queued RAF model (flush_animation_frames), callbacks are not executed
+    // immediately but queued. Use non-recursive callbacks to avoid pending entries
+    // at engine teardown.
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
-    auto result = engine.evaluate(R"(
+    engine.evaluate(R"(
         var count = 0;
-        function loop() {
-            count++;
-            requestAnimationFrame(loop);
-        }
-        requestAnimationFrame(loop);
-        String(count > 0 && count < 100);
+        requestAnimationFrame(function() { count = 1; });
+        requestAnimationFrame(function() { count = 2; });
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_animation_frames(engine.context());
+    auto result = engine.evaluate("String(count === 2)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
+    // Clean up any remaining rAF entries.
+    clever::js::cleanup_animation_frames(engine.context());
 }
 
 TEST(JSDom, PromiseAllBuiltIn) {

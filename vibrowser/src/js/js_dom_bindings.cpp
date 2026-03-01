@@ -13019,6 +13019,63 @@ static JSValue js_crypto_subtle_digest(JSContext* ctx, JSValueConst /*this_val*/
 #endif // __APPLE__
 
 // =========================================================================
+// crypto.getRandomValues — native arc4random_buf implementation
+// =========================================================================
+
+static JSValue js_crypto_get_random_values(JSContext* ctx, JSValueConst /*this_val*/,
+                                            int argc, JSValueConst* argv) {
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "crypto.getRandomValues requires 1 argument");
+
+    size_t byte_offset = 0, byte_length = 0, bytes_per_element = 0;
+    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &byte_offset, &byte_length, &bytes_per_element);
+    if (JS_IsException(ab)) {
+        JSValue exc = JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+        size_t direct_len = 0;
+        uint8_t* direct_ptr = JS_GetArrayBuffer(ctx, &direct_len, argv[0]);
+        if (!direct_ptr)
+            return JS_ThrowTypeError(ctx, "crypto.getRandomValues: argument must be a TypedArray");
+        if (direct_len > 65536)
+            return JS_ThrowRangeError(ctx, "crypto.getRandomValues: byte length exceeds 65536");
+        arc4random_buf(direct_ptr, direct_len);
+        return JS_DupValue(ctx, argv[0]);
+    }
+    if (byte_length > 65536) {
+        JS_FreeValue(ctx, ab);
+        return JS_ThrowRangeError(ctx, "crypto.getRandomValues: byte length exceeds 65536");
+    }
+    size_t ab_len = 0;
+    uint8_t* buf_ptr = JS_GetArrayBuffer(ctx, &ab_len, ab);
+    JS_FreeValue(ctx, ab);
+    if (!buf_ptr)
+        return JS_ThrowTypeError(ctx, "crypto.getRandomValues: could not access array buffer");
+    arc4random_buf(buf_ptr + byte_offset, byte_length);
+    return JS_DupValue(ctx, argv[0]);
+}
+
+// =========================================================================
+// crypto.randomUUID — generates a RFC 4122 version 4 UUID
+// =========================================================================
+
+static JSValue js_crypto_random_uuid(JSContext* ctx, JSValueConst /*this_val*/,
+                                      int /*argc*/, JSValueConst* /*argv*/) {
+    uint8_t bytes[16];
+    arc4random_buf(bytes, sizeof(bytes));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    char uuid[37];
+    snprintf(uuid, sizeof(uuid),
+             "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+             bytes[0],  bytes[1],  bytes[2],  bytes[3],
+             bytes[4],  bytes[5],
+             bytes[6],  bytes[7],
+             bytes[8],  bytes[9],
+             bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]);
+    return JS_NewString(ctx, uuid);
+}
+
+// =========================================================================
 // URL constructor and methods
 // =========================================================================
 
@@ -16284,72 +16341,47 @@ AbortController.prototype.abort = function(reason) {
 
     // ------------------------------------------------------------------
     // crypto.getRandomValues / crypto.randomUUID / crypto.subtle
+    // Build a native crypto object with C implementations using arc4random_buf
+    // NOTE: install_window_bindings also installs native crypto — this ensures
+    //       the object is available even when only install_dom_bindings is called.
     // ------------------------------------------------------------------
     {
-        const char* crypto_src = R"JS(
-if (typeof crypto === 'undefined') {
-    var crypto = {};
-    crypto.getRandomValues = function(arr) {
-        for (var i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
-        return arr;
-    };
-    crypto.randomUUID = function() {
-        var h = '0123456789abcdef';
-        var s = '';
-        for (var i = 0; i < 36; i++) {
-            if (i === 8 || i === 13 || i === 18 || i === 23) s += '-';
-            else if (i === 14) s += '4';
-            else if (i === 19) s += h[(Math.random() * 4 | 0) + 8];
-            else s += h[Math.random() * 16 | 0];
-        }
-        return s;
-    };
-    crypto.subtle = {};
-    globalThis.crypto = crypto;
-}
-)JS";
-        JSValue crypto_ret = JS_Eval(ctx, crypto_src, std::strlen(crypto_src),
-                                      "<crypto>", JS_EVAL_TYPE_GLOBAL);
-        if (JS_IsException(crypto_ret)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        }
-        JS_FreeValue(ctx, crypto_ret);
+        JSValue crypto_obj = JS_NewObject(ctx);
 
-        // Register native crypto.subtle.digest using CommonCrypto
+        // getRandomValues — native C implementation (cryptographically secure)
+        JS_SetPropertyStr(ctx, crypto_obj, "getRandomValues",
+            JS_NewCFunction(ctx, js_crypto_get_random_values, "getRandomValues", 1));
+
+        // randomUUID — native C implementation using arc4random_buf
+        JS_SetPropertyStr(ctx, crypto_obj, "randomUUID",
+            JS_NewCFunction(ctx, js_crypto_random_uuid, "randomUUID", 0));
+
+        // crypto.subtle object
+        JSValue subtle_obj = JS_NewObject(ctx);
+
 #ifdef __APPLE__
-        {
-            JSValue crypto_obj = JS_GetPropertyStr(ctx, global, "crypto");
-            if (!JS_IsUndefined(crypto_obj) && !JS_IsException(crypto_obj)) {
-                JSValue subtle_obj = JS_GetPropertyStr(ctx, crypto_obj, "subtle");
-                if (!JS_IsUndefined(subtle_obj) && !JS_IsException(subtle_obj)) {
-                    JS_SetPropertyStr(ctx, subtle_obj, "digest",
-                        JS_NewCFunction(ctx, js_crypto_subtle_digest, "digest", 2));
-                    JS_FreeValue(ctx, subtle_obj);
-                }
-                JS_FreeValue(ctx, crypto_obj);
-            }
-        }
+        // digest — native SHA implementation via CommonCrypto
+        JS_SetPropertyStr(ctx, subtle_obj, "digest",
+            JS_NewCFunction(ctx, js_crypto_subtle_digest, "digest", 2));
 #endif
 
         // crypto.subtle stub methods (encrypt, decrypt, sign, verify, etc.)
         const char* subtle_stubs_src = R"JS(
-(function() {
-    if (typeof crypto !== 'undefined' && crypto.subtle) {
-        var notSupported = function() {
-            return Promise.reject(new Error('Not supported'));
-        };
-        var methods = ['encrypt','decrypt','sign','verify','generateKey',
-                       'importKey','exportKey','deriveBits','deriveKey',
-                       'wrapKey','unwrapKey'];
-        for (var i = 0; i < methods.length; i++) {
-            if (!crypto.subtle[methods[i]]) {
-                crypto.subtle[methods[i]] = notSupported;
-            }
+(function(subtle) {
+    var notSupported = function() {
+        return Promise.reject(new Error('Not supported'));
+    };
+    var methods = ['encrypt','decrypt','sign','verify','generateKey',
+                   'importKey','exportKey','deriveBits','deriveKey',
+                   'wrapKey','unwrapKey'];
+    for (var i = 0; i < methods.length; i++) {
+        if (!subtle[methods[i]]) {
+            subtle[methods[i]] = notSupported;
         }
     }
-})();
+})(globalThis.__subtle_tmp__);
 )JS";
+        JS_SetPropertyStr(ctx, global, "__subtle_tmp__", JS_DupValue(ctx, subtle_obj));
         JSValue subtle_stubs_ret = JS_Eval(ctx, subtle_stubs_src,
                                             std::strlen(subtle_stubs_src),
                                             "<crypto-subtle-stubs>",
@@ -16359,6 +16391,12 @@ if (typeof crypto === 'undefined') {
             JS_FreeValue(ctx, exc);
         }
         JS_FreeValue(ctx, subtle_stubs_ret);
+        JS_SetPropertyStr(ctx, global, "__subtle_tmp__", JS_UNDEFINED);
+
+        JS_SetPropertyStr(ctx, crypto_obj, "subtle", subtle_obj);
+
+        // Install as globalThis.crypto (native, always)
+        JS_SetPropertyStr(ctx, global, "crypto", crypto_obj);
     }
 
     // ------------------------------------------------------------------
@@ -19065,6 +19103,48 @@ const std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*>*
     auto* state = get_dom_state(ctx);
     if (!state) return nullptr;
     return &state->shadow_roots;
+}
+
+// =========================================================================
+// dispatch_window_listeners — called from js_window.cpp to dispatch events
+// (e.g. popstate) directly to window.addEventListener listeners stored in
+// DOMState without going through a JS eval or the no-op dispatchEvent stub.
+// =========================================================================
+
+void dispatch_window_listeners(JSContext* ctx, const std::string& event_type,
+                                JSValue event_obj) {
+    if (!ctx) return;
+    auto* state = get_dom_state(ctx);
+    if (!state) return;
+
+    // Window-level listeners are keyed by nullptr (window_sentinel).
+    static constexpr clever::html::SimpleNode* win_sentinel = nullptr;
+    auto node_it = state->listeners.find(win_sentinel);
+    if (node_it == state->listeners.end()) return;
+    auto type_it = node_it->second.find(event_type);
+    if (type_it == node_it->second.end()) return;
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, event_obj, "eventPhase", JS_NewInt32(ctx, 2)); // AT_TARGET
+
+    // Snapshot the list so mutations during dispatch don't invalidate iterators.
+    auto entries = type_it->second;
+    for (auto& entry : entries) {
+        // Honor stopImmediatePropagation if the event carries a flag.
+        JSValue stopped = JS_GetPropertyStr(ctx, event_obj, "__stopImmediate");
+        bool is_stopped = JS_ToBool(ctx, stopped) != 0;
+        JS_FreeValue(ctx, stopped);
+        if (is_stopped) break;
+
+        JSValue result = JS_Call(ctx, entry.handler, global, 1, &event_obj);
+        if (JS_IsException(result)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, result);
+    }
+    JS_FreeValue(ctx, global);
 }
 
 } // namespace clever::js
