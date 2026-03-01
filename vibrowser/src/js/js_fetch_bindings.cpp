@@ -35,6 +35,9 @@ namespace clever::js {
 
 namespace {
 
+// Forward declaration (defined later in this file)
+static std::string url_decode_value(const std::string& s);
+
 // =========================================================================
 // XMLHttpRequest class ID
 // =========================================================================
@@ -779,6 +782,16 @@ static JSValue create_headers_object(JSContext* ctx,
 }
 
 // =========================================================================
+// FormData class ID and state — declared early so Response.formData() can use them
+// =========================================================================
+
+static JSClassID formdata_class_id = 0;
+
+struct FormDataState {
+    std::vector<std::pair<std::string, std::string>> entries;
+};
+
+// =========================================================================
 // Response class
 // =========================================================================
 
@@ -1004,6 +1017,199 @@ static JSValue js_response_blob(JSContext* ctx, JSValueConst this_val,
     return promise;
 }
 
+// response.formData() -> Promise<FormData>
+// Parses the response body according to the Content-Type header and returns a
+// populated FormData object.  Supports application/x-www-form-urlencoded and
+// multipart/form-data.
+static JSValue js_response_form_data(JSContext* ctx, JSValueConst this_val,
+                                      int /*argc*/, JSValueConst* /*argv*/) {
+    auto* state = get_response_state(ctx, this_val);
+    if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+
+    JSValue resolving_funcs[2];
+    JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
+    if (JS_IsException(promise)) return promise;
+
+    // Determine Content-Type (case-insensitive lookup)
+    std::string content_type;
+    for (const auto& [k, v] : state->headers) {
+        std::string lower_key = k;
+        for (char& ch : lower_key) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (lower_key == "content-type") {
+            content_type = v;
+            break;
+        }
+    }
+
+    // Lower-case the content-type for comparison
+    std::string ct_lower = content_type;
+    for (char& ch : ct_lower) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+
+    // Build the FormData entries
+    std::vector<std::pair<std::string, std::string>> entries;
+
+    if (ct_lower.find("application/x-www-form-urlencoded") != std::string::npos) {
+        // Split on '&', then each token on '='
+        const std::string& body = state->body;
+        size_t start = 0;
+        while (start <= body.size()) {
+            size_t amp = body.find('&', start);
+            if (amp == std::string::npos) amp = body.size();
+            std::string token = body.substr(start, amp - start);
+            if (!token.empty()) {
+                size_t eq = token.find('=');
+                std::string key, val;
+                if (eq != std::string::npos) {
+                    key = url_decode_value(token.substr(0, eq));
+                    val = url_decode_value(token.substr(eq + 1));
+                } else {
+                    key = url_decode_value(token);
+                }
+                entries.emplace_back(std::move(key), std::move(val));
+            }
+            start = amp + 1;
+        }
+    } else if (ct_lower.find("multipart/form-data") != std::string::npos) {
+        // Extract boundary from Content-Type header value
+        // e.g. "multipart/form-data; boundary=----FormBoundary123"
+        std::string boundary;
+        const std::string bnd_token = "boundary=";
+        size_t bpos = ct_lower.find(bnd_token);
+        if (bpos != std::string::npos) {
+            size_t bstart = bpos + bnd_token.size();
+            // boundary value may be quoted
+            if (bstart < content_type.size() && content_type[bstart] == '"') {
+                ++bstart;
+                size_t bend = content_type.find('"', bstart);
+                if (bend == std::string::npos) bend = content_type.size();
+                boundary = content_type.substr(bstart, bend - bstart);
+            } else {
+                size_t bend = content_type.find(';', bstart);
+                if (bend == std::string::npos) bend = content_type.size();
+                // trim trailing whitespace
+                while (bend > bstart && std::isspace(static_cast<unsigned char>(content_type[bend - 1])))
+                    --bend;
+                boundary = content_type.substr(bstart, bend - bstart);
+            }
+        }
+
+        if (!boundary.empty()) {
+            const std::string& body = state->body;
+            const std::string delimiter = "--" + boundary;
+            const std::string close_delimiter = "--" + boundary + "--";
+
+            size_t pos = 0;
+            while (pos < body.size()) {
+                // Find the next delimiter
+                size_t delim_pos = body.find(delimiter, pos);
+                if (delim_pos == std::string::npos) break;
+
+                // Skip past delimiter
+                size_t after_delim = delim_pos + delimiter.size();
+
+                // Check for closing delimiter
+                if (after_delim + 2 <= body.size() &&
+                    body[after_delim] == '-' && body[after_delim + 1] == '-') {
+                    break; // end of multipart
+                }
+
+                // Skip CRLF after delimiter
+                if (after_delim < body.size() && body[after_delim] == '\r') ++after_delim;
+                if (after_delim < body.size() && body[after_delim] == '\n') ++after_delim;
+
+                // Find blank line separating headers from body
+                size_t header_end = body.find("\r\n\r\n", after_delim);
+                if (header_end == std::string::npos) {
+                    header_end = body.find("\n\n", after_delim);
+                    if (header_end == std::string::npos) break;
+                    header_end += 2;
+                } else {
+                    header_end += 4;
+                }
+
+                // Parse part headers to get Content-Disposition name
+                std::string part_headers = body.substr(after_delim, header_end - after_delim);
+                std::string part_name;
+                {
+                    // Find Content-Disposition line
+                    std::string ph_lower = part_headers;
+                    for (char& ch : ph_lower)
+                        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                    size_t cd_pos = ph_lower.find("content-disposition:");
+                    if (cd_pos != std::string::npos) {
+                        size_t cd_end = part_headers.find('\n', cd_pos);
+                        if (cd_end == std::string::npos) cd_end = part_headers.size();
+                        std::string cd_line = part_headers.substr(cd_pos, cd_end - cd_pos);
+                        // Extract name="..."
+                        std::string cd_lower = cd_line;
+                        for (char& ch : cd_lower)
+                            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                        const std::string name_token = "name=\"";
+                        size_t npos = cd_lower.find(name_token);
+                        if (npos != std::string::npos) {
+                            size_t nstart = npos + name_token.size();
+                            size_t nend = cd_line.find('"', nstart);
+                            if (nend == std::string::npos) nend = cd_line.size();
+                            part_name = cd_line.substr(nstart, nend - nstart);
+                        }
+                    }
+                }
+
+                // Find the part body (up to the next delimiter)
+                size_t next_delim = body.find(delimiter, header_end);
+                if (next_delim == std::string::npos) next_delim = body.size();
+
+                // Strip trailing CRLF before delimiter
+                size_t part_body_end = next_delim;
+                if (part_body_end >= 2 &&
+                    body[part_body_end - 2] == '\r' && body[part_body_end - 1] == '\n') {
+                    part_body_end -= 2;
+                } else if (part_body_end >= 1 && body[part_body_end - 1] == '\n') {
+                    --part_body_end;
+                }
+
+                std::string part_body = body.substr(header_end, part_body_end - header_end);
+
+                if (!part_name.empty()) {
+                    entries.emplace_back(part_name, part_body);
+                }
+
+                pos = next_delim;
+            }
+        }
+    }
+    // (Any other / missing Content-Type yields an empty FormData.)
+
+    // Create a FormData JS object and populate it with entries
+    JSValue formdata_proto = JS_GetClassProto(ctx, formdata_class_id);
+    JSValue fd_obj = JS_NewObjectProtoClass(ctx, formdata_proto, formdata_class_id);
+    JS_FreeValue(ctx, formdata_proto);
+
+    if (JS_IsException(fd_obj)) {
+        // Reject the promise
+        JSValue err = JS_GetException(ctx);
+        JSValue ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, &err);
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, err);
+        JS_FreeValue(ctx, resolving_funcs[0]);
+        JS_FreeValue(ctx, resolving_funcs[1]);
+        return promise;
+    }
+
+    auto* fd_state = new FormDataState();
+    fd_state->entries = std::move(entries);
+    JS_SetOpaque(fd_obj, fd_state);
+
+    // Resolve the promise with the FormData object
+    JSValue ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, &fd_obj);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, fd_obj);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+
+    return promise;
+}
+
 static const JSCFunctionListEntry response_proto_funcs[] = {
     // Property getters
     JS_CGETSET_DEF("ok", js_response_get_ok, nullptr),
@@ -1020,6 +1226,7 @@ static const JSCFunctionListEntry response_proto_funcs[] = {
     JS_CFUNC_DEF("clone", 0, js_response_clone),
     JS_CFUNC_DEF("arrayBuffer", 0, js_response_array_buffer),
     JS_CFUNC_DEF("blob", 0, js_response_blob),
+    JS_CFUNC_DEF("formData", 0, js_response_form_data),
 };
 
 // =========================================================================
@@ -1116,16 +1323,6 @@ static JSValue create_response_object(JSContext* ctx,
     return obj;
 }
 
-// =========================================================================
-// FormData declarations (moved here so js_global_fetch can reference them)
-// =========================================================================
-
-static JSClassID formdata_class_id = 0;
-
-struct FormDataState {
-    std::vector<std::pair<std::string, std::string>> entries;
-};
-
 // Helper: URL-encode a string (application/x-www-form-urlencoded style)
 static std::string url_encode_value(const std::string& s, bool encode_space_as_plus = true) {
     std::string out;
@@ -1140,6 +1337,39 @@ static std::string url_encode_value(const std::string& s, bool encode_space_as_p
             char buf[4];
             std::snprintf(buf, sizeof(buf), "%%%02X", c);
             out += buf;
+        }
+    }
+    return out;
+}
+
+// Helper: URL-decode a string (application/x-www-form-urlencoded style)
+// Handles + as space and %XX hex sequences.
+static std::string url_decode_value(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ++i) {
+        char c = s[i];
+        if (c == '+') {
+            out += ' ';
+        } else if (c == '%' && i + 2 < s.size()) {
+            char h1 = s[i + 1];
+            char h2 = s[i + 2];
+            auto hex_digit = [](char ch) -> int {
+                if (ch >= '0' && ch <= '9') return ch - '0';
+                if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+                if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+                return -1;
+            };
+            int hi = hex_digit(h1);
+            int lo = hex_digit(h2);
+            if (hi >= 0 && lo >= 0) {
+                out += static_cast<char>((hi << 4) | lo);
+                i += 2;
+            } else {
+                out += c;
+            }
+        } else {
+            out += c;
         }
     }
     return out;
@@ -3162,28 +3392,6 @@ void install_fetch_bindings(JSContext* ctx) {
             JS_FreeValue(ctx, exc);
         }
         JS_FreeValue(ctx, ws_ext_ret);
-    }
-
-    // ------------------------------------------------------------------
-    // Response.formData() stub — returns Promise resolving to new FormData()
-    // ------------------------------------------------------------------
-    {
-        const char* formdata_stub_src = R"JS(
-        (function() {
-            if (typeof Response !== 'undefined' && Response.prototype) {
-                Response.prototype.formData = function() {
-                    return Promise.resolve(new FormData());
-                };
-            }
-        })();
-)JS";
-        JSValue fd_ret = JS_Eval(ctx, formdata_stub_src, std::strlen(formdata_stub_src),
-                                  "<response-formdata>", JS_EVAL_TYPE_GLOBAL);
-        if (JS_IsException(fd_ret)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        }
-        JS_FreeValue(ctx, fd_ret);
     }
 
     // ------------------------------------------------------------------

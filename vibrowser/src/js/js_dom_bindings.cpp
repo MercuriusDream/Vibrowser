@@ -176,6 +176,9 @@ struct DOMState {
         // Cursor / pointer-events / user-select
         int cursor_val = 0;          // 0=auto, 1=default, 2=pointer, 3=text, 4=move, 5=not-allowed
         int user_select_val = 0;     // 0=auto, 1=none, 2=text, 3=all
+
+        // CSS Custom Properties (CSS Variables)
+        std::unordered_map<std::string, std::string> custom_properties;
     };
     std::unordered_map<void*, LayoutRect> layout_geometry;
 
@@ -277,6 +280,8 @@ static void notify_mutation_observers(JSContext* ctx,
                                       clever::html::SimpleNode* next_sibling,
                                       const std::string& attr_name = "",
                                       const std::string& old_value = "");
+// Forward declaration for flushing queued MutationObserver microtasks (defined later)
+static void flush_mutation_observers(JSContext* ctx, DOMState* state);
 
 static void js_url_finalizer(JSRuntime* /*rt*/, JSValue val) {
     auto* state = static_cast<URLState*>(JS_GetOpaque(val, url_class_id));
@@ -536,15 +541,46 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
     if (!node || argc < 1) return JS_UNDEFINED;
     const char* str = JS_ToCString(ctx, argv[0]);
     if (str) {
+        auto* state = get_dom_state(ctx);
+
+        // Collect removed children for childList mutation records
+        std::vector<clever::html::SimpleNode*> removed_children;
+        for (auto& child : node->children) {
+            removed_children.push_back(child.get());
+        }
+
+        // For text nodes being modified directly (characterData mutation)
+        bool is_text_node = (node->type == clever::html::SimpleNode::Text);
+        std::string old_data = is_text_node ? node->data : "";
+
         node->children.clear();
         auto text_node = std::make_unique<clever::html::SimpleNode>();
         text_node->type = clever::html::SimpleNode::Text;
         text_node->data = str;
         text_node->parent = node;
+        clever::html::SimpleNode* text_raw = text_node.get();
         node->children.push_back(std::move(text_node));
         JS_FreeCString(ctx, str);
-        auto* state = get_dom_state(ctx);
-        if (state) state->modified = true;
+
+        if (state) {
+            state->modified = true;
+
+            if (is_text_node) {
+                // Text node: fire characterData mutation
+                std::vector<clever::html::SimpleNode*> empty;
+                notify_mutation_observers(ctx, state, "characterData", node,
+                                          empty, empty, nullptr, nullptr, "", old_data);
+            } else {
+                // Element node: fire childList for removed + added children
+                if (!removed_children.empty() || text_raw) {
+                    std::vector<clever::html::SimpleNode*> added = { text_raw };
+                    notify_mutation_observers(ctx, state, "childList", node,
+                                              added, removed_children, nullptr, nullptr);
+                }
+            }
+
+            flush_mutation_observers(ctx, state);
+        }
     }
     return JS_UNDEFINED;
 }
@@ -580,20 +616,40 @@ static JSValue js_element_set_inner_html(JSContext* ctx, JSValueConst this_val,
     if (!node || argc < 1) return JS_UNDEFINED;
     const char* str = JS_ToCString(ctx, argv[0]);
     if (str) {
+        auto* state = get_dom_state(ctx);
+
+        // Collect removed children for childList mutation record
+        std::vector<clever::html::SimpleNode*> removed_children;
+        for (auto& child : node->children) {
+            removed_children.push_back(child.get());
+        }
+
         auto parsed = clever::html::parse(str);
         node->children.clear();
+        std::vector<clever::html::SimpleNode*> added_children;
         if (parsed) {
             // The parser wraps content in <html><body>..., find body
             auto* body = parsed->find_element("body");
             auto* source = body ? body : parsed.get();
             for (auto& child : source->children) {
                 child->parent = node;
+                added_children.push_back(child.get());
                 node->children.push_back(std::move(child));
             }
         }
         JS_FreeCString(ctx, str);
-        auto* state = get_dom_state(ctx);
-        if (state) state->modified = true;
+
+        if (state) {
+            state->modified = true;
+
+            // Fire childList mutation for the innerHTML replacement
+            if (!removed_children.empty() || !added_children.empty()) {
+                notify_mutation_observers(ctx, state, "childList", node,
+                                          added_children, removed_children,
+                                          nullptr, nullptr);
+                flush_mutation_observers(ctx, state);
+            }
+        }
     }
     return JS_UNDEFINED;
 }
@@ -1269,6 +1325,8 @@ static JSValue js_element_set_attribute(JSContext* ctx, JSValueConst this_val,
                     entry.old_attribute_values[node][name] = value;
                 }
             }
+
+            flush_mutation_observers(ctx, state);
         }
     }
     if (name) JS_FreeCString(ctx, name);
@@ -1321,6 +1379,7 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
                     std::vector<clever::html::SimpleNode*> empty;
                     notify_mutation_observers(ctx, state, "childList", parent_node,
                                             added_nodes, empty, prev_sibling, next_sibling);
+                    flush_mutation_observers(ctx, state);
                 }
 
                 return wrap_element(ctx, child_node);
@@ -1351,6 +1410,7 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
             std::vector<clever::html::SimpleNode*> empty;
             notify_mutation_observers(ctx, state, "childList", parent_node,
                                     added, empty, prev_sibling, next_sibling);
+            flush_mutation_observers(ctx, state);
 
             return wrap_element(ctx, child_node);
         }
@@ -1381,6 +1441,7 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
                 std::vector<clever::html::SimpleNode*> empty;
                 notify_mutation_observers(ctx, state, "childList", parent_node,
                                         added, empty, prev_sibling, next_sibling);
+                flush_mutation_observers(ctx, state);
 
                 return wrap_element(ctx, child_node);
             }
@@ -1428,6 +1489,7 @@ static JSValue js_element_remove_child(JSContext* ctx, JSValueConst this_val,
             std::vector<clever::html::SimpleNode*> empty;
             notify_mutation_observers(ctx, state, "childList", parent_node,
                                     empty, removed, prev_sibling, next_sibling);
+            flush_mutation_observers(ctx, state);
 
             return wrap_element(ctx, child_node);
         }
@@ -1674,12 +1736,40 @@ static JSValue js_element_remove_attribute(JSContext* ctx,
     std::string name_str(name_cstr);
     JS_FreeCString(ctx, name_cstr);
 
+    auto* state = get_dom_state(ctx);
+
     auto& attrs = node->attributes;
     for (auto it = attrs.begin(); it != attrs.end(); ++it) {
         if (it->name == name_str) {
+            // Capture old attribute value before removal for mutation record
+            std::string old_attr_value = it->value;
+
+            // Also look up tracked old value from observers (may differ if attr was changed)
+            std::string final_old = old_attr_value;
+            if (state) {
+                for (auto& entry : state->mutation_observers) {
+                    if (entry.record_attribute_old_value) {
+                        auto map_it = entry.old_attribute_values[node].find(name_str);
+                        if (map_it != entry.old_attribute_values[node].end()) {
+                            final_old = map_it->second;
+                            break;
+                        }
+                    }
+                }
+            }
+
             attrs.erase(it);
-            auto* state = get_dom_state(ctx);
-            if (state) state->modified = true;
+
+            if (state) {
+                state->modified = true;
+
+                // Fire attribute mutation
+                std::vector<clever::html::SimpleNode*> empty;
+                notify_mutation_observers(ctx, state, "attributes", node,
+                                          empty, empty, nullptr, nullptr,
+                                          name_str, final_old);
+                flush_mutation_observers(ctx, state);
+            }
             break;
         }
     }
@@ -3443,6 +3533,13 @@ static std::string transforms_to_css(const std::vector<clever::css::Transform>& 
 // Returns empty string if the property is not known or not available.
 static std::string computed_style_lookup(const DOMState::LayoutRect& rect,
                                           const std::string& css_name) {
+    // CSS Custom Properties (CSS Variables): names starting with "--"
+    if (css_name.size() > 2 && css_name[0] == '-' && css_name[1] == '-') {
+        auto it = rect.custom_properties.find(css_name);
+        if (it != rect.custom_properties.end()) return it->second;
+        return "";
+    }
+
     // Box model dimensions (resolved px)
     if (css_name == "width")  return format_px(rect.width);
     if (css_name == "height") return format_px(rect.height);
@@ -3642,17 +3739,31 @@ static JSValue js_computed_style_get_property(JSContext* ctx,
     std::string css_name = camel_to_kebab(prop);
     if (css_name == "css-float") css_name = "float";
 
+    // CSS Custom Properties (CSS Variables): handle separately since their
+    // value may legitimately be an empty string (which would be misread as
+    // "not found" by the generic !val.empty() check below).
+    bool is_custom_prop = (css_name.size() > 2 && css_name[0] == '-' && css_name[1] == '-');
+
     // Check layout_geometry for layout-resolved properties
     auto* state = get_dom_state(ctx);
     if (state) {
         auto it = state->layout_geometry.find(static_cast<void*>(node));
         if (it != state->layout_geometry.end()) {
-            std::string val = computed_style_lookup(it->second, css_name);
-            if (!val.empty()) return JS_NewString(ctx, val.c_str());
+            if (is_custom_prop) {
+                // For custom properties return as soon as we find the entry in the cache.
+                auto cp_it = it->second.custom_properties.find(css_name);
+                if (cp_it != it->second.custom_properties.end()) {
+                    return JS_NewString(ctx, cp_it->second.c_str());
+                }
+                // Not in layout cache — fall through to inline style check below.
+            } else {
+                std::string val = computed_style_lookup(it->second, css_name);
+                if (!val.empty()) return JS_NewString(ctx, val.c_str());
+            }
         }
     }
 
-    // Fall back to inline style attribute
+    // Fall back to inline style attribute (also covers custom properties set via style="")
     auto props = parse_style_attr(get_attr(*node, "style"));
     auto it2 = props.find(css_name);
     if (it2 != props.end()) {
@@ -3991,8 +4102,18 @@ static JSValue js_element_insert_before(JSContext* ctx, JSValueConst this_val,
         auto owned = detach_node(state, new_node);
         if (!owned) return JS_UNDEFINED;
         owned->parent = parent_node;
+        clever::html::SimpleNode* prev_sib = !parent_node->children.empty()
+            ? parent_node->children.back().get() : nullptr;
         parent_node->children.push_back(std::move(owned));
         state->modified = true;
+
+        // Fire childList mutation
+        std::vector<clever::html::SimpleNode*> added = { new_node };
+        std::vector<clever::html::SimpleNode*> empty;
+        notify_mutation_observers(ctx, state, "childList", parent_node,
+                                  added, empty, prev_sib, nullptr);
+        flush_mutation_observers(ctx, state);
+
         return wrap_element(ctx, new_node);
     }
 
@@ -4023,10 +4144,23 @@ static JSValue js_element_insert_before(JSContext* ctx, JSValueConst this_val,
     }
     if (ref_idx < 0) return JS_UNDEFINED;
 
+    // Capture siblings before insertion
+    clever::html::SimpleNode* prev_sibling = (ref_idx > 0)
+        ? parent_node->children[static_cast<size_t>(ref_idx) - 1].get() : nullptr;
+    clever::html::SimpleNode* next_sibling = ref_node; // new node is inserted before ref
+
     owned->parent = parent_node;
     parent_node->children.insert(
         parent_node->children.begin() + ref_idx, std::move(owned));
     state->modified = true;
+
+    // Fire childList mutation
+    std::vector<clever::html::SimpleNode*> added = { new_node };
+    std::vector<clever::html::SimpleNode*> empty;
+    notify_mutation_observers(ctx, state, "childList", parent_node,
+                              added, empty, prev_sibling, next_sibling);
+    flush_mutation_observers(ctx, state);
+
     return wrap_element(ctx, new_node);
 }
 
@@ -4068,6 +4202,13 @@ static JSValue js_element_replace_child(JSContext* ctx, JSValueConst this_val,
     }
     if (old_idx < 0) return JS_UNDEFINED;
 
+    // Capture siblings around old_child before replacement
+    clever::html::SimpleNode* prev_sibling = (old_idx > 0)
+        ? parent_node->children[static_cast<size_t>(old_idx) - 1].get() : nullptr;
+    clever::html::SimpleNode* next_sibling =
+        (static_cast<size_t>(old_idx) + 1 < parent_node->children.size())
+        ? parent_node->children[static_cast<size_t>(old_idx) + 1].get() : nullptr;
+
     // Replace: take the old child's unique_ptr, put newChild in its place
     auto old_owned = std::move(parent_node->children[static_cast<size_t>(old_idx)]);
     old_owned->parent = nullptr;
@@ -4077,6 +4218,13 @@ static JSValue js_element_replace_child(JSContext* ctx, JSValueConst this_val,
     // Keep old child alive in owned_nodes so JS references remain valid
     state->owned_nodes.push_back(std::move(old_owned));
     state->modified = true;
+
+    // Fire childList mutation: new_child added, old_child removed
+    std::vector<clever::html::SimpleNode*> added = { new_child };
+    std::vector<clever::html::SimpleNode*> removed = { old_child };
+    notify_mutation_observers(ctx, state, "childList", parent_node,
+                              added, removed, prev_sibling, next_sibling);
+    flush_mutation_observers(ctx, state);
 
     // Return the old child (per DOM spec)
     return wrap_element(ctx, old_child);
@@ -4498,31 +4646,45 @@ static void notify_mutation_observers(JSContext* ctx,
     }
 }
 
-// Helper: flush all pending mutation callbacks
+// Helper: flush all pending mutation callbacks.
+// Uses a re-entrancy counter so mutations triggered inside a callback are
+// queued and delivered in subsequent rounds rather than causing infinite recursion.
 static void flush_mutation_observers(JSContext* ctx, DOMState* state) {
     if (!state) return;
 
-    while (!state->pending_mutations.empty()) {
-        auto pm = std::move(state->pending_mutations.front());
-        state->pending_mutations.erase(state->pending_mutations.begin());
+    // Re-entrancy guard: if already flushing, callback-triggered mutations
+    // will be picked up by the outer flush loop's next iteration.
+    static thread_local int flush_depth = 0;
+    if (flush_depth > 0) return;
 
-        // Create array of mutation records for this callback batch
-        JSValue records_arr = JS_NewArray(ctx);
-        for (size_t i = 0; i < pm.mutation_records.size(); ++i) {
-            JS_SetPropertyUint32(ctx, records_arr, static_cast<uint32_t>(i),
-                               pm.mutation_records[i]);
-        }
+    flush_depth++;
+    // Up to 8 rounds to handle cascaded mutations from callbacks
+    for (int round = 0; round < 8 && !state->pending_mutations.empty(); ++round) {
+        // Snapshot and clear the queue so callback-triggered mutations get queued
+        // separately and processed in the next iteration of this loop.
+        auto batch = std::move(state->pending_mutations);
+        state->pending_mutations.clear();
 
-        // Call the callback with (records, observer)
-        JSValue args[2] = { records_arr, pm.observer_obj };
-        JSValue ret = JS_Call(ctx, pm.callback, JS_UNDEFINED, 2, args);
-        if (JS_IsException(ret)) {
-            JS_FreeValue(ctx, ret);
+        for (auto& pm : batch) {
+            // Create array of mutation records for this callback batch
+            JSValue records_arr = JS_NewArray(ctx);
+            for (size_t i = 0; i < pm.mutation_records.size(); ++i) {
+                JS_SetPropertyUint32(ctx, records_arr, static_cast<uint32_t>(i),
+                                   pm.mutation_records[i]);
+            }
+
+            // Call the callback with (records, observer)
+            JSValue args[2] = { records_arr, pm.observer_obj };
+            JSValue ret = JS_Call(ctx, pm.callback, JS_UNDEFINED, 2, args);
+            if (JS_IsException(ret)) {
+                JS_FreeValue(ctx, ret);
+            }
+            JS_FreeValue(ctx, args[0]);
+            JS_FreeValue(ctx, pm.observer_obj);
+            JS_FreeValue(ctx, pm.callback);
         }
-        JS_FreeValue(ctx, args[0]);
-        JS_FreeValue(ctx, pm.observer_obj);
-        JS_FreeValue(ctx, pm.callback);
     }
+    flush_depth--;
 }
 
 static void js_mutation_observer_finalizer(JSRuntime* rt, JSValue val) {
@@ -4600,8 +4762,7 @@ static JSValue js_mutation_observer_observe(JSContext* ctx,
     // Find or create observer entry for this observer object
     for (auto& entry : state->mutation_observers) {
         if (JS_StrictEq(ctx, entry.observer_obj, this_val)) {
-            // Update existing observer
-            entry.observed_targets.push_back(target_node);
+            // Update observer options (per DOM spec: re-observe replaces options)
             entry.watch_child_list = watch_child_list;
             entry.watch_attributes = watch_attributes;
             entry.watch_character_data = watch_character_data;
@@ -4609,6 +4770,15 @@ static JSValue js_mutation_observer_observe(JSContext* ctx,
             entry.record_attribute_old_value = record_attr_old;
             entry.record_character_data_old_value = record_char_old;
             entry.attribute_filter = attr_filter;
+
+            // Add target only if not already being observed (avoid duplicates)
+            bool already_observed = false;
+            for (auto* t : entry.observed_targets) {
+                if (t == target_node) { already_observed = true; break; }
+            }
+            if (!already_observed) {
+                entry.observed_targets.push_back(target_node);
+            }
 
             // Store old attribute values if needed
             if (record_attr_old) {
@@ -14379,20 +14549,31 @@ void install_dom_bindings(JSContext* ctx,
     });
 
     // ---- template.content getter ----
-    // For <template> elements, content returns a document fragment
-    // containing the element's children
+    // For <template> elements, content returns a DocumentFragment whose
+    // children are clones of the template's child nodes.  The fragment is
+    // created ONCE per template element and cached so subsequent accesses
+    // return the same object without re-cloning or destructively moving nodes.
     Object.defineProperty(proto, 'content', {
         get: function() {
             var tag = this.__getTagName();
             if (tag !== 'TEMPLATE') return undefined;
-            // Create a document fragment and move children into it
+            // Return cached fragment if already built for this element instance.
+            if (this.__templateContent) return this.__templateContent;
+            // First access: build fragment by deep-cloning children (non-destructive).
             var frag = document.createDocumentFragment();
             var children = this.__getChildren();
             if (children) {
                 for (var i = 0; i < children.length; i++) {
-                    frag.appendChild(children[i]);
+                    frag.appendChild(children[i].cloneNode(true));
                 }
             }
+            // Cache as a non-enumerable own property on the element instance.
+            Object.defineProperty(this, '__templateContent', {
+                value: frag,
+                writable: false,
+                enumerable: false,
+                configurable: false
+            });
             return frag;
         },
         configurable: true
@@ -17713,6 +17894,270 @@ globalThis.WebGL2RenderingContext = WebGLRenderingContext;
     }
 
     // ------------------------------------------------------------------
+    // Clipboard API — navigator.clipboard with real in-memory storage
+    // ------------------------------------------------------------------
+    {
+        const char* clipboard_api_src = R"JS(
+(function(){
+'use strict';
+var __clipboardText = '';
+var __clipboardItems = [];
+if (typeof globalThis.ClipboardItem === 'undefined') {
+    function ClipboardItem(items) {
+        this._items = items || {}; this.types = Object.keys(this._items);
+    }
+    ClipboardItem.prototype.getType = function(type) {
+        var v = this._items[type];
+        if (typeof Blob !== 'undefined' && v instanceof Blob) return Promise.resolve(v);
+        var p = (v && typeof v.then==='function') ? v : Promise.resolve(String(v==null?'':v));
+        return p.then(function(t){
+            return typeof Blob!=='undefined'?new Blob([t],{type:type}):{type:type,_text:t};
+        });
+    };
+    ClipboardItem.supports = function(t) { return t === 'text/plain'; };
+    globalThis.ClipboardItem = ClipboardItem;
+}
+var clipboard = {
+    writeText: function(text) {
+        __clipboardText = String(text==null?'':text);
+        __clipboardItems = typeof globalThis.ClipboardItem!=='undefined'
+            ? [new globalThis.ClipboardItem({'text/plain':__clipboardText})] : [];
+        return Promise.resolve();
+    },
+    readText: function() { return Promise.resolve(__clipboardText); },
+    write: function(items) {
+        __clipboardItems = Array.isArray(items)?items.slice():[];
+        __clipboardText = '';
+        if (__clipboardItems.length>0) {
+            var f=__clipboardItems[0];
+            if (f&&f._items&&typeof f._items['text/plain']==='string')
+                __clipboardText=f._items['text/plain'];
+        }
+        return Promise.resolve();
+    },
+    read: function() { return Promise.resolve(__clipboardItems.slice()); }
+};
+if (typeof navigator !== 'undefined') {
+    try {
+        Object.defineProperty(navigator,'clipboard',
+            {value:clipboard,writable:true,configurable:true,enumerable:true});
+    } catch(e) { navigator.clipboard = clipboard; }
+}
+})();
+)JS";
+        JSValue clip_api_ret = JS_Eval(ctx, clipboard_api_src, std::strlen(clipboard_api_src),
+                                       "<clipboard-api>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(clip_api_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, clip_api_ret);
+    }
+
+    // ------------------------------------------------------------------
+    // Range (prototype-based) + Selection API + window/document.getSelection()
+    // ------------------------------------------------------------------
+    {
+        const char* selection_api_src = R"JS(
+(function(){
+'use strict';
+function Range() {
+    var d=typeof document!=='undefined'?document:null;
+    this.startContainer=d; this.startOffset=0;
+    this.endContainer=d;   this.endOffset=0;
+    this.collapsed=true;   this.commonAncestorContainer=d;
+}
+Range.prototype._sync=function(){
+    this.collapsed=(this.startContainer===this.endContainer&&this.startOffset===this.endOffset);
+    this.commonAncestorContainer=this.startContainer;
+};
+Range.prototype.setStart=function(n,o){this.startContainer=n;this.startOffset=o|0;this._sync();};
+Range.prototype.setEnd=function(n,o){this.endContainer=n;this.endOffset=o|0;this._sync();};
+Range.prototype.setStartBefore=function(n){
+    var p=n&&n.parentNode;if(!p)return;
+    var ch=p.childNodes?Array.prototype.slice.call(p.childNodes):[];
+    this.setStart(p,Math.max(0,ch.indexOf(n)));
+};
+Range.prototype.setStartAfter=function(n){
+    var p=n&&n.parentNode;if(!p)return;
+    var ch=p.childNodes?Array.prototype.slice.call(p.childNodes):[];
+    var i=ch.indexOf(n);this.setStart(p,i<0?0:i+1);
+};
+Range.prototype.setEndBefore=function(n){
+    var p=n&&n.parentNode;if(!p)return;
+    var ch=p.childNodes?Array.prototype.slice.call(p.childNodes):[];
+    this.setEnd(p,Math.max(0,ch.indexOf(n)));
+};
+Range.prototype.setEndAfter=function(n){
+    var p=n&&n.parentNode;if(!p)return;
+    var ch=p.childNodes?Array.prototype.slice.call(p.childNodes):[];
+    var i=ch.indexOf(n);this.setEnd(p,i<0?0:i+1);
+};
+Range.prototype.collapse=function(toStart){
+    if(toStart===undefined||toStart){this.endContainer=this.startContainer;this.endOffset=this.startOffset;}
+    else{this.startContainer=this.endContainer;this.startOffset=this.endOffset;}
+    this.collapsed=true;
+};
+Range.prototype.selectNode=function(n){
+    var p=(n&&n.parentNode)||(typeof document!=='undefined'?document:null);
+    this.startContainer=this.endContainer=this.commonAncestorContainer=p;
+    this.startOffset=this.endOffset=0;this.collapsed=false;
+};
+Range.prototype.selectNodeContents=function(n){
+    var len=n?(n.childNodes?n.childNodes.length:(n.textContent?n.textContent.length:0)):0;
+    this.startContainer=this.endContainer=this.commonAncestorContainer=n;
+    this.startOffset=0;this.endOffset=len;this.collapsed=(len===0);
+};
+Range.prototype.compareBoundaryPoints=function(){return 0;};
+Range.prototype.deleteContents=function(){};
+Range.prototype.extractContents=function(){return typeof document!=='undefined'?document.createDocumentFragment():null;};
+Range.prototype.cloneContents=function(){return typeof document!=='undefined'?document.createDocumentFragment():null;};
+Range.prototype.insertNode=function(node){};
+Range.prototype.surroundContents=function(newParent){};
+Range.prototype.cloneRange=function(){
+    var r=new Range();
+    r.startContainer=this.startContainer;r.startOffset=this.startOffset;
+    r.endContainer=this.endContainer;r.endOffset=this.endOffset;
+    r.collapsed=this.collapsed;r.commonAncestorContainer=this.commonAncestorContainer;
+    return r;
+};
+Range.prototype.detach=function(){};
+Range.prototype.isPointInRange=function(){return false;};
+Range.prototype.comparePoint=function(){return 0;};
+Range.prototype.intersectsNode=function(){return false;};
+Range.prototype.getBoundingClientRect=function(){
+    return{x:0,y:0,width:0,height:0,top:0,right:0,bottom:0,left:0,
+           toJSON:function(){return{x:0,y:0,width:0,height:0,top:0,right:0,bottom:0,left:0};}};
+};
+Range.prototype.getClientRects=function(){return[];};
+Range.prototype.createContextualFragment=function(html){
+    if(typeof document==='undefined')return null;
+    var frag=document.createDocumentFragment();
+    try{var d=document.createElement('div');d.innerHTML=html||'';
+        while(d.firstChild)frag.appendChild(d.firstChild);}catch(e){}
+    return frag;
+};
+Range.prototype.toString=function(){return'';};
+Range.START_TO_START=0;Range.START_TO_END=1;Range.END_TO_END=2;Range.END_TO_START=3;
+globalThis.Range=Range;
+if(typeof document!=='undefined')document.createRange=function(){return new Range();};
+
+function Selection(){
+    this._ranges=[];this.anchorNode=null;this.anchorOffset=0;
+    this.focusNode=null;this.focusOffset=0;
+    this.isCollapsed=true;this.rangeCount=0;this.type='None';
+}
+Selection.prototype._resetEmpty=function(){
+    this.anchorNode=null;this.anchorOffset=0;
+    this.focusNode=null;this.focusOffset=0;
+    this.isCollapsed=true;this.type='None';
+};
+Selection.prototype.getRangeAt=function(i){
+    if(i<0||i>=this._ranges.length)throw new DOMException('IndexSizeError','Index out of bounds');
+    return this._ranges[i];
+};
+Selection.prototype.addRange=function(range){
+    if(!(range instanceof Range))return;
+    this._ranges=[range];this.rangeCount=1;
+    this.anchorNode=range.startContainer;this.anchorOffset=range.startOffset;
+    this.focusNode=range.endContainer;this.focusOffset=range.endOffset;
+    this.isCollapsed=range.collapsed;this.type=range.collapsed?'Caret':'Range';
+};
+Selection.prototype.removeRange=function(range){
+    this._ranges=this._ranges.filter(function(r){return r!==range;});
+    this.rangeCount=this._ranges.length;
+    if(!this.rangeCount)this._resetEmpty();
+};
+Selection.prototype.removeAllRanges=function(){this._ranges=[];this.rangeCount=0;this._resetEmpty();};
+Selection.prototype.empty=Selection.prototype.removeAllRanges;
+Selection.prototype.collapse=function(node,offset){
+    var r=new Range();r.setStart(node,offset||0);r.setEnd(node,offset||0);this.addRange(r);
+};
+Selection.prototype.setPosition=Selection.prototype.collapse;
+Selection.prototype.collapseToStart=function(){
+    if(!this._ranges.length)return;
+    var r=this._ranges[0];this.collapse(r.startContainer,r.startOffset);
+};
+Selection.prototype.collapseToEnd=function(){
+    if(!this._ranges.length)return;
+    var r=this._ranges[0];this.collapse(r.endContainer,r.endOffset);
+};
+Selection.prototype.extend=function(node,offset){
+    if(!this._ranges.length){this.collapse(node,offset);return;}
+    var r=this._ranges[0];r.setEnd(node,offset||0);
+    this.focusNode=node;this.focusOffset=offset||0;
+    this.isCollapsed=r.collapsed;this.type=r.collapsed?'Caret':'Range';
+};
+Selection.prototype.selectAllChildren=function(node){
+    var r=new Range();r.selectNodeContents(node);this.addRange(r);
+};
+Selection.prototype.deleteFromDocument=function(){};
+Selection.prototype.containsNode=function(){return false;};
+Selection.prototype.modify=function(){};
+Selection.prototype.toString=function(){return'';};
+globalThis.Selection=Selection;
+var __gs=new Selection();
+if(typeof window!=='undefined')window.getSelection=function(){return __gs;};
+if(typeof document!=='undefined')document.getSelection=function(){return __gs;};
+})();
+)JS";
+        JSValue sel_ret = JS_Eval(ctx, selection_api_src, std::strlen(selection_api_src),
+                                   "<selection-api>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(sel_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, sel_ret);
+    }
+
+    // ------------------------------------------------------------------
+    // document.execCommand() stub + queryCommand* companions + StaticRange
+    // ------------------------------------------------------------------
+    {
+        const char* execcmd_src = R"JS(
+(function(){
+'use strict';
+if(typeof document!=='undefined'&&typeof document.execCommand!=='function')
+    document.execCommand=function(command,showUI,value){return false;};
+if(typeof document!=='undefined'){
+    if(typeof document.queryCommandSupported!=='function')
+        document.queryCommandSupported=function(cmd){return false;};
+    if(typeof document.queryCommandEnabled!=='function')
+        document.queryCommandEnabled=function(cmd){return false;};
+    if(typeof document.queryCommandState!=='function')
+        document.queryCommandState=function(cmd){return false;};
+    if(typeof document.queryCommandValue!=='function')
+        document.queryCommandValue=function(cmd){return'';};
+    if(typeof document.queryCommandIndeterm!=='function')
+        document.queryCommandIndeterm=function(cmd){return false;};
+}
+if(typeof globalThis.StaticRange==='undefined'){
+    function StaticRange(init){
+        init=init||{};
+        var doc=typeof document!=='undefined'?document:null;
+        this.startContainer=init.startContainer||doc;
+        this.startOffset=(init.startOffset|0);
+        this.endContainer=init.endContainer||doc;
+        this.endOffset=(init.endOffset|0);
+        this.collapsed=(this.startContainer===this.endContainer&&
+                        this.startOffset===this.endOffset);
+    }
+    globalThis.StaticRange=StaticRange;
+}
+if(typeof globalThis.AbstractRange==='undefined')
+    globalThis.AbstractRange=function AbstractRange(){};
+})();
+)JS";
+        JSValue ec_ret = JS_Eval(ctx, execcmd_src, std::strlen(execcmd_src),
+                                  "<execcommand-stub>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(ec_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, ec_ret);
+    }
+
+    // ------------------------------------------------------------------
     // Scan for inline event attributes (onclick, onload, etc.)
     // ------------------------------------------------------------------
     scan_inline_event_attributes(ctx, document_root);
@@ -18288,6 +18733,8 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr) {
                 // Cursor / pointer-events / user-select
                 rect.cursor_val = node.cursor;
                 rect.user_select_val = node.user_select;
+                // CSS Custom Properties (CSS Variables)
+                rect.custom_properties = node.custom_properties;
 
                 state->layout_geometry[node.dom_node] = rect;
                 this_dom_node = node.dom_node;
@@ -18601,6 +19048,23 @@ void set_current_script(JSContext* ctx, clever::html::SimpleNode* script_elem) {
     }
     JS_FreeValue(ctx, doc_obj);
     JS_FreeValue(ctx, global);
+}
+
+clever::html::SimpleNode* get_shadow_root(JSContext* ctx, clever::html::SimpleNode* host) {
+    if (!ctx || !host) return nullptr;
+    auto* state = get_dom_state(ctx);
+    if (!state) return nullptr;
+    auto it = state->shadow_roots.find(host);
+    if (it == state->shadow_roots.end()) return nullptr;
+    return it->second;
+}
+
+const std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*>*
+    get_shadow_roots_map(JSContext* ctx) {
+    if (!ctx) return nullptr;
+    auto* state = get_dom_state(ctx);
+    if (!state) return nullptr;
+    return &state->shadow_roots;
 }
 
 } // namespace clever::js

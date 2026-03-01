@@ -16,6 +16,7 @@ extern "C" {
 #include <map>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace clever::js {
@@ -2484,26 +2485,349 @@ static JSValue js_css_supports(JSContext* ctx, JSValueConst /*this_val*/,
                                 int argc, JSValueConst* argv) {
     if (argc < 1) return JS_FALSE;
 
-    // Known CSS properties we support (or that are widely supported)
-    static const char* known_properties[] = {
-        "display", "color", "background-color", "background",
-        "width", "height", "margin", "padding", "border",
-        "font-size", "font-family", "font-weight", "font-style",
-        "text-align", "text-decoration", "text-transform",
-        "position", "top", "right", "bottom", "left",
-        "flex", "flex-direction", "flex-wrap", "justify-content",
-        "align-items", "align-content", "align-self",
-        "grid", "grid-template-columns", "grid-template-rows",
-        "grid-gap", "gap", "overflow", "opacity", "visibility",
-        "z-index", "transform", "transition", "animation",
-        "box-sizing", "cursor", "pointer-events",
-        "border-radius", "box-shadow", "text-shadow",
+    // Comprehensive set of all CSS properties that vibrowser parses.
+    // Sourced from every `prop ==` and `d.property ==` check in
+    // style_resolver.cpp and render_pipeline.cpp.
+    static const std::unordered_set<std::string> known_properties = {
+        // Box model
+        "all",
+        "box-sizing", "box-decoration-break", "-webkit-box-decoration-break",
+        "width", "height",
         "min-width", "max-width", "min-height", "max-height",
-        "line-height", "letter-spacing", "word-spacing",
-        "white-space", "word-break", "overflow-wrap",
-        "list-style", "list-style-type", "float", "clear",
-        "vertical-align", "content", "outline",
-        nullptr
+        "min-inline-size", "max-inline-size",
+        "min-block-size", "max-block-size",
+        "inline-size", "block-size",
+        "aspect-ratio",
+        // Margin
+        "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+        "margin-block", "margin-block-start", "margin-block-end",
+        "margin-inline", "margin-inline-start", "margin-inline-end",
+        "margin-trim",
+        // Padding
+        "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+        "padding-block", "padding-block-start", "padding-block-end",
+        "padding-inline", "padding-inline-start", "padding-inline-end",
+        // Inset / positioning
+        "inset", "inset-block", "inset-inline",
+        "inset-block-start", "inset-block-end",
+        "inset-inline-start", "inset-inline-end",
+        "top", "right", "bottom", "left",
+        "position",
+        "z-index",
+        // Display / layout
+        "display",
+        "float", "clear",
+        "overflow", "overflow-x", "overflow-y",
+        "overflow-block", "overflow-inline",
+        "overflow-anchor", "overflow-clip-margin",
+        "overscroll-behavior", "overscroll-behavior-x", "overscroll-behavior-y",
+        "visibility",
+        "contain", "contain-intrinsic-size",
+        "contain-intrinsic-width", "contain-intrinsic-height",
+        "content-visibility",
+        "resize",
+        // Color / background
+        "color",
+        "background", "background-color", "background-image",
+        "background-size", "background-repeat",
+        "background-position", "background-position-x", "background-position-y",
+        "background-clip", "-webkit-background-clip",
+        "background-origin", "background-attachment", "background-blend-mode",
+        "color-scheme", "forced-color-adjust",
+        "print-color-adjust", "-webkit-print-color-adjust",
+        "color-interpolation",
+        // Opacity / blending / isolation
+        "opacity",
+        "mix-blend-mode", "isolation",
+        // Border
+        "border", "border-top", "border-right", "border-bottom", "border-left",
+        "border-block", "border-block-start", "border-block-end",
+        "border-inline-start", "border-inline-end",
+        "border-color",
+        "border-top-color", "border-right-color",
+        "border-bottom-color", "border-left-color",
+        "border-block-start-color", "border-block-end-color",
+        "border-inline-start-color", "border-inline-end-color",
+        "border-block-color", "border-inline-color",
+        "border-style",
+        "border-top-style", "border-right-style",
+        "border-bottom-style", "border-left-style",
+        "border-block-start-style", "border-block-end-style",
+        "border-inline-start-style", "border-inline-end-style",
+        "border-block-style", "border-inline-style",
+        "border-width",
+        "border-top-width", "border-right-width",
+        "border-bottom-width", "border-left-width",
+        "border-block-start-width", "border-block-end-width",
+        "border-inline-start-width", "border-inline-end-width",
+        "border-block-width", "border-inline-width",
+        "border-radius",
+        "border-top-left-radius", "border-top-right-radius",
+        "border-bottom-left-radius", "border-bottom-right-radius",
+        "border-start-start-radius", "border-start-end-radius",
+        "border-end-start-radius", "border-end-end-radius",
+        "border-image",
+        "border-image-source", "border-image-slice",
+        "border-image-width", "border-image-outset", "border-image-repeat",
+        "border-collapse", "border-spacing",
+        // Outline
+        "outline", "outline-width", "outline-color", "outline-style", "outline-offset",
+        // Box shadow
+        "box-shadow",
+        // Table
+        "table-layout", "caption-side", "empty-cells",
+        // Font
+        "font", "font-size", "font-family", "font-weight", "font-style",
+        "font-variant", "font-variant-caps", "font-variant-numeric",
+        "font-variant-ligatures", "font-variant-east-asian",
+        "font-variant-alternates", "font-variant-position",
+        "font-feature-settings", "font-variation-settings",
+        "font-optical-sizing", "font-kerning",
+        "font-synthesis", "font-stretch", "font-size-adjust",
+        "font-palette", "font-language-override",
+        "font-smooth", "-webkit-font-smoothing",
+        // Text
+        "text-align", "text-align-last",
+        "text-indent", "text-transform",
+        "text-decoration", "text-decoration-line",
+        "text-decoration-color", "text-decoration-style",
+        "text-decoration-thickness",
+        "text-decoration-skip", "text-decoration-skip-ink",
+        "text-shadow",
+        "text-overflow",
+        "text-wrap", "text-wrap-mode", "text-wrap-style",
+        "text-underline-offset", "text-underline-position",
+        "text-rendering",
+        "text-justify",
+        "text-emphasis", "text-emphasis-style",
+        "text-emphasis-color", "text-emphasis-position",
+        "text-size-adjust", "-webkit-text-size-adjust",
+        "text-combine-upright",
+        "text-orientation",
+        "text-anchor",
+        "text-stroke", "-webkit-text-stroke",
+        "-webkit-text-stroke-width", "-webkit-text-stroke-color",
+        "-webkit-text-fill-color",
+        // Letter/word/line spacing
+        "letter-spacing", "word-spacing", "line-height",
+        // White space / wrapping
+        "white-space", "white-space-collapse",
+        "word-break", "overflow-wrap", "word-wrap",
+        "line-break", "hyphens",
+        "tab-size", "-moz-tab-size",
+        // Line clamp
+        "line-clamp", "-webkit-line-clamp",
+        // Vertical align
+        "vertical-align",
+        // List
+        "list-style", "list-style-type", "list-style-position", "list-style-image",
+        "quotes",
+        // Flex
+        "flex", "flex-direction", "flex-wrap", "flex-flow",
+        "flex-grow", "flex-shrink", "flex-basis",
+        "order",
+        "justify-content", "justify-items", "justify-self",
+        "align-content", "align-items", "align-self",
+        "place-content", "place-items", "place-self",
+        "-webkit-box-orient",
+        // Grid
+        "grid", "grid-template", "grid-template-columns", "grid-template-rows",
+        "grid-template-areas",
+        "grid-column", "grid-row", "grid-area",
+        "grid-column-start", "grid-column-end",
+        "grid-row-start", "grid-row-end",
+        "grid-auto-rows", "grid-auto-columns", "grid-auto-flow",
+        "grid-gap", "row-gap", "grid-row-gap",
+        "column-gap", "grid-column-gap",
+        // Gap
+        "gap",
+        // Multi-column
+        "columns", "column-count", "column-width",
+        "column-fill", "column-gap", "column-span",
+        "column-rule", "column-rule-width", "column-rule-color", "column-rule-style",
+        // Transform / 3D
+        "transform", "transform-origin", "transform-style", "transform-box",
+        "perspective", "perspective-origin",
+        "backface-visibility",
+        "rotate", "scale", "translate",
+        // Transition
+        "transition", "transition-property", "transition-duration",
+        "transition-timing-function", "transition-delay",
+        "transition-behavior",
+        // Animation
+        "animation", "animation-name", "animation-duration",
+        "animation-timing-function", "animation-delay",
+        "animation-iteration-count", "animation-direction",
+        "animation-fill-mode", "animation-play-state",
+        "animation-composition", "animation-timeline",
+        "animation-range",
+        // Filter / backdrop
+        "filter", "backdrop-filter", "-webkit-backdrop-filter",
+        // Clip / shape / mask
+        "clip-path", "clip-rule",
+        "shape-outside", "shape-margin", "shape-image-threshold",
+        "shape-rendering",
+        "mask", "-webkit-mask",
+        "mask-image", "-webkit-mask-image",
+        "mask-size", "-webkit-mask-size",
+        "mask-repeat", "-webkit-mask-repeat",
+        "mask-composite", "-webkit-mask-composite",
+        "mask-mode", "mask-origin", "-webkit-mask-origin",
+        "mask-position", "-webkit-mask-position",
+        "mask-clip", "-webkit-mask-clip",
+        "mask-border", "mask-border-source", "mask-border-slice",
+        "mask-border-width", "mask-border-outset",
+        "mask-border-repeat", "mask-border-mode",
+        // Object fit
+        "object-fit", "object-position",
+        "image-rendering", "image-orientation",
+        // Scroll
+        "scroll-behavior",
+        "scroll-snap-type", "scroll-snap-align", "scroll-snap-stop",
+        "scroll-margin",
+        "scroll-margin-top", "scroll-margin-right",
+        "scroll-margin-bottom", "scroll-margin-left",
+        "scroll-margin-block-start", "scroll-margin-block-end",
+        "scroll-margin-inline-start", "scroll-margin-inline-end",
+        "scroll-padding",
+        "scroll-padding-top", "scroll-padding-right",
+        "scroll-padding-bottom", "scroll-padding-left",
+        "scroll-padding-inline", "scroll-padding-block",
+        "scrollbar-color", "scrollbar-width", "scrollbar-gutter",
+        // Cursor / pointer / interaction
+        "cursor", "pointer-events",
+        "user-select", "-webkit-user-select",
+        "touch-action", "will-change",
+        "caret-color", "accent-color",
+        "appearance", "-webkit-appearance",
+        "resize",
+        // Container queries
+        "container", "container-type", "container-name",
+        // Writing mode / direction / bidi
+        "writing-mode", "direction", "unicode-bidi",
+        "text-combine-upright", "text-orientation",
+        // Columns / fragments
+        "break-before", "break-after", "break-inside",
+        "page-break-before", "page-break-after", "page-break-inside",
+        "orphans", "widows",
+        // Counter
+        "counter-increment", "counter-reset", "counter-set",
+        // Content
+        "content",
+        // Page
+        "page",
+        // Placeholder
+        "placeholder-color",
+        // Hanging punctuation
+        "hanging-punctuation",
+        // Ruby
+        "ruby-align", "ruby-position", "ruby-overhang",
+        // Math
+        "math-style", "math-depth",
+        // Offset path (motion path)
+        "offset", "offset-path", "offset-distance",
+        "offset-rotate", "offset-anchor", "offset-position",
+        // SVG presentation attributes
+        "fill", "fill-opacity", "fill-rule",
+        "stroke", "stroke-width", "stroke-opacity",
+        "stroke-dasharray", "stroke-dashoffset",
+        "stroke-linecap", "stroke-linejoin", "stroke-miterlimit",
+        "stop-color", "stop-opacity",
+        "flood-color", "flood-opacity",
+        "lighting-color",
+        "marker", "marker-start", "marker-mid", "marker-end",
+        "vector-effect",
+        "paint-order",
+        "dominant-baseline",
+        "initial-letter", "initial-letter-align",
+        // Miscellaneous
+        "color-interpolation",
+        "color-scheme",
+        "isolation",
+        "mix-blend-mode",
+        "contain",
+        "content-visibility",
+        "overflow-anchor", "overflow-clip-margin",
+    };
+
+    // Helper: check if a property name is known.
+    // Custom properties (--*) always return true.
+    auto is_known_property = [&](const std::string& prop_name) -> bool {
+        if (prop_name.size() >= 2 && prop_name[0] == '-' && prop_name[1] == '-')
+            return true;  // CSS custom properties are always supported
+        return known_properties.count(prop_name) > 0;
+    };
+
+    // Helper: validate a value for a specific property.
+    // Returns true if the (property, value) pair is valid.
+    auto is_valid_value = [](const std::string& prop_name,
+                             const std::string& val) -> bool {
+        // Global CSS-wide keywords are valid for any property.
+        if (val == "initial" || val == "inherit" || val == "unset" ||
+            val == "revert" || val == "revert-layer")
+            return true;
+
+        if (prop_name == "display") {
+            static const std::unordered_set<std::string> display_vals = {
+                "none", "block", "inline", "inline-block",
+                "flex", "inline-flex",
+                "grid", "inline-grid",
+                "table", "inline-table",
+                "table-row", "table-cell", "table-caption",
+                "table-row-group", "table-header-group", "table-footer-group",
+                "table-column", "table-column-group",
+                "list-item", "flow-root",
+                "contents", "run-in",
+                "ruby", "ruby-base", "ruby-text",
+                "ruby-base-container", "ruby-text-container",
+                "math",
+            };
+            return display_vals.count(val) > 0;
+        }
+
+        if (prop_name == "position") {
+            static const std::unordered_set<std::string> position_vals = {
+                "static", "relative", "absolute", "fixed", "sticky",
+            };
+            return position_vals.count(val) > 0;
+        }
+
+        if (prop_name == "float") {
+            static const std::unordered_set<std::string> float_vals = {
+                "none", "left", "right", "inline-start", "inline-end",
+            };
+            return float_vals.count(val) > 0;
+        }
+
+        if (prop_name == "clear") {
+            static const std::unordered_set<std::string> clear_vals = {
+                "none", "left", "right", "both", "inline-start", "inline-end",
+            };
+            return clear_vals.count(val) > 0;
+        }
+
+        if (prop_name == "visibility") {
+            static const std::unordered_set<std::string> vis_vals = {
+                "visible", "hidden", "collapse",
+            };
+            return vis_vals.count(val) > 0;
+        }
+
+        if (prop_name == "overflow" || prop_name == "overflow-x" ||
+            prop_name == "overflow-y" || prop_name == "overflow-block" ||
+            prop_name == "overflow-inline") {
+            static const std::unordered_set<std::string> ov_vals = {
+                "visible", "hidden", "scroll", "auto", "clip",
+            };
+            return ov_vals.count(val) > 0;
+        }
+
+        if (prop_name == "box-sizing") {
+            return val == "border-box" || val == "content-box";
+        }
+
+        // For all other known properties, accept any non-empty value.
+        return !val.empty();
     };
 
     if (argc == 1) {
@@ -2513,38 +2837,60 @@ static JSValue js_css_supports(JSContext* ctx, JSValueConst /*this_val*/,
         std::string cond(condition);
         JS_FreeCString(ctx, condition);
 
-        // Strip leading/trailing parens and whitespace
-        size_t start = cond.find_first_not_of(" \t(");
-        size_t end = cond.find_last_not_of(" \t)");
-        if (start == std::string::npos || end == std::string::npos)
-            return JS_FALSE;
+        // Strip leading/trailing whitespace and outer parens
+        size_t start = cond.find_first_not_of(" \t\n\r");
+        if (start == std::string::npos) return JS_FALSE;
+        if (cond[start] == '(') ++start;
+        size_t end = cond.find_last_not_of(" \t\n\r");
+        if (end == std::string::npos || end < start) return JS_FALSE;
+        if (cond[end] == ')') {
+            if (end == 0) return JS_FALSE;
+            --end;
+        }
         std::string inner = cond.substr(start, end - start + 1);
 
-        // Find the property name (before the colon)
+        // Find the colon separating property from value
         size_t colon = inner.find(':');
         if (colon == std::string::npos) return JS_FALSE;
+
         std::string prop = inner.substr(0, colon);
+        std::string val  = inner.substr(colon + 1);
+
         // Trim whitespace from prop
         size_t ps = prop.find_first_not_of(" \t");
         size_t pe = prop.find_last_not_of(" \t");
         if (ps == std::string::npos) return JS_FALSE;
         prop = prop.substr(ps, pe - ps + 1);
 
-        for (const char** p = known_properties; *p; ++p) {
-            if (prop == *p) return JS_TRUE;
-        }
-        return JS_FALSE;
+        // Trim whitespace from val
+        size_t vs = val.find_first_not_of(" \t");
+        size_t ve = val.find_last_not_of(" \t");
+        if (vs == std::string::npos) return JS_FALSE;
+        val = val.substr(vs, ve - vs + 1);
+
+        if (!is_known_property(prop)) return JS_FALSE;
+        return is_valid_value(prop, val) ? JS_TRUE : JS_FALSE;
     } else {
         // CSS.supports("display", "grid") form
-        const char* prop = JS_ToCString(ctx, argv[0]);
-        if (!prop) return JS_FALSE;
-        std::string prop_str(prop);
-        JS_FreeCString(ctx, prop);
+        const char* prop_cstr = JS_ToCString(ctx, argv[0]);
+        if (!prop_cstr) return JS_FALSE;
+        std::string prop_str(prop_cstr);
+        JS_FreeCString(ctx, prop_cstr);
 
-        for (const char** p = known_properties; *p; ++p) {
-            if (prop_str == *p) return JS_TRUE;
-        }
-        return JS_FALSE;
+        if (!is_known_property(prop_str)) return JS_FALSE;
+
+        const char* val_cstr = JS_ToCString(ctx, argv[1]);
+        if (!val_cstr) return JS_FALSE;
+        std::string val_str(val_cstr);
+        JS_FreeCString(ctx, val_cstr);
+
+        // Trim whitespace from value
+        size_t vs = val_str.find_first_not_of(" \t");
+        size_t ve = val_str.find_last_not_of(" \t");
+        if (vs == std::string::npos) return JS_FALSE;
+        val_str = val_str.substr(vs, ve - vs + 1);
+
+        return is_valid_value(prop_str, val_str) ? JS_TRUE : JS_FALSE;
     }
 }
 

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -1072,6 +1073,9 @@ struct LayoutNode {
 
     // CSS all shorthand: "initial"/"inherit"/"unset"/"revert", "" = not set
     std::string css_all = "";
+
+    // CSS Custom Properties (CSS Variables) — inherited from ComputedStyle
+    std::unordered_map<std::string, std::string> custom_properties;
 
     // Back-pointer to source DOM node (SimpleNode*) for JS geometry queries
     void* dom_node = nullptr;

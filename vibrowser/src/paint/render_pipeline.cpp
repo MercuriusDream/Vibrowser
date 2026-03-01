@@ -34,6 +34,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <future>
 #include <limits>
 #include <mutex>
@@ -53,6 +54,9 @@ static thread_local int g_details_id_counter = 0;
 static thread_local const std::set<int>* g_toggled_details = nullptr;
 // When true, <noscript> content is rendered (JS failed or produced many errors)
 static thread_local bool g_noscript_fallback = false;
+// Shadow DOM: pointer to the shadow_roots map from DOMState (set before build_layout_tree_styled)
+static thread_local const std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*>*
+    g_shadow_roots = nullptr;
 
 namespace {
 
@@ -7636,6 +7640,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->animation_fill_mode = style.animation_fill_mode;
     layout_node->animation_composition = style.animation_composition;
     layout_node->animation_timeline = style.animation_timeline;
+    // CSS Custom Properties (CSS Variables)
+    layout_node->custom_properties.insert(style.custom_properties.begin(), style.custom_properties.end());
     // Text align
     switch (style.text_align) {
         case clever::css::TextAlign::Left: layout_node->text_align = 0; break;
@@ -11026,6 +11032,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->animation_composition = style.animation_composition;
     layout_node->animation_timeline = style.animation_timeline;
     layout_node->transform_box = style.transform_box;
+    // CSS Custom Properties (CSS Variables)
+    layout_node->custom_properties.insert(style.custom_properties.begin(), style.custom_properties.end());
 
     // Flex direction/alignment -> map to layout node
     switch (style.flex_direction) {
@@ -11445,18 +11453,96 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
     }
 
-    // Recursively build children
-    for (auto& child : node.children) {
-        auto child_layout = build_layout_tree_styled(
-            *child, style, resolver, view_tree, elem_view, base_url, link, form, link_target);
-        if (child_layout) {
-            // display: contents — flatten grandchildren into this node
-            if (child_layout->display_contents) {
-                for (auto& grandchild : child_layout->children) {
-                    layout_node->append_child(std::move(grandchild));
+    // Shadow DOM: if this element has an attached shadow root, render the shadow
+    // tree's children instead of the element's light DOM children.
+    // <slot> elements in the shadow tree are replaced with the host's light DOM children.
+    clever::html::SimpleNode* shadow_root_node = nullptr;
+    if (g_shadow_roots && node.type == clever::html::SimpleNode::Element) {
+        auto shadow_it = g_shadow_roots->find(const_cast<clever::html::SimpleNode*>(&node));
+        if (shadow_it != g_shadow_roots->end()) {
+            shadow_root_node = shadow_it->second;
+        }
+    }
+
+    if (shadow_root_node) {
+        // Helper lambda: iterate shadow root children, replacing <slot> with
+        // matching light DOM children from the host node.
+        std::function<void(const clever::html::SimpleNode&, clever::layout::LayoutNode&)>
+            build_shadow_subtree = [&](const clever::html::SimpleNode& shadow_parent,
+                                       clever::layout::LayoutNode& parent_layout_node) {
+            for (auto& shadow_child : shadow_parent.children) {
+                if (!shadow_child) continue;
+                std::string sc_tag;
+                if (shadow_child->type == clever::html::SimpleNode::Element) {
+                    sc_tag = to_lower(shadow_child->tag_name);
                 }
-            } else {
-                layout_node->append_child(std::move(child_layout));
+                if (sc_tag == "slot") {
+                    // <slot> — substitute matching light DOM children from the host.
+                    // Named slot: only children with slot="<name>" match.
+                    // Default slot: children without a slot attribute match.
+                    std::string slot_name = get_attr(*shadow_child, "name");
+                    bool any_slotted = false;
+                    for (auto& light_child : node.children) {
+                        if (!light_child) continue;
+                        std::string child_slot_attr;
+                        if (light_child->type == clever::html::SimpleNode::Element) {
+                            child_slot_attr = get_attr(*light_child, "slot");
+                        }
+                        bool matches = slot_name.empty()
+                            ? child_slot_attr.empty()
+                            : (child_slot_attr == slot_name);
+                        if (matches) {
+                            auto slotted_layout = build_layout_tree_styled(
+                                *light_child, style, resolver, view_tree, elem_view,
+                                base_url, link, form, link_target);
+                            if (slotted_layout) {
+                                if (slotted_layout->display_contents) {
+                                    for (auto& gc : slotted_layout->children) {
+                                        parent_layout_node.append_child(std::move(gc));
+                                    }
+                                } else {
+                                    parent_layout_node.append_child(std::move(slotted_layout));
+                                }
+                                any_slotted = true;
+                            }
+                        }
+                    }
+                    // If no light DOM children matched, render the slot's fallback content
+                    if (!any_slotted) {
+                        build_shadow_subtree(*shadow_child, parent_layout_node);
+                    }
+                } else {
+                    // Regular shadow tree node — build via normal pipeline
+                    auto shadow_child_layout = build_layout_tree_styled(
+                        *shadow_child, style, resolver, view_tree, elem_view,
+                        base_url, link, form, link_target);
+                    if (shadow_child_layout) {
+                        if (shadow_child_layout->display_contents) {
+                            for (auto& gc : shadow_child_layout->children) {
+                                parent_layout_node.append_child(std::move(gc));
+                            }
+                        } else {
+                            parent_layout_node.append_child(std::move(shadow_child_layout));
+                        }
+                    }
+                }
+            }
+        };
+        build_shadow_subtree(*shadow_root_node, *layout_node);
+    } else {
+        // Normal (non-shadow-DOM) child iteration
+        for (auto& child : node.children) {
+            auto child_layout = build_layout_tree_styled(
+                *child, style, resolver, view_tree, elem_view, base_url, link, form, link_target);
+            if (child_layout) {
+                // display: contents — flatten grandchildren into this node
+                if (child_layout->display_contents) {
+                    for (auto& grandchild : child_layout->children) {
+                        layout_node->append_child(std::move(grandchild));
+                    }
+                } else {
+                    layout_node->append_child(std::move(child_layout));
+                }
             }
         }
     }
@@ -13242,6 +13328,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 {
                     ElementViewTree pre_view_tree;
                     g_transition_runtime_enabled = false;
+                    // Expose shadow roots so build_layout_tree_styled can render Web Components
+                    g_shadow_roots = clever::js::get_shadow_roots_map(js_engine.context());
                     auto pre_root = build_layout_tree_styled(
                         *doc, root_style, resolver, pre_view_tree, nullptr, effective_base_url);
                     if (pre_root) {
@@ -13382,6 +13470,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 clever::js::flush_fetch_promise_jobs(js_engine.context());
                 execute_pending_scripts(4);
 
+                // Fire any pending MutationObserver callbacks (from DOM mutations during scripts)
+                clever::js::fire_mutation_observers(js_engine.context());
+
                 // Fire IntersectionObserver callbacks (scripts have now set up observers)
                 clever::js::fire_intersection_observers(
                     js_engine.context(), layout_viewport_width, layout_viewport_height);
@@ -13401,6 +13492,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 clever::js::flush_ready_timers(js_engine.context(), 0);
                 clever::js::flush_fetch_promise_jobs(js_engine.context());
                 execute_pending_scripts(2);
+
+                // Flush any MutationObserver callbacks triggered by observer callbacks
+                clever::js::fire_mutation_observers(js_engine.context());
 
                 // Convergence loop: flush chained timer/promise effects.
                 // Many sites use patterns like setTimeout(fn,0) inside
@@ -13477,8 +13571,13 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         g_transition_runtime_enabled = true;
         g_current_layout_nodes_by_key.clear();
         g_current_style_keys.clear();
+        // Set shadow roots map so build_layout_tree_styled can render Web Components
+        g_shadow_roots = js_engine_ptr
+            ? clever::js::get_shadow_roots_map(js_engine_ptr->context())
+            : nullptr;
         auto layout_root = build_layout_tree_styled(
             *doc, root_style, resolver, view_tree, nullptr, effective_base_url);
+        g_shadow_roots = nullptr; // Clear after use
         g_transition_runtime_enabled = false;
         prune_transition_runtime_state();
 

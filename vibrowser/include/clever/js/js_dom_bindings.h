@@ -1,6 +1,7 @@
 #pragma once
 #include <clever/html/tree_builder.h>
 #include <string>
+#include <unordered_map>
 
 struct JSContext;
 struct JSRuntime;
@@ -79,6 +80,16 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h);
 // Set document.currentScript to the given element (or null if nullptr).
 // Call before evaluating each <script> and set to nullptr after.
 void set_current_script(JSContext* ctx, clever::html::SimpleNode* script_elem);
+
+// Get the shadow root attached to a host element via attachShadow(), or nullptr.
+// Returns the shadow root SimpleNode* regardless of open/closed mode (for rendering).
+clever::html::SimpleNode* get_shadow_root(JSContext* ctx, clever::html::SimpleNode* host);
+
+// Returns a pointer to the internal shadow_roots map for use by the render pipeline.
+// The map maps host element SimpleNode* -> shadow root SimpleNode*.
+// The pointer is valid as long as the JSContext and DOMState are alive.
+const std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*>*
+    get_shadow_roots_map(JSContext* ctx);
 
 // Fire pending MutationObserver callbacks.
 // Call this to flush any queued mutations (after DOM operations complete).
