@@ -560,15 +560,17 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 }
                 return matches_an_plus_b(a, b, position);
             } else if (name == "not") {
-                // Parse the argument as a selector and check it does NOT match
+                // :not() receives a comma-separated selector list. It matches only
+                // when every selector in that list does NOT match this element.
                 auto inner_list = parse_selector_list(simple.argument);
                 for (const auto& sel : inner_list.selectors) {
                     if (matches(element, sel)) return false;
                 }
                 return true;
             } else if (name == "is" || name == "where" || name == "matches" || name == "-webkit-any") {
-                // :is() / :where() / :matches() — match if ANY argument selector matches
-                // :where() is identical but with 0 specificity (handled at specificity calc, not here)
+                // :is() / :where() / :matches() / -webkit-any() accept a comma-separated
+                // selector list and match when any listed selector matches.
+                // :where() is identical here; specificity is handled elsewhere.
                 auto inner_list = parse_selector_list(simple.argument);
                 for (const auto& sel : inner_list.selectors) {
                     if (matches(element, sel)) return true;
@@ -607,7 +609,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 }
                 return total == 1;
             } else if (name == "has") {
-                // :has() — match if any relation-defined selector matches from this element
+                // :has() takes a comma-separated selector list. It matches when any
+                // selector in that list matches via the relative matching path.
                 auto inner_list = parse_selector_list(simple.argument);
                 for (const auto& sel : inner_list.selectors) {
                     if (has_selector_matches(element, sel)) return true;
@@ -686,7 +689,10 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 }
                 return false;
             } else if (name == "link" || name == "any-link") {
-                // :any-link matches <a>, <area>, <link> with href attribute
+                // :link and :any-link match <a>, <area>, or <link> with href.
+                return is_link_with_href(element);
+            } else if (name == "local-link") {
+                // For now this is an alias for :any-link until origin checks are wired in.
                 return is_link_with_href(element);
             } else if (name == "defined") {
                 // :defined — all standard HTML elements are defined
@@ -735,8 +741,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 // Active pseudo-class not yet tracked.
                 return false;
             } else if (name == "visited") {
-                // Privacy-preserving fallback: until visited-state tracking exists,
-                // treat :visited as :link to preserve selector compatibility.
+                // Privacy-preserving fallback: without browser history state,
+                // :visited behaves like :any-link for broad selector compatibility.
                 return is_link_with_href(element);
             } else if (name == "indeterminate") {
                 // :indeterminate — matches checkbox/radio in indeterminate state
