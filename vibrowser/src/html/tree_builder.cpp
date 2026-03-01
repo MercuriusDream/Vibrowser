@@ -78,7 +78,7 @@ static bool closes_p(const std::string& tag) {
 // Raw text elements: their content is parsed as raw text
 static bool is_raw_text_element(const std::string& tag) {
     return tag == "script" || tag == "style" || tag == "xmp"
-        || tag == "iframe" || tag == "noembed" || tag == "noframes";
+        || tag == "iframe" || tag == "noembed" || tag == "noframes" || tag == "noscript";
 }
 
 // RCDATA elements: title, textarea
