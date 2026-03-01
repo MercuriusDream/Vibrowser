@@ -170,6 +170,38 @@ std::string getWelcomeHTML() {
     [_browserController rebuildBookmarksMenu];
 }
 
+- (BOOL)application:(NSApplication*)sender openFile:(NSString*)filename {
+    (void)sender;
+    if (!filename || filename.length == 0) return NO;
+    // Convert file path to file:// URL
+    NSString* fileURL = [NSString stringWithFormat:@"file://%@",
+        [filename stringByAddingPercentEncodingWithAllowedCharacters:
+            [NSCharacterSet URLPathAllowedCharacterSet]]];
+    if (_browserController) {
+        [_browserController navigateToURL:fileURL];
+    }
+    return YES;
+}
+
+- (void)application:(NSApplication*)sender openFiles:(NSArray<NSString*>*)filenames {
+    (void)sender;
+    for (NSString* filename in filenames) {
+        [self application:sender openFile:filename];
+        break; // Only open the first file in the current tab
+    }
+    [[NSApplication sharedApplication] replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
+}
+
+- (void)application:(NSApplication*)sender openURLs:(NSArray<NSURL*>*)urls {
+    (void)sender;
+    for (NSURL* url in urls) {
+        if (_browserController) {
+            [_browserController navigateToURL:[url absoluteString]];
+        }
+        break;
+    }
+}
+
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
     (void)sender;
     return YES;

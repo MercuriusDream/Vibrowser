@@ -4571,6 +4571,8 @@ void PropertyCascade::apply_declaration(
         if (value_lower == "horizontal-tb") style.writing_mode = 0;
         else if (value_lower == "vertical-rl") style.writing_mode = 1;
         else if (value_lower == "vertical-lr") style.writing_mode = 2;
+        else if (value_lower == "sideways-rl") style.writing_mode = 3;
+        else if (value_lower == "sideways-lr") style.writing_mode = 4;
         return;
     }
 
