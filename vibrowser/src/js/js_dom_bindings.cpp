@@ -296,10 +296,6 @@ static void notify_mutation_observers(JSContext* ctx,
                                       const std::string& old_value = "");
 // Forward declaration for flushing queued MutationObserver microtasks (defined later)
 static void flush_mutation_observers(JSContext* ctx, DOMState* state);
-// Forward declaration for flushing queued ResizeObserver callbacks (defined later)
-static void flush_resize_observers(JSContext* ctx, DOMState* state);
-// Forward declaration for checking resize observers (defined later)
-static void check_resize_observers(JSContext* ctx, DOMState* state);
 
 static void js_url_finalizer(JSRuntime* /*rt*/, JSValue val) {
     auto* state = static_cast<URLState*>(JS_GetOpaque(val, url_class_id));
@@ -6909,60 +6905,62 @@ static JSValue js_resize_observer_observe(JSContext* ctx,
     JS_ToInt32(ctx, &idx, idx_val);
     JS_FreeValue(ctx, idx_val);
 
+    // Parse options.box (default: 'content-box')
+    std::string box_mode = "content-box";
+    if (argc > 1 && JS_IsObject(argv[1])) {
+        JSValue box_val = JS_GetPropertyStr(ctx, argv[1], "box");
+        const char* box_str = JS_ToCString(ctx, box_val);
+        if (box_str) {
+            box_mode = box_str;
+            JS_FreeCString(ctx, box_str);
+        }
+        JS_FreeValue(ctx, box_val);
+    }
+
     if (idx >= 0 && idx < static_cast<int32_t>(state->resize_observers.size())) {
         auto& entry = state->resize_observers[idx];
-        // Don't add duplicates
+
+        // Check if already observed
+        bool already_observed = false;
         for (auto* e : entry.observed_elements) {
-            if (e == elem) return JS_UNDEFINED;
-        }
-        entry.observed_elements.push_back(elem);
-
-        if (JS_IsFunction(ctx, entry.callback)) {
-            JSValue entries = JS_NewArray(ctx);
-            JSValue init_entry = JS_NewObject(ctx);
-
-            float content_x = 0, content_y = 0, content_w = 0, content_h = 0;
-            float border_w = 0, border_h = 0;
-            auto geom_it = state->layout_geometry.find(elem);
-            if (geom_it != state->layout_geometry.end()) {
-                auto& lr = geom_it->second;
-                content_x = lr.x;
-                content_y = lr.y;
-                content_w = lr.width;
-                content_h = lr.height;
-                border_w = lr.border_left + lr.padding_left + lr.width +
-                           lr.padding_right + lr.border_right;
-                border_h = lr.border_top + lr.padding_top + lr.height +
-                           lr.padding_bottom + lr.border_bottom;
+            if (e == elem) {
+                already_observed = true;
+                break;
             }
-
-            JSValue cr = make_dom_rect(ctx, content_x, content_y, content_w, content_h);
-            JS_SetPropertyStr(ctx, init_entry, "contentRect", cr);
-
-            JSValue cbs_arr = JS_NewArray(ctx);
-            JSValue cbs = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, cbs, "inlineSize", JS_NewFloat64(ctx, content_w));
-            JS_SetPropertyStr(ctx, cbs, "blockSize", JS_NewFloat64(ctx, content_h));
-            JS_SetPropertyUint32(ctx, cbs_arr, 0, cbs);
-            JS_SetPropertyStr(ctx, init_entry, "contentBoxSize", cbs_arr);
-
-            JSValue bbs_arr = JS_NewArray(ctx);
-            JSValue bbs = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, bbs, "inlineSize", JS_NewFloat64(ctx, border_w));
-            JS_SetPropertyStr(ctx, bbs, "blockSize", JS_NewFloat64(ctx, border_h));
-            JS_SetPropertyUint32(ctx, bbs_arr, 0, bbs);
-            JS_SetPropertyStr(ctx, init_entry, "borderBoxSize", bbs_arr);
-
-            JS_SetPropertyStr(ctx, init_entry, "target", wrap_element(ctx, elem));
-
-            JS_SetPropertyUint32(ctx, entries, 0, init_entry);
-
-            JSValue args[2] = { entries, entry.observer_obj };
-            JSValue ret = JS_Call(ctx, entry.callback, JS_UNDEFINED, 2, args);
-            JS_FreeValue(ctx, ret);
-            JS_FreeValue(ctx, entries);
         }
+
+        if (!already_observed) {
+            entry.observed_elements.push_back(elem);
+        }
+
+        // Store the box mode for this element
+        entry.box_modes[elem] = box_mode;
+
+        // Get initial size and store in previous_sizes
+        float content_w = 0, content_h = 0;
+        float border_w = 0, border_h = 0;
+        auto geom_it = state->layout_geometry.find(elem);
+        if (geom_it != state->layout_geometry.end()) {
+            auto& lr = geom_it->second;
+            content_w = lr.width;
+            content_h = lr.height;
+            border_w = lr.border_left + lr.padding_left + lr.width +
+                       lr.padding_right + lr.border_right;
+            border_h = lr.border_top + lr.padding_top + lr.height +
+                       lr.padding_bottom + lr.border_bottom;
+        }
+
+        // Store initial size based on box mode
+        float initial_w = content_w;
+        float initial_h = content_h;
+        if (box_mode == "border-box") {
+            initial_w = border_w;
+            initial_h = border_h;
+        }
+
+        entry.previous_sizes[elem] = {initial_w, initial_h};
     }
+
     return JS_UNDEFINED;
 }
 
@@ -6987,6 +6985,8 @@ static JSValue js_resize_observer_unobserve(JSContext* ctx,
         entry.observed_elements.erase(
             std::remove(entry.observed_elements.begin(), entry.observed_elements.end(), elem),
             entry.observed_elements.end());
+        entry.previous_sizes.erase(elem);
+        entry.box_modes.erase(elem);
     }
     return JS_UNDEFINED;
 }
@@ -7004,7 +7004,10 @@ static JSValue js_resize_observer_disconnect(JSContext* ctx,
     JS_FreeValue(ctx, idx_val);
 
     if (idx >= 0 && idx < static_cast<int32_t>(state->resize_observers.size())) {
-        state->resize_observers[idx].observed_elements.clear();
+        auto& entry = state->resize_observers[idx];
+        entry.observed_elements.clear();
+        entry.previous_sizes.clear();
+        entry.box_modes.clear();
     }
     return JS_UNDEFINED;
 }
@@ -20460,12 +20463,24 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h) {
                 border_h = lr.border_top + lr.padding_top + lr.height +
                            lr.padding_bottom + lr.border_bottom;
             }
-            current_sizes[elem] = std::make_pair(border_w, border_h);
+
+            // Determine which size to track based on box mode
+            float track_w = border_w, track_h = border_h;
+            auto mode_it = ro.box_modes.find(elem);
+            if (mode_it != ro.box_modes.end()) {
+                if (mode_it->second == "content-box") {
+                    track_w = content_w;
+                    track_h = content_h;
+                }
+                // border-box and device-pixel-content-box use border dimensions
+            }
+
+            current_sizes[elem] = std::make_pair(track_w, track_h);
 
             auto prev_it = ro.previous_sizes.find(elem);
             if (prev_it == ro.previous_sizes.end() ||
-                prev_it->second.first != border_w ||
-                prev_it->second.second != border_h) {
+                prev_it->second.first != track_w ||
+                prev_it->second.second != track_h) {
                 has_size_change = true;
             }
 
