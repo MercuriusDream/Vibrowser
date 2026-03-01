@@ -103,6 +103,9 @@ private:
     void draw_box_shadow(const Rect& shadow_rect, const Rect& element_rect,
                          const Color& color, float blur_radius, float border_radius,
                          float r_tl = 0, float r_tr = 0, float r_bl = 0, float r_br = 0);
+    void draw_inset_shadow(const Rect& element_rect, const Color& color,
+                           float blur_radius, float offset_x, float offset_y, float spread,
+                           float r_tl = 0, float r_tr = 0, float r_bl = 0, float r_br = 0);
     void draw_gradient_rect(const Rect& rect, float angle,
                             const std::vector<std::pair<uint32_t, float>>& stops,
                             float border_radius = 0, bool repeating = false,

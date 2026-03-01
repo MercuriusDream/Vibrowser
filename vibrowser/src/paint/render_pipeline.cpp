@@ -8716,7 +8716,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             float outline_width = style.outline_width.to_px(0);
             if (outline_width > 0) {
                 layout_node->outline_width = outline_width;
-                layout_node->outline_color = color_to_argb(style.outline_color);
+                // Resolve currentColor sentinel (alpha=0 transparent) to the element's text color
+                clever::css::Color oc = style.outline_color;
+                if (oc.a == 0 && oc.r == 0 && oc.g == 0 && oc.b == 0) {
+                    oc = style.color; // currentColor — use element's text color
+                }
+                layout_node->outline_color = color_to_argb(oc);
                 layout_node->outline_style = convert_bs(style.outline_style);
                 layout_node->outline_offset = style.outline_offset.to_px(0);
             }
@@ -9226,8 +9231,23 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
     // Handle <textarea>
     if (tag_lower == "textarea") {
-        if (layout_node->specified_width < 0) layout_node->specified_width = 300.0f;
-        if (layout_node->specified_height < 0) layout_node->specified_height = 60.0f;
+        layout_node->is_textarea = true;
+
+        // Parse rows/cols for size defaults (~18px per line, ~7.5px per char column)
+        int ta_rows = 2, ta_cols = 20;
+        std::string rows_attr = get_attr(node, "rows");
+        std::string cols_attr = get_attr(node, "cols");
+        if (!rows_attr.empty()) { try { ta_rows = std::max(1, std::stoi(rows_attr)); } catch (...) {} }
+        if (!cols_attr.empty()) { try { ta_cols = std::max(1, std::stoi(cols_attr)); } catch (...) {} }
+        layout_node->textarea_rows = ta_rows;
+        layout_node->textarea_cols = ta_cols;
+
+        // Derive default size from rows/cols if CSS hasn't set explicit dimensions
+        float ta_width  = static_cast<float>(ta_cols) * 7.5f + 12.0f;
+        float ta_height = static_cast<float>(ta_rows) * 18.0f + 8.0f;
+        if (layout_node->specified_width  < 0) layout_node->specified_width  = ta_width;
+        if (layout_node->specified_height < 0) layout_node->specified_height = ta_height;
+
         bool dark_ta = (layout_node->color_scheme == 2);
         layout_node->background_color = dark_ta ? 0xFF1E1E1E : 0xFFFFFFFF;
         if (dark_ta) layout_node->color = 0xFFE0E0E0;
@@ -9235,12 +9255,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->display = clever::layout::DisplayType::InlineBlock;
         layout_node->geometry.padding = {4, 6, 4, 6};
         layout_node->geometry.border = {1, 1, 1, 1};
+        layout_node->border_color = dark_ta ? 0xFF555555 : 0xFF767676;
         if (dark_ta) {
-            layout_node->border_color = 0xFF555555;
-            layout_node->border_color_top = 0xFF555555;
-            layout_node->border_color_right = 0xFF555555;
+            layout_node->border_color_top    = 0xFF555555;
+            layout_node->border_color_right  = 0xFF555555;
             layout_node->border_color_bottom = 0xFF555555;
-            layout_node->border_color_left = 0xFF555555;
+            layout_node->border_color_left   = 0xFF555555;
         }
 
         // UA default cursor: text (I-beam) for textarea
@@ -9253,23 +9273,25 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         std::string placeholder_attr = get_attr(node, "placeholder");
         bool showing_placeholder = content_text.empty();
         std::string text = showing_placeholder ? placeholder_attr : content_text;
-        if (text.empty()) text = " ";
+        layout_node->textarea_has_content = !content_text.empty();
 
         // Store placeholder and value on the layout node for inspection
         layout_node->placeholder_text = placeholder_attr;
         layout_node->input_value = content_text;
 
-        auto text_child = std::make_unique<clever::layout::LayoutNode>();
-        text_child->is_text = true;
-        text_child->text_content = text;
-        text_child->mode = clever::layout::LayoutMode::Inline;
-        text_child->display = clever::layout::DisplayType::Inline;
-        text_child->font_size = (layout_node->placeholder_font_size > 0)
-            ? layout_node->placeholder_font_size : 13.0f;
-        text_child->color = showing_placeholder ? layout_node->placeholder_color
-                                                : (dark_ta ? 0xFFE0E0E0 : layout_node->color);
-        text_child->font_italic = showing_placeholder && layout_node->placeholder_italic;
-        layout_node->append_child(std::move(text_child));
+        if (!text.empty()) {
+            auto text_child = std::make_unique<clever::layout::LayoutNode>();
+            text_child->is_text = true;
+            text_child->text_content = text;
+            text_child->mode = clever::layout::LayoutMode::Inline;
+            text_child->display = clever::layout::DisplayType::Inline;
+            text_child->font_size = (layout_node->placeholder_font_size > 0)
+                ? layout_node->placeholder_font_size : 13.0f;
+            text_child->color = showing_placeholder ? layout_node->placeholder_color
+                                                    : (dark_ta ? 0xFFE0E0E0 : layout_node->color);
+            text_child->font_italic = showing_placeholder && layout_node->placeholder_italic;
+            layout_node->append_child(std::move(text_child));
+        }
         return layout_node;
     }
 
@@ -11384,7 +11406,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         float outline_width = style.outline_width.to_px(0);
         if (outline_width > 0) {
             layout_node->outline_width = outline_width;
-            layout_node->outline_color = color_to_argb(style.outline_color);
+            // Resolve currentColor sentinel (alpha=0 transparent) to the element's text color
+            clever::css::Color oc = style.outline_color;
+            if (oc.a == 0 && oc.r == 0 && oc.g == 0 && oc.b == 0) {
+                oc = style.color; // currentColor — use element's text color
+            }
+            layout_node->outline_color = color_to_argb(oc);
             // Map BorderStyle enum to int: 0=none, 1=solid, 2=dashed, 3=dotted, 4=double, 5=groove, 6=ridge, 7=inset, 8=outset
             auto os = style.outline_style;
             if (os == clever::css::BorderStyle::Solid) layout_node->outline_style = 1;
@@ -14607,6 +14634,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     region.bounds.width = n.geometry.border_box_width();
                     region.bounds.height = n.geometry.border_box_height();
                     region.dom_node = n.dom_node;
+                    // Propagate pointer-events: none so hit-testing can skip this region.
+                    region.pointer_events = n.pointer_events;
                     result.element_regions.push_back(region);
                 }
                 float child_x = abs_x + n.geometry.border.left + n.geometry.padding.left;

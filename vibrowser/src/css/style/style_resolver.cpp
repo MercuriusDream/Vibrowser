@@ -3055,8 +3055,12 @@ void PropertyCascade::apply_declaration(
         return;
     }
     if (prop == "outline-color") {
-        auto c = parse_color(value_str);
-        if (c) style.outline_color = *c;
+        if (value_lower == "currentcolor" || value_lower == "currentcolour") {
+            style.outline_color = style.color; // resolve currentColor to the element's text color
+        } else {
+            auto c = parse_color(value_str);
+            if (c) style.outline_color = *c;
+        }
         return;
     }
     if (prop == "outline-style") {

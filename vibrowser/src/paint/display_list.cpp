@@ -62,6 +62,25 @@ void DisplayList::fill_box_shadow(const Rect& shadow_rect, const Rect& element_r
     commands_.push_back(cmd);
 }
 
+void DisplayList::fill_inset_shadow(const Rect& element_rect, const Color& color,
+                                     float blur_radius, float offset_x, float offset_y, float spread,
+                                     float r_tl, float r_tr, float r_bl, float r_br) {
+    PaintCommand cmd;
+    cmd.type = PaintCommand::FillInsetShadow;
+    cmd.bounds = element_rect;
+    cmd.element_rect = element_rect;
+    cmd.color = color;
+    cmd.blur_radius = blur_radius;
+    cmd.inset_offset_x = offset_x;
+    cmd.inset_offset_y = offset_y;
+    cmd.inset_spread = spread;
+    cmd.border_radius_tl = r_tl;
+    cmd.border_radius_tr = r_tr;
+    cmd.border_radius_bl = r_bl;
+    cmd.border_radius_br = r_br;
+    commands_.push_back(cmd);
+}
+
 void DisplayList::draw_text(const std::string& text, float x, float y, float font_size,
                             const Color& color, const std::string& font_family,
                             int font_weight, bool font_italic,

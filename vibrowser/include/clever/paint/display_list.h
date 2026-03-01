@@ -73,12 +73,13 @@ struct SelectClickRegion {
 struct ElementRegion {
     Rect bounds;
     void* dom_node = nullptr; // SimpleNode* cast to void* to avoid header dependency
+    int pointer_events = 0;  // 0=auto (receives events), 1=none (pass-through)
 };
 
 struct PaintCommand {
     enum Type {
         FillRect, DrawText, DrawBorder, DrawImage, PushClip, PopClip,
-        FillBoxShadow, ApplyTransform, ResetTransform, ApplyFilter,
+        FillBoxShadow, FillInsetShadow, ApplyTransform, ResetTransform, ApplyFilter,
         ApplyBackdropFilter,
         DrawEllipse, DrawLine,
         ApplyClipPath,
@@ -112,9 +113,13 @@ struct PaintCommand {
     int radial_shape = 0; // 0=ellipse, 1=circle (radial only)
     std::vector<std::pair<uint32_t, float>> gradient_stops; // {argb, position_0_to_1}
 
-    // Box shadow data (for FillBoxShadow)
+    // Box shadow data (for FillBoxShadow and FillInsetShadow)
     float blur_radius = 0;     // Gaussian blur radius
     Rect element_rect = {0, 0, 0, 0}; // The original element rect (before blur expansion)
+    // Inset shadow extra params (for FillInsetShadow)
+    float inset_offset_x = 0;
+    float inset_offset_y = 0;
+    float inset_spread = 0;
 
     // Text shadow data (for DrawText commands)
     float text_shadow_offset_x = 0;
@@ -193,6 +198,10 @@ public:
     void fill_box_shadow(const Rect& shadow_rect, const Rect& element_rect,
                          const Color& color, float blur_radius,
                          float r_tl, float r_tr, float r_bl, float r_br);
+    // Inset box-shadow: drawn inside element_rect, clipped to it.
+    void fill_inset_shadow(const Rect& element_rect, const Color& color,
+                           float blur_radius, float offset_x, float offset_y, float spread,
+                           float r_tl = 0, float r_tr = 0, float r_bl = 0, float r_br = 0);
     void fill_gradient(const Rect& rect, float angle,
                        const std::vector<std::pair<uint32_t, float>>& stops,
                        float border_radius = 0,

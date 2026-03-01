@@ -2422,9 +2422,11 @@ static std::string build_shell_message_html(const std::string& page_title,
 
     // Hit-test against element regions in reverse order (last = topmost / highest z-order).
     // Find the smallest (most specific) element that contains the click point.
+    // Skip elements with pointer-events: none — clicks pass through to elements below.
     clever::html::SimpleNode* target = nullptr;
     float smallest_area = std::numeric_limits<float>::max();
     for (auto it = elementRegions.rbegin(); it != elementRegions.rend(); ++it) {
+        if (it->pointer_events == 1) continue; // pointer-events: none — skip
         if (it->bounds.contains(x, y) && it->dom_node) {
             float area = it->bounds.width * it->bounds.height;
             if (area < smallest_area) {
@@ -2949,10 +2951,12 @@ static std::string build_shell_message_html(const std::string& page_title,
     auto& domTree = [tab domTree];
     if (elementRegions.empty() || !domTree) return;
 
-    // Hit-test to find the innermost element under the mouse
+    // Hit-test to find the innermost element under the mouse.
+    // Skip elements with pointer-events: none.
     clever::html::SimpleNode* target = nullptr;
     float smallest_area = std::numeric_limits<float>::max();
     for (auto it = elementRegions.rbegin(); it != elementRegions.rend(); ++it) {
+        if (it->pointer_events == 1) continue; // pointer-events: none — skip
         if (it->bounds.contains(x, y) && it->dom_node) {
             float area = it->bounds.width * it->bounds.height;
             if (area < smallest_area) {
@@ -3164,6 +3168,7 @@ do_render:
     clever::html::SimpleNode* newTarget = nullptr;
     float smallest = std::numeric_limits<float>::max();
     for (auto it = newRegions.rbegin(); it != newRegions.rend(); ++it) {
+        if (it->pointer_events == 1) continue; // pointer-events: none — skip
         if (it->bounds.contains(_lastHoverX, _lastHoverY) && it->dom_node) {
             float area = it->bounds.width * it->bounds.height;
             if (area < smallest) {
@@ -3186,10 +3191,11 @@ do_render:
     auto& elementRegions = [tab elementRegions];
     if (!jsEngine || elementRegions.empty()) return NO;
 
-    // Hit-test to find the target element
+    // Hit-test to find the target element. Skip pointer-events: none elements.
     clever::html::SimpleNode* target = nullptr;
     float smallest_area = std::numeric_limits<float>::max();
     for (auto it = elementRegions.rbegin(); it != elementRegions.rend(); ++it) {
+        if (it->pointer_events == 1) continue; // pointer-events: none — skip
         if (it->bounds.contains(x, y) && it->dom_node) {
             float area = it->bounds.width * it->bounds.height;
             if (area < smallest_area) {
@@ -3217,10 +3223,11 @@ do_render:
     auto& elementRegions = [tab elementRegions];
     if (!jsEngine || elementRegions.empty()) return NO;
 
-    // Hit-test to find the target element
+    // Hit-test to find the target element. Skip pointer-events: none elements.
     clever::html::SimpleNode* target = nullptr;
     float smallest_area = std::numeric_limits<float>::max();
     for (auto it = elementRegions.rbegin(); it != elementRegions.rend(); ++it) {
+        if (it->pointer_events == 1) continue; // pointer-events: none — skip
         if (it->bounds.contains(x, y) && it->dom_node) {
             float area = it->bounds.width * it->bounds.height;
             if (area < smallest_area) {

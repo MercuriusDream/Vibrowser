@@ -62,7 +62,20 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 auto render_text_command = [&]() {
                     // Handle word_spacing: draw word-by-word with extra spacing
                     if (cmd.word_spacing != 0) {
-                        float char_advance = cmd.font_size * 0.6f + cmd.letter_spacing;
+                        // Measure the actual width of a space character for accurate
+                        // word-spacing computation. CSS word-spacing adds extra space
+                        // on top of the normal space glyph width.
+                        float space_width = 0.0f;
+                        if (text_renderer_) {
+                            space_width = text_renderer_->measure_text_width(
+                                " ", cmd.font_size, cmd.font_family,
+                                cmd.font_weight, cmd.font_italic, cmd.letter_spacing);
+                        } else {
+                            // Fallback: approximate space as ~30% of font size
+                            space_width = cmd.font_size * 0.3f + cmd.letter_spacing;
+                        }
+                        float space_advance = space_width + cmd.word_spacing;
+
                         float cursor_x = cmd.bounds.x;
                         size_t i = 0;
                         while (i < render_text.size()) {
@@ -77,11 +90,22 @@ void SoftwareRenderer::render(const DisplayList& list) {
                                                  cmd.letter_spacing,
                                                  cmd.font_feature_settings, cmd.font_variation_settings,
                                                  cmd.text_rendering, cmd.font_kerning, cmd.font_optical_sizing);
-                                cursor_x += static_cast<float>(word.size()) * char_advance;
+                                // Advance by the actual measured word width so glyphs
+                                // don't overlap or leave incorrect gaps
+                                float word_width = 0.0f;
+                                if (text_renderer_) {
+                                    word_width = text_renderer_->measure_text_width(
+                                        word, cmd.font_size, cmd.font_family,
+                                        cmd.font_weight, cmd.font_italic, cmd.letter_spacing);
+                                } else {
+                                    word_width = static_cast<float>(word.size()) *
+                                                 (cmd.font_size * 0.6f + cmd.letter_spacing);
+                                }
+                                cursor_x += word_width;
                             }
                             if (sp < render_text.size()) {
-                                // Space character: advance by char_advance + word_spacing
-                                cursor_x += char_advance + cmd.word_spacing;
+                                // Space character: advance by measured space width + word_spacing
+                                cursor_x += space_advance;
                             }
                             i = sp + 1;
                             if (sp == render_text.size()) break;
@@ -473,6 +497,13 @@ void SoftwareRenderer::render(const DisplayList& list) {
                                 cmd.blur_radius, cmd.border_radius,
                                 cmd.border_radius_tl, cmd.border_radius_tr,
                                 cmd.border_radius_bl, cmd.border_radius_br);
+                break;
+            case PaintCommand::FillInsetShadow:
+                draw_inset_shadow(cmd.element_rect, cmd.color,
+                                  cmd.blur_radius,
+                                  cmd.inset_offset_x, cmd.inset_offset_y, cmd.inset_spread,
+                                  cmd.border_radius_tl, cmd.border_radius_tr,
+                                  cmd.border_radius_bl, cmd.border_radius_br);
                 break;
             case PaintCommand::PushClip:
                 if (clip_stack_.empty()) {
@@ -999,6 +1030,137 @@ void SoftwareRenderer::draw_box_shadow(const Rect& shadow_rect, const Rect& elem
             float coverage = 0.5f * (1.0f - erf_val);
 
             if (coverage < 0.004f) continue; // Skip nearly transparent pixels
+
+            uint8_t alpha = static_cast<uint8_t>(
+                std::min(255.0f, static_cast<float>(color.a) * coverage));
+
+            if (alpha == 0) continue;
+
+            set_pixel(x, y, {color.r, color.g, color.b, alpha});
+        }
+    }
+}
+
+// Draw an inset box-shadow clipped to element_rect.
+// The shadow source rect is element_rect shrunk by spread and shifted by offset.
+// Pixels OUTSIDE the source rect (but inside element_rect) receive Gaussian shadow falloff.
+// Pixels inside the source rect are skipped (no shadow there).
+void SoftwareRenderer::draw_inset_shadow(const Rect& element_rect, const Color& color,
+                                          float blur_radius, float offset_x, float offset_y,
+                                          float spread,
+                                          float r_tl, float r_tr, float r_bl, float r_br) {
+    // Shadow source rect: element rect shrunk by spread, shifted by offset
+    float src_x = element_rect.x + spread + offset_x;
+    float src_y = element_rect.y + spread + offset_y;
+    float src_w = element_rect.width  - spread * 2.0f;
+    float src_h = element_rect.height - spread * 2.0f;
+
+    bool degenerate = (src_w <= 0.0f || src_h <= 0.0f);
+    float sr_left, sr_top, sr_right, sr_bottom;
+    if (degenerate) {
+        sr_left = sr_right  = element_rect.x + element_rect.width  / 2.0f;
+        sr_top  = sr_bottom = element_rect.y + element_rect.height / 2.0f;
+    } else {
+        sr_left   = src_x;
+        sr_top    = src_y;
+        sr_right  = src_x + src_w;
+        sr_bottom = src_y + src_h;
+    }
+
+    // Clip region = element border box, clamped to canvas
+    int clip_x0 = std::max(0, static_cast<int>(std::floor(element_rect.x)));
+    int clip_y0 = std::max(0, static_cast<int>(std::floor(element_rect.y)));
+    int clip_x1 = std::min(width_,  static_cast<int>(std::ceil(element_rect.x + element_rect.width)));
+    int clip_y1 = std::min(height_, static_cast<int>(std::ceil(element_rect.y + element_rect.height)));
+
+    float sigma = blur_radius / 2.0f;
+    if (sigma < 0.5f) sigma = 0.5f;
+    float inv_sigma_sqrt2 = 1.0f / (sigma * 1.41421356f);
+
+    // Resolve border-radius for element clip
+    bool has_per = (r_tl > 0 || r_tr > 0 || r_bl > 0 || r_br > 0);
+    float half_min_el = std::min(element_rect.width, element_rect.height) / 2.0f;
+    float eff_tl, eff_tr, eff_bl, eff_br;
+    if (has_per) {
+        eff_tl = std::min(r_tl, half_min_el);
+        eff_tr = std::min(r_tr, half_min_el);
+        eff_bl = std::min(r_bl, half_min_el);
+        eff_br = std::min(r_br, half_min_el);
+    } else {
+        eff_tl = eff_tr = eff_bl = eff_br = 0.0f;
+    }
+    bool has_radius = (eff_tl > 0 || eff_tr > 0 || eff_bl > 0 || eff_br > 0);
+
+    float el_left   = element_rect.x;
+    float el_top    = element_rect.y;
+    float el_right  = element_rect.x + element_rect.width;
+    float el_bottom = element_rect.y + element_rect.height;
+
+    for (int y = clip_y0; y < clip_y1; y++) {
+        float py = static_cast<float>(y) + 0.5f;
+        for (int x = clip_x0; x < clip_x1; x++) {
+            float px = static_cast<float>(x) + 0.5f;
+
+            // Clip to element border box with optional rounded corners
+            if (has_radius) {
+                float mid_x = el_left + element_rect.width  / 2.0f;
+                float mid_y = el_top  + element_rect.height / 2.0f;
+                float r_corner, ccx, ccy;
+                if (px <= mid_x && py <= mid_y) {
+                    r_corner = eff_tl; ccx = el_left  + eff_tl; ccy = el_top    + eff_tl;
+                } else if (px > mid_x && py <= mid_y) {
+                    r_corner = eff_tr; ccx = el_right - eff_tr; ccy = el_top    + eff_tr;
+                } else if (px <= mid_x && py > mid_y) {
+                    r_corner = eff_bl; ccx = el_left  + eff_bl; ccy = el_bottom - eff_bl;
+                } else {
+                    r_corner = eff_br; ccx = el_right - eff_br; ccy = el_bottom - eff_br;
+                }
+                bool in_corner_zone = (px < el_left + r_corner || px > el_right - r_corner) &&
+                                      (py < el_top + r_corner  || py > el_bottom - r_corner);
+                if (in_corner_zone && r_corner > 0) {
+                    float dx = px - ccx, dy = py - ccy;
+                    if (std::sqrt(dx * dx + dy * dy) > r_corner) continue;
+                }
+            }
+
+            // Signed distance from shadow source rect.
+            // Positive = outside source rect = shadow zone (inside element).
+            // Negative = inside source rect = no shadow.
+            float dist;
+            if (!degenerate) {
+                float d_left   = sr_left   - px;
+                float d_right  = px - sr_right;
+                float d_top    = sr_top    - py;
+                float d_bottom = py - sr_bottom;
+                dist = std::max({d_left, d_right, d_top, d_bottom});
+            } else {
+                float dx = px - sr_left;
+                float dy = py - sr_top;
+                dist = std::sqrt(dx * dx + dy * dy);
+            }
+
+            // No shadow inside the source rect
+            if (dist < 0.0f) continue;
+
+            // Gaussian coverage: brightest at source rect boundary, fades outward.
+            // coverage = 0.5 * erfc(dist * inv_sigma_sqrt2) = 0.5*(1 - erf(t))
+            // t is always >= 0 here
+            float t = dist * inv_sigma_sqrt2;
+            float erf_val;
+            if (t > 3.7f) {
+                erf_val = 1.0f;
+            } else {
+                float p = 1.0f / (1.0f + 0.3275911f * t);
+                float exp_val = std::exp(-t * t);
+                erf_val = 1.0f - (0.254829592f * p
+                                  - 0.284496736f * p * p
+                                  + 1.421413741f * p * p * p
+                                  - 1.453152027f * p * p * p * p
+                                  + 1.061405429f * p * p * p * p * p) * exp_val;
+            }
+            float coverage = 0.5f * (1.0f - erf_val);
+
+            if (coverage < 0.004f) continue;
 
             uint8_t alpha = static_cast<uint8_t>(
                 std::min(255.0f, static_cast<float>(color.a) * coverage));

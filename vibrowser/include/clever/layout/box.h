@@ -516,6 +516,12 @@ struct LayoutNode {
     int media_type = 0;  // 0=none, 1=video, 2=audio
     std::string media_src;
 
+    // Textarea element (<textarea>)
+    bool is_textarea = false;
+    int textarea_rows = 2;          // rows attribute (default 2)
+    int textarea_cols = 20;         // cols attribute (default 20)
+    bool textarea_has_content = false; // true when textarea has actual text (not placeholder)
+
     // Text input (<input type="text/password/email/search/url/tel/number">)
     bool is_text_input = false;
     bool is_password_input = false; // true for type="password" — render bullets

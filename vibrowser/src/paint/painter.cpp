@@ -418,79 +418,38 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
         paint_background(node, list, abs_x, abs_y);
 
         // Paint inset box shadows (after background, before content) — render in reverse
+        // Resolve per-corner radii for inset shadow clipping
+        bool inset_has_per = (node.border_radius_tl > 0 || node.border_radius_tr > 0 ||
+                               node.border_radius_bl > 0 || node.border_radius_br > 0);
+        float i_tl = inset_has_per ? node.border_radius_tl : node.border_radius;
+        float i_tr = inset_has_per ? node.border_radius_tr : node.border_radius;
+        float i_bl = inset_has_per ? node.border_radius_bl : node.border_radius;
+        float i_br = inset_has_per ? node.border_radius_br : node.border_radius;
+        Rect element_box = {abs_x, abs_y, geom.border_box_width(), geom.border_box_height()};
+
         if (!node.box_shadows.empty()) {
             for (int si = static_cast<int>(node.box_shadows.size()) - 1; si >= 0; --si) {
                 auto& bs = node.box_shadows[static_cast<size_t>(si)];
                 if (bs.color == 0x00000000 || !bs.inset) continue;
                 uint32_t sc = bs.color;
                 uint8_t sa = static_cast<uint8_t>((sc >> 24) & 0xFF);
-                uint8_t sr = static_cast<uint8_t>((sc >> 16) & 0xFF);
-                uint8_t sg = static_cast<uint8_t>((sc >> 8) & 0xFF);
+                uint8_t sr_c = static_cast<uint8_t>((sc >> 16) & 0xFF);
+                uint8_t sg_c = static_cast<uint8_t>((sc >> 8) & 0xFF);
                 uint8_t sb_c = static_cast<uint8_t>(sc & 0xFF);
-                float bw = geom.border_box_width();
-                float bh = geom.border_box_height();
-                float spread = bs.spread;
-                float blur = bs.blur;
-                float ox = bs.offset_x;
-                float oy = bs.offset_y;
-                float top_depth = blur + spread - oy;
-                float bottom_depth = blur + spread + oy;
-                float left_depth = blur + spread - ox;
-                float right_depth = blur + spread + ox;
-                if (top_depth > 0) {
-                    Rect r = {abs_x, abs_y, bw, std::min(top_depth, bh)};
-                    list.fill_rect(r, {sr, sg, sb_c, static_cast<uint8_t>(sa / 2)});
-                }
-                if (bottom_depth > 0) {
-                    float d = std::min(bottom_depth, bh);
-                    Rect r = {abs_x, abs_y + bh - d, bw, d};
-                    list.fill_rect(r, {sr, sg, sb_c, static_cast<uint8_t>(sa / 2)});
-                }
-                if (left_depth > 0) {
-                    Rect r = {abs_x, abs_y, std::min(left_depth, bw), bh};
-                    list.fill_rect(r, {sr, sg, sb_c, static_cast<uint8_t>(sa / 3)});
-                }
-                if (right_depth > 0) {
-                    float d = std::min(right_depth, bw);
-                    Rect r = {abs_x + bw - d, abs_y, d, bh};
-                    list.fill_rect(r, {sr, sg, sb_c, static_cast<uint8_t>(sa / 3)});
-                }
+                list.fill_inset_shadow(element_box, {sr_c, sg_c, sb_c, sa},
+                                       bs.blur, bs.offset_x, bs.offset_y, bs.spread,
+                                       i_tl, i_tr, i_bl, i_br);
             }
         } else if (node.shadow_color != 0x00000000 && node.shadow_inset) {
             // Legacy single inset shadow fallback
             uint32_t sc = node.shadow_color;
             uint8_t sa = static_cast<uint8_t>((sc >> 24) & 0xFF);
-            uint8_t sr = static_cast<uint8_t>((sc >> 16) & 0xFF);
-            uint8_t sg = static_cast<uint8_t>((sc >> 8) & 0xFF);
+            uint8_t sr_c = static_cast<uint8_t>((sc >> 16) & 0xFF);
+            uint8_t sg_c = static_cast<uint8_t>((sc >> 8) & 0xFF);
             uint8_t sb_c = static_cast<uint8_t>(sc & 0xFF);
-            float bw = geom.border_box_width();
-            float bh = geom.border_box_height();
-            float spread = node.shadow_spread;
-            float blur = node.shadow_blur;
-            float ox = node.shadow_offset_x;
-            float oy = node.shadow_offset_y;
-            float top_depth = blur + spread - oy;
-            float bottom_depth = blur + spread + oy;
-            float left_depth = blur + spread - ox;
-            float right_depth = blur + spread + ox;
-            if (top_depth > 0) {
-                Rect r = {abs_x, abs_y, bw, std::min(top_depth, bh)};
-                list.fill_rect(r, {sr, sg, sb_c, static_cast<uint8_t>(sa / 2)});
-            }
-            if (bottom_depth > 0) {
-                float d = std::min(bottom_depth, bh);
-                Rect r = {abs_x, abs_y + bh - d, bw, d};
-                list.fill_rect(r, {sr, sg, sb_c, static_cast<uint8_t>(sa / 2)});
-            }
-            if (left_depth > 0) {
-                Rect r = {abs_x, abs_y, std::min(left_depth, bw), bh};
-                list.fill_rect(r, {sr, sg, sb_c, static_cast<uint8_t>(sa / 3)});
-            }
-            if (right_depth > 0) {
-                float d = std::min(right_depth, bw);
-                Rect r = {abs_x + bw - d, abs_y, d, bh};
-                list.fill_rect(r, {sr, sg, sb_c, static_cast<uint8_t>(sa / 3)});
-            }
+            list.fill_inset_shadow(element_box, {sr_c, sg_c, sb_c, sa},
+                                   node.shadow_blur, node.shadow_offset_x, node.shadow_offset_y,
+                                   node.shadow_spread, i_tl, i_tr, i_bl, i_br);
         }
 
         // Paint SVG shape elements
@@ -795,6 +754,11 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
             paint_text_input(node, list, abs_x, abs_y);
         }
 
+        // Paint textarea decoration (background + border + scrollbar indicator + resize handle)
+        if (node.is_textarea && node.appearance != 1) {
+            paint_textarea(node, list, abs_x, abs_y);
+        }
+
         // Paint native button decoration (gradient background + raised border)
         if (node.is_button_input && node.appearance != 1) {
             paint_button_input(node, list, abs_x, abs_y);
@@ -829,27 +793,34 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
             paint_caret(node, list, abs_x, abs_y);
         }
 
-        // List markers are rendered via marker text nodes created in render_pipeline.
-        // paint_list_marker() is only used as fallback when no marker node exists
-        // (e.g., list items not processed by render_pipeline).
-        if (node.is_list_item && node.list_style_type != 9) {
-            // Check if first child is already a marker text node (• ○ ▪ or numbered)
-            bool has_marker_node = false;
-            if (!node.children.empty() && node.children[0]->is_text) {
-                const auto& txt = node.children[0]->text_content;
-                if (!txt.empty() && (txt[0] == '\xE2' || // UTF-8 bullet/circle/square
-                    (txt.size() >= 2 && txt.back() == ' ' &&
-                     (std::isdigit(static_cast<unsigned char>(txt[0])) ||
-                      std::isalpha(static_cast<unsigned char>(txt[0])))))) {
-                    has_marker_node = true;
-                }
-            }
-            if (!has_marker_node) {
-                float content_x = abs_x + geom.border.left + geom.padding.left;
-                float content_y = abs_y + geom.border.top + geom.padding.top;
-                paint_list_marker(node, list, content_x, content_y);
-            }
-        }
+         // List markers are rendered via marker text nodes created in render_pipeline
+         // for inside-positioned markers. paint_list_marker() handles outside markers
+         // (drawn to the left of the content box) and list-style-image markers.
+         if (node.is_list_item &&
+             (node.list_style_type != 9 || !node.list_style_image.empty())) {
+             // list_style_position == 1 is inside. render_pipeline prepends a marker
+             // text node as the first child for inside markers — detect it to avoid
+             // double-painting. For outside (0) or image markers, always call the painter.
+             bool has_inside_marker_node = false;
+             if (node.list_style_position == 1 &&
+                 !node.children.empty() && node.children[0]->is_text) {
+                 const auto& txt = node.children[0]->text_content;
+                 // Bullet/circle/square start with 0xE2 (UTF-8 3-byte sequence).
+                 // Numeric/alpha markers have form "N. " (ends with space).
+                 if (!txt.empty() &&
+                     (static_cast<unsigned char>(txt[0]) == 0xE2u ||
+                      (txt.size() >= 2 && txt.back() == ' ' &&
+                       (std::isdigit(static_cast<unsigned char>(txt[0])) ||
+                        std::isalpha(static_cast<unsigned char>(txt[0])))))) {
+                     has_inside_marker_node = true;
+                 }
+             }
+             if (!has_inside_marker_node) {
+                 float content_x = abs_x + geom.border.left + geom.padding.left;
+                 float content_y = abs_y + geom.border.top + geom.padding.top;
+                 paint_list_marker(node, list, content_x, content_y);
+             }
+         }
 
         // Paint quotation marks for <q> inline quotation elements
         if (node.is_q) {
@@ -3235,6 +3206,67 @@ void Painter::paint_text_input(const clever::layout::LayoutNode& node, DisplayLi
 
     // The text child (value or placeholder) is painted via the normal child recursion.
     // This method only provides the native background + border decoration.
+}
+
+void Painter::paint_textarea(const clever::layout::LayoutNode& node, DisplayList& list,
+                             float abs_x, float abs_y) {
+    if (!node.is_textarea) return;
+
+    const auto& geom = node.geometry;
+    float box_w = geom.border_box_width();
+    float box_h = geom.border_box_height();
+    Rect box_rect = {abs_x, abs_y, box_w, box_h};
+
+    bool dark = (node.color_scheme == 2);
+
+    // Background fill
+    Color bg_color = dark ? Color{0x1E, 0x1E, 0x1E, 0xFF} : Color{0xFF, 0xFF, 0xFF, 0xFF};
+    if (node.background_color != 0x00000000 && node.background_color != 0xFF000000) {
+        bg_color = Color::from_argb(node.background_color);
+    }
+    float radius = node.border_radius > 0 ? node.border_radius : 3.0f;
+    list.fill_rounded_rect(box_rect, bg_color, radius);
+
+    // Inset border: top/left slightly darker to give sunken effect
+    Color border_outer = dark ? Color{0x44, 0x44, 0x44, 0xFF} : Color{0x76, 0x76, 0x76, 0xFF};
+    Color border_inner = dark ? Color{0x2E, 0x2E, 0x2E, 0xFF} : Color{0xAA, 0xAA, 0xAA, 0xFF};
+    if (node.border_color != 0 && node.border_color != 0xFF000000) {
+        border_outer = Color::from_argb(node.border_color);
+        border_inner = border_outer;
+    }
+
+    float bw = 1.0f;
+    list.fill_rect({abs_x,               abs_y,               box_w, bw   }, border_outer);
+    list.fill_rect({abs_x,               abs_y,               bw,    box_h}, border_outer);
+    list.fill_rect({abs_x,               abs_y + box_h - bw,  box_w, bw   }, border_inner);
+    list.fill_rect({abs_x + box_w - bw,  abs_y,               bw,    box_h}, border_inner);
+
+    // Resize handle: small diagonal dots in the bottom-right corner indicating resize
+    float rh = 8.0f;
+    float rx = abs_x + box_w - 1.0f;
+    float ry = abs_y + box_h - 1.0f;
+    Color handle_color = dark ? Color{0x44, 0x44, 0x44, 0xFF} : Color{0xAA, 0xAA, 0xAA, 0xFF};
+    for (int i = 2; i <= static_cast<int>(rh); i += 3) {
+        float fi = static_cast<float>(i);
+        list.fill_rect({rx - fi, ry - 1.5f, 1.5f, 1.5f}, handle_color);
+        list.fill_rect({rx - 1.5f, ry - fi, 1.5f, 1.5f}, handle_color);
+    }
+
+    // Scrollbar indicator on right edge when content likely overflows
+    if (node.textarea_has_content && box_h > 30.0f) {
+        float sb_w = 6.0f;
+        float sb_x = abs_x + box_w - sb_w - 1.0f;
+        float sb_y = abs_y + 1.0f;
+        float sb_h = box_h - 2.0f;
+        Color track_color = dark ? Color{0x2A, 0x2A, 0x2A, 0xFF} : Color{0xF0, 0xF0, 0xF0, 0xFF};
+        list.fill_rect({sb_x, sb_y, sb_w, sb_h}, track_color);
+        Color thumb_color = dark ? Color{0x55, 0x55, 0x55, 0xFF} : Color{0xC0, 0xC0, 0xC0, 0xFF};
+        float thumb_h = std::max(20.0f, sb_h * 0.4f);
+        list.fill_rounded_rect({sb_x + 1.0f, sb_y + 1.0f, sb_w - 2.0f, thumb_h - 2.0f},
+                               thumb_color, 2.0f);
+    }
+
+    // The text content/placeholder child is painted via the normal child recursion.
 }
 
 void Painter::paint_button_input(const clever::layout::LayoutNode& node, DisplayList& list,
