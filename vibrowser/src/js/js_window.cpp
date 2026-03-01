@@ -4640,6 +4640,8 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, navigator, "doNotTrack",
         JS_NewString(ctx, "1"));
     JS_SetPropertyStr(ctx, navigator, "webdriver", JS_FALSE);
+    JS_SetPropertyStr(ctx, navigator, "deviceMemory", JS_NewFloat64(ctx, 8.0));
+    JS_SetPropertyStr(ctx, navigator, "pdfViewerEnabled", JS_TRUE);
 
     // ---- navigator.connection (NetworkInformation stub) ----
     {
@@ -4862,6 +4864,29 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, orientation, "angle", JS_NewInt32(ctx, 0));
     JS_SetPropertyStr(ctx, screen, "orientation", orientation);
     JS_SetPropertyStr(ctx, global, "screen", screen);
+
+    // ---- window.visualViewport ----
+    {
+        JSValue vv = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, vv, "width", JS_NewFloat64(ctx, static_cast<double>(width)));
+        JS_SetPropertyStr(ctx, vv, "height", JS_NewFloat64(ctx, static_cast<double>(height)));
+        JS_SetPropertyStr(ctx, vv, "offsetLeft", JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, vv, "offsetTop", JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, vv, "pageLeft", JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, vv, "pageTop", JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, vv, "scale", JS_NewFloat64(ctx, 1.0));
+        JS_SetPropertyStr(ctx, vv, "onresize", JS_NULL);
+        JS_SetPropertyStr(ctx, vv, "onscroll", JS_NULL);
+        JS_SetPropertyStr(ctx, vv, "addEventListener",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "addEventListener", 2));
+        JS_SetPropertyStr(ctx, vv, "removeEventListener",
+            JS_NewCFunction(ctx, [](JSContext*, JSValueConst, int, JSValueConst*) -> JSValue {
+                return JS_UNDEFINED;
+            }, "removeEventListener", 2));
+        JS_SetPropertyStr(ctx, global, "visualViewport", vv);
+    }
 
     // ---- AbortController (Cycle 220) ----
     JS_SetPropertyStr(ctx, global, "AbortController",
