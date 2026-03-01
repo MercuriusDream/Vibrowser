@@ -2311,10 +2311,48 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         }
     }
 
-    // Apply text-indent: offset first line of text
+    // Apply text-indent: offset first line of text in nearest block-level ancestor
     float text_x = abs_x;
-    if (node.parent && node.parent->text_indent != 0) {
-        text_x += node.parent->text_indent;
+    const auto* indent_block = [&node]() -> const clever::layout::LayoutNode* {
+        for (const auto* ancestor = node.parent; ancestor; ancestor = ancestor->parent) {
+            if (ancestor->display == clever::layout::DisplayType::Block ||
+                ancestor->display == clever::layout::DisplayType::ListItem ||
+                ancestor->display == clever::layout::DisplayType::Flex ||
+                ancestor->display == clever::layout::DisplayType::Grid ||
+                ancestor->display == clever::layout::DisplayType::Table ||
+                ancestor->display == clever::layout::DisplayType::TableCell) {
+                return ancestor;
+            }
+        }
+        return nullptr;
+    }();
+    if (indent_block && indent_block->text_indent != 0) {
+        const auto* first_text = [&indent_block]() -> const clever::layout::LayoutNode* {
+            std::vector<const clever::layout::LayoutNode*> stack;
+            stack.push_back(indent_block);
+            while (!stack.empty()) {
+                const auto* current = stack.back();
+                stack.pop_back();
+                if (current->is_text && !current->text_content.empty()) return current;
+                for (auto it = current->children.rbegin(); it != current->children.rend(); ++it) {
+                    if (it->get()) stack.push_back(it->get());
+                }
+            }
+            return nullptr;
+        }();
+        if (first_text) {
+            const auto absolute_y = [](const clever::layout::LayoutNode* n) -> float {
+                float y = 0.0f;
+                while (n) {
+                    y += n->geometry.y;
+                    n = n->parent;
+                }
+                return y;
+            };
+            if (std::fabs(absolute_y(first_text) - absolute_y(&node)) <= 0.5f) {
+                text_x += indent_block->text_indent;
+            }
+        }
     }
 
     // Apply sub/sup vertical offset

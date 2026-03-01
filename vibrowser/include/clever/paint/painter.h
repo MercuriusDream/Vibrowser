@@ -44,6 +44,10 @@ private:
                      float abs_x, float abs_y);
     void paint_select_element(const clever::layout::LayoutNode& node, DisplayList& list,
                               float abs_x, float abs_y);
+    void paint_progress(const clever::layout::LayoutNode& node, DisplayList& list,
+                        float abs_x, float abs_y);
+    void paint_meter(const clever::layout::LayoutNode& node, DisplayList& list,
+                     float abs_x, float abs_y);
     void paint_svg_shape(const clever::layout::LayoutNode& node, DisplayList& list,
                          float abs_x, float abs_y);
     void paint_canvas_placeholder(const clever::layout::LayoutNode& node, DisplayList& list,
