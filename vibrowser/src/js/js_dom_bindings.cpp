@@ -6936,29 +6936,9 @@ static JSValue js_resize_observer_observe(JSContext* ctx,
         // Store the box mode for this element
         entry.box_modes[elem] = box_mode;
 
-        // Get initial size and store in previous_sizes
-        float content_w = 0, content_h = 0;
-        float border_w = 0, border_h = 0;
-        auto geom_it = state->layout_geometry.find(elem);
-        if (geom_it != state->layout_geometry.end()) {
-            auto& lr = geom_it->second;
-            content_w = lr.width;
-            content_h = lr.height;
-            border_w = lr.border_left + lr.padding_left + lr.width +
-                       lr.padding_right + lr.border_right;
-            border_h = lr.border_top + lr.padding_top + lr.height +
-                       lr.padding_bottom + lr.border_bottom;
-        }
-
-        // Store initial size based on box mode
-        float initial_w = content_w;
-        float initial_h = content_h;
-        if (box_mode == "border-box") {
-            initial_w = border_w;
-            initial_h = border_h;
-        }
-
-        entry.previous_sizes[elem] = {initial_w, initial_h};
+        // Do NOT store initial size — first fire_resize_observers() call will
+        // detect the element as "new" (no previous_sizes entry) and fire the callback.
+        // This matches the spec: callback fires on initial observation.
     }
 
     return JS_UNDEFINED;
@@ -20538,15 +20518,14 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h) {
                            lr.padding_bottom + lr.border_bottom;
             }
 
-            // Determine which size to track based on box mode
-            float track_w = border_w, track_h = border_h;
+            // Determine which size to track based on box mode (default: content-box per spec)
+            float track_w = content_w, track_h = content_h;
             auto mode_it = ro.box_modes.find(elem);
             if (mode_it != ro.box_modes.end()) {
-                if (mode_it->second == "content-box") {
-                    track_w = content_w;
-                    track_h = content_h;
+                if (mode_it->second == "border-box" || mode_it->second == "device-pixel-content-box") {
+                    track_w = border_w;
+                    track_h = border_h;
                 }
-                // border-box and device-pixel-content-box use border dimensions
             }
 
             current_sizes[elem] = std::make_pair(track_w, track_h);

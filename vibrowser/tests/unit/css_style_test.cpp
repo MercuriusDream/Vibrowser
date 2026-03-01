@@ -5702,14 +5702,14 @@ TEST(PropertyCascadeTest, TouchActionValues) {
     cascade.apply_declaration(style, make_decl("touch-action", "none"), parent);
     EXPECT_EQ(style.touch_action, 1);
 
-    cascade.apply_declaration(style, make_decl("touch-action", "manipulation"), parent);
+    cascade.apply_declaration(style, make_decl("touch-action", "pan-x"), parent);
     EXPECT_EQ(style.touch_action, 2);
 
-    cascade.apply_declaration(style, make_decl("touch-action", "pan-x"), parent);
+    cascade.apply_declaration(style, make_decl("touch-action", "pan-y"), parent);
     EXPECT_EQ(style.touch_action, 3);
 
-    cascade.apply_declaration(style, make_decl("touch-action", "pan-y"), parent);
-    EXPECT_EQ(style.touch_action, 4);
+    cascade.apply_declaration(style, make_decl("touch-action", "manipulation"), parent);
+    EXPECT_EQ(style.touch_action, 5);
 }
 
 TEST(PropertyCascadeTest, OverscrollBehaviorSingleAndTwoValue) {
