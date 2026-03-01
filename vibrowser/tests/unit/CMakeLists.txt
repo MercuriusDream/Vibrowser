@@ -88,7 +88,7 @@ endif()
 # JavaScript Engine tests
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/js_engine_test.cpp")
     add_executable(vibrowser_js_tests js_engine_test.cpp)
-    target_link_libraries(vibrowser_js_tests PRIVATE vibrowser_js vibrowser_html vibrowser_dom quickjs GTest::gtest_main)
+    target_link_libraries(vibrowser_js_tests PRIVATE vibrowser_paint vibrowser_js vibrowser_html vibrowser_dom quickjs GTest::gtest_main)
     add_test(NAME js_tests COMMAND vibrowser_js_tests)
 endif()
 

@@ -1837,10 +1837,10 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         parent_has_ellipsis = (node.parent->text_overflow == 1);
     }
 
-    // white-space: pre-wrap (3) / pre-line (4) — render explicit newlines
+    // white-space: pre-wrap (3) / pre-line (4) / break-spaces (5) — render explicit newlines
     bool prewrap_handled = false;
     if (node.is_text && !text_to_render.empty() &&
-        (node.white_space == 3 || node.white_space == 4) &&
+        (node.white_space == 3 || node.white_space == 4 || node.white_space == 5) &&
         text_to_render.find('\n') != std::string::npos) {
         float line_h = node.font_size * node.line_height;
         float draw_y = text_y;

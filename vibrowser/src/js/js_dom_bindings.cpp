@@ -23,6 +23,7 @@ extern "C" {
 
 #ifdef __APPLE__
 #include <CommonCrypto/CommonDigest.h>
+#include <clever/paint/canvas_text_bridge.h>
 #endif
 
 namespace clever::js {
@@ -42,8 +43,7 @@ static JSClassID canvas2d_class_id = 0;
 static JSClassID url_class_id = 0;
 static JSClassID text_encoder_class_id = 0;
 static JSClassID text_decoder_class_id = 0;
-static JSClassID range_class_id = 0;
-static JSClassID selection_class_id = 0;
+// range_class_id and selection_class_id reserved for future Range/Selection API
 
 // =========================================================================
 // Per-context state for DOM bindings
@@ -84,6 +84,9 @@ struct DOMState {
         float scroll_top = 0, scroll_left = 0;
         float scroll_content_width = 0, scroll_content_height = 0;
         bool is_scroll_container = false;
+        // Hit-testing flags
+        int pointer_events = 0;         // 0=auto, 1=none
+        bool visibility_hidden = false; // CSS visibility:hidden
     };
     std::unordered_map<void*, LayoutRect> layout_geometry;
 
@@ -3831,15 +3834,69 @@ static JSValue js_mutation_observer_constructor(JSContext* ctx,
 }
 
 // =========================================================================
-// document.elementFromPoint(x, y) — stub returns document.body
+// document.elementFromPoint(x, y) — real hit-testing via layout_geometry
 // =========================================================================
 
 static JSValue js_document_element_from_point(JSContext* ctx,
                                                JSValueConst /*this_val*/,
-                                               int /*argc*/,
-                                               JSValueConst* /*argv*/) {
+                                               int argc,
+                                               JSValueConst* argv) {
     auto* state = get_dom_state(ctx);
     if (!state || !state->root) return JS_NULL;
+
+    // Parse (x, y) from arguments
+    double px = 0, py = 0;
+    if (argc >= 1) JS_ToFloat64(ctx, &px, argv[0]);
+    if (argc >= 2) JS_ToFloat64(ctx, &py, argv[1]);
+
+    // Walk the layout_geometry map to collect all SimpleNode* whose border box
+    // contains (px, py) and that are not filtered out by pointer-events/visibility.
+    // We pick the deepest candidate — the one with the most ancestors in the DOM tree.
+    clever::html::SimpleNode* best = nullptr;
+    int best_depth = -1;
+
+    for (auto& [key, lr] : state->layout_geometry) {
+        // key is void* but was stored as SimpleNode*
+        auto* snode = static_cast<clever::html::SimpleNode*>(key);
+        if (!snode) continue;
+
+        // Skip elements with pointer-events: none
+        if (lr.pointer_events == 1) continue;
+
+        // Skip elements with visibility: hidden
+        if (lr.visibility_hidden) continue;
+
+        // Compute border-box rectangle from the LayoutRect.
+        // lr.x/y is the content-box origin (after border+padding offset).
+        float box_x = lr.x - lr.padding_left - lr.border_left;
+        float box_y = lr.y - lr.padding_top - lr.border_top;
+        float box_w = lr.border_left + lr.padding_left + lr.width
+                    + lr.padding_right + lr.border_right;
+        float box_h = lr.border_top + lr.padding_top + lr.height
+                    + lr.padding_bottom + lr.border_bottom;
+
+        // Skip zero-size elements
+        if (box_w <= 0 || box_h <= 0) continue;
+
+        // Hit test
+        if (px < box_x || px >= box_x + box_w) continue;
+        if (py < box_y || py >= box_y + box_h) continue;
+
+        // Compute depth by walking the parent chain
+        int depth = 0;
+        for (auto* p = snode->parent; p != nullptr; p = p->parent) {
+            depth++;
+        }
+
+        if (depth > best_depth) {
+            best_depth = depth;
+            best = snode;
+        }
+    }
+
+    if (best) return wrap_element(ctx, best);
+
+    // Fallback: return document.body
     auto* body = state->root->find_element("body");
     return wrap_element(ctx, body);
 }
@@ -6577,6 +6634,71 @@ static JSValue js_element_dispatch_event(JSContext* ctx,
 // Canvas 2D Rendering Context
 // =========================================================================
 
+// ---- Canvas gradient data (stored as C++ struct to avoid JSValue lifetime issues) ----
+enum class CanvasGradientType { None, Linear, Radial, Conic };
+
+struct CanvasColorStop {
+    float offset; // 0.0 - 1.0
+    uint32_t color; // ARGB
+};
+
+struct CanvasGradient {
+    CanvasGradientType type = CanvasGradientType::None;
+    // Linear: line from (x0,y0) to (x1,y1)
+    // Radial: inner circle (x0,y0,r0), outer circle (x1,y1,r1)
+    // Conic:  center=(x0,y0), startAngle stored in r0
+    float x0 = 0, y0 = 0, r0 = 0;
+    float x1 = 0, y1 = 0, r1 = 0;
+    std::vector<CanvasColorStop> stops;
+
+    bool active() const { return type != CanvasGradientType::None && !stops.empty(); }
+
+    // Sample gradient color at canvas position (px, py), returns ARGB
+    uint32_t sample(float px, float py) const {
+        if (stops.empty()) return 0xFF000000;
+        float t = 0.0f;
+        if (type == CanvasGradientType::Linear) {
+            float dx = x1 - x0, dy = y1 - y0;
+            float len2 = dx * dx + dy * dy;
+            t = (len2 < 1e-10f) ? 0.0f : ((px - x0) * dx + (py - y0) * dy) / len2;
+        } else if (type == CanvasGradientType::Radial) {
+            float dx = px - x0, dy = py - y0;
+            float dist = std::sqrt(dx * dx + dy * dy);
+            float denom = r1 - r0;
+            t = (std::abs(denom) < 1e-10f) ? ((dist >= r1) ? 1.0f : 0.0f)
+                                             : (dist - r0) / denom;
+        } else if (type == CanvasGradientType::Conic) {
+            float dx = px - x0, dy = py - y0;
+            float angle = std::atan2(dy, dx) - r0;
+            const float two_pi = 6.283185307f;
+            angle = std::fmod(angle, two_pi);
+            if (angle < 0.0f) angle += two_pi;
+            t = angle / two_pi;
+        }
+        t = std::max(0.0f, std::min(1.0f, t));
+
+        if (stops.size() == 1) return stops[0].color;
+        if (t <= stops.front().offset) return stops.front().color;
+        if (t >= stops.back().offset) return stops.back().color;
+
+        for (size_t i = 0; i + 1 < stops.size(); i++) {
+            if (t >= stops[i].offset && t <= stops[i + 1].offset) {
+                float span = stops[i + 1].offset - stops[i].offset;
+                float frac = (span > 1e-10f) ? (t - stops[i].offset) / span : 0.0f;
+                frac = std::max(0.0f, std::min(1.0f, frac));
+                uint32_t ca = stops[i].color, cb = stops[i + 1].color;
+                auto lerp_ch = [&](int shift) -> uint32_t {
+                    float va = static_cast<float>((ca >> shift) & 0xFF);
+                    float vb = static_cast<float>((cb >> shift) & 0xFF);
+                    return static_cast<uint32_t>(va + (vb - va) * frac) & 0xFF;
+                };
+                return (lerp_ch(24) << 24) | (lerp_ch(16) << 16) | (lerp_ch(8) << 8) | lerp_ch(0);
+            }
+        }
+        return stops.back().color;
+    }
+};
+
 struct Canvas2DState {
     int width = 300;
     int height = 150;
@@ -6588,6 +6710,9 @@ struct Canvas2DState {
     std::string font = "10px sans-serif";
     int text_align = 0; // 0=start/left, 1=center, 2=right/end
     float global_alpha = 1.0f;
+    // Gradient fill/stroke (overrides solid color when active)
+    CanvasGradient fill_gradient;
+    CanvasGradient stroke_gradient;
     // Canvas shadow state
     uint32_t shadow_color = 0x00000000; // transparent = no shadow
     float shadow_blur = 0.0f;
@@ -6597,6 +6722,8 @@ struct Canvas2DState {
     int line_cap = 0;  // 0=butt, 1=round, 2=square
     int line_join = 0; // 0=miter, 1=round, 2=bevel
     float miter_limit = 10.0f;
+    std::vector<float> line_dash;   // empty = solid line
+    float line_dash_offset = 0.0f;
     // Text state
     int text_baseline = 0; // 0=alphabetic, 1=top, 2=hanging, 3=middle, 4=ideographic, 5=bottom
     // Compositing
@@ -6617,6 +6744,8 @@ struct Canvas2DState {
     struct SavedState {
         uint32_t fill_color;
         uint32_t stroke_color;
+        CanvasGradient fill_gradient;
+        CanvasGradient stroke_gradient;
         float line_width;
         float global_alpha;
         std::string font;
@@ -6753,24 +6882,42 @@ static std::string canvas_color_to_string(uint32_t argb) {
 
 static void fill_rect_buffer(Canvas2DState* s, int x, int y, int w, int h) {
     if (!s->buffer) return;
-    uint8_t r = (s->fill_color >> 16) & 0xFF;
-    uint8_t g = (s->fill_color >> 8) & 0xFF;
-    uint8_t b = s->fill_color & 0xFF;
-    uint8_t a = (s->fill_color >> 24) & 0xFF;
-    a = static_cast<uint8_t>(a * s->global_alpha);
-
     int x0 = std::max(0, x);
     int y0 = std::max(0, y);
     int x1 = std::min(s->width, x + w);
     int y1 = std::min(s->height, y + h);
 
-    for (int py = y0; py < y1; py++) {
-        for (int px = x0; px < x1; px++) {
-            int idx = (py * s->width + px) * 4;
-            (*s->buffer)[idx]     = r;
-            (*s->buffer)[idx + 1] = g;
-            (*s->buffer)[idx + 2] = b;
-            (*s->buffer)[idx + 3] = a;
+    if (s->fill_gradient.active()) {
+        // Per-pixel gradient fill
+        for (int py = y0; py < y1; py++) {
+            for (int px = x0; px < x1; px++) {
+                uint32_t col = s->fill_gradient.sample(static_cast<float>(px) + 0.5f,
+                                                       static_cast<float>(py) + 0.5f);
+                uint8_t cr = (col >> 16) & 0xFF;
+                uint8_t cg = (col >> 8) & 0xFF;
+                uint8_t cb = col & 0xFF;
+                uint8_t ca = static_cast<uint8_t>(((col >> 24) & 0xFF) * s->global_alpha);
+                int idx = (py * s->width + px) * 4;
+                (*s->buffer)[idx]     = cr;
+                (*s->buffer)[idx + 1] = cg;
+                (*s->buffer)[idx + 2] = cb;
+                (*s->buffer)[idx + 3] = ca;
+            }
+        }
+    } else {
+        uint8_t r = (s->fill_color >> 16) & 0xFF;
+        uint8_t g = (s->fill_color >> 8) & 0xFF;
+        uint8_t b = s->fill_color & 0xFF;
+        uint8_t a = (s->fill_color >> 24) & 0xFF;
+        a = static_cast<uint8_t>(a * s->global_alpha);
+        for (int py = y0; py < y1; py++) {
+            for (int px = x0; px < x1; px++) {
+                int idx = (py * s->width + px) * 4;
+                (*s->buffer)[idx]     = r;
+                (*s->buffer)[idx + 1] = g;
+                (*s->buffer)[idx + 2] = b;
+                (*s->buffer)[idx + 3] = a;
+            }
         }
     }
 }
@@ -6788,10 +6935,19 @@ static void stroke_rect_buffer(Canvas2DState* s, int x, int y, int w, int h) {
     auto set_pixel = [&](int px, int py) {
         if (px < 0 || py < 0 || px >= s->width || py >= s->height) return;
         int idx = (py * s->width + px) * 4;
-        (*s->buffer)[idx]     = r;
-        (*s->buffer)[idx + 1] = g;
-        (*s->buffer)[idx + 2] = b;
-        (*s->buffer)[idx + 3] = a;
+        if (s->stroke_gradient.active()) {
+            uint32_t col = s->stroke_gradient.sample(static_cast<float>(px) + 0.5f,
+                                                      static_cast<float>(py) + 0.5f);
+            (*s->buffer)[idx]     = (col >> 16) & 0xFF;
+            (*s->buffer)[idx + 1] = (col >> 8) & 0xFF;
+            (*s->buffer)[idx + 2] = col & 0xFF;
+            (*s->buffer)[idx + 3] = static_cast<uint8_t>(((col >> 24) & 0xFF) * s->global_alpha);
+        } else {
+            (*s->buffer)[idx]     = r;
+            (*s->buffer)[idx + 1] = g;
+            (*s->buffer)[idx + 2] = b;
+            (*s->buffer)[idx + 3] = a;
+        }
     };
 
     // Top edge
@@ -6830,7 +6986,7 @@ static void clear_rect_buffer(Canvas2DState* s, int x, int y, int w, int h) {
     }
 }
 
-// Draw a line using Bresenham's algorithm
+// Draw a line using Bresenham's algorithm, respecting the dash pattern
 static void draw_line_buffer(Canvas2DState* s, int x0, int y0, int x1, int y1,
                              uint32_t color, float alpha) {
     if (!s->buffer) return;
@@ -6842,10 +6998,19 @@ static void draw_line_buffer(Canvas2DState* s, int x0, int y0, int x1, int y1,
     auto set_pixel = [&](int px, int py) {
         if (px < 0 || py < 0 || px >= s->width || py >= s->height) return;
         int idx = (py * s->width + px) * 4;
-        (*s->buffer)[idx]     = r;
-        (*s->buffer)[idx + 1] = g;
-        (*s->buffer)[idx + 2] = b;
-        (*s->buffer)[idx + 3] = a;
+        if (s->stroke_gradient.active()) {
+            uint32_t col = s->stroke_gradient.sample(static_cast<float>(px) + 0.5f,
+                                                      static_cast<float>(py) + 0.5f);
+            (*s->buffer)[idx]     = (col >> 16) & 0xFF;
+            (*s->buffer)[idx + 1] = (col >> 8) & 0xFF;
+            (*s->buffer)[idx + 2] = col & 0xFF;
+            (*s->buffer)[idx + 3] = static_cast<uint8_t>(((col >> 24) & 0xFF) * alpha);
+        } else {
+            (*s->buffer)[idx]     = r;
+            (*s->buffer)[idx + 1] = g;
+            (*s->buffer)[idx + 2] = b;
+            (*s->buffer)[idx + 3] = a;
+        }
     };
 
     int dx = std::abs(x1 - x0);
@@ -6854,12 +7019,74 @@ static void draw_line_buffer(Canvas2DState* s, int x0, int y0, int x1, int y1,
     int sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
 
+    // Fast path: no dash pattern — draw solid line
+    if (s->line_dash.empty()) {
+        while (true) {
+            set_pixel(x0, y0);
+            if (x0 == x1 && y0 == y1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+        }
+        return;
+    }
+
+    // Dash pattern path.
+    // The dash array alternates [dash_len, gap_len, dash_len, gap_len, ...] (always even).
+    // lineDashOffset shifts where in the pattern cycle we start.
+    const std::vector<float>& dash = s->line_dash;
+    float cycle_len = 0.0f;
+    for (float v : dash) cycle_len += v;
+    if (cycle_len <= 0.0f) {
+        // All zeros — effectively solid
+        while (true) {
+            set_pixel(x0, y0);
+            if (x0 == x1 && y0 == y1) break;
+            int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+        }
+        return;
+    }
+
+    // Starting position within the dash cycle
+    float pos = std::fmod(s->line_dash_offset, cycle_len);
+    if (pos < 0.0f) pos += cycle_len;
+
+    // Find which dash segment and remaining distance within that segment we start in
+    size_t seg_idx = 0;
+    float seg_rem = 0.0f;
+    {
+        float walked = pos;
+        for (size_t i = 0; i < dash.size(); ++i) {
+            if (walked < dash[i] || i == dash.size() - 1) {
+                seg_idx = i;
+                seg_rem = dash[i] - walked;
+                break;
+            }
+            walked -= dash[i];
+        }
+    }
+
+    // Walk Bresenham pixels; each step advances ~1 unit along the line.
+    // Even segment indices (0,2,4,...) are dash (draw), odd are gap (skip).
     while (true) {
-        set_pixel(x0, y0);
+        bool do_draw = (seg_idx % 2 == 0);
+        if (do_draw) set_pixel(x0, y0);
+
         if (x0 == x1 && y0 == y1) break;
+
+        // Advance Bresenham one pixel
         int e2 = 2 * err;
         if (e2 >= dy) { err += dy; x0 += sx; }
         if (e2 <= dx) { err += dx; y0 += sy; }
+
+        // Consume 1 pixel from current dash segment
+        seg_rem -= 1.0f;
+        while (seg_rem <= 0.0f) {
+            seg_idx = (seg_idx + 1) % dash.size();
+            seg_rem += dash[seg_idx];
+        }
     }
 }
 
@@ -6953,6 +7180,73 @@ static JSValue js_canvas2d_set_fill_style(JSContext* ctx, JSValueConst this_val,
                                            int argc, JSValueConst* argv) {
     auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
     if (!s || argc < 1) return JS_UNDEFINED;
+    if (JS_IsObject(argv[0]) && !JS_IsFunction(ctx, argv[0])) {
+        // Check for gradient object (has "type" property = "linear", "radial", or "conic")
+        JSValue type_val = JS_GetPropertyStr(ctx, argv[0], "type");
+        const char* type_str = JS_ToCString(ctx, type_val);
+        if (type_str) {
+            std::string gtype(type_str);
+            JS_FreeCString(ctx, type_str);
+            JS_FreeValue(ctx, type_val);
+            if (gtype == "linear" || gtype == "radial" || gtype == "conic") {
+                CanvasGradient grad;
+                grad.type = (gtype == "linear") ? CanvasGradientType::Linear
+                          : (gtype == "radial") ? CanvasGradientType::Radial
+                                                : CanvasGradientType::Conic;
+                auto get_f = [&](const char* prop) -> float {
+                    JSValue v = JS_GetPropertyStr(ctx, argv[0], prop);
+                    double d = 0.0;
+                    JS_ToFloat64(ctx, &d, v);
+                    JS_FreeValue(ctx, v);
+                    return static_cast<float>(d);
+                };
+                grad.x0 = get_f("x0"); grad.y0 = get_f("y0"); grad.r0 = get_f("r0");
+                grad.x1 = get_f("x1"); grad.y1 = get_f("y1"); grad.r1 = get_f("r1");
+                // For conic: startAngle is r0, cx/cy may use x0/y0 or cx/cy
+                if (gtype == "conic") {
+                    grad.r0 = get_f("startAngle");
+                    grad.x0 = get_f("cx"); grad.y0 = get_f("cy");
+                }
+                // Read stops array
+                JSValue stops_val = JS_GetPropertyStr(ctx, argv[0], "stops");
+                if (JS_IsArray(ctx, stops_val)) {
+                    JSValue len_val = JS_GetPropertyStr(ctx, stops_val, "length");
+                    int32_t len = 0;
+                    JS_ToInt32(ctx, &len, len_val);
+                    JS_FreeValue(ctx, len_val);
+                    for (int32_t i = 0; i < len; i++) {
+                        JSValue stop = JS_GetPropertyUint32(ctx, stops_val, static_cast<uint32_t>(i));
+                        JSValue off_v = JS_GetPropertyStr(ctx, stop, "offset");
+                        JSValue col_v = JS_GetPropertyStr(ctx, stop, "color");
+                        double off = 0.0;
+                        JS_ToFloat64(ctx, &off, off_v);
+                        const char* col_s = JS_ToCString(ctx, col_v);
+                        uint32_t col = col_s ? canvas_parse_color(col_s) : 0xFF000000u;
+                        if (col_s) JS_FreeCString(ctx, col_s);
+                        JS_FreeValue(ctx, off_v);
+                        JS_FreeValue(ctx, col_v);
+                        JS_FreeValue(ctx, stop);
+                        grad.stops.push_back({static_cast<float>(off), col});
+                    }
+                    // Sort stops by offset
+                    std::sort(grad.stops.begin(), grad.stops.end(),
+                              [](const CanvasColorStop& a, const CanvasColorStop& b) {
+                                  return a.offset < b.offset;
+                              });
+                }
+                JS_FreeValue(ctx, stops_val);
+                s->fill_gradient = std::move(grad);
+                return JS_UNDEFINED;
+            }
+        } else {
+            JS_FreeValue(ctx, type_val);
+        }
+        // Unknown object — clear gradient
+        s->fill_gradient = CanvasGradient{};
+        return JS_UNDEFINED;
+    }
+    // String: parse as solid color, clear any gradient
+    s->fill_gradient = CanvasGradient{};
     const char* cstr = JS_ToCString(ctx, argv[0]);
     if (cstr) {
         s->fill_color = canvas_parse_color(cstr);
@@ -6972,6 +7266,68 @@ static JSValue js_canvas2d_set_stroke_style(JSContext* ctx, JSValueConst this_va
                                              int argc, JSValueConst* argv) {
     auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
     if (!s || argc < 1) return JS_UNDEFINED;
+    if (JS_IsObject(argv[0]) && !JS_IsFunction(ctx, argv[0])) {
+        JSValue type_val = JS_GetPropertyStr(ctx, argv[0], "type");
+        const char* type_str = JS_ToCString(ctx, type_val);
+        if (type_str) {
+            std::string gtype(type_str);
+            JS_FreeCString(ctx, type_str);
+            JS_FreeValue(ctx, type_val);
+            if (gtype == "linear" || gtype == "radial" || gtype == "conic") {
+                CanvasGradient grad;
+                grad.type = (gtype == "linear") ? CanvasGradientType::Linear
+                          : (gtype == "radial") ? CanvasGradientType::Radial
+                                                : CanvasGradientType::Conic;
+                auto get_f = [&](const char* prop) -> float {
+                    JSValue v = JS_GetPropertyStr(ctx, argv[0], prop);
+                    double d = 0.0;
+                    JS_ToFloat64(ctx, &d, v);
+                    JS_FreeValue(ctx, v);
+                    return static_cast<float>(d);
+                };
+                grad.x0 = get_f("x0"); grad.y0 = get_f("y0"); grad.r0 = get_f("r0");
+                grad.x1 = get_f("x1"); grad.y1 = get_f("y1"); grad.r1 = get_f("r1");
+                if (gtype == "conic") {
+                    grad.r0 = get_f("startAngle");
+                    grad.x0 = get_f("cx"); grad.y0 = get_f("cy");
+                }
+                JSValue stops_val = JS_GetPropertyStr(ctx, argv[0], "stops");
+                if (JS_IsArray(ctx, stops_val)) {
+                    JSValue len_val = JS_GetPropertyStr(ctx, stops_val, "length");
+                    int32_t len = 0;
+                    JS_ToInt32(ctx, &len, len_val);
+                    JS_FreeValue(ctx, len_val);
+                    for (int32_t i = 0; i < len; i++) {
+                        JSValue stop = JS_GetPropertyUint32(ctx, stops_val, static_cast<uint32_t>(i));
+                        JSValue off_v = JS_GetPropertyStr(ctx, stop, "offset");
+                        JSValue col_v = JS_GetPropertyStr(ctx, stop, "color");
+                        double off = 0.0;
+                        JS_ToFloat64(ctx, &off, off_v);
+                        const char* col_s = JS_ToCString(ctx, col_v);
+                        uint32_t col = col_s ? canvas_parse_color(col_s) : 0xFF000000u;
+                        if (col_s) JS_FreeCString(ctx, col_s);
+                        JS_FreeValue(ctx, off_v);
+                        JS_FreeValue(ctx, col_v);
+                        JS_FreeValue(ctx, stop);
+                        grad.stops.push_back({static_cast<float>(off), col});
+                    }
+                    std::sort(grad.stops.begin(), grad.stops.end(),
+                              [](const CanvasColorStop& a, const CanvasColorStop& b) {
+                                  return a.offset < b.offset;
+                              });
+                }
+                JS_FreeValue(ctx, stops_val);
+                s->stroke_gradient = std::move(grad);
+                return JS_UNDEFINED;
+            }
+        } else {
+            JS_FreeValue(ctx, type_val);
+        }
+        s->stroke_gradient = CanvasGradient{};
+        return JS_UNDEFINED;
+    }
+    // String: parse as solid color, clear any gradient
+    s->stroke_gradient = CanvasGradient{};
     const char* cstr = JS_ToCString(ctx, argv[0]);
     if (cstr) {
         s->stroke_color = canvas_parse_color(cstr);
@@ -7412,10 +7768,19 @@ static JSValue js_canvas2d_fill(JSContext* /*ctx*/, JSValueConst this_val,
             int x_end = std::min(s->width, static_cast<int>(intersections[i + 1]) + 1);
             for (int x = x_start; x < x_end; x++) {
                 int idx = (y * s->width + x) * 4;
-                (*s->buffer)[idx]     = r;
-                (*s->buffer)[idx + 1] = g;
-                (*s->buffer)[idx + 2] = b;
-                (*s->buffer)[idx + 3] = a;
+                if (s->fill_gradient.active()) {
+                    uint32_t col = s->fill_gradient.sample(static_cast<float>(x) + 0.5f,
+                                                           static_cast<float>(y) + 0.5f);
+                    (*s->buffer)[idx]     = (col >> 16) & 0xFF;
+                    (*s->buffer)[idx + 1] = (col >> 8) & 0xFF;
+                    (*s->buffer)[idx + 2] = col & 0xFF;
+                    (*s->buffer)[idx + 3] = static_cast<uint8_t>(((col >> 24) & 0xFF) * s->global_alpha);
+                } else {
+                    (*s->buffer)[idx]     = r;
+                    (*s->buffer)[idx + 1] = g;
+                    (*s->buffer)[idx + 2] = b;
+                    (*s->buffer)[idx + 3] = a;
+                }
             }
         }
     }
@@ -7444,52 +7809,158 @@ static JSValue js_canvas2d_stroke(JSContext* /*ctx*/, JSValueConst this_val,
 }
 
 // ---- Text methods ----
+
+// Parse a Canvas 2D font string (e.g. "bold 16px Arial") and extract the
+// numeric pixel size, font family, weight and italic flag.
+// Falls back to safe defaults if the string cannot be fully parsed.
+static void parse_canvas2d_font(const std::string& font_str,
+                                 float& out_size,
+                                 std::string& out_family,
+                                 int& out_weight,
+                                 bool& out_italic) {
+    out_size   = 10.0f;
+    out_family = "sans-serif";
+    out_weight = 400;
+    out_italic = false;
+
+    std::istringstream iss(font_str);
+    std::string tok;
+    std::vector<std::string> tokens;
+    while (iss >> tok) tokens.push_back(tok);
+
+    bool found_size = false;
+    size_t family_start = 0;
+
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        const std::string& t = tokens[i];
+        if (!found_size) {
+            if (t == "italic" || t == "oblique") { out_italic = true; continue; }
+            if (t == "bold")    { out_weight = 700; continue; }
+            if (t == "bolder")  { out_weight = 900; continue; }
+            if (t == "lighter") { out_weight = 300; continue; }
+            if (t == "normal")  { continue; }
+
+            // Numeric weight (e.g. "600")
+            {
+                bool all_digits = !t.empty();
+                for (char c : t) if (c < '0' || c > '9') { all_digits = false; break; }
+                if (all_digits && t.size() >= 3) {
+                    try { out_weight = std::stoi(t); } catch (...) {}
+                    continue;
+                }
+            }
+
+            // Size token: contains "px", "pt", or "em"
+            auto px_pos = t.find("px");
+            auto pt_pos = t.find("pt");
+            auto em_pos = t.find("em");
+            auto sl_pos = t.find('/');
+            std::string size_part = (sl_pos != std::string::npos) ? t.substr(0, sl_pos) : t;
+
+            float sz = 0;
+            bool parsed_size = false;
+            try {
+                if (px_pos != std::string::npos) {
+                    sz = std::stof(size_part.substr(0, px_pos));
+                    parsed_size = true;
+                } else if (pt_pos != std::string::npos) {
+                    sz = std::stof(size_part.substr(0, pt_pos)) * (96.0f / 72.0f);
+                    parsed_size = true;
+                } else if (em_pos != std::string::npos) {
+                    sz = std::stof(size_part.substr(0, em_pos)) * 16.0f;
+                    parsed_size = true;
+                }
+            } catch (...) {}
+
+            if (parsed_size && sz > 0) {
+                out_size = sz;
+                found_size = true;
+                family_start = i + 1;
+            }
+        }
+    }
+
+    if (found_size && family_start < tokens.size()) {
+        std::string fam;
+        for (size_t i = family_start; i < tokens.size(); ++i) {
+            if (i > family_start) fam += ' ';
+            fam += tokens[i];
+        }
+        // Strip surrounding quotes
+        if (fam.size() >= 2 &&
+            ((fam.front() == '"' && fam.back() == '"') ||
+             (fam.front() == '\'' && fam.back() == '\''))) {
+            fam = fam.substr(1, fam.size() - 2);
+        }
+        if (!fam.empty()) out_family = fam;
+    }
+}
+
 static JSValue js_canvas2d_fill_text(JSContext* ctx, JSValueConst this_val,
                                       int argc, JSValueConst* argv) {
-    // Stub: approximate text rendering by filling rectangles for each character
     auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
     if (!s || !s->buffer || argc < 3) return JS_UNDEFINED;
 
-    const char* text = JS_ToCString(ctx, argv[0]);
-    if (!text) return JS_UNDEFINED;
+    const char* text_cstr = JS_ToCString(ctx, argv[0]);
+    if (!text_cstr) return JS_UNDEFINED;
     double x, y;
     JS_ToFloat64(ctx, &x, argv[1]);
     JS_ToFloat64(ctx, &y, argv[2]);
 
-    // Parse font size from font string
-    float font_size = 10.0f;
-    std::string font_str = s->font;
-    // Try to extract size like "12px sans-serif" or "bold 16px Arial"
-    std::istringstream fiss(font_str);
-    std::string tok;
-    while (fiss >> tok) {
-        if (tok.find("px") != std::string::npos) {
-            try { font_size = std::stof(tok); } catch (...) {}
-            break;
-        }
+    // Optional maxWidth parameter (4th argument)
+    float max_width = 0.0f;
+    if (argc >= 4) {
+        double mw = 0;
+        JS_ToFloat64(ctx, &mw, argv[3]);
+        if (mw > 0) max_width = static_cast<float>(mw);
     }
 
-    // Simple approximation: each character is ~0.6 * font_size wide
-    float char_w = font_size * 0.6f;
-    std::string txt(text);
-    JS_FreeCString(ctx, text);
+    std::string txt(text_cstr);
+    JS_FreeCString(ctx, text_cstr);
 
-    float total_w = char_w * txt.size();
+    // Parse font string to extract size, family, weight, italic
+    float font_size = 10.0f;
+    std::string font_family = "sans-serif";
+    int font_weight = 400;
+    bool font_italic = false;
+    parse_canvas2d_font(s->font, font_size, font_family, font_weight, font_italic);
+
+#ifdef __APPLE__
+    // --- Real CoreText rendering via canvas_text_bridge ---
+    uint8_t* raw_buf = s->buffer->data();
+    clever::paint::canvas_render_text(
+        txt,
+        static_cast<float>(x),
+        static_cast<float>(y),
+        font_size,
+        font_family,
+        font_weight,
+        font_italic,
+        s->fill_color,
+        s->global_alpha,
+        s->text_align,
+        s->text_baseline,
+        raw_buf,
+        s->width,
+        s->height,
+        max_width);
+#else
+    // --- Fallback: colored rectangles per character position ---
+    float char_w = font_size * 0.6f;
+    float total_w = char_w * static_cast<float>(txt.size());
     float start_x = static_cast<float>(x);
     if (s->text_align == 1) start_x -= total_w / 2.0f;
     else if (s->text_align == 2 || s->text_align == 3) start_x -= total_w;
 
-    // Draw simple rectangles for each character position (glyph approximation)
     uint8_t r = (s->fill_color >> 16) & 0xFF;
-    uint8_t g = (s->fill_color >> 8) & 0xFF;
-    uint8_t b = s->fill_color & 0xFF;
+    uint8_t g = (s->fill_color >> 8)  & 0xFF;
+    uint8_t b =  s->fill_color        & 0xFF;
     uint8_t a = static_cast<uint8_t>(((s->fill_color >> 24) & 0xFF) * s->global_alpha);
-    float baseline_y = static_cast<float>(y);
-    float text_top = baseline_y - font_size * 0.8f;
+    float text_top = static_cast<float>(y) - font_size * 0.8f;
 
     for (size_t i = 0; i < txt.size(); i++) {
         if (txt[i] == ' ') continue;
-        int cx = static_cast<int>(start_x + i * char_w + char_w * 0.1f);
+        int cx = static_cast<int>(start_x + static_cast<float>(i) * char_w + char_w * 0.1f);
         int cy = static_cast<int>(text_top);
         int cw = static_cast<int>(char_w * 0.8f);
         int ch = static_cast<int>(font_size);
@@ -7503,6 +7974,8 @@ static JSValue js_canvas2d_fill_text(JSContext* ctx, JSValueConst this_val,
             }
         }
     }
+#endif
+
     return JS_UNDEFINED;
 }
 
@@ -7521,30 +7994,35 @@ static JSValue js_canvas2d_measure_text(JSContext* ctx, JSValueConst this_val,
         return obj;
     }
 
-    const char* text = JS_ToCString(ctx, argv[0]);
-    if (!text) {
+    const char* text_cstr = JS_ToCString(ctx, argv[0]);
+    if (!text_cstr) {
         JSValue obj = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, obj, "width", JS_NewFloat64(ctx, 0));
         return obj;
     }
+    std::string txt(text_cstr);
+    JS_FreeCString(ctx, text_cstr);
 
-    // Parse font size
     float font_size = 10.0f;
-    std::istringstream fiss(s->font);
-    std::string tok;
-    while (fiss >> tok) {
-        if (tok.find("px") != std::string::npos) {
-            try { font_size = std::stof(tok); } catch (...) {}
-            break;
-        }
-    }
+    std::string font_family = "sans-serif";
+    int font_weight = 400;
+    bool font_italic = false;
+    if (s) parse_canvas2d_font(s->font, font_size, font_family, font_weight, font_italic);
 
-    float char_w = font_size * 0.6f;
-    float width = char_w * std::strlen(text);
-    JS_FreeCString(ctx, text);
+    float width = 0.0f;
+#ifdef __APPLE__
+    width = clever::paint::canvas_measure_text(txt, font_size, font_family,
+                                                font_weight, font_italic);
+    // Fall back to approximation if CoreText returns 0 for some reason
+    if (width <= 0.0f && !txt.empty()) {
+        width = font_size * 0.6f * static_cast<float>(txt.size());
+    }
+#else
+    width = font_size * 0.6f * static_cast<float>(txt.size());
+#endif
 
     JSValue obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, obj, "width", JS_NewFloat64(ctx, width));
+    JS_SetPropertyStr(ctx, obj, "width", JS_NewFloat64(ctx, static_cast<double>(width)));
     return obj;
 }
 
@@ -7556,6 +8034,8 @@ static JSValue js_canvas2d_save(JSContext* /*ctx*/, JSValueConst this_val,
     Canvas2DState::SavedState st;
     st.fill_color = s->fill_color;
     st.stroke_color = s->stroke_color;
+    st.fill_gradient = s->fill_gradient;
+    st.stroke_gradient = s->stroke_gradient;
     st.line_width = s->line_width;
     st.global_alpha = s->global_alpha;
     st.font = s->font;
@@ -7583,6 +8063,8 @@ static JSValue js_canvas2d_restore(JSContext* /*ctx*/, JSValueConst this_val,
     auto& st = s->state_stack.back();
     s->fill_color = st.fill_color;
     s->stroke_color = st.stroke_color;
+    s->fill_gradient = st.fill_gradient;
+    s->stroke_gradient = st.stroke_gradient;
     s->line_width = st.line_width;
     s->global_alpha = st.global_alpha;
     s->font = std::move(st.font);
@@ -7757,14 +8239,75 @@ static JSValue js_canvas2d_is_point_in_path(JSContext* ctx, JSValueConst /*this_
     return JS_NewBool(ctx, 0);
 }
 
-// ---- setLineDash / getLineDash / lineDashOffset (stubs) ----
-static JSValue js_canvas2d_set_line_dash(JSContext* /*ctx*/, JSValueConst /*this_val*/,
-                                          int /*argc*/, JSValueConst* /*argv*/) {
+// ---- setLineDash / getLineDash / lineDashOffset ----
+static JSValue js_canvas2d_set_line_dash(JSContext* ctx, JSValueConst this_val,
+                                          int argc, JSValueConst* argv) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s || argc < 1) return JS_UNDEFINED;
+    JSValue arr = argv[0];
+    if (!JS_IsArray(ctx, arr)) return JS_UNDEFINED;
+
+    // Get array length
+    JSValue len_val = JS_GetPropertyStr(ctx, arr, "length");
+    int32_t len = 0;
+    JS_ToInt32(ctx, &len, len_val);
+    JS_FreeValue(ctx, len_val);
+
+    // Read values and validate (no negatives)
+    std::vector<float> values;
+    values.reserve(static_cast<size_t>(len));
+    for (int32_t i = 0; i < len; ++i) {
+        JSValue item = JS_GetPropertyUint32(ctx, arr, static_cast<uint32_t>(i));
+        double v = 0.0;
+        JS_ToFloat64(ctx, &v, item);
+        JS_FreeValue(ctx, item);
+        if (v < 0.0) return JS_UNDEFINED; // spec: abort if any value is negative
+        values.push_back(static_cast<float>(v));
+    }
+
+    if (values.empty()) {
+        // Empty array clears the dash pattern — back to solid line
+        s->line_dash.clear();
+        return JS_UNDEFINED;
+    }
+
+    // Per spec: if odd number of values, duplicate the array (concat with itself)
+    if (values.size() % 2 != 0) {
+        std::vector<float> doubled;
+        doubled.reserve(values.size() * 2);
+        doubled.insert(doubled.end(), values.begin(), values.end());
+        doubled.insert(doubled.end(), values.begin(), values.end());
+        s->line_dash = std::move(doubled);
+    } else {
+        s->line_dash = std::move(values);
+    }
     return JS_UNDEFINED;
 }
-static JSValue js_canvas2d_get_line_dash(JSContext* ctx, JSValueConst /*this_val*/,
+static JSValue js_canvas2d_get_line_dash(JSContext* ctx, JSValueConst this_val,
                                           int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_NewArray(ctx);
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    JSValue arr = JS_NewArray(ctx);
+    if (!s) return arr;
+    for (uint32_t i = 0; i < static_cast<uint32_t>(s->line_dash.size()); ++i) {
+        JS_SetPropertyUint32(ctx, arr, i, JS_NewFloat64(ctx, s->line_dash[i]));
+    }
+    return arr;
+}
+// ---- lineDashOffset getter/setter ----
+static JSValue js_canvas2d_get_line_dash_offset(JSContext* ctx, JSValueConst this_val,
+                                                  int /*argc*/, JSValueConst* /*argv*/) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s) return JS_UNDEFINED;
+    return JS_NewFloat64(ctx, s->line_dash_offset);
+}
+static JSValue js_canvas2d_set_line_dash_offset(JSContext* ctx, JSValueConst this_val,
+                                                  int argc, JSValueConst* argv) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s || argc < 1) return JS_UNDEFINED;
+    double v = 0.0;
+    JS_ToFloat64(ctx, &v, argv[0]);
+    s->line_dash_offset = static_cast<float>(v);
+    return JS_UNDEFINED;
 }
 
 // ---- createLinearGradient ----
@@ -7858,18 +8401,58 @@ static JSValue js_canvas2d_create_pattern(JSContext* ctx, JSValueConst /*this_va
     return pat;
 }
 
-// ---- transform stubs (Cycle 239) ----
-static JSValue js_canvas2d_transform(JSContext* /*ctx*/, JSValueConst /*this_val*/,
-                                      int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_UNDEFINED; // no-op (6 args: a,b,c,d,e,f)
+// ---- transform / setTransform / resetTransform ----
+static JSValue js_canvas2d_transform(JSContext* ctx, JSValueConst this_val,
+                                      int argc, JSValueConst* argv) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s || argc < 6) return JS_UNDEFINED;
+    double a, b, c, d, e, f;
+    JS_ToFloat64(ctx, &a, argv[0]);
+    JS_ToFloat64(ctx, &b, argv[1]);
+    JS_ToFloat64(ctx, &c, argv[2]);
+    JS_ToFloat64(ctx, &d, argv[3]);
+    JS_ToFloat64(ctx, &e, argv[4]);
+    JS_ToFloat64(ctx, &f, argv[5]);
+    float fa = static_cast<float>(a), fb = static_cast<float>(b);
+    float fc = static_cast<float>(c), fd = static_cast<float>(d);
+    float fe = static_cast<float>(e), ff = static_cast<float>(f);
+    float cur_a = s->tx_a, cur_b = s->tx_b, cur_c = s->tx_c;
+    float cur_d = s->tx_d, cur_e = s->tx_e, cur_f = s->tx_f;
+    s->tx_a = cur_a * fa + cur_c * fb;
+    s->tx_b = cur_b * fa + cur_d * fb;
+    s->tx_c = cur_a * fc + cur_c * fd;
+    s->tx_d = cur_b * fc + cur_d * fd;
+    s->tx_e = cur_a * fe + cur_c * ff + cur_e;
+    s->tx_f = cur_b * fe + cur_d * ff + cur_f;
+    return JS_UNDEFINED;
 }
-static JSValue js_canvas2d_set_transform(JSContext* /*ctx*/, JSValueConst /*this_val*/,
-                                          int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_UNDEFINED; // no-op (6 args or DOMMatrix)
+static JSValue js_canvas2d_set_transform(JSContext* ctx, JSValueConst this_val,
+                                          int argc, JSValueConst* argv) {
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s || argc < 6) return JS_UNDEFINED;
+    double a, b, c, d, e, f;
+    JS_ToFloat64(ctx, &a, argv[0]);
+    JS_ToFloat64(ctx, &b, argv[1]);
+    JS_ToFloat64(ctx, &c, argv[2]);
+    JS_ToFloat64(ctx, &d, argv[3]);
+    JS_ToFloat64(ctx, &e, argv[4]);
+    JS_ToFloat64(ctx, &f, argv[5]);
+    s->tx_a = static_cast<float>(a);
+    s->tx_b = static_cast<float>(b);
+    s->tx_c = static_cast<float>(c);
+    s->tx_d = static_cast<float>(d);
+    s->tx_e = static_cast<float>(e);
+    s->tx_f = static_cast<float>(f);
+    return JS_UNDEFINED;
 }
-static JSValue js_canvas2d_reset_transform(JSContext* /*ctx*/, JSValueConst /*this_val*/,
+static JSValue js_canvas2d_reset_transform(JSContext* /*ctx*/, JSValueConst this_val,
                                             int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_UNDEFINED; // no-op
+    auto* s = static_cast<Canvas2DState*>(JS_GetOpaque(this_val, canvas2d_class_id));
+    if (!s) return JS_UNDEFINED;
+    s->tx_a = 1.0f; s->tx_b = 0.0f;
+    s->tx_c = 0.0f; s->tx_d = 1.0f;
+    s->tx_e = 0.0f; s->tx_f = 0.0f;
+    return JS_UNDEFINED;
 }
 // ---- clip stub ----
 static JSValue js_canvas2d_clip(JSContext* /*ctx*/, JSValueConst /*this_val*/,
@@ -8308,6 +8891,10 @@ static JSValue create_canvas2d_context(JSContext* ctx, Canvas2DState* state) {
         JS_NewCFunction(ctx, js_canvas2d_get_miter_limit, "__getMiterLimit", 0));
     JS_SetPropertyStr(ctx, obj, "__setMiterLimit",
         JS_NewCFunction(ctx, js_canvas2d_set_miter_limit, "__setMiterLimit", 1));
+    JS_SetPropertyStr(ctx, obj, "__getLineDashOffset",
+        JS_NewCFunction(ctx, js_canvas2d_get_line_dash_offset, "__getLineDashOffset", 0));
+    JS_SetPropertyStr(ctx, obj, "__setLineDashOffset",
+        JS_NewCFunction(ctx, js_canvas2d_set_line_dash_offset, "__setLineDashOffset", 1));
     JS_SetPropertyStr(ctx, obj, "__getShadowColor",
         JS_NewCFunction(ctx, js_canvas2d_get_shadow_color, "__getShadowColor", 0));
     JS_SetPropertyStr(ctx, obj, "__setShadowColor",
@@ -8384,6 +8971,11 @@ static JSValue create_canvas2d_context(JSContext* ctx, Canvas2DState* state) {
     Object.defineProperty(c, 'miterLimit', {
         get: function() { return c.__getMiterLimit(); },
         set: function(v) { c.__setMiterLimit(v); },
+        configurable: true
+    });
+    Object.defineProperty(c, 'lineDashOffset', {
+        get: function() { return c.__getLineDashOffset(); },
+        set: function(v) { c.__setLineDashOffset(v); },
         configurable: true
     });
     Object.defineProperty(c, 'shadowColor', {
@@ -14284,6 +14876,8 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr) {
                 rect.scroll_content_width = node.scroll_content_width;
                 rect.scroll_content_height = node.scroll_content_height;
                 rect.is_scroll_container = node.is_scroll_container;
+                rect.pointer_events = node.pointer_events;
+                rect.visibility_hidden = node.visibility_hidden;
                 state->layout_geometry[node.dom_node] = rect;
             }
 

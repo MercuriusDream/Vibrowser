@@ -78,6 +78,10 @@ thread_local std::unordered_map<clever::layout::LayoutNode*, std::string> g_tran
 thread_local bool g_transition_has_last_tick = false;
 thread_local std::chrono::steady_clock::time_point g_transition_last_tick_time;
 
+// Keyframe animation tracking: layout nodes that already have animations started
+// keyed by style_key so we don't restart animations on re-render
+thread_local std::unordered_set<std::string> g_keyframe_animated_keys;
+
 std::string trim(const std::string& s) {
     auto start = s.find_first_not_of(" \t\n\r");
     if (start == std::string::npos) return "";
@@ -13513,6 +13517,95 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 if (node_it == g_current_layout_nodes_by_key.end() || !node_it->second) continue;
 
                 auto* target = node_it->second;
+                if (update.has_float) {
+                    if (update.property_name == "opacity") {
+                        target->opacity = std::clamp(update.float_value, 0.0f, 1.0f);
+                    } else if (update.property_name == "font-size") {
+                        target->font_size = update.float_value;
+                    } else if (update.property_name == "border-radius") {
+                        target->border_radius = update.float_value;
+                        target->border_radius_tl = update.float_value;
+                        target->border_radius_tr = update.float_value;
+                        target->border_radius_bl = update.float_value;
+                        target->border_radius_br = update.float_value;
+                    }
+                } else if (update.has_color) {
+                    uint32_t argb = (static_cast<uint32_t>(update.color_value.a) << 24) |
+                                    (static_cast<uint32_t>(update.color_value.r) << 16) |
+                                    (static_cast<uint32_t>(update.color_value.g) << 8) |
+                                    static_cast<uint32_t>(update.color_value.b);
+                    if (update.property_name == "background-color") {
+                        target->background_color = argb;
+                    } else if (update.property_name == "color") {
+                        target->color = argb;
+                    }
+                }
+            }
+            g_transition_animation_controller->clear_updates();
+        }
+
+        // Wire up CSS @keyframes animations: walk the layout tree and start
+        // animations for elements that have animation-name set.
+        if (g_transition_animation_controller && !result.keyframes.empty()) {
+            std::function<void(clever::layout::LayoutNode&)> start_keyframe_anims;
+            start_keyframe_anims = [&](clever::layout::LayoutNode& node) {
+                if (!node.animation_name.empty() && node.animation_duration > 0) {
+                    std::string style_key = node.tag_name;
+                    if (!node.element_id.empty()) {
+                        style_key = "id:" + node.element_id;
+                    }
+                    // Only start if not already animating this key
+                    if (g_keyframe_animated_keys.find(style_key) == g_keyframe_animated_keys.end()) {
+                        // Find matching keyframes definition
+                        for (const auto& kf : result.keyframes) {
+                            if (kf.name == node.animation_name) {
+                                // Build a temporary ComputedStyle with animation parameters
+                                clever::css::ComputedStyle anim_style;
+                                anim_style.animation_duration = node.animation_duration;
+                                anim_style.animation_delay = node.animation_delay;
+                                anim_style.animation_timing = node.animation_timing;
+                                anim_style.animation_bezier_x1 = node.animation_bezier_x1;
+                                anim_style.animation_bezier_y1 = node.animation_bezier_y1;
+                                anim_style.animation_bezier_x2 = node.animation_bezier_x2;
+                                anim_style.animation_bezier_y2 = node.animation_bezier_y2;
+                                anim_style.animation_steps_count = node.animation_steps_count;
+                                anim_style.animation_fill_mode = node.animation_fill_mode;
+                                anim_style.animation_direction = node.animation_direction;
+                                anim_style.animation_iteration_count = node.animation_iteration_count;
+                                // Copy current values for interpolation start points
+                                anim_style.opacity = node.opacity;
+                                anim_style.background_color = {
+                                    static_cast<uint8_t>((node.background_color >> 16) & 0xFF),
+                                    static_cast<uint8_t>((node.background_color >> 8) & 0xFF),
+                                    static_cast<uint8_t>(node.background_color & 0xFF),
+                                    static_cast<uint8_t>((node.background_color >> 24) & 0xFF)
+                                };
+                                anim_style.color = {
+                                    static_cast<uint8_t>((node.color >> 16) & 0xFF),
+                                    static_cast<uint8_t>((node.color >> 8) & 0xFF),
+                                    static_cast<uint8_t>(node.color & 0xFF),
+                                    static_cast<uint8_t>((node.color >> 24) & 0xFF)
+                                };
+                                g_transition_animation_controller->start_animation(
+                                    &node, node.animation_name, kf, anim_style);
+                                g_keyframe_animated_keys.insert(style_key);
+                                break;
+                            }
+                        }
+                    }
+                }
+                for (auto& child : node.children) {
+                    if (child) start_keyframe_anims(*child);
+                }
+            };
+            start_keyframe_anims(*layout_root);
+
+            // Tick again to apply the first frame of new animations
+            g_transition_animation_controller->tick(0.0);
+            const auto& kf_updates = g_transition_animation_controller->get_active_property_updates();
+            for (const auto& update : kf_updates) {
+                if (!update.element) continue;
+                auto* target = update.element;
                 if (update.has_float) {
                     if (update.property_name == "opacity") {
                         target->opacity = std::clamp(update.float_value, 0.0f, 1.0f);

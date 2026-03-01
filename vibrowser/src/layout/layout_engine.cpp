@@ -933,8 +933,9 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
 
         if (node.white_space_pre || node.white_space == 4) {
             // Pre-formatted or pre-line text: respect newlines
-            // white_space 2 (pre) and 3 (pre-wrap): preserve all whitespace and newlines
+            // white_space 2 (pre), 3 (pre-wrap), 5 (break-spaces): preserve all whitespace and newlines
             // white_space 4 (pre-line): spaces already collapsed, but newlines preserved
+            // Note: white_space_pre is true for values 2, 3, and 5
             // For pre-formatted text, measure each line individually if measurer available
             if (text_measurer_) {
                 float max_line_width = 0;
