@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1976 — R43-R45 complete. Container queries, color-mix, form validation, table layout, z-index stacking, position sticky, overflow clipping, writing-mode, Intl APIs, Scheduler API, Navigation API, HTML file open support.
-**Momentum**: Cycle 1976 — 80+ commits pushed. 14/14 tests passing. All major layout and JS API gaps closing.
-**Cycle**: 1976
+**Current Focus**: Cycle 1978 — R46-R48 complete. BFC margin collapsing, CSS animations runtime, Web Workers, font-feature-settings, Canvas 2D, text-wrap balance/pretty, font-variant OpenType mapping, HTML entities, visualViewport API.
+**Momentum**: Cycle 1978 — 90+ commits pushed. 14/14 tests passing. HN renders well. All major APIs covered.
+**Cycle**: 1978
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
@@ -1573,6 +1573,24 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 1978 (R46-R48 Feature Implementation) — 2026-03-02
+
+- **Theme**: BFC margin collapsing, CSS animations, Web Workers, font-feature-settings, Canvas 2D, text-wrap, font-variant, HTML entities, visualViewport
+- **Commits**: df6b30a, 679c11c, 8c21917, 8af774d, 8dde161, 12db8d2, 79c49e9, ac3f53a, d213184, e68b742, 1dba006
+- **Features Implemented**:
+  - BFC margin collapsing — improved edge case handling in layout_engine.cpp
+  - CSS animations runtime — length property interpolation (width, height, margin, padding)
+  - Web Workers — robust message passing, MessageEvent objects, error handling, termination cleanup
+  - CSS font-feature-settings — vector-based parsing, OpenType tag+value pairs
+  - Canvas 2D — roundRect with arc rendering, measureText TextMetrics, canvas.reset(), filter property
+  - CSS text-wrap: balance — variance-minimization binary search, pretty orphan avoidance
+  - CSS font-variant — OpenType feature mapping for caps, east-asian, position, alternates
+  - HTML entities — 5 missing entries added (check, mldr, ruble, mnplus, varr)
+  - window.visualViewport API — width, height, offset, scale
+  - navigator.deviceMemory, navigator.pdfViewerEnabled
+- **Build Fixes**: Animation field access (geometry.margin.top not geometry.margin_top), font_feature_settings vector type migration, paint test updates
+- **Validation**: 14/14 suites pass, 0 failures. HN renders well.
+
 ### Cycle 1976 (R43-R45 Feature Implementation) — 2026-03-02
 
 - **Theme**: Container queries, form validation, table layout, z-index, sticky, overflow, writing-mode, Intl APIs, Scheduler/Navigation APIs, HTML file open
@@ -1992,7 +2010,7 @@ Generated: 2026-03-01
 - **AGENT CONFLICT RISK**: Agents use `git add -A` which can overwrite local changes. Always commit your direct work BEFORE agents finish, or accept that agents will bundle your changes.
 - Multi-column layout, details/summary, dialog, canvas 2D, localStorage, WebSocket, AbortController, fetch, CSS grid, flexbox, animations, transitions, @layer, loading=lazy, DOMMatrix, History API, scroll-behavior, @font-face matching — ALL implemented
 - `codex-spark` haiku agents are the primary subagent type. 4 per round. They commit+push directly.
-- High-value next targets: HTTP/2, Service Worker actual implementation, improved error pages, CSS `text-wrap: pretty`, Canvas 2D improvements, form submission improvements, improved table layout, CSS `font-feature-settings`
+- High-value next targets: Service Worker lifecycle, WebSocket improvements, CSS `paint()` worklets, IndexedDB stubs, Web Audio stubs, `<video>`/`<audio>` playback, WebGL context stubs, improved form submission (multipart), HTTP/2 connection wiring
 
 ### Tell The Next Codex
 

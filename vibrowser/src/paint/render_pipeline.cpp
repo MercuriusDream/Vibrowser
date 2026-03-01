@@ -11540,10 +11540,24 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     if (tag_lower == "table") {
         layout_node->mode = clever::layout::LayoutMode::Table;
         layout_node->display = clever::layout::DisplayType::Table;
-        if (layout_node->geometry.border.top == 0) {
-            layout_node->geometry.border = {1, 1, 1, 1};
-            layout_node->border_color = 0xFFCCCCCC;
+        // Parse HTML border attribute: border=0 → no borders; border=N → N-px border
+        std::string border_attr = get_attr(node, "border");
+        int table_border_val = -1; // -1 = not specified
+        if (!border_attr.empty()) {
+            try { table_border_val = std::stoi(border_attr); } catch (...) { table_border_val = 0; }
         }
+        layout_node->table_border = table_border_val;
+        if (table_border_val > 0) {
+            float bw = static_cast<float>(table_border_val);
+            if (layout_node->geometry.border.top == 0) {
+                layout_node->geometry.border = {bw, bw, bw, bw};
+                layout_node->border_color = 0xFFCCCCCC;
+            }
+        } else if (table_border_val == 0) {
+            // border=0: explicitly no border
+            layout_node->geometry.border = {0, 0, 0, 0};
+        }
+        // No default border when border attribute is absent (per spec)
         // Legacy HTML bgcolor attribute (hex or named colors)
         std::string bg = get_attr(node, "bgcolor");
         if (!bg.empty()) {
@@ -11685,18 +11699,15 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         else if (tr_align == "left") { layout_node->text_align = 0; style.text_align = clever::css::TextAlign::Left; }
     }
 
-    // Handle <td>/<th> — render as flex items with border and padding
+    // Handle <td>/<th> — render as table cells
     if (tag_lower == "td" || tag_lower == "th") {
         layout_node->flex_grow = 1;
         layout_node->mode = clever::layout::LayoutMode::Block;
         layout_node->display = clever::layout::DisplayType::Block;
         if (layout_node->geometry.padding.top == 0) {
-            layout_node->geometry.padding = {4, 8, 4, 8};
+            layout_node->geometry.padding = {1, 1, 1, 1}; // UA default 1px padding
         }
-        if (layout_node->geometry.border.top == 0) {
-            layout_node->geometry.border = {1, 1, 1, 1};
-            layout_node->border_color = 0xFFDDDDDD;
-        }
+        // No default border on cells — borders come from table border attribute or CSS
         if (tag_lower == "th") {
             layout_node->font_weight = 700;
         }
@@ -13111,6 +13122,28 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             for (auto& child : layout_node->children) apply_cellpadding(*child);
         }
 
+        // HTML border attribute: propagate cell borders
+        // border=0 → no cell borders; border>0 → 1px cell borders; not set → no default
+        if (layout_node->table_border >= 0) {
+            int bval = layout_node->table_border;
+            std::function<void(clever::layout::LayoutNode&)> apply_table_border =
+                [&](clever::layout::LayoutNode& n) {
+                std::string tn = n.tag_name;
+                std::transform(tn.begin(), tn.end(), tn.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (tn == "td" || tn == "th") {
+                    if (bval == 0) {
+                        n.geometry.border = {0, 0, 0, 0};
+                    } else if (bval > 0) {
+                        n.geometry.border = {1, 1, 1, 1};
+                        if (n.border_color == 0) n.border_color = 0xFFCCCCCC;
+                    }
+                }
+                for (auto& child : n.children) apply_table_border(*child);
+            };
+            for (auto& child : layout_node->children) apply_table_border(*child);
+        }
+
         // HTML rules attribute: apply cell borders based on rules value
         if (!layout_node->table_rules.empty()) {
             auto& rules = layout_node->table_rules;
@@ -13604,11 +13637,19 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             }
 
             if (!fixed_layout) {
-                float table_content_hint = table_node.geometry.width > 0.0f ? table_node.geometry.width
-                    : (table_node.specified_width >= 0.0f ? table_node.specified_width : 0.0f);
-                table_content_hint -= table_node.geometry.padding.left + table_node.geometry.padding.right
-                                     + table_node.geometry.border.left + table_node.geometry.border.right;
-                if (table_content_hint < 0.0f) table_content_hint = 0.0f;
+                // Only distribute remaining space if the table has an explicit width
+                // (from HTML width attribute or CSS width property).
+                // Tables with auto width should shrink-to-fit their content.
+                bool has_explicit_width = table_node.specified_width >= 0.0f
+                                       || table_node.css_width.has_value();
+                float table_content_hint = 0.0f;
+                if (has_explicit_width) {
+                    table_content_hint = table_node.geometry.width > 0.0f ? table_node.geometry.width
+                        : (table_node.specified_width >= 0.0f ? table_node.specified_width : 0.0f);
+                    table_content_hint -= table_node.geometry.padding.left + table_node.geometry.padding.right
+                                         + table_node.geometry.border.left + table_node.geometry.border.right;
+                    if (table_content_hint < 0.0f) table_content_hint = 0.0f;
+                }
 
                 float occupied = 0.0f;
                 for (int c = 0; c < col_count; ++c) {
@@ -13630,6 +13671,18 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                             final_width[static_cast<size_t>(c)] += remaining
                                 * (std::max(1.0f, final_width[static_cast<size_t>(c)]) / grow_weight);
                         }
+                    }
+                }
+
+                // For auto-width tables, also update table geometry to shrink-to-fit
+                if (!has_explicit_width) {
+                    float sum_cols = 0.0f;
+                    for (int c = 0; c < col_count; ++c) sum_cols += final_width[static_cast<size_t>(c)];
+                    float shrink_width = sum_cols + gutter
+                        + table_node.geometry.padding.left + table_node.geometry.padding.right
+                        + table_node.geometry.border.left + table_node.geometry.border.right;
+                    if (table_node.geometry.width > shrink_width) {
+                        table_node.geometry.width = shrink_width;
                     }
                 }
             }
@@ -13738,6 +13791,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     }
 
                     if (height_in_row < 0.0f) height_in_row = 0.0f;
+                    // Use row's specified height (from style="height:...") as minimum
+                    if (row->specified_height > height_in_row) {
+                        height_in_row = row->specified_height;
+                    }
                     row->geometry.height = height_in_row;
                     row_height[static_cast<size_t>(ri)] = height_in_row;
                     row_baseline[static_cast<size_t>(ri)] = baseline;

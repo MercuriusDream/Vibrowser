@@ -302,9 +302,10 @@ struct LayoutNode {
     // Table layout: 0=auto, 1=fixed
     int table_layout = 0;
 
-    // HTML cellpadding/cellspacing attributes (for propagation to td/th children)
+    // HTML cellpadding/cellspacing/border attributes (for propagation to td/th children)
     float table_cellpadding = -1; // -1 = not set (use CSS padding)
     float table_cellspacing = -1; // -1 = not set (use border-spacing)
+    int table_border = -1;        // HTML border attribute: -1=not set, 0=no borders, >0=border width
     std::string table_rules;       // HTML rules attribute: none, groups, rows, cols, all
 
     // Border spacing (CSS border-spacing, in px; 0 when border-collapse: collapse)
