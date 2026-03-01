@@ -6216,6 +6216,68 @@ static JSValue js_element_scroll_to(JSContext* ctx,
     return JS_UNDEFINED;
 }
 
+static JSValue js_element_scroll_by(JSContext* ctx,
+                                   JSValueConst this_val,
+                                   int argc,
+                                   JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node) return JS_UNDEFINED;
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_UNDEFINED;
+
+    auto it = state->layout_geometry.find(static_cast<void*>(node));
+    if (it == state->layout_geometry.end()) return JS_UNDEFINED;
+
+    auto& lr = it->second;
+    double left = lr.scroll_left;
+    double top = lr.scroll_top;
+    if (argc > 0 && JS_IsObject(argv[0])) {
+        JSValue left_v = JS_GetPropertyStr(ctx, argv[0], "left");
+        JSValue top_v = JS_GetPropertyStr(ctx, argv[0], "top");
+        JSValue x_v = JS_GetPropertyStr(ctx, argv[0], "x");
+        JSValue y_v = JS_GetPropertyStr(ctx, argv[0], "y");
+
+        if (JS_IsNumber(left_v)) {
+            JS_ToFloat64(ctx, &left, left_v);
+            left += lr.scroll_left;
+        }
+        if (JS_IsNumber(x_v)) {
+            JS_ToFloat64(ctx, &left, x_v);
+            left += lr.scroll_left;
+        }
+        if (JS_IsNumber(top_v)) {
+            JS_ToFloat64(ctx, &top, top_v);
+            top += lr.scroll_top;
+        }
+        if (JS_IsNumber(y_v)) {
+            JS_ToFloat64(ctx, &top, y_v);
+            top += lr.scroll_top;
+        }
+
+        JS_FreeValue(ctx, left_v);
+        JS_FreeValue(ctx, top_v);
+        JS_FreeValue(ctx, x_v);
+        JS_FreeValue(ctx, y_v);
+    } else {
+        if (argc > 0 && JS_IsNumber(argv[0])) {
+            JS_ToFloat64(ctx, &left, argv[0]);
+            left += lr.scroll_left;
+        }
+        if (argc > 1 && JS_IsNumber(argv[1])) {
+            JS_ToFloat64(ctx, &top, argv[1]);
+            top += lr.scroll_top;
+        }
+    }
+
+    if (left < 0.0) left = 0.0;
+    if (top < 0.0) top = 0.0;
+
+    lr.scroll_left = static_cast<float>(left);
+    lr.scroll_top = static_cast<float>(top);
+    state->modified = true;
+    return JS_UNDEFINED;
+}
+
 static JSValue js_element_scroll(JSContext* ctx,
                                 JSValueConst this_val,
                                 int argc,
@@ -15035,6 +15097,8 @@ void install_dom_bindings(JSContext* ctx,
         JS_NewCFunction(ctx, js_element_scroll_into_view, "scrollIntoView", 0));
     JS_SetPropertyStr(ctx, element_proto, "scrollTo",
         JS_NewCFunction(ctx, js_element_scroll_to, "scrollTo", 0));
+    JS_SetPropertyStr(ctx, element_proto, "scrollBy",
+        JS_NewCFunction(ctx, js_element_scroll_by, "scrollBy", 0));
     JS_SetPropertyStr(ctx, element_proto, "scroll",
         JS_NewCFunction(ctx, js_element_scroll, "scroll", 0));
     JS_SetPropertyStr(ctx, element_proto, "focus",

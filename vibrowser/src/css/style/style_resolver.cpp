@@ -555,6 +555,16 @@ void PropertyCascade::apply_declaration(
         if (prop == "font-size") { style.font_size = initial_style.font_size; return; }
         if (prop == "font-weight") { style.font_weight = initial_style.font_weight; return; }
         if (prop == "font-style") { style.font_style = FontStyle::Normal; return; }
+        if (prop == "font-variant") { style.font_variant = 0; return; }
+        if (prop == "font-variant-caps") { style.font_variant_caps = 0; return; }
+        if (prop == "font-variant-numeric") { style.font_variant_numeric = 0; return; }
+        if (prop == "font-variant-ligatures") { style.font_variant_ligatures = 0; return; }
+        if (prop == "font-variant-east-asian") { style.font_variant_east_asian = 0; return; }
+        if (prop == "font-variant-position") { style.font_variant_position = 0; return; }
+        if (prop == "font-variant-alternates") { style.font_variant_alternates = 0; return; }
+        if (prop == "font-optical-sizing") { style.font_optical_sizing = 0; return; }
+        if (prop == "font-synthesis") { style.font_synthesis = 7; return; }
+        if (prop == "text-rendering") { style.text_rendering = 0; return; }
         if (prop == "line-height") { style.line_height = initial_style.line_height; style.line_height_unitless = 1.2f; return; }
         if (prop == "text-align") { style.text_align = TextAlign::Left; return; }
         if (prop == "text-transform") { style.text_transform = TextTransform::None; return; }
@@ -677,7 +687,13 @@ void PropertyCascade::apply_declaration(
             prop == "font-variant" ||
             prop == "font-variant-caps" ||
             prop == "font-variant-numeric" ||
+            prop == "font-variant-ligatures" ||
+            prop == "font-variant-east-asian" ||
+            prop == "font-variant-position" ||
+            prop == "font-variant-alternates" ||
             prop == "font-kerning" ||
+            prop == "font-optical-sizing" ||
+            prop == "font-synthesis" ||
             prop == "text-rendering" ||
             prop == "orphans" ||
             prop == "widows" ||

@@ -777,7 +777,7 @@ struct LayoutNode {
     int font_kerning = 0;
 
     // Font variant ligatures: 0=normal, 1=none, 2=common-ligatures, 3=no-common-ligatures,
-    //                         4=discretionary-ligatures, 5=no-discretionary-ligatures
+    //                         4=discretionary-ligatures, 5=no-discretionary-ligatures, 6=contextual, 7=no-contextual
     int font_variant_ligatures = 0;
 
     // Font variant east-asian: 0=normal, 1=jis78, 2=jis83, 3=jis90, 4=jis04, 5=simplified, 6=traditional, 7=full-width, 8=proportional-width, 9=ruby

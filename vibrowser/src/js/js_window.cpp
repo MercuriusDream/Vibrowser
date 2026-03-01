@@ -5831,6 +5831,35 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_FreeValue(ctx, polyfill_scheduler);
     }
 
+    // ---- window.trustedTypes stub ----
+    {
+        const char* polyfill_trusted_types_src = R"JS(
+        if (typeof globalThis.trustedTypes === 'undefined') {
+            globalThis.trustedTypes = {
+                createPolicy: function(name, rules) {
+                    return rules || {};
+                },
+                isHTML: function(value) {
+                    return false;
+                },
+                isScript: function(value) {
+                    return false;
+                },
+                isScriptURL: function(value) {
+                    return false;
+                }
+            };
+        }
+)JS";
+        JSValue polyfill_trusted_types = JS_Eval(ctx, polyfill_trusted_types_src, std::strlen(polyfill_trusted_types_src),
+                                            "<polyfill-trustedTypes>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_trusted_types)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_trusted_types);
+    }
+
     {
         const char* polyfill_aggregate_error_src = R"JS(
         if (typeof globalThis.AggregateError === 'undefined') {
