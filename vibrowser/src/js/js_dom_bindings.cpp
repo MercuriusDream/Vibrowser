@@ -14691,6 +14691,11 @@ void install_dom_bindings(JSContext* ctx,
         set: function(v) { this.__setTextContent(v); },
         configurable: true
     });
+    Object.defineProperty(proto, 'innerText', {
+        get: function() { return this.__getInnerText(); },
+        set: function(v) { this.__setInnerText(v); },
+        configurable: true
+    });
     Object.defineProperty(proto, 'innerHTML', {
         get: function() { return this.__getInnerHTML(); },
         set: function(v) { this.__setInnerHTML(v); },
@@ -19058,6 +19063,16 @@ static JSValue create_mouse_event_object(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "movementX", JS_NewFloat64(ctx, movement_x));
     JS_SetPropertyStr(ctx, event_obj, "movementY", JS_NewFloat64(ctx, movement_y));
     JS_SetPropertyStr(ctx, event_obj, "detail", JS_NewInt32(ctx, detail));
+
+    // PointerEvent properties (for mouse pointer)
+    JS_SetPropertyStr(ctx, event_obj, "pointerId", JS_NewInt32(ctx, 1));
+    JS_SetPropertyStr(ctx, event_obj, "pointerType", JS_NewString(ctx, "mouse"));
+    JS_SetPropertyStr(ctx, event_obj, "width", JS_NewFloat64(ctx, 1.0));
+    JS_SetPropertyStr(ctx, event_obj, "height", JS_NewFloat64(ctx, 1.0));
+    JS_SetPropertyStr(ctx, event_obj, "pressure", JS_NewFloat64(ctx, buttons != 0 ? 0.5 : 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "tiltX", JS_NewInt32(ctx, 0));
+    JS_SetPropertyStr(ctx, event_obj, "tiltY", JS_NewInt32(ctx, 0));
+    JS_SetPropertyStr(ctx, event_obj, "isPrimary", JS_TRUE);
 
     // Hidden propagation state
     JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);

@@ -732,12 +732,12 @@ static JSValue js_window_confirm(JSContext* ctx, JSValueConst /*this_val*/,
 }
 
 // =========================================================================
-// window.prompt(msg, default) -- stub, always returns ""
+// window.prompt(msg, default) -- stub, always returns null
 // =========================================================================
 
 static JSValue js_window_prompt(JSContext* ctx, JSValueConst /*this_val*/,
                                  int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_NewString(ctx, "");
+    return JS_NULL;
 }
 
 // =========================================================================
