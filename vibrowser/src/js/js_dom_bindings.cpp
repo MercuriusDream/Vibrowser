@@ -16276,6 +16276,62 @@ void install_dom_bindings(JSContext* ctx,
             JS_NewString(ctx, "Gecko"));
         JS_SetPropertyStr(ctx, nav, "productSub",
             JS_NewString(ctx, "20030107"));
+
+        // navigator.userAgentData (User-Agent Client Hints API)
+        {
+            JSValue uad = JS_NewObject(ctx);
+            JSValue brands = JS_NewArray(ctx);
+            // Chrome-like brand list for compatibility
+            JSValue b0 = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, b0, "brand", JS_NewString(ctx, "Vibrowser"));
+            JS_SetPropertyStr(ctx, b0, "version", JS_NewString(ctx, "0.7"));
+            JS_SetPropertyUint32(ctx, brands, 0, b0);
+            JSValue b1 = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, b1, "brand", JS_NewString(ctx, "Not/A)Brand"));
+            JS_SetPropertyStr(ctx, b1, "version", JS_NewString(ctx, "8"));
+            JS_SetPropertyUint32(ctx, brands, 1, b1);
+            JS_SetPropertyStr(ctx, uad, "brands", brands);
+            JS_SetPropertyStr(ctx, uad, "mobile", JS_FALSE);
+            JS_SetPropertyStr(ctx, uad, "platform", JS_NewString(ctx, "macOS"));
+            // getHighEntropyValues() — returns Promise with full UA data
+            JS_SetPropertyStr(ctx, uad, "getHighEntropyValues",
+                JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                    JSValue rf[2];
+                    JSValue promise = JS_NewPromiseCapability(c, rf);
+                    if (JS_IsException(promise)) return promise;
+                    JSValue result = JS_NewObject(c);
+                    JS_SetPropertyStr(c, result, "platform", JS_NewString(c, "macOS"));
+                    JS_SetPropertyStr(c, result, "platformVersion", JS_NewString(c, "14.0.0"));
+                    JS_SetPropertyStr(c, result, "architecture", JS_NewString(c, "arm"));
+                    JS_SetPropertyStr(c, result, "model", JS_NewString(c, ""));
+                    JS_SetPropertyStr(c, result, "mobile", JS_FALSE);
+                    JS_SetPropertyStr(c, result, "bitness", JS_NewString(c, "64"));
+                    JSValue fb = JS_NewArray(c);
+                    JSValue fb0 = JS_NewObject(c);
+                    JS_SetPropertyStr(c, fb0, "brand", JS_NewString(c, "Vibrowser"));
+                    JS_SetPropertyStr(c, fb0, "version", JS_NewString(c, "0.7.0"));
+                    JS_SetPropertyUint32(c, fb, 0, fb0);
+                    JS_SetPropertyStr(c, result, "fullVersionList", fb);
+                    JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &result);
+                    JS_FreeValue(c, r);
+                    JS_FreeValue(c, result);
+                    JS_FreeValue(c, rf[0]);
+                    JS_FreeValue(c, rf[1]);
+                    return promise;
+                }, "getHighEntropyValues", 1));
+            // toJSON()
+            JS_SetPropertyStr(ctx, uad, "toJSON",
+                JS_NewCFunction(ctx, [](JSContext* c, JSValueConst this_val, int, JSValueConst*) -> JSValue {
+                    JSValue r = JS_NewObject(c);
+                    JSValue b = JS_GetPropertyStr(c, this_val, "brands");
+                    JS_SetPropertyStr(c, r, "brands", b);
+                    JS_SetPropertyStr(c, r, "mobile", JS_FALSE);
+                    JS_SetPropertyStr(c, r, "platform", JS_NewString(c, "macOS"));
+                    return r;
+                }, "toJSON", 0));
+            JS_SetPropertyStr(ctx, nav, "userAgentData", uad);
+        }
+
         // navigator.clipboard (stub)
         JSValue clipboard = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, clipboard, "writeText",
