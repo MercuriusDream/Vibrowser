@@ -7,6 +7,18 @@
 
 namespace clever::css {
 
+void apply_inline_property(EdgeSizes& edge, const std::string& side, const Length& value, Direction dir) {
+    if (side == "start") {
+        if (dir == Direction::Ltr) edge.left = value;
+        else if (dir == Direction::Rtl) edge.right = value;
+        return;
+    }
+    if (side == "end") {
+        if (dir == Direction::Ltr) edge.right = value;
+        else if (dir == Direction::Rtl) edge.left = value;
+    }
+}
+
 // Specificity operators and compute_specificity are defined in selector.cpp
 // (clever_css_parser library). They are linked transitively via clever_css_style -> clever_css_parser.
 
@@ -923,12 +935,15 @@ void PropertyCascade::apply_declaration(
         };
         if (parts.size() == 1) {
             auto v = parse_margin_val(parts[0]);
-            if (v) { style.margin.left = *v; style.margin.right = *v; }
+            if (v) {
+                apply_inline_property(style.margin, "start", *v, style.direction);
+                apply_inline_property(style.margin, "end", *v, style.direction);
+            }
         } else if (parts.size() >= 2) {
             auto v1 = parse_margin_val(parts[0]);
             auto v2 = parse_margin_val(parts[1]);
-            if (v1) style.margin.left = *v1;
-            if (v2) style.margin.right = *v2;
+            if (v1) apply_inline_property(style.margin, "start", *v1, style.direction);
+            if (v2) apply_inline_property(style.margin, "end", *v2, style.direction);
         }
         return;
     }
@@ -944,13 +959,13 @@ void PropertyCascade::apply_declaration(
         return;
     }
     if (prop == "margin-inline-start") {
-        if (value_lower == "auto") style.margin.left = Length::auto_val();
-        else { auto l = parse_length(value_str); if (l) style.margin.left = *l; }
+        if (value_lower == "auto") apply_inline_property(style.margin, "start", Length::auto_val(), style.direction);
+        else { auto l = parse_length(value_str); if (l) apply_inline_property(style.margin, "start", *l, style.direction); }
         return;
     }
     if (prop == "margin-inline-end") {
-        if (value_lower == "auto") style.margin.right = Length::auto_val();
-        else { auto l = parse_length(value_str); if (l) style.margin.right = *l; }
+        if (value_lower == "auto") apply_inline_property(style.margin, "end", Length::auto_val(), style.direction);
+        else { auto l = parse_length(value_str); if (l) apply_inline_property(style.margin, "end", *l, style.direction); }
         return;
     }
 
@@ -1026,12 +1041,15 @@ void PropertyCascade::apply_declaration(
         auto parts = split_whitespace(value_str);
         if (parts.size() == 1) {
             auto v = parse_length(parts[0]);
-            if (v) { style.padding.left = *v; style.padding.right = *v; }
+            if (v) {
+                apply_inline_property(style.padding, "start", *v, style.direction);
+                apply_inline_property(style.padding, "end", *v, style.direction);
+            }
         } else if (parts.size() >= 2) {
             auto v1 = parse_length(parts[0]);
             auto v2 = parse_length(parts[1]);
-            if (v1) style.padding.left = *v1;
-            if (v2) style.padding.right = *v2;
+            if (v1) apply_inline_property(style.padding, "start", *v1, style.direction);
+            if (v2) apply_inline_property(style.padding, "end", *v2, style.direction);
         }
         return;
     }
@@ -1048,12 +1066,12 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "padding-inline-start") {
         auto l = parse_length(value_str);
-        if (l) style.padding.left = *l;
+        if (l) apply_inline_property(style.padding, "start", *l, style.direction);
         return;
     }
     if (prop == "padding-inline-end") {
         auto l = parse_length(value_str);
-        if (l) style.padding.right = *l;
+        if (l) apply_inline_property(style.padding, "end", *l, style.direction);
         return;
     }
 
@@ -1119,6 +1137,37 @@ void PropertyCascade::apply_declaration(
             style.border_top = {bw, bs_val, bc};
         } else {
             style.border_bottom = {bw, bs_val, bc};
+        }
+        return;
+    }
+
+    if (prop == "border-inline") {
+        std::istringstream bis(value_str);
+        std::string part;
+        Length bw = Length::px(1);
+        BorderStyle bs_val = BorderStyle::None;
+        Color bc = style.color;
+        while (bis >> part) {
+            auto bwp = parse_length(part);
+            if (bwp) { bw = *bwp; continue; }
+            std::string part_lower = part;
+            std::transform(part_lower.begin(), part_lower.end(), part_lower.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (part_lower == "solid" || part_lower == "dashed" || part_lower == "dotted" ||
+                part_lower == "double" || part_lower == "none") {
+                bs_val = parse_border_style_value(part_lower);
+                if (part_lower == "none") bw = Length::zero();
+                continue;
+            }
+            auto bcp = parse_color(part);
+            if (bcp) { bc = *bcp; continue; }
+        }
+        if (style.direction == Direction::Ltr) {
+            style.border_left = {bw, bs_val, bc};
+            style.border_right = {bw, bs_val, bc};
+        } else {
+            style.border_right = {bw, bs_val, bc};
+            style.border_left = {bw, bs_val, bc};
         }
         return;
     }
@@ -1280,8 +1329,8 @@ void PropertyCascade::apply_declaration(
             auto col = parse_color(p);
             if (col) { bc = *col; continue; }
         }
-        // LTR: start=left, end=right
-        if (prop == "border-inline-start") {
+        if ((style.direction == Direction::Ltr && prop == "border-inline-start") ||
+            (style.direction == Direction::Rtl && prop == "border-inline-end")) {
             style.border_left = {bw, bs, bc};
         } else {
             style.border_right = {bw, bs, bc};
@@ -1296,11 +1345,19 @@ void PropertyCascade::apply_declaration(
         iss >> v1 >> v2;
         auto l1 = parse_length(v1);
         if (l1) {
-            style.border_left.width = *l1;
+            if (style.direction == Direction::Ltr) {
+                style.border_left.width = *l1;
+            } else {
+                style.border_right.width = *l1;
+            }
         }
         auto l2 = v2.empty() ? l1 : parse_length(v2);
         if (l2) {
-            style.border_right.width = *l2;
+            if (style.direction == Direction::Ltr) {
+                style.border_right.width = *l2;
+            } else {
+                style.border_left.width = *l2;
+            }
         }
         return;
     }
@@ -1355,8 +1412,13 @@ void PropertyCascade::apply_declaration(
             if (v=="hidden") return BorderStyle::None;
             return BorderStyle::None;
         };
-        style.border_left.style = parse_bs(value_lower);
-        style.border_right.style = parse_bs(value_lower);
+        if (style.direction == Direction::Ltr) {
+            style.border_left.style = parse_bs(value_lower);
+            style.border_right.style = parse_bs(value_lower);
+        } else {
+            style.border_right.style = parse_bs(value_lower);
+            style.border_left.style = parse_bs(value_lower);
+        }
         return;
     }
 
@@ -1392,12 +1454,18 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "border-inline-start-width") {
         auto v = parse_length(value_str);
-        if (v) { style.border_left.width = *v; }
+        if (v) {
+            if (style.direction == Direction::Ltr) style.border_left.width = *v;
+            else style.border_right.width = *v;
+        }
         return;
     }
     if (prop == "border-inline-end-width") {
         auto v = parse_length(value_str);
-        if (v) { style.border_right.width = *v; }
+        if (v) {
+            if (style.direction == Direction::Ltr) style.border_right.width = *v;
+            else style.border_left.width = *v;
+        }
         return;
     }
     if (prop == "border-block-start-color") {
@@ -1412,12 +1480,18 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "border-inline-start-color") {
         auto c = parse_color(value_str);
-        if (c) style.border_left.color = *c;
+        if (c) {
+            if (style.direction == Direction::Ltr) style.border_left.color = *c;
+            else style.border_right.color = *c;
+        }
         return;
     }
     if (prop == "border-inline-end-color") {
         auto c = parse_color(value_str);
-        if (c) style.border_right.color = *c;
+        if (c) {
+            if (style.direction == Direction::Ltr) style.border_right.color = *c;
+            else style.border_left.color = *c;
+        }
         return;
     }
     if (prop == "border-block-start-style") {
@@ -1465,7 +1539,8 @@ void PropertyCascade::apply_declaration(
             if (v=="hidden") return BorderStyle::None;
             return BorderStyle::None;
         };
-        style.border_left.style = parse_bs(value_lower);
+        if (style.direction == Direction::Ltr) style.border_left.style = parse_bs(value_lower);
+        else style.border_right.style = parse_bs(value_lower);
         return;
     }
     if (prop == "border-inline-end-style") {
@@ -1481,7 +1556,8 @@ void PropertyCascade::apply_declaration(
             if (v=="hidden") return BorderStyle::None;
             return BorderStyle::None;
         };
-        style.border_right.style = parse_bs(value_lower);
+        if (style.direction == Direction::Ltr) style.border_right.style = parse_bs(value_lower);
+        else style.border_left.style = parse_bs(value_lower);
         return;
     }
 
@@ -5614,17 +5690,27 @@ void PropertyCascade::apply_declaration(
         return;
     }
 
+    auto apply_inset_inline = [&](const std::string& side, const Length& value) {
+        EdgeSizes inline_edges = {style.top, style.right_pos, style.bottom, style.left_pos};
+        apply_inline_property(inline_edges, side, value, style.direction);
+        style.right_pos = inline_edges.right;
+        style.left_pos = inline_edges.left;
+    };
+
     // ---- CSS inset-inline logical shorthand ----
     if (prop == "inset-inline") {
         auto parts = split_whitespace(value_lower);
         if (parts.size() == 1) {
             auto v = parse_length(parts[0]);
-            if (v) { style.left_pos = *v; style.right_pos = *v; }
+            if (v) {
+                apply_inset_inline("start", *v);
+                apply_inset_inline("end", *v);
+            }
         } else if (parts.size() >= 2) {
             auto v1 = parse_length(parts[0]);
             auto v2 = parse_length(parts[1]);
-            if (v1) style.left_pos = *v1;
-            if (v2) style.right_pos = *v2;
+            if (v1) apply_inset_inline("start", *v1);
+            if (v2) apply_inset_inline("end", *v2);
         }
         if (style.position == Position::Static)
             style.position = Position::Relative;
@@ -5647,14 +5733,14 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "inset-inline-start") {
         auto v = parse_length(value_lower);
-        if (v) style.left_pos = *v;
+        if (v) apply_inset_inline("start", *v);
         if (style.position == Position::Static)
             style.position = Position::Relative;
         return;
     }
     if (prop == "inset-inline-end") {
         auto v = parse_length(value_lower);
-        if (v) style.right_pos = *v;
+        if (v) apply_inset_inline("end", *v);
         if (style.position == Position::Static)
             style.position = Position::Relative;
         return;
