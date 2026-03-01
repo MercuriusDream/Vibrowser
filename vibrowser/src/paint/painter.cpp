@@ -5011,6 +5011,9 @@ void Painter::paint_scrollbar(const clever::layout::LayoutNode& node, DisplayLis
     if (!node.is_scroll_container || node.overflow < 2) return;
     if (node.scrollbar_width == 2) return; // scrollbar-width: none
 
+    // Only paint scrollbars if content actually overflows
+    if (!node.overflow_indicator_bottom && !node.overflow_indicator_right) return;
+
     const auto& geom = node.geometry;
 
     // Determine scrollbar colors (CSS scrollbar-color)
@@ -5045,11 +5048,7 @@ void Painter::paint_scrollbar(const clever::layout::LayoutNode& node, DisplayLis
     float box_h = geom.height + geom.padding.top + geom.padding.bottom;
 
     // Vertical scrollbar (right edge)
-    bool has_v_scrollbar = false;
-    float viewport_h = geom.height;
-    float content_h = node.scroll_content_height;
-    if (content_h > viewport_h && content_h > 0) {
-        has_v_scrollbar = true;
+    if (node.overflow_indicator_bottom) {
         float sb_x = content_x + box_w - sb_width;
         float sb_y = content_y;
         float sb_h = box_h;
@@ -5057,27 +5056,31 @@ void Painter::paint_scrollbar(const clever::layout::LayoutNode& node, DisplayLis
         // Track
         list.fill_rect({sb_x, sb_y, sb_width, sb_h}, track_color);
 
-        // Thumb height proportional to viewport/content ratio
-        float ratio = viewport_h / content_h;
-        float thumb_h = std::max(20.0f, (sb_h - 4.0f) * ratio);
-        // Thumb position based on scroll_top
-        float max_scroll = content_h - viewport_h;
-        float scroll_frac = (max_scroll > 0) ? (node.scroll_top / max_scroll) : 0.0f;
-        float track_range = sb_h - 4.0f - thumb_h;
-        float thumb_y = sb_y + 2.0f + scroll_frac * track_range;
-
-        // Thumb with rounded corners
+        // Compute thumb size and position based on actual content-to-viewport ratio
+        float viewport_h = geom.height;
+        float content_h = node.scroll_content_height;
+        float thumb_h, thumb_y;
+        if (content_h > viewport_h && content_h > 0) {
+            // Thumb height proportional to viewport/content ratio
+            float ratio = viewport_h / content_h;
+            thumb_h = std::max(20.0f, (sb_h - 4.0f) * ratio);
+            // Thumb position based on scroll_top
+            float max_scroll = content_h - viewport_h;
+            float scroll_frac = (max_scroll > 0) ? (node.scroll_top / max_scroll) : 0.0f;
+            float track_range = sb_h - 4.0f - thumb_h;
+            thumb_y = sb_y + 2.0f + scroll_frac * track_range;
+        } else {
+            // No actual overflow or unknown content size — default thumb
+            thumb_h = std::max(20.0f, sb_h * 0.3f);
+            thumb_y = sb_y + 2.0f;
+        }
         float thumb_radius = sb_width * 0.3f;
         list.fill_rounded_rect({sb_x + 2.0f, thumb_y, sb_width - 4.0f, thumb_h},
                                thumb_color, thumb_radius);
     }
 
     // Horizontal scrollbar (bottom edge)
-    bool has_h_scrollbar = false;
-    float viewport_w = geom.width;
-    float content_w = node.scroll_content_width;
-    if (content_w > viewport_w && content_w > 0) {
-        has_h_scrollbar = true;
+    if (node.overflow_indicator_right) {
         float sb_x = content_x;
         float sb_w = box_w;
         float sb_y = content_y + box_h - sb_width;
@@ -5085,23 +5088,31 @@ void Painter::paint_scrollbar(const clever::layout::LayoutNode& node, DisplayLis
         // Track
         list.fill_rect({sb_x, sb_y, sb_w, sb_width}, track_color);
 
-        // Thumb width proportional to viewport/content ratio
-        float ratio = viewport_w / content_w;
-        float thumb_w = std::max(20.0f, (sb_w - 4.0f) * ratio);
-        // Thumb position based on scroll_left
-        float max_scroll = content_w - viewport_w;
-        float scroll_frac = (max_scroll > 0) ? (node.scroll_left / max_scroll) : 0.0f;
-        float track_range = sb_w - 4.0f - thumb_w;
-        float thumb_x = sb_x + 2.0f + scroll_frac * track_range;
-
-        // Thumb with rounded corners
+        // Compute thumb size and position based on actual content-to-viewport ratio
+        float viewport_w = geom.width;
+        float content_w = node.scroll_content_width;
+        float thumb_w, thumb_x;
+        if (content_w > viewport_w && content_w > 0) {
+            // Thumb width proportional to viewport/content ratio
+            float ratio = viewport_w / content_w;
+            thumb_w = std::max(20.0f, (sb_w - 4.0f) * ratio);
+            // Thumb position based on scroll_left
+            float max_scroll = content_w - viewport_w;
+            float scroll_frac = (max_scroll > 0) ? (node.scroll_left / max_scroll) : 0.0f;
+            float track_range = sb_w - 4.0f - thumb_w;
+            thumb_x = sb_x + 2.0f + scroll_frac * track_range;
+        } else {
+            // No actual overflow or unknown content size — default thumb
+            thumb_w = std::max(20.0f, sb_w * 0.3f);
+            thumb_x = sb_x + 2.0f;
+        }
         float thumb_radius = sb_width * 0.3f;
         list.fill_rounded_rect({thumb_x, sb_y + 2.0f, thumb_w, sb_width - 4.0f},
                                thumb_color, thumb_radius);
     }
 
     // Scrollbar corner (bottom-right intersection)
-    if (has_v_scrollbar && has_h_scrollbar) {
+    if (node.overflow_indicator_bottom && node.overflow_indicator_right) {
         float corner_x = content_x + box_w - sb_width;
         float corner_y = content_y + box_h - sb_width;
         list.fill_rect({corner_x, corner_y, sb_width, sb_width}, track_color);
