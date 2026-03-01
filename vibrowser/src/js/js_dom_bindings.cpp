@@ -15790,6 +15790,58 @@ void install_dom_bindings(JSContext* ctx,
         configurable: true
     });
 
+    Object.defineProperty(proto, 'open', {
+        get: function() {
+            var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+            return tag === 'dialog' && this.hasAttribute('open');
+        },
+        set: function(v) {
+            var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+            if (tag !== 'dialog') return;
+            if (v) this.setAttribute('open', '');
+            else this.removeAttribute('open');
+        },
+        configurable: true
+    });
+
+    Object.defineProperty(proto, 'returnValue', {
+        get: function() {
+            var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+            if (tag !== 'dialog') return '';
+            var rv = this.__dialogReturnValue;
+            return (rv === undefined || rv === null) ? '' : String(rv);
+        },
+        set: function(v) {
+            var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+            if (tag !== 'dialog') return;
+            this.__dialogReturnValue = (v === undefined || v === null) ? '' : String(v);
+        },
+        configurable: true
+    });
+
+    proto.showModal = function() {
+        var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+        if (tag !== 'dialog') return;
+        this.setAttribute('open', '');
+        if (this.__dialogReturnValue === undefined) this.__dialogReturnValue = '';
+        return undefined;
+    };
+
+    proto.show = function() {
+        var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+        if (tag !== 'dialog') return;
+        this.setAttribute('open', '');
+        return undefined;
+    };
+
+    proto.close = function(returnValue) {
+        var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
+        if (tag !== 'dialog') return;
+        if (arguments.length) this.__dialogReturnValue = (returnValue === undefined || returnValue === null) ? '' : String(returnValue);
+        this.removeAttribute('open');
+        return undefined;
+    };
+
     // ---- URL prototype getters ----
     if (typeof URL !== 'undefined' && URL.prototype) {
         Object.defineProperty(URL.prototype, 'href', {
