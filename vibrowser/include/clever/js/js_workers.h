@@ -1,11 +1,13 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <queue>
 #include <mutex>
 #include <condition_variable>
 #include <thread>
 #include <functional>
+#include <string>
 
 extern "C" {
 struct JSContext;
@@ -14,9 +16,19 @@ struct JSRuntime;
 
 namespace clever::js {
 
+enum class WorkerMessageKind {
+    kMessage,
+    kError,
+};
+
 // Serialized message to pass between worker and main thread
 struct WorkerMessage {
     std::string data;  // JSON-serialized message data
+    std::string ports; // JSON-serialized transferable ports
+    std::string filename;
+    std::string name;
+    int32_t lineno = 0;
+    WorkerMessageKind kind = WorkerMessageKind::kMessage;
 };
 
 // Internal worker thread state (opaque to JS)
@@ -33,17 +45,25 @@ public:
     void start(std::function<std::string(const std::string&)> module_fetcher);
 
     // Send a message from main thread to worker
-    void post_message_to_worker(const std::string& json_data);
+    void post_message_to_worker(const std::string& json_data, const std::string& ports_json);
 
     // Try to receive a message from worker to main thread (non-blocking)
-    // Returns empty string if no message available
-    std::string try_recv_message_from_worker();
+    bool try_recv_message_from_worker(WorkerMessage& message);
+
+    // Push an error event to the main thread
+    void post_error_to_main(const std::string& message,
+                           const std::string& filename,
+                           int32_t lineno,
+                           const std::string& name);
 
     // Terminate the worker thread (async)
     void terminate();
 
     // Check if worker is still running
     bool is_running() const;
+
+    // Check if worker has been requested to terminate
+    bool is_terminated() const;
 
     // Check if worker thread has finished (for cleanup)
     bool is_finished() const { return finished_; }
