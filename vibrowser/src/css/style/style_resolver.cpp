@@ -4681,11 +4681,12 @@ void PropertyCascade::apply_declaration(
 
     // ---- CSS Touch Action ----
     if (prop == "touch-action") {
-        if (value_lower == "auto") style.touch_action = 0;
-        else if (value_lower == "none") style.touch_action = 1;
-        else if (value_lower == "manipulation") style.touch_action = 2;
-        else if (value_lower == "pan-x") style.touch_action = 3;
-        else if (value_lower == "pan-y") style.touch_action = 4;
+        if (value_lower == "none") style.touch_action = 1;
+        else if (value_lower == "pan-x") style.touch_action = 2;
+        else if (value_lower == "pan-y") style.touch_action = 3;
+        else if (value_lower == "pan-x pan-y" || value_lower == "pan-y pan-x") style.touch_action = 4;
+        else if (value_lower == "manipulation") style.touch_action = 5;
+        else if (value_lower == "pinch-zoom") style.touch_action = 6;
         else style.touch_action = 0;
         return;
     }

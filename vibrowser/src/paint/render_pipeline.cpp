@@ -7520,7 +7520,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             layout_node->text_content = collapsed;
 
             // Suppress whitespace-only text nodes between block-level elements
-            // (inter-element whitespace should not produce visible output)
+            // Only suppress when BOTH adjacent siblings (prev and next) are blocks.
+            // Whitespace between inline elements must be preserved (e.g., <a>foo</a> <span>bar</span>).
             if (std::all_of(collapsed.begin(), collapsed.end(),
                             [](char c) { return c == ' '; }) && node.parent) {
                 static const std::unordered_set<std::string> block_tags = {
@@ -7531,19 +7532,48 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     "details", "summary", "address", "noscript", "html", "body",
                     "search", "menu"
                 };
-                bool has_block_sibling = false;
-                for (auto& sibling : node.parent->children) {
-                    if (sibling.get() != &node &&
-                        sibling->type == clever::html::SimpleNode::Element) {
-                        std::string stag = to_lower(sibling->tag_name);
-                        if (block_tags.count(stag)) {
-                            has_block_sibling = true;
+                // Find this node's index in parent's children
+                int my_idx = -1;
+                auto& children = node.parent->children;
+                for (int i = 0; i < (int)children.size(); i++) {
+                    if (children[i].get() == &node) { my_idx = i; break; }
+                }
+                if (my_idx >= 0) {
+                    // Check previous non-whitespace-text sibling
+                    bool prev_is_block = false;
+                    for (int i = my_idx - 1; i >= 0; i--) {
+                        auto& sib = children[i];
+                        if (sib->type == clever::html::SimpleNode::Element) {
+                            prev_is_block = block_tags.count(to_lower(sib->tag_name)) > 0;
                             break;
                         }
+                        // Skip other whitespace-only text nodes
+                        if (sib->type == clever::html::SimpleNode::Text) {
+                            bool all_ws = std::all_of(sib->data.begin(), sib->data.end(),
+                                [](char c) { return c == ' ' || c == '\n' || c == '\r' || c == '\t'; });
+                            if (!all_ws) break; // Non-whitespace text = inline content
+                        }
                     }
-                }
-                if (has_block_sibling) {
-                    return nullptr; // Skip inter-element whitespace
+                    // Check next non-whitespace-text sibling
+                    bool next_is_block = false;
+                    for (int i = my_idx + 1; i < (int)children.size(); i++) {
+                        auto& sib = children[i];
+                        if (sib->type == clever::html::SimpleNode::Element) {
+                            next_is_block = block_tags.count(to_lower(sib->tag_name)) > 0;
+                            break;
+                        }
+                        if (sib->type == clever::html::SimpleNode::Text) {
+                            bool all_ws = std::all_of(sib->data.begin(), sib->data.end(),
+                                [](char c) { return c == ' ' || c == '\n' || c == '\r' || c == '\t'; });
+                            if (!all_ws) break;
+                        }
+                    }
+                    // Also suppress if at start/end of a block container with block children
+                    if (my_idx == 0) prev_is_block = true; // leading whitespace in block
+                    if (my_idx == (int)children.size() - 1) next_is_block = true; // trailing
+                    if (prev_is_block && next_is_block) {
+                        return nullptr; // Skip inter-block whitespace
+                    }
                 }
             }
         }

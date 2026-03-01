@@ -204,8 +204,17 @@ struct DOMState {
         JSValue callback;       // the callback function
         std::vector<clever::html::SimpleNode*> observed_elements;
         std::unordered_map<clever::html::SimpleNode*, std::pair<float, float>> previous_sizes;
+        std::unordered_map<clever::html::SimpleNode*, std::string> box_modes;  // 'content-box', 'border-box', 'device-pixel-content-box'
     };
     std::vector<ResizeObserverEntry> resize_observers;
+
+    // Pending resize notifications
+    struct PendingResize {
+        JSValue observer_obj;    // which observer to call
+        JSValue callback;        // cached callback
+        std::vector<JSValue> resize_entries;  // array of ResizeObserverEntry objects
+    };
+    std::vector<DOMState::PendingResize> pending_resizes;
 
     // Shadow DOM: element -> shadow root node
     std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*> shadow_roots;
@@ -287,6 +296,10 @@ static void notify_mutation_observers(JSContext* ctx,
                                       const std::string& old_value = "");
 // Forward declaration for flushing queued MutationObserver microtasks (defined later)
 static void flush_mutation_observers(JSContext* ctx, DOMState* state);
+// Forward declaration for flushing queued ResizeObserver callbacks (defined later)
+static void flush_resize_observers(JSContext* ctx, DOMState* state);
+// Forward declaration for checking resize observers (defined later)
+static void check_resize_observers(JSContext* ctx, DOMState* state);
 
 static void js_url_finalizer(JSRuntime* /*rt*/, JSValue val) {
     auto* state = static_cast<URLState*>(JS_GetOpaque(val, url_class_id));

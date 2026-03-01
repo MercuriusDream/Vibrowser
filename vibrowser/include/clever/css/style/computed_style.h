@@ -506,7 +506,7 @@ struct ComputedStyle {
     // CSS appearance / -webkit-appearance: 0=auto, 1=none, 2=menulist-button, 3=textfield, 4=button
     int appearance = 0;
 
-    // CSS touch-action: 0=auto, 1=none, 2=manipulation, 3=pan-x, 4=pan-y
+    // CSS touch-action: 0=auto, 1=none, 2=pan-x, 3=pan-y, 4=pan-x pan-y, 5=manipulation, 6=pinch-zoom
     int touch_action = 0;
 
     // CSS will-change: "auto" stored as empty string, otherwise the property name(s)
