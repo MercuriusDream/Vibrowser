@@ -692,7 +692,7 @@ static std::string build_shell_message_html(const std::string& page_title,
     NSScreen* screen = [NSScreen mainScreen];
     CGFloat screenW = screen ? screen.frame.size.width : 1920;
     CGFloat screenH = screen ? screen.frame.size.height : 1080;
-    NSRect frame = NSMakeRect((screenW - 1024) / 2, (screenH - 768) / 2, 1024, 768);
+    NSRect frame = NSMakeRect((screenW - 1280) / 2, (screenH - 800) / 2, 1280, 800);
     NSUInteger styleMask = NSWindowStyleMaskTitled |
                            NSWindowStyleMaskClosable |
                            NSWindowStyleMaskResizable |

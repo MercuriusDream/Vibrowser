@@ -1607,6 +1607,8 @@ ComponentValue StyleSheetParser::consume_component_value() {
         tok.type == CSSToken::Dimension) {
         cv.numeric_value = tok.numeric_value;
         cv.unit = tok.unit;
+    } else if (tok.type == CSSToken::String) {
+        cv.unit = "string";  // mark as CSS quoted string literal
     }
 
     advance();

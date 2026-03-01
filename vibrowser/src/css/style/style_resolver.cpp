@@ -5672,7 +5672,23 @@ void PropertyCascade::apply_declaration(
         return;
     }
     if (prop == "grid-template-areas") {
-        style.grid_template_areas = value_str;
+        // Build a properly quoted string by iterating raw ComponentValues.
+        // The CSS tokenizer strips quotes from String tokens (cv.unit == "string"),
+        // so we must reconstruct them to preserve per-row boundaries.
+        std::string areas;
+        for (const auto& cv : decl.values) {
+            if (cv.type == ComponentValue::Token && cv.unit == "string") {
+                // Each quoted string is one row of the grid template
+                if (!areas.empty()) areas += ' ';
+                areas += '"' + cv.value + '"';
+            } else if (cv.type == ComponentValue::Token && !cv.value.empty() &&
+                       cv.value != " " && cv.value != "none") {
+                // Bare ident fallback (unquoted, non-standard usage)
+                if (!areas.empty()) areas += ' ';
+                areas += cv.value;
+            }
+        }
+        style.grid_template_areas = areas.empty() ? value_str : areas;
         return;
     }
     if (prop == "grid-template" || prop == "grid") {
