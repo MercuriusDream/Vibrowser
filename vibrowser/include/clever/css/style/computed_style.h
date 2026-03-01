@@ -930,6 +930,10 @@ struct ComputedStyle {
 
     // CSS all shorthand: "initial"/"inherit"/"unset"/"revert", "" = not set
     std::string css_all = "";
+    // CSS ::selection pseudo-element support
+    Color selection_color = Color::black();
+    Color selection_background_color = Color::transparent();
+    std::vector<TextShadowEntry> selection_text_shadows;
 
     // CSS margin-trim: 0=none, 1=block, 2=inline, 3=block-start, 4=block-end, 5=inline-start, 6=inline-end
     int margin_trim = 0;

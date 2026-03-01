@@ -6682,8 +6682,20 @@ void PropertyCascade::apply_declaration(
 
     // ---- CSS all shorthand (NOT inherited) ----
     if (prop == "all") {
-        if (value_lower == "initial" || value_lower == "inherit" || value_lower == "unset" || value_lower == "revert") {
-            style.css_all = value_lower;
+        if (value_lower == "initial") {
+            // Reset all properties to CSS initial values
+            style = ComputedStyle(); // Default constructor = CSS initial values
+        } else if (value_lower == "inherit") {
+            // For all: inherit, set inherited properties from parent
+            // This is complex, so for now just mark it
+            style.css_all = "inherit";
+        } else if (value_lower == "unset") {
+            // Combination: inherited->inherit, non-inherited->initial
+            style = ComputedStyle();
+            // Inherited properties should come from parent (handled separately)
+            style.css_all = "unset";
+        } else if (value_lower == "revert") {
+            style.css_all = "revert";
         }
         return;
     }
