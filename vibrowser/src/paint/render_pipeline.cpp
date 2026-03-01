@@ -14608,6 +14608,10 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
     clever::css::Length::set_viewport(static_cast<float>(layout_viewport_width),
                                       static_cast<float>(layout_viewport_height));
 
+    // Initialize container query dimensions to viewport as default
+    clever::layout::LayoutNode::s_container_width = static_cast<float>(layout_viewport_width);
+    clever::layout::LayoutNode::s_container_height = static_cast<float>(layout_viewport_height);
+
     try {
         // Step 1: Parse HTML -> SimpleNode tree
         auto doc = clever::html::parse(html);
@@ -14631,6 +14635,11 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         // so vw/vh/vmin/vmax resolve against the layout viewport.
         clever::css::Length::set_viewport(static_cast<float>(layout_viewport_width),
                                           static_cast<float>(layout_viewport_height));
+
+        // Initialize container query units to viewport dimensions as fallback
+        // (when inside an @container, these are updated to the container's dimensions)
+        clever::layout::LayoutNode::s_container_width = static_cast<float>(layout_viewport_width);
+        clever::layout::LayoutNode::s_container_height = static_cast<float>(layout_viewport_height);
 
         // Extract page title from <title> element
         auto title_nodes = doc->find_all_elements("title");

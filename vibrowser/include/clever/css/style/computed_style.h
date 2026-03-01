@@ -107,6 +107,12 @@ struct Length {
     static Length vh(float v) { return {v, Unit::Vh, nullptr}; }
     static Length vmin(float v) { return {v, Unit::Vmin, nullptr}; }
     static Length vmax(float v) { return {v, Unit::Vmax, nullptr}; }
+    static Length cqw(float v) { return {v, Unit::Cqw, nullptr}; }
+    static Length cqh(float v) { return {v, Unit::Cqh, nullptr}; }
+    static Length cqi(float v) { return {v, Unit::Cqi, nullptr}; }
+    static Length cqb(float v) { return {v, Unit::Cqb, nullptr}; }
+    static Length cqmin(float v) { return {v, Unit::Cqmin, nullptr}; }
+    static Length cqmax(float v) { return {v, Unit::Cqmax, nullptr}; }
     static Length auto_val() { return {0, Unit::Auto, nullptr}; }
     static Length zero() { return {0, Unit::Zero, nullptr}; }
     static Length calc(std::shared_ptr<CalcExpr> expr);

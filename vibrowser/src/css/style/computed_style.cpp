@@ -33,22 +33,36 @@ float Length::to_px(float parent_value, float root_font_size, float line_height)
             return (value / 100.0f) * std::min(s_viewport_w, s_viewport_h);
         case Unit::Vmax:
             return (value / 100.0f) * std::max(s_viewport_w, s_viewport_h);
-        case Unit::Cqw:
-            return (value / 100.0f) * clever::layout::LayoutNode::s_container_width;
-        case Unit::Cqh:
-            return (value / 100.0f) * clever::layout::LayoutNode::s_container_height;
-        case Unit::Cqi:
-            return (value / 100.0f) * clever::layout::LayoutNode::s_container_width;
-        case Unit::Cqb:
-            return (value / 100.0f) * clever::layout::LayoutNode::s_container_height;
-        case Unit::Cqmin:
-            return (value / 100.0f) *
-                   std::min(clever::layout::LayoutNode::s_container_width,
-                            clever::layout::LayoutNode::s_container_height);
-        case Unit::Cqmax:
-            return (value / 100.0f) *
-                   std::max(clever::layout::LayoutNode::s_container_width,
-                            clever::layout::LayoutNode::s_container_height);
+        case Unit::Cqw: {
+            float cw = clever::layout::LayoutNode::s_container_width;
+            return (value / 100.0f) * (cw > 0 ? cw : s_viewport_w);
+        }
+        case Unit::Cqh: {
+            float ch = clever::layout::LayoutNode::s_container_height;
+            return (value / 100.0f) * (ch > 0 ? ch : s_viewport_h);
+        }
+        case Unit::Cqi: {
+            float ci = clever::layout::LayoutNode::s_container_width;
+            return (value / 100.0f) * (ci > 0 ? ci : s_viewport_w);
+        }
+        case Unit::Cqb: {
+            float cb = clever::layout::LayoutNode::s_container_height;
+            return (value / 100.0f) * (cb > 0 ? cb : s_viewport_h);
+        }
+        case Unit::Cqmin: {
+            float cmw = clever::layout::LayoutNode::s_container_width;
+            float cmh = clever::layout::LayoutNode::s_container_height;
+            if (cmw <= 0) cmw = s_viewport_w;
+            if (cmh <= 0) cmh = s_viewport_h;
+            return (value / 100.0f) * std::min(cmw, cmh);
+        }
+        case Unit::Cqmax: {
+            float cxw = clever::layout::LayoutNode::s_container_width;
+            float cxh = clever::layout::LayoutNode::s_container_height;
+            if (cxw <= 0) cxw = s_viewport_w;
+            if (cxh <= 0) cxh = s_viewport_h;
+            return (value / 100.0f) * std::max(cxw, cxh);
+        }
         case Unit::Ch:
             // 1ch ≈ advance width of "0" glyph ≈ 0.6 * font-size
             return value * parent_value * 0.6f;

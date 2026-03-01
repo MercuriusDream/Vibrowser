@@ -1969,131 +1969,16 @@ std::optional<Color> parse_color(const std::string& input) {
         else if (pct1 < 0) { pct1 = 100 - pct2; }
         else if (pct2 < 0) { pct2 = 100 - pct1; }
 
-        // Normalize
         float total = pct1 + pct2;
         if (total <= 0) return std::nullopt;
         float p1 = pct1 / total;
         float p2 = pct2 / total;
 
-        // Extract color space name
-        std::string colorspace_str = trim(parts[0]);
-        if (colorspace_str.size() >= 3 && colorspace_str.substr(0, 3) == "in ") {
-            colorspace_str = trim(colorspace_str.substr(3));
-        }
-        colorspace_str = to_lower(colorspace_str);
-
-        // Interpolate based on color space
-        if (colorspace_str == "oklch") {
-            // Convert to OKLch, interpolate, convert back
-            float r1 = c1->r / 255.0f, g1 = c1->g / 255.0f, b1 = c1->b / 255.0f;
-            float r2 = c2->r / 255.0f, g2 = c2->g / 255.0f, b2 = c2->b / 255.0f;
-            auto oklch1 = srgb_to_oklch(r1, g1, b1);
-            auto oklch2 = srgb_to_oklch(r2, g2, b2);
-
-            float L_mix = oklch1.L * p1 + oklch2.L * p2;
-            float C_mix = oklch1.C * p1 + oklch2.C * p2;
-            // Shortest-path hue interpolation
-            float delta_h = oklch2.h - oklch1.h;
-            if (delta_h > 180.0f) delta_h -= 360.0f;
-            else if (delta_h < -180.0f) delta_h += 360.0f;
-            float h_mix = oklch1.h + delta_h * p2;
-            while (h_mix < 0.0f) h_mix += 360.0f;
-            while (h_mix >= 360.0f) h_mix -= 360.0f;
-
-            float a_mix = c1->a / 255.0f * p1 + c2->a / 255.0f * p2;
-            auto rgb = oklch_to_srgb(L_mix, C_mix, h_mix);
-            return Color{
-                static_cast<uint8_t>(std::clamp(rgb.r * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(rgb.g * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(rgb.b * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(a_mix * 255.0f, 0.0f, 255.0f))
-            };
-        } else if (colorspace_str == "oklab") {
-            // Convert to OKLab, interpolate, convert back
-            float r1 = c1->r / 255.0f, g1 = c1->g / 255.0f, b1 = c1->b / 255.0f;
-            float r2 = c2->r / 255.0f, g2 = c2->g / 255.0f, b2 = c2->b / 255.0f;
-            auto oklab1 = srgb_to_oklab(r1, g1, b1);
-            auto oklab2 = srgb_to_oklab(r2, g2, b2);
-
-            float L_mix = oklab1.L * p1 + oklab2.L * p2;
-            float a_axis = oklab1.a * p1 + oklab2.a * p2;
-            float b_axis = oklab1.b * p1 + oklab2.b * p2;
-            float a_mix = c1->a / 255.0f * p1 + c2->a / 255.0f * p2;
-
-            auto rgb = oklab_to_srgb(L_mix, a_axis, b_axis);
-            return Color{
-                static_cast<uint8_t>(std::clamp(rgb.r * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(rgb.g * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(rgb.b * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(a_mix * 255.0f, 0.0f, 255.0f))
-            };
-        } else if (colorspace_str == "lab") {
-            // Convert to CIE Lab, interpolate, convert back
-            float r1 = c1->r / 255.0f, g1 = c1->g / 255.0f, b1 = c1->b / 255.0f;
-            float r2 = c2->r / 255.0f, g2 = c2->g / 255.0f, b2 = c2->b / 255.0f;
-            auto lab1 = srgb_to_lab(r1, g1, b1);
-            auto lab2 = srgb_to_lab(r2, g2, b2);
-
-            float L_mix = lab1.L * p1 + lab2.L * p2;
-            float a_axis = lab1.a * p1 + lab2.a * p2;
-            float b_axis = lab1.b * p1 + lab2.b * p2;
-            float a_mix = c1->a / 255.0f * p1 + c2->a / 255.0f * p2;
-
-            auto rgb = lab_to_srgb(L_mix, a_axis, b_axis);
-            return Color{
-                static_cast<uint8_t>(std::clamp(rgb.r * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(rgb.g * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(rgb.b * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(a_mix * 255.0f, 0.0f, 255.0f))
-            };
-        } else if (colorspace_str == "hsl") {
-            // Convert to HSL, interpolate with shortest-path hue, convert back
-            float r1 = c1->r / 255.0f, g1 = c1->g / 255.0f, b1 = c1->b / 255.0f;
-            float r2 = c2->r / 255.0f, g2 = c2->g / 255.0f, b2 = c2->b / 255.0f;
-            auto hsl1 = srgb_to_hsl(r1, g1, b1);
-            auto hsl2 = srgb_to_hsl(r2, g2, b2);
-
-            // Shortest-path hue interpolation
-            float delta_h = hsl2.h - hsl1.h;
-            if (delta_h > 180.0f) delta_h -= 360.0f;
-            else if (delta_h < -180.0f) delta_h += 360.0f;
-            float h_mix = hsl1.h + delta_h * p2;
-            while (h_mix < 0.0f) h_mix += 360.0f;
-            while (h_mix >= 360.0f) h_mix -= 360.0f;
-
-            float s_mix = hsl1.s * p1 + hsl2.s * p2;
-            float l_mix = hsl1.l * p1 + hsl2.l * p2;
-            float a_mix = c1->a / 255.0f * p1 + c2->a / 255.0f * p2;
-
-            auto rgb = hsl_to_srgb(h_mix, s_mix, l_mix);
-            return Color{
-                static_cast<uint8_t>(std::clamp(rgb.r * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(rgb.g * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(rgb.b * 255.0f, 0.0f, 255.0f)),
-                static_cast<uint8_t>(std::clamp(a_mix * 255.0f, 0.0f, 255.0f))
-            };
-        }
-
-        // Default fallback: linear RGB mixing for srgb or unknown color space
-        float r1_lin = srgb_to_linear(c1->r / 255.0f);
-        float g1_lin = srgb_to_linear(c1->g / 255.0f);
-        float b1_lin = srgb_to_linear(c1->b / 255.0f);
-        float r2_lin = srgb_to_linear(c2->r / 255.0f);
-        float g2_lin = srgb_to_linear(c2->g / 255.0f);
-        float b2_lin = srgb_to_linear(c2->b / 255.0f);
-        float r_lin_mix = r1_lin * p1 + r2_lin * p2;
-        float g_lin_mix = g1_lin * p1 + g2_lin * p2;
-        float b_lin_mix = b1_lin * p1 + b2_lin * p2;
-        float r_mix = linear_to_srgb(r_lin_mix);
-        float g_mix = linear_to_srgb(g_lin_mix);
-        float b_mix = linear_to_srgb(b_lin_mix);
-        float a_mix = c1->a / 255.0f * p1 + c2->a / 255.0f * p2;
-
         return Color{
-            static_cast<uint8_t>(std::clamp(r_mix * 255.0f, 0.0f, 255.0f)),
-            static_cast<uint8_t>(std::clamp(g_mix * 255.0f, 0.0f, 255.0f)),
-            static_cast<uint8_t>(std::clamp(b_mix * 255.0f, 0.0f, 255.0f)),
-            static_cast<uint8_t>(std::clamp(a_mix * 255.0f, 0.0f, 255.0f))
+            static_cast<uint8_t>(std::clamp(c1->r * p1 + c2->r * p2, 0.0f, 255.0f)),
+            static_cast<uint8_t>(std::clamp(c1->g * p1 + c2->g * p2, 0.0f, 255.0f)),
+            static_cast<uint8_t>(std::clamp(c1->b * p1 + c2->b * p2, 0.0f, 255.0f)),
+            static_cast<uint8_t>(std::clamp(c1->a * p1 + c2->a * p2, 0.0f, 255.0f))
         };
     }
 
@@ -2436,17 +2321,17 @@ std::optional<Length> parse_length(const std::string& input, const std::string& 
     } else if (unit_str == "vmax") {
         return Length::vmax(num);
     } else if (unit_str == "cqw") {
-        return {num, Length::Unit::Cqw, nullptr};
+        return Length::cqw(num);
     } else if (unit_str == "cqh") {
-        return {num, Length::Unit::Cqh, nullptr};
+        return Length::cqh(num);
     } else if (unit_str == "cqi") {
-        return {num, Length::Unit::Cqi, nullptr};
+        return Length::cqi(num);
     } else if (unit_str == "cqb") {
-        return {num, Length::Unit::Cqb, nullptr};
+        return Length::cqb(num);
     } else if (unit_str == "cqmin") {
-        return {num, Length::Unit::Cqmin, nullptr};
+        return Length::cqmin(num);
     } else if (unit_str == "cqmax") {
-        return {num, Length::Unit::Cqmax, nullptr};
+        return Length::cqmax(num);
     } else if (unit_str == "ch") {
         return Length::ch(num);
     } else if (unit_str == "lh") {
