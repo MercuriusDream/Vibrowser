@@ -54,6 +54,7 @@ bool consume_pending_post_submission(std::string& out_body, std::string& out_con
 
 namespace clever::css {
 std::vector<std::pair<std::string, int>> parse_font_feature_settings(const std::string& value);
+extern void set_document_color_scheme(const std::string& value);
 } // namespace clever::css
 
 namespace clever::paint {
@@ -4388,11 +4389,23 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                         if (comma != std::string::npos) {
                             auto lx = clever::css::parse_length(trim(args.substr(0, comma)));
                             auto ly = clever::css::parse_length(trim(args.substr(comma + 1)));
-                            if (lx) t.x = lx->to_px();
-                            if (ly) t.y = ly->to_px();
+                            if (lx) {
+                                t.x_length = *lx;
+                                if (lx->unit == clever::css::Length::Unit::Percent) t.x = lx->value;
+                                else t.x = lx->to_px();
+                            }
+                            if (ly) {
+                                t.y_length = *ly;
+                                if (ly->unit == clever::css::Length::Unit::Percent) t.y = ly->value;
+                                else t.y = ly->to_px();
+                            }
                         } else {
                             auto lx = clever::css::parse_length(trim(args));
-                            if (lx) t.x = lx->to_px();
+                            if (lx) {
+                                t.x_length = *lx;
+                                if (lx->unit == clever::css::Length::Unit::Percent) t.x = lx->value;
+                                else t.x = lx->to_px();
+                            }
                             t.y = 0;
                         }
                         style.transforms.push_back(t);
@@ -4400,7 +4413,11 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                         clever::css::Transform t;
                         t.type = clever::css::TransformType::Translate;
                         auto lx = clever::css::parse_length(trim(args));
-                        if (lx) t.x = lx->to_px();
+                        if (lx) {
+                            t.x_length = *lx;
+                            if (lx->unit == clever::css::Length::Unit::Percent) t.x = lx->value;
+                            else t.x = lx->to_px();
+                        }
                         t.y = 0;
                         style.transforms.push_back(t);
                     } else if (fn_name == "translatey") {
@@ -4408,7 +4425,11 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                         t.type = clever::css::TransformType::Translate;
                         t.x = 0;
                         auto ly = clever::css::parse_length(trim(args));
-                        if (ly) t.y = ly->to_px();
+                        if (ly) {
+                            t.y_length = *ly;
+                            if (ly->unit == clever::css::Length::Unit::Percent) t.y = ly->value;
+                            else t.y = ly->to_px();
+                        }
                         style.transforms.push_back(t);
                     } else if (fn_name == "rotate") {
                         clever::css::Transform t;
@@ -15959,6 +15980,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
             if (name_attr == "color-scheme" && !content.empty()) {
                 document_color_scheme = parse_color_scheme_content(content);
+                clever::css::set_document_color_scheme(content);
             }
         }
 

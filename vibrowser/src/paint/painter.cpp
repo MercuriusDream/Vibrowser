@@ -345,12 +345,25 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     }
 
     if (has_transforms) {
+        auto resolve_translate_value = [&](const clever::css::Transform& t, bool is_x) -> float {
+            if (is_x && t.x_length.unit == clever::css::Length::Unit::Percent) {
+                return (t.x_length.value / 100.0f) * node.geometry.width;
+            }
+            if (!is_x && t.y_length.unit == clever::css::Length::Unit::Percent) {
+                return (t.y_length.value / 100.0f) * node.geometry.height;
+            }
+            return is_x ? t.x : t.y;
+        };
         for (const auto& t : node.transforms) {
             const float eps = 0.00001f;
             switch (t.type) {
                 case clever::css::TransformType::Translate:
                     if (t.is_3d && t.z != 0.0f) perspective_z_offset += t.z;
-                    list.push_translate(t.x, t.y);
+                    {
+                        float tx = resolve_translate_value(t, true);
+                        float ty = resolve_translate_value(t, false);
+                        list.push_translate(tx, ty);
+                    }
                     transform_count++;
                     break;
                 case clever::css::TransformType::Rotate:

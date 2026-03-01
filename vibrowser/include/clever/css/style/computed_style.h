@@ -60,26 +60,6 @@ enum class Direction { Ltr, Rtl };
 // CSS transform function types
 enum class TransformType { None, Translate, Rotate, Scale, Skew, Matrix };
 
-struct Transform {
-    TransformType type = TransformType::None;
-    float x = 0;    // translate: x offset (px), scale: x factor, skew: x angle (deg)
-    float y = 0;    // translate: y offset (px), scale: y factor, skew: y angle (deg)
-    float z = 0;    // translate: z offset (px)
-    float z_scale = 1; // scale: z factor
-    float angle = 0; // rotate: angle in degrees
-    // matrix(a, b, c, d, e, f) parameters
-    float m[6] = {1, 0, 0, 1, 0, 0}; // a, b, c, d, e(tx), f(ty)
-    // matrix3d: full 4x4 transform matrix (row-major).
-    float m4[16] = {1, 0, 0, 0,
-                    0, 1, 0, 0,
-                    0, 0, 1, 0,
-                    0, 0, 0, 1};
-    bool is_3d = false;
-    float axis_x = 0;
-    float axis_y = 0;
-    float axis_z = 0;
-};
-
 struct Color {
     uint8_t r = 0, g = 0, b = 0, a = 255;
 
@@ -132,6 +112,29 @@ struct Length {
     bool is_zero() const { return (unit == Unit::Zero) || (value == 0 && unit != Unit::Auto && unit != Unit::Calc); }
 
     float to_px(float parent_value = 0, float root_font_size = 16, float line_height = 0) const;
+};
+
+// CSS transform struct - must be defined after Length
+struct Transform {
+    TransformType type = TransformType::None;
+    float x = 0;    // translate: x offset (px), scale: x factor, skew: x angle (deg)
+    float y = 0;    // translate: y offset (px), scale: y factor, skew: y angle (deg)
+    float z = 0;    // translate: z offset (px)
+    Length x_length;  // stores original length for % resolution
+    Length y_length;  // stores original length for % resolution
+    float z_scale = 1; // scale: z factor
+    float angle = 0; // rotate: angle in degrees
+    // matrix(a, b, c, d, e, f) parameters
+    float m[6] = {1, 0, 0, 1, 0, 0}; // a, b, c, d, e(tx), f(ty)
+    // matrix3d: full 4x4 transform matrix (row-major).
+    float m4[16] = {1, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0, 0, 1, 0,
+                    0, 0, 0, 1};
+    bool is_3d = false;
+    float axis_x = 0;
+    float axis_y = 0;
+    float axis_z = 0;
 };
 
 // Expression tree node for CSS calc(), min(), max(), clamp()

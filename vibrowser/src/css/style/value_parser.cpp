@@ -745,6 +745,28 @@ void set_dark_mode_override(int override_val) {
     g_dark_mode_override = override_val;
 }
 
+void set_document_color_scheme(const std::string& value) {
+    std::string normalized = to_lower(trim(value));
+
+    if (normalized.empty()) {
+        set_dark_mode(false);
+        return;
+    }
+
+    for (auto& c : normalized) {
+        if (c == ',') c = ' ';
+    }
+
+    bool has_dark = false;
+    std::istringstream iss(normalized);
+    std::string token;
+    while (iss >> token) {
+        if (token == "dark") has_dark = true;
+    }
+
+    set_dark_mode(has_dark);
+}
+
 int get_dark_mode_override() {
     return g_dark_mode_override;
 }
@@ -813,6 +835,39 @@ std::optional<Color> parse_color(const std::string& input) {
     std::string value = trim(to_lower(input));
 
     if (value.empty()) return std::nullopt;
+
+    auto parse_argb_color = [](uint32_t argb) -> Color {
+        return Color{
+            static_cast<uint8_t>((argb >> 16) & 0xFF),
+            static_cast<uint8_t>((argb >> 8) & 0xFF),
+            static_cast<uint8_t>(argb & 0xFF),
+            static_cast<uint8_t>((argb >> 24) & 0xFF)
+        };
+    };
+
+    bool dark_mode = is_dark_mode();
+    if (value == "canvas") return parse_argb_color(dark_mode ? 0xFF1C1C1E : 0xFFFFFFFF);
+    if (value == "canvastext") return parse_argb_color(dark_mode ? 0xFFFFFFFF : 0xFF000000);
+    if (value == "buttonface") return parse_argb_color(dark_mode ? 0xFF3C3C3C : 0xFFF0F0F0);
+    if (value == "buttontext") return parse_argb_color(dark_mode ? 0xFFFFFFFF : 0xFF000000);
+    if (value == "field") return parse_argb_color(dark_mode ? 0xFF1C1C1E : 0xFFFFFFFF);
+    if (value == "fieldtext") return parse_argb_color(dark_mode ? 0xFFFFFFFF : 0xFF000000);
+    if (value == "text") return parse_argb_color(dark_mode ? 0xFFFFFFFF : 0xFF000000);
+    if (value == "window") return parse_argb_color(dark_mode ? 0xFF1C1C1E : 0xFFFFFFFF);
+    if (value == "windowtext") return parse_argb_color(dark_mode ? 0xFFFFFFFF : 0xFF000000);
+    if (value == "linktext") return parse_argb_color(dark_mode ? 0xFF8AB4F8 : 0xFF0563C1);
+    if (value == "visitedtext") return parse_argb_color(dark_mode ? 0xFFB4A7D6 : 0xFF551A8B);
+    if (value == "activeborder") return parse_argb_color(dark_mode ? 0xFF5C5C5C : 0xFFB8B8B8);
+    if (value == "inactiveborder") return parse_argb_color(dark_mode ? 0xFF4B4B4B : 0xFFC0C0C0);
+    if (value == "highlight") return parse_argb_color(dark_mode ? 0xFF005C99 : 0xFFCCE5FF);
+    if (value == "highlighttext") return parse_argb_color(dark_mode ? 0xFFFFFFFF : 0xFFFFFFFF);
+    if (value == "buttonshadow") return parse_argb_color(dark_mode ? 0xFF111111 : 0xFFB4B4B4);
+    if (value == "threeddarkshadow") return parse_argb_color(dark_mode ? 0xFF1F1F1F : 0xFF808080);
+    if (value == "threedface") return parse_argb_color(dark_mode ? 0xFF3C3C3C : 0xFFF0F0F0);
+    if (value == "threedhighlight") return parse_argb_color(dark_mode ? 0xFF666666 : 0xFFFFFFFF);
+    if (value == "threedlightshadow") return parse_argb_color(dark_mode ? 0xFF888888 : 0xFFDDDDDD);
+    if (value == "threedshadow") return parse_argb_color(dark_mode ? 0xFF252525 : 0xFFA0A0A0);
+    if (value == "graytext") return parse_argb_color(dark_mode ? 0xFFB0B0B0 : 0xFF6D6D6D);
 
     // Named colors
     auto& colors = named_colors();
