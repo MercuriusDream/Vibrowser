@@ -157,17 +157,6 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
-struct FontFaceCandidate {
-    const clever::css::FontFaceRule* rule = nullptr;
-    int weight = 400;
-    bool italic = false;
-    int unicode_min = kUnicodeMin;
-    int unicode_max = kUnicodeMax;
-};
-
-enum class FontFaceStyle { Normal, Italic, Oblique };
-enum class FontDisplayPolicy { Auto, Block, Swap, Fallback, Optional };
-
 static constexpr int kFontWeightMin = 100;
 static constexpr int kFontWeightMax = 900;
 static constexpr int kDefaultWeight = 400;
@@ -176,6 +165,17 @@ static constexpr int kFontDisplayFallbackMs = 100;
 static constexpr int kFontDisplayOptionalMs = 50;
 static constexpr int kUnicodeMin = 0;
 static constexpr int kUnicodeMax = 0x10FFFF;
+
+enum class FontFaceStyle { Normal, Italic, Oblique };
+enum class FontDisplayPolicy { Auto, Block, Swap, Fallback, Optional };
+
+struct FontFaceCandidate {
+    const clever::css::FontFaceRule* rule = nullptr;
+    int weight = 400;
+    bool italic = false;
+    int unicode_min = kUnicodeMin;
+    int unicode_max = kUnicodeMax;
+};
 
 std::string normalize_font_family_key(const std::string& family_name) {
     std::string value;
@@ -375,7 +375,7 @@ const clever::css::FontFaceRule* match_best_font_face(
              (weight_rank < best_weight_rank ||
               (weight_rank == best_weight_rank &&
                (weight_distance < best_distance ||
-                (weight_distance == best_distance && span < best_span))))) {
+                (weight_distance == best_distance && span < best_span)))))) {
             best_rule = &ff;
             best_style_rank = style_rank;
             best_weight_rank = weight_rank;
@@ -14992,7 +14992,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 const auto* ff = req.rule;
                 if (!ff || ff->font_family.empty() || ff->src.empty()) continue;
 
-                std::string font_url = extract_preferred_font_url(ff.src);
+                std::string font_url = extract_preferred_font_url(ff->src);
                 if (font_url.empty()) continue;
 
                 const std::string lower_font_url = to_lower(font_url);
@@ -15037,7 +15037,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 }
 
                 auto response = load_font_bytes(font_url, font_display);
-                if (!response.has_value() || response->value().empty()) {
+                if (!response.has_value() || response->empty()) {
                     continue;
                 }
 
