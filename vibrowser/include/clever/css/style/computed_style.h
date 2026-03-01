@@ -564,6 +564,8 @@ struct ComputedStyle {
     // Font size adjust: 0=none (default), positive=custom aspect value
     float font_size_adjust = 0;
 
+    int font_display = 0;
+
     // Font stretch: 1=ultra-condensed, 2=extra-condensed, 3=condensed, 4=semi-condensed,
     //               5=normal (default), 6=semi-expanded, 7=expanded, 8=extra-expanded, 9=ultra-expanded
     int font_stretch = 5;

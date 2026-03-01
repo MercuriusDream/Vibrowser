@@ -59,6 +59,7 @@ struct FontFaceRule {
     std::string font_style;    // "normal", "italic", "oblique"
     std::string unicode_range; // e.g., "U+0000-00FF"
     std::string font_display;  // "auto", "block", "swap", "fallback", "optional"
+    std::string size_adjust;
 };
 
 struct SupportsRule {

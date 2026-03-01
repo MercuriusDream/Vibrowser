@@ -7531,18 +7531,59 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     "details", "summary", "address", "noscript", "html", "body",
                     "search", "menu"
                 };
-                bool has_block_sibling = false;
+                auto is_block_element = [&](const clever::html::SimpleNode* element) {
+                    if (!element || element->type != clever::html::SimpleNode::Element) {
+                        return false;
+                    }
+                    std::string tag = to_lower(element->tag_name);
+                    return block_tags.count(tag) > 0;
+                };
+
+                auto is_whitespace_text_node = [](const clever::html::SimpleNode& n) {
+                    if (n.type != clever::html::SimpleNode::Text) {
+                        return false;
+                    }
+                    return std::all_of(n.data.begin(), n.data.end(),
+                                       [](char c) { return c == ' '; });
+                };
+
+                bool only_block_non_whitespace = true;
+                bool has_non_whitespace_sibling = false;
+                clever::html::SimpleNode* prev_sibling = nullptr;
+                clever::html::SimpleNode* next_sibling = nullptr;
+                bool current_found = false;
+
                 for (auto& sibling : node.parent->children) {
-                    if (sibling.get() != &node &&
-                        sibling->type == clever::html::SimpleNode::Element) {
-                        std::string stag = to_lower(sibling->tag_name);
-                        if (block_tags.count(stag)) {
-                            has_block_sibling = true;
-                            break;
-                        }
+                    if (sibling.get() == &node) {
+                        current_found = true;
+                        continue;
+                    }
+
+                    if (is_whitespace_text_node(*sibling)) {
+                        continue;
+                    }
+
+                    has_non_whitespace_sibling = true;
+                    if (!is_block_element(sibling.get())) {
+                        only_block_non_whitespace = false;
+                    }
+
+                    if (!current_found) {
+                        prev_sibling = sibling.get();
+                    } else if (!next_sibling) {
+                        next_sibling = sibling.get();
                     }
                 }
-                if (has_block_sibling) {
+
+                bool suppress_whitespace =
+                    (prev_sibling && next_sibling &&
+                     is_block_element(prev_sibling) &&
+                     is_block_element(next_sibling)) ||
+                    (has_non_whitespace_sibling &&
+                     (!prev_sibling || !next_sibling) &&
+                     only_block_non_whitespace);
+
+                if (suppress_whitespace) {
                     return nullptr; // Skip inter-element whitespace
                 }
             }

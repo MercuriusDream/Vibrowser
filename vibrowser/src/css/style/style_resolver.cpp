@@ -1723,6 +1723,14 @@ void PropertyCascade::apply_declaration(
         else style.font_style = FontStyle::Normal;
         return;
     }
+    if (to_lower(prop) == "font-display") {
+        if (value_lower == "auto") style.font_display = 0;
+        else if (value_lower == "block") style.font_display = 1;
+        else if (value_lower == "swap") style.font_display = 2;
+        else if (value_lower == "fallback") style.font_display = 3;
+        else if (value_lower == "optional") style.font_display = 4;
+        return;
+    }
     // ---- Font shorthand ----
     if (prop == "font") {
         // CSS font shorthand: [font-style] [font-variant] [font-weight] font-size[/line-height] font-family

@@ -5070,7 +5070,8 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                 } else if (cell->css_width.has_value()) {
                     width_hint = cell->css_width->to_px(available_for_cols);
                 } else {
-                    width_hint = measure_intrinsic_width(*cell, true, intrinsic_measurer);
+                    bool cell_nowrap = (cell->white_space == 1);
+                    width_hint = measure_intrinsic_width(*cell, cell_nowrap, intrinsic_measurer);
                 }
 
                 if (width_hint > 0 && span == 1 && col_idx < num_cols) {

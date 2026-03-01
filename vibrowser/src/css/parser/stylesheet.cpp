@@ -556,6 +556,8 @@ void StyleSheetParser::parse_font_face_rule(StyleSheet& sheet) {
             rule.unicode_range = value_str;
         } else if (decl.property == "font-display") {
             rule.font_display = value_str;
+        } else if (decl.property == "size-adjust") {
+            rule.size_adjust = value_str;
         }
     }
 
