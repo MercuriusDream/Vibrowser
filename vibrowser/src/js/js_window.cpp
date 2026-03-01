@@ -3118,7 +3118,68 @@ static JSValue js_css_escape(JSContext* ctx, JSValueConst /*this_val*/,
 
 static JSValue js_css_register_property(JSContext* ctx, JSValueConst /*this_val*/,
                                         int argc, JSValueConst* argv) {
-    // Stub — records custom property definition (no runtime effect yet)
+    // CSS.registerProperty({name, syntax, inherits, initialValue})
+    // Stores registered custom properties for use in var() resolution
+    if (argc < 1 || !JS_IsObject(argv[0]))
+        return JS_ThrowTypeError(ctx, "CSS.registerProperty requires a descriptor object");
+
+    JSValue desc = argv[0];
+    JSValue name_val = JS_GetPropertyStr(ctx, desc, "name");
+    if (!JS_IsString(name_val)) {
+        JS_FreeValue(ctx, name_val);
+        return JS_ThrowTypeError(ctx, "CSS.registerProperty: 'name' is required");
+    }
+    const char* name_str = JS_ToCString(ctx, name_val);
+    if (!name_str || std::string(name_str).substr(0, 2) != "--") {
+        if (name_str) JS_FreeCString(ctx, name_str);
+        JS_FreeValue(ctx, name_val);
+        return JS_ThrowTypeError(ctx, "CSS.registerProperty: name must start with '--'");
+    }
+
+    // Store registration on globalThis.__cssRegisteredProperties
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue registry = JS_GetPropertyStr(ctx, global, "__cssRegisteredProperties");
+    if (!JS_IsObject(registry)) {
+        JS_FreeValue(ctx, registry);
+        registry = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, global, "__cssRegisteredProperties", JS_DupValue(ctx, registry));
+    }
+
+    // Store the full descriptor
+    JS_SetPropertyStr(ctx, registry, name_str, JS_DupValue(ctx, desc));
+
+    // If initialValue is set and it's a custom property, register it as default
+    JSValue initial = JS_GetPropertyStr(ctx, desc, "initialValue");
+    if (JS_IsString(initial)) {
+        const char* init_str = JS_ToCString(ctx, initial);
+        if (init_str) {
+            // Store as a CSS custom property default on document.documentElement.style
+            JSValue doc = JS_GetPropertyStr(ctx, global, "document");
+            if (JS_IsObject(doc)) {
+                JSValue docEl = JS_GetPropertyStr(ctx, doc, "documentElement");
+                if (JS_IsObject(docEl)) {
+                    JSValue style = JS_GetPropertyStr(ctx, docEl, "style");
+                    if (JS_IsObject(style)) {
+                        JSValue existing = JS_GetPropertyStr(ctx, style, name_str);
+                        if (JS_IsUndefined(existing) || !JS_IsString(existing)) {
+                            JS_SetPropertyStr(ctx, style, name_str, JS_NewString(ctx, init_str));
+                        }
+                        JS_FreeValue(ctx, existing);
+                        JS_FreeValue(ctx, style);
+                    }
+                    JS_FreeValue(ctx, docEl);
+                }
+                JS_FreeValue(ctx, doc);
+            }
+            JS_FreeCString(ctx, init_str);
+        }
+    }
+    JS_FreeValue(ctx, initial);
+
+    JS_FreeValue(ctx, registry);
+    JS_FreeCString(ctx, name_str);
+    JS_FreeValue(ctx, name_val);
+    JS_FreeValue(ctx, global);
     return JS_UNDEFINED;
 }
 
