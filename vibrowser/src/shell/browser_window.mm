@@ -23,6 +23,39 @@
 #include <thread>
 #include <unordered_set>
 
+// =========================================================================
+// Clipboard API Helpers — System Clipboard via NSPasteboard
+// =========================================================================
+
+extern "C" {
+void clipboard_write_text(const char* text) {
+    @autoreleasepool {
+        NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+        if (!pasteboard) return;
+        [pasteboard clearContents];
+        if (!text) return;
+        NSString* value = [NSString stringWithUTF8String:text];
+        if (!value) return;
+        [pasteboard setString:value forType:NSPasteboardTypeString];
+    }
+}
+
+const char* clipboard_read_text(void) {
+    static thread_local std::string result;
+    result.clear();
+    @autoreleasepool {
+        NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+        if (!pasteboard) return result.c_str();
+        NSString* value = [pasteboard stringForType:NSPasteboardTypeString];
+        if (!value) return result.c_str();
+        const char* utf8 = [value UTF8String];
+        if (!utf8) return result.c_str();
+        result = utf8;
+    }
+    return result.c_str();
+}
+}
+
 static const CGFloat kToolbarHeight = 44.0;
 static const CGFloat kTabBarHeight = 34.0;
 static const CGFloat kToolbarButtonWidth = 30.0;

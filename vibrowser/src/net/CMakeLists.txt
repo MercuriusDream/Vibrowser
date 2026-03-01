@@ -14,6 +14,8 @@ target_include_directories(vibrowser_net PUBLIC
     ${CMAKE_SOURCE_DIR}/include
 )
 
+target_compile_options(vibrowser_net PRIVATE -Wno-unused-private-field)
+
 find_package(ZLIB REQUIRED)
 target_link_libraries(vibrowser_net PUBLIC vibrowser_url vibrowser_platform ZLIB::ZLIB)
 
