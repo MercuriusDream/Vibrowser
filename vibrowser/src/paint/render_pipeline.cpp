@@ -4792,6 +4792,10 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                         auto l = clever::css::parse_length(arg);
                         if (l) fval = l->to_px(0);
                     }
+                    else if (fn == "url") {
+                        // url() filters reference SVG filters; stub them out to avoid crashes.
+                        // They are not implemented, so skip storing this filter.
+                    }
                     else if (fn == "drop-shadow") {
                         type = 10;
                         auto ds_parts = split_whitespace(arg);

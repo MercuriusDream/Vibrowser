@@ -953,7 +953,277 @@ std::string Tokenizer::try_consume_entity() {
 
         // === Additional Arrow Symbols ===
         {"varr", "\xE2\x86\x95"},      // U+2195 up down arrow
+
+        // === Extended Latin: Combining Diacritical Marks and Extensions ===
+        {"abreve", "\xC4\x83"},   // U+0103 a with breve
+        {"Abreve", "\xC4\x82"},   // U+0102 A with breve
+        {"aogonek", "\xC4\x99"},  // U+0105 a with ogonek
+        {"Aogonek", "\xC4\x98"},  // U+0104 A with ogonek
+        {"breve", "\xCB\x98"},    // U+02D8 breve
+        {"caron", "\xCB\x87"},    // U+02C7 caron
+        {"commat", "@"},          // U+0040 commercial at
+        {"dieresis", "\xC2\xA8"}, // U+00A8 diaeresis
+        {"dot", "\xCB\x99"},      // U+02D9 dot above
+        {"dotaccent", "\xCB\x99"},// U+02D9 dot above
+        {"ebreve", "\xC4\x97"},   // U+0117 e with breve
+        {"Ebreve", "\xC4\x96"},   // U+0116 E with breve
+        {"edot", "\xC4\x97"},     // U+0117 e with dot above
+        {"Edot", "\xC4\x96"},     // U+0116 E with dot above
+        {"emacron", "\xC4\x93"},  // U+0113 e with macron
+        {"Emacron", "\xC4\x92"},  // U+0112 E with macron
+        {"eng", "\xC5\x8B"},      // U+014B eng
+        {"ENG", "\xC5\x8A"},      // U+014A ENG
+        {"eogon", "\xC4\x99"},    // U+0119 e with ogonek
+        {"Eogon", "\xC4\x98"},    // U+0118 E with ogonek
+        {"gacute", "\xC4\x95"},   // U+0107 g with acute
+        {"Gacute", "\xC4\x94"},   // U+0106 G with acute
+        {"gbreve", "\xC4\x9F"},   // U+011F g with breve
+        {"Gbreve", "\xC4\x9E"},   // U+011E G with breve
+        {"gcirc", "\xC4\x9D"},    // U+011D g with circumflex
+        {"Gcirc", "\xC4\x9C"},    // U+011C G with circumflex
+        {"gdot", "\xC4\xA1"},     // U+0121 g with dot above
+        {"Gdot", "\xC4\xA0"},     // U+0120 G with dot above
+        {"grave", "`"},           // U+0060 grave accent
+        {"hcirc", "\xC4\xA5"},    // U+0125 h with circumflex
+        {"Hcirc", "\xC4\xA4"},    // U+0124 H with circumflex
+        {"idot", "\xC4\xB1"},     // U+0131 dotless i
+        {"Idotaccent", "\xC4\xB0"},// U+0130 I with dot above
+        {"imacron", "\xC4\xAB"},  // U+012B i with macron
+        {"Imacron", "\xC4\xAA"},  // U+012A I with macron
+        {"iogon", "\xC4\xAF"},    // U+012F i with ogonek
+        {"Iogon", "\xC4\xAE"},    // U+012E I with ogonek
+        {"itilde", "\xC4\xA9"},   // U+0129 i with tilde
+        {"Itilde", "\xC4\xA8"},   // U+0128 I with tilde
+        {"jcirc", "\xC4\xB5"},    // U+0135 j with circumflex
+        {"Jcirc", "\xC4\xB4"},    // U+0134 J with circumflex
+        {"kcirc", "\xC4\xB7"},    // U+0137 k with cedilla
+        {"Kcirc", "\xC4\xB6"},    // U+0136 K with cedilla
+        {"lacute", "\xC4\xBA"},   // U+013A l with acute
+        {"Lacute", "\xC4\xB9"},   // U+0139 L with acute
+        {"lcaron", "\xC4\xBE"},   // U+013E l with caron
+        {"Lcaron", "\xC4\xBD"},   // U+013D L with caron
+        {"lcedil", "\xC4\xBC"},   // U+013C l with cedilla
+        {"Lcedil", "\xC4\xBB"},   // U+013B L with cedilla
+        {"lcirc", "\xC4\xBB"},    // U+013B l with circumflex
+        {"Lcirc", "\xC4\xBA"},    // U+013A L with circumflex
+        {"ldot", "\xC5\x80"},     // U+0140 l with middle dot
+        {"Ldot", "\xC4\xBF"},     // U+013F L with middle dot
+        {"lmidot", "\xC5\x80"},   // U+0140 l with middle dot (alias)
+        {"nacute", "\xC5\x84"},   // U+0144 n with acute
+        {"Nacute", "\xC5\x83"},   // U+0143 N with acute
+        {"ncaron", "\xC5\x88"},   // U+0148 n with caron
+        {"Ncaron", "\xC5\x87"},   // U+0147 N with caron
+        {"ncedil", "\xC5\x86"},   // U+0146 n with cedilla
+        {"Ncedil", "\xC5\x85"},   // U+0145 N with cedilla
+        {"ncirc", "\xC3\xB1"},    // U+00F1 n with tilde
+        {"Ncirc", "\xC3\x91"},    // U+00D1 N with tilde
+        {"obreve", "\xC5\x8F"},   // U+014F o with breve
+        {"Obreve", "\xC5\x8E"},   // U+014E O with breve
+        {"odblac", "\xC5\x91"},   // U+0151 o with double acute
+        {"Odblac", "\xC5\x90"},   // U+0150 O with double acute
+        {"odieresis", "\xC3\xB6"},// U+00F6 o with diaeresis
+        {"Odieresis", "\xC3\x96"},// U+00D6 O with diaeresis
+        {"ohorn", "\xC6\xA0"},    // U+01A0 o with horn
+        {"Ohorn", "\xC6\x9F"},    // U+019F O with horn
+        {"omacron", "\xC5\x8D"},  // U+014D o with macron
+        {"Omacron", "\xC5\x8C"},  // U+014C O with macron
+        {"oogonek", "\xC4\xA3"},  // U+0123 o with ogonek
+        {"Oogonek", "\xC4\xA2"},  // U+0122 O with ogonek
+        {"ovbar", "\xC2\xAF"},    // U+00AF overline
+        {"oviron", "\xCB\x9A"},   // U+02DA ring above (alias)
+        {"racute", "\xC5\x95"},   // U+0155 r with acute
+        {"Racute", "\xC5\x94"},   // U+0154 R with acute
+        {"rcaron", "\xC5\x99"},   // U+0159 r with caron
+        {"Rcaron", "\xC5\x98"},   // U+0158 R with caron
+        {"rcedil", "\xC5\x97"},   // U+0157 r with cedilla
+        {"Rcedil", "\xC5\x96"},   // U+0156 R with cedilla
+        {"rcirc", "\xC5\x95"},    // U+0155 r with circumflex
+        {"Rcirc", "\xC5\x94"},    // U+0154 R with circumflex
+        {"ring", "\xCB\x9A"},     // U+02DA ring above
+        {"sacute", "\xC5\x9B"},   // U+015B s with acute
+        {"Sacute", "\xC5\x9A"},   // U+015A S with acute
+        {"scedil", "\xC5\x9F"},   // U+015F s with cedilla
+        {"Scedil", "\xC5\x9E"},   // U+015E S with cedilla
+        {"scirc", "\xC5\x9D"},    // U+015D s with circumflex
+        {"Scirc", "\xC5\x9C"},    // U+015C S with circumflex
+        {"slash", "/"},           // U+002F solidus
+        {"tcaron", "\xC5\xA5"},   // U+0165 t with caron
+        {"Tcaron", "\xC5\xA4"},   // U+0164 T with caron
+        {"tcedil", "\xC5\xA3"},   // U+0163 t with cedilla
+        {"Tcedil", "\xC5\xA2"},   // U+0162 T with cedilla
+        {"tcirc", "\xC5\xA3"},    // U+0163 t with circumflex (alias)
+        {"Tcirc", "\xC5\xA2"},    // U+0162 T with circumflex (alias)
+        {"tdot", "\xC5\xA1"},     // U+0161 t with dot above (alias)
+        {"ubreve", "\xC5\xAD"},   // U+016D u with breve
+        {"Ubreve", "\xC5\xAC"},   // U+016C U with breve
+        {"udblac", "\xC5\xB1"},   // U+0171 u with double acute
+        {"Udblac", "\xC5\xB0"},   // U+0170 U with double acute
+        {"udiag", "\xC2\xA8"},    // U+00A8 umlaut (alias for diaeresis)
+        {"ugrave", "\xC3\xB9"},   // U+00F9 u with grave
+        {"Ugrave", "\xC3\x99"},   // U+00D9 U with grave
+        {"uhorn", "\xC6\xA1"},    // U+01A1 u with horn
+        {"Uhorn", "\xC6\xa0"},    // U+01A0 U with horn
+        {"umacron", "\xC5\xAB"},  // U+016B u with macron
+        {"Umacron", "\xC5\xAA"},  // U+016A U with macron
+        {"uogonek", "\xC5\xB3"},  // U+0173 u with ogonek
+        {"Uogonek", "\xC5\xB2"},  // U+0172 U with ogonek
+        {"uring", "\xC5\xB5"},    // U+0175 u with ring above
+        {"Uring", "\xC5\xB4"},    // U+0174 U with ring above
+        {"utilde", "\xC5\xA9"},   // U+0169 u with tilde
+        {"Utilde", "\xC5\xA8"},   // U+0168 U with tilde
+        {"wcirc", "\xC5\xB7"},    // U+0177 w with circumflex
+        {"Wcirc", "\xC5\xB6"},    // U+0176 W with circumflex
+        {"yacute", "\xC3\xBD"},   // U+00FD y with acute
+        {"Yacute", "\xC3\x9D"},   // U+00DD Y with acute
+        {"ycirc", "\xC5\xB7"},    // U+0177 y with circumflex
+        {"Ycirc", "\xC5\xB6"},    // U+0176 Y with circumflex
+        {"ydieresis", "\xC3\xBF"},// U+00FF y with diaeresis
+        {"zcirc", "\xCB\x9C"},    // U+02DC z with circumflex (not standard)
+        {"zcaron", "\xC5\xBE"},   // U+017E z with caron
+        {"Zcaron", "\xC5\xBD"},   // U+017D Z with caron
+        {"zdot", "\xC5\xBC"},     // U+017C z with dot above
+        {"Zdot", "\xC5\xBB"},     // U+017B Z with dot above
+
+        // === Typographic Symbols and Marks ===
+        {"smile", "\xE2\x8C\xA3"}, // U+2323 smiling face
+        {"frown", "\xE2\x8C\xA2"}, // U+2322 frowning face
+        {"checkmark", "\xE2\x9C\x93"}, // U+2713 check mark
+        {"cross", "\xE2\x9C\x97"},     // U+2717 ballot X
+        {"xmark", "\xE2\x9C\x97"},     // U+2717 ballot X (alias)
+        {"halfnote", "\xE2\x99\x99"},  // U+2669 quarter note
+        {"note", "\xE2\x99\xA9"},      // U+266A eighth note
+        {"heartsuit", "\xE2\x99\xA5"}, // U+2665 heart suit
+        {"spadesuit", "\xE2\x99\xA0"}, // U+2660 spade suit
+        {"diamondsuit", "\xE2\x99\xA6"}, // U+2666 diamond suit
+        {"clubsuit", "\xE2\x99\xA3"},  // U+2663 club suit
+        {"fleur", "\xE2\x9C\xB3"},     // U+2713 fleuron
+        {"dagger2", "\xE2\x80\xA1"},   // U+2021 double dagger (alias)
+        {"bullet2", "\xE2\x80\xA2"},   // U+2022 bullet (alias)
+
+        // === Superscripts and Subscripts ===
+        {"sup0", "\xE2\x81\xB0"},  // U+2070 superscript zero
+        {"sup4", "\xE2\x81\xB4"},  // U+2074 superscript four
+        {"sup5", "\xE2\x81\xB5"},  // U+2075 superscript five
+        {"sup6", "\xE2\x81\xB6"},  // U+2076 superscript six
+        {"sup7", "\xE2\x81\xB7"},  // U+2077 superscript seven
+        {"sup8", "\xE2\x81\xB8"},  // U+2078 superscript eight
+        {"sup9", "\xE2\x81\xB9"},  // U+2079 superscript nine
+        {"supminus", "\xE2\x81\xBB"}, // U+207B superscript minus
+        {"supplus", "\xE2\x81\xBA"},  // U+207A superscript plus
+        {"supeq", "\xE2\x81\xBD"},    // U+207D superscript equals
+        {"sub0", "\xE2\x82\x80"},  // U+2080 subscript zero
+        {"sub1", "\xE2\x82\x81"},  // U+2081 subscript one
+        {"sub2", "\xE2\x82\x82"},  // U+2082 subscript two
+        {"sub3", "\xE2\x82\x83"},  // U+2083 subscript three
+        {"sub4", "\xE2\x82\x84"},  // U+2084 subscript four
+        {"sub5", "\xE2\x82\x85"},  // U+2085 subscript five
+        {"sub6", "\xE2\x82\x86"},  // U+2086 subscript six
+        {"sub7", "\xE2\x82\x87"},  // U+2087 subscript seven
+        {"sub8", "\xE2\x82\x88"},  // U+2088 subscript eight
+        {"sub9", "\xE2\x82\x89"},  // U+2089 subscript nine
+        {"subminus", "\xE2\x82\x8B"}, // U+208B subscript minus
+        {"subplus", "\xE2\x82\x8A"},  // U+208A subscript plus
+        {"subeq", "\xE2\x82\x8C"},    // U+208C subscript equals
+
+        // === Fractions and Other Numeric Forms ===
+        {"frac13", "\xE2\x85\x93"},    // U+2153 vulgar fraction one third
+        {"frac23", "\xE2\x85\x94"},    // U+2154 vulgar fraction two thirds
+        {"frac15", "\xE2\x85\x95"},    // U+2155 vulgar fraction one fifth
+        {"frac25", "\xE2\x85\x96"},    // U+2156 vulgar fraction two fifths
+        {"frac35", "\xE2\x85\x97"},    // U+2157 vulgar fraction three fifths
+        {"frac45", "\xE2\x85\x98"},    // U+2158 vulgar fraction four fifths
+        {"frac16", "\xE2\x85\x99"},    // U+2159 vulgar fraction one sixth
+        {"frac56", "\xE2\x85\x9A"},    // U+215A vulgar fraction five sixths
+        {"frac18", "\xE2\x85\x9B"},    // U+215B vulgar fraction one eighth
+        {"frac38", "\xE2\x85\x9C"},    // U+215C vulgar fraction three eighths
+        {"frac58", "\xE2\x85\x9D"},    // U+215D vulgar fraction five eighths
+        {"frac78", "\xE2\x85\x9E"},    // U+215E vulgar fraction seven eighths
+
+        // === Box Drawing and Geometric Shapes ===
+        {"boxdr", "\xE2\x94\x8C"},    // U+250C box drawings light down and right
+        {"boxdl", "\xE2\x94\x90"},    // U+2510 box drawings light down and left
+        {"boxur", "\xE2\x94\x94"},    // U+2514 box drawings light up and right
+        {"boxul", "\xE2\x94\x98"},    // U+2518 box drawings light up and left
+        {"boxh", "\xE2\x94\x80"},     // U+2500 box drawings light horizontal
+        {"boxv", "\xE2\x94\x82"},     // U+2502 box drawings light vertical
+        {"boxh2", "\xE2\x95\x90"},    // U+2550 box drawings double horizontal
+        {"boxv2", "\xE2\x95\x91"},    // U+2551 box drawings double vertical
+        {"boxcross", "\xE2\x94\xBC"}, // U+253C box drawings light vertical and horizontal
+        {"boxdrcross", "\xE2\x95\xA0"}, // U+2560 box drawings vertical light and right (alias)
+        {"blk12", "\xE2\x96\x89"},    // U+2589 block, left three quarters
+        {"blk34", "\xE2\x96\x8A"},    // U+258A block, left one quarter
+
+        // === Card/Chess Symbols ===
+        {"whiteking", "\xE2\x99\x94"},   // U+2654 white chess king
+        {"whitequeen", "\xE2\x99\x95"},  // U+2655 white chess queen
+        {"whiterook", "\xE2\x99\x96"},   // U+2656 white chess rook
+        {"whitebishop", "\xE2\x99\x97"}, // U+2657 white chess bishop
+        {"whiteknight", "\xE2\x99\x98"}, // U+2658 white chess knight
+        {"whitepawn", "\xE2\x99\x99"},   // U+2659 white chess pawn
+        {"blackking", "\xE2\x99\x9A"},   // U+265A black chess king
+        {"blackqueen", "\xE2\x99\x9B"},  // U+265B black chess queen
+        {"blackrook", "\xE2\x99\x9C"},   // U+265C black chess rook
+        {"blackbishop", "\xE2\x99\x9D"}, // U+265D black chess bishop
+        {"blackknight", "\xE2\x99\x9E"}, // U+265E black chess knight
+        {"blackpawn", "\xE2\x99\x9F"},   // U+265F black chess pawn
+
+        // === Weather and Seasonal Symbols ===
+        {"sun", "\xE2\x98\x80"},     // U+2600 black sun with rays
+        {"star", "\xE2\x98\x85"},    // U+2605 black star
+        {"star2", "\xE2\x98\x86"},   // U+2606 white star
+        {"cloud", "\xE2\x98\x81"},   // U+2601 cloud
+        {"telephone", "\xE2\x98\x8E"}, // U+260E black telephone
+
+        // === Miscellaneous Symbols and Operators ===
+        {"pilcrow", "\xC2\xB6"},      // U+00B6 pilcrow (alias for para)
+        {"section", "\xC2\xA7"},      // U+00A7 section sign (alias for sect)
+        {"doubled", "\xE2\x81\x84"},  // U+2044 fraction slash (alias for frasl)
+        {"inverse", "\xEF\xBF\xBD"},  // U+FFFD replacement character
+        {"isdot", "\xE2\x9F\x99"},    // U+27F9 element of symbol with dot
+        {"ratio", "\xE2\x88\xB6"},    // U+2236 ratio
+        {"dotdot", "\xE2\x80\xA4"},   // U+2024 one dot leader
+        {"blacksmile", "\xE2\x8C\xA3"}, // U+2323 smiling face (alias)
+        {"circleminus", "\xE2\x8A\x96"}, // U+2296 circled minus
+        {"circleplus", "\xE2\x8A\x95"},  // U+2295 circled plus
+        {"circleopx", "\xE2\x8A\x97"},   // U+2297 circled times
+        {"circleslash", "\xE2\x8A\x98"}, // U+2298 circled division slash
+        {"prec", "\xE2\x89\xBA"},     // U+227A precedes
+        {"succ", "\xE2\x89\xBB"},     // U+227B succeeds
+        {"precneq", "\xE2\x8A\x8F"},  // U+228F precedes and not equal
+        {"succneq", "\xE2\x8A\x90"},  // U+2290 succeeds and not equal
+        {"notprec", "\xE2\x8A\xB0"},  // U+22B0 does not precede
+        {"notsucc", "\xE2\x8A\xB1"},  // U+22B1 does not succeed
+        {"nsubset", "\xE2\x8A\x84"},  // U+2284 not a subset of (alias for nsub)
+        {"nsupset", "\xE2\x8A\x85"},  // U+2285 not a superset of
+        {"nsubseteq", "\xE2\x8A\x88"}, // U+2288 neither a subset of nor equal to
+        {"nsupseteq", "\xE2\x8A\x89"}, // U+2289 neither a superset of nor equal to
+        {"subsetneq", "\xE2\x8A\x8A"}, // U+228A subset of and not equal to
+        {"supsetneq", "\xE2\x8A\x8B"}, // U+228B superset of and not equal to
+        {"diamond2", "\xE2\x97\x8A"},  // U+25CA lozenge (alias for loz)
+        {"blackrect", "\xE2\x96\xA0"}, // U+25A0 black square
+        {"whitesquare", "\xE2\x96\xA1"}, // U+25A1 white square
+        {"blackcircle", "\xE2\x97\x80"}, // U+25C0 black circle
+        {"whitecircle", "\xE2\x97\x8B"}, // U+25CB white circle
+        {"asciimath", "\xE2\x82\xBF"},  // U+207F superscript n
+        {"mathminus", "\xE2\x88\x92"},  // U+2212 minus sign (alias for minus)
+        {"mathmult", "\xC3\x97"},       // U+00D7 multiplication (alias for times)
+        {"ratio2", "\xE2\x88\xB6"},     // U+2236 ratio (alias)
+        {"coloneq", "\xE2\x89\x94"},    // U+2254 assign (alias)
+        {"eqcolon", "\xE2\x89\x95"},    // U+2255 assign (alias)
+        {"dblcolon", "\xE2\x88\xB6"},   // U+2236 double colon (alias)
+        {"Vert", "\xE2\x80\x96"},       // U+2016 double vertical line (alias)
+        {"parallel", "\xE2\x88\x96"},   // U+2225 parallel to
+        {"notparallel", "\xE2\x88\x97"}, // U+2226 not parallel to
+        {"upuparrows", "\xE2\x87\x88"}, // U+21C8 upwards paired arrows (alias)
+        {"dndn", "\xE2\x87\x89"},       // U+21C9 downwards paired arrows (alias)
+        {"lnot", "\xC2\xAC"},           // U+00AC not sign (alias for not)
+        {"forall2", "\xE2\x88\x80"},    // U+2200 for all (alias)
+        {"exist2", "\xE2\x88\x83"},     // U+2203 there exists (alias)
+        {"empty2", "\xE2\x88\x85"},     // U+2205 empty set (alias)
+        {"nabla2", "\xE2\x88\x87"},     // U+2207 nabla (alias)
+        {"isin2", "\xE2\x88\x88"},      // U+2208 element of (alias)
     };
+
 
     auto it = entities.find(lookup);
     if (it != entities.end()) {

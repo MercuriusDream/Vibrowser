@@ -5737,16 +5737,133 @@ void PropertyCascade::apply_declaration(
         return;
     }
     if (prop == "grid-template" || prop == "grid") {
-        // grid-template: <rows> / <columns>
-        auto slash_pos = value_str.find('/');
-        if (slash_pos != std::string::npos) {
-            auto rows = trim(value_str.substr(0, slash_pos));
-            auto cols = trim(value_str.substr(slash_pos + 1));
-            if (!rows.empty()) style.grid_template_rows = rows;
-            if (!cols.empty()) style.grid_template_columns = cols;
-        } else {
-            // Single value: treat as rows
+        auto find_top_level_slash = [](const std::string& v) -> size_t {
+            size_t pos = 0;
+            int paren_depth = 0;
+            char quote = 0;
+            while (pos < v.size()) {
+                char ch = v[pos];
+                if (quote) {
+                    if (ch == '\\' && pos + 1 < v.size()) {
+                        pos += 2;
+                        continue;
+                    }
+                    if (ch == quote) quote = 0;
+                } else {
+                    if (ch == '\'' || ch == '"') {
+                        quote = ch;
+                    } else if (ch == '(') {
+                        paren_depth++;
+                    } else if (ch == ')') {
+                        if (paren_depth > 0) paren_depth--;
+                    } else if (ch == '/' && paren_depth == 0) {
+                        return pos;
+                    }
+                }
+                pos++;
+            }
+            return std::string::npos;
+        };
+        auto append_area_rows = [](std::string& out, const std::vector<std::string>& rows) {
+            for (size_t i = 0; i < rows.size(); i++) {
+                if (i > 0) out += ' ';
+                out += '"' + rows[i] + '"';
+            }
+        };
+        auto append_sizes = [](std::string& out, const std::vector<std::string>& vals) {
+            for (size_t i = 0; i < vals.size(); i++) {
+                if (i > 0) out += ' ';
+                out += vals[i];
+            }
+        };
+
+        auto slash_pos = find_top_level_slash(value_str);
+        if (slash_pos == std::string::npos) {
             style.grid_template_rows = value_str;
+            return;
+        }
+
+        std::string rows_and_areas = trim(value_str.substr(0, slash_pos));
+        std::string cols = trim(value_str.substr(slash_pos + 1));
+        if (!cols.empty()) style.grid_template_columns = cols;
+
+        if ((rows_and_areas.find('"') != std::string::npos) ||
+            (rows_and_areas.find('\'') != std::string::npos)) {
+            std::vector<std::string> area_rows;
+            std::vector<std::string> implicit_rows;
+            size_t ti = 0;
+
+            auto read_quoted = [](const std::string& s, size_t& i, char quote, std::string& out) -> bool {
+                size_t start = i;
+                std::string value;
+                while (i < s.size()) {
+                    char ch = s[i];
+                    if (ch == '\\' && i + 1 < s.size()) {
+                        value += s[i + 1];
+                        i += 2;
+                        continue;
+                    }
+                    if (ch == quote) {
+                        i++;
+                        out = value;
+                        return true;
+                    }
+                    value += ch;
+                    i++;
+                }
+                i = start;
+                return false;
+            };
+
+            while (ti < rows_and_areas.size()) {
+                while (ti < rows_and_areas.size() && isspace(static_cast<unsigned char>(rows_and_areas[ti]))) ti++;
+                if (ti >= rows_and_areas.size()) break;
+
+                if (rows_and_areas[ti] == '"' || rows_and_areas[ti] == '\'') {
+                    char q = rows_and_areas[ti++];
+                    std::string area_row;
+                    if (!read_quoted(rows_and_areas, ti, q, area_row)) break;
+                    if (!area_row.empty()) area_rows.push_back(area_row);
+
+                    while (ti < rows_and_areas.size() && isspace(static_cast<unsigned char>(rows_and_areas[ti]))) ti++;
+                    size_t size_start = ti;
+                    while (ti < rows_and_areas.size() && !isspace(static_cast<unsigned char>(rows_and_areas[ti]))) ti++;
+                    if (size_start < ti) {
+                        implicit_rows.push_back(rows_and_areas.substr(size_start, ti - size_start));
+                    }
+                } else {
+                    size_t token_start = ti;
+                    while (ti < rows_and_areas.size() && !isspace(static_cast<unsigned char>(rows_and_areas[ti]))) ti++;
+                    std::string token = rows_and_areas.substr(token_start, ti - token_start);
+                    if (!token.empty()) implicit_rows.push_back(token);
+                }
+            }
+
+            if (!area_rows.empty()) {
+                std::string areas;
+                append_area_rows(areas, area_rows);
+                style.grid_template_areas = areas;
+
+                if (implicit_rows.size() < area_rows.size()) {
+                    implicit_rows.resize(area_rows.size(), "auto");
+                }
+            }
+            if (!implicit_rows.empty()) {
+                std::string rows;
+                append_sizes(rows, implicit_rows);
+                style.grid_template_rows = rows;
+            }
+            if (implicit_rows.empty() && !area_rows.empty()) {
+                style.grid_template_rows = std::string(area_rows.size() * 5, 'a');
+                std::string tmp;
+                for (size_t i = 0; i < area_rows.size(); i++) {
+                    if (i > 0) tmp += ' ';
+                    tmp += "auto";
+                }
+                style.grid_template_rows = tmp;
+            }
+        } else {
+            if (!rows_and_areas.empty()) style.grid_template_rows = rows_and_areas;
         }
         return;
     }
