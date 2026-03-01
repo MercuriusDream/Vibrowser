@@ -1238,6 +1238,9 @@ MetaViewportInfo parse_meta_viewport_from_head(const clever::html::SimpleNode& d
     return info;
 }
 
+// Forward declaration for evaluate_media_query (defined later in this file)
+bool evaluate_media_query(const std::string& condition, int vw, int vh);
+
 int parse_color_scheme_content(const std::string& content) {
     std::string normalized = to_lower(trim(content));
     if (normalized.empty()) return 0;
@@ -8667,29 +8670,92 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         std::string selected_src;
         const clever::html::SimpleNode* fallback_img = nullptr;
 
+        int vw = static_cast<int>(clever::css::Length::s_viewport_w);
+        int vh = static_cast<int>(clever::css::Length::s_viewport_h);
+        if (vw <= 0) vw = 1280;
+        if (vh <= 0) vh = 720;
+
         for (auto& child : node.children) {
             if (child->type != clever::html::SimpleNode::Element) continue;
             std::string child_tag = to_lower(child->tag_name);
 
             if (child_tag == "source" && selected_src.empty()) {
+                // Check media attribute — skip if doesn't match
+                std::string media = get_attr(*child, "media");
+                if (!media.empty() && !evaluate_media_query(media, vw, vh)) continue;
+
+                // Check type attribute — skip unsupported formats
+                std::string type = get_attr(*child, "type");
+                if (!type.empty()) {
+                    std::string tl = to_lower(type);
+                    // We support jpeg, png, gif, webp, svg — not avif, jxl
+                    if (tl.find("avif") != std::string::npos ||
+                        tl.find("jxl") != std::string::npos) continue;
+                }
+
                 std::string srcset = get_attr(*child, "srcset");
                 if (!srcset.empty()) {
-                    // For now, use the first <source> with a srcset attribute
-                    // (media query evaluation not yet implemented)
-                    selected_src = srcset;
-                    // Strip any descriptor suffix (e.g. " 2x", " 800w")
-                    auto space_pos = selected_src.find(' ');
-                    if (space_pos != std::string::npos)
-                        selected_src = selected_src.substr(0, space_pos);
+                    // Parse srcset: "url1 480w, url2 800w" or "url1 1x, url2 2x"
+                    // Select best candidate based on viewport width
+                    std::string best_url;
+                    float best_w = -1;
+                    float best_density = -1;
+
+                    std::istringstream ss(srcset);
+                    std::string token;
+                    std::string candidate_url;
+                    while (ss >> token) {
+                        if (token.back() == ',') token.pop_back();
+                        if (candidate_url.empty()) {
+                            candidate_url = token;
+                            continue;
+                        }
+                        // This token is the descriptor
+                        if (!token.empty() && (token.back() == 'w' || token.back() == 'W')) {
+                            float w_val = 0;
+                            try { w_val = std::stof(token.substr(0, token.size() - 1)); } catch (...) {}
+                            if (w_val > 0) {
+                                if (best_url.empty() || (w_val >= vw && (best_w < vw || w_val < best_w)) ||
+                                    (best_w < vw && w_val > best_w)) {
+                                    best_url = candidate_url;
+                                    best_w = w_val;
+                                }
+                            }
+                        } else if (!token.empty() && (token.back() == 'x' || token.back() == 'X')) {
+                            float d_val = 1;
+                            try { d_val = std::stof(token.substr(0, token.size() - 1)); } catch (...) {}
+                            if (d_val > best_density) {
+                                best_density = d_val;
+                                best_url = candidate_url;
+                            }
+                        }
+                        candidate_url.clear();
+                    }
+                    // If only URL with no descriptor, use it
+                    if (!candidate_url.empty() && best_url.empty()) best_url = candidate_url;
+                    if (best_url.empty() && !srcset.empty()) {
+                        // Fallback: just take the first URL
+                        auto sp = srcset.find(' ');
+                        best_url = (sp != std::string::npos) ? srcset.substr(0, sp) : srcset;
+                    }
+                    selected_src = best_url;
+                } else {
+                    std::string src = get_attr(*child, "src");
+                    if (!src.empty()) selected_src = src;
                 }
             } else if (child_tag == "img") {
                 fallback_img = child.get();
             }
         }
 
-        // Fall back to the <img> child's src if no <source> matched
+        // Fall back to the <img> child's srcset, then src
         if (selected_src.empty() && fallback_img) {
-            selected_src = get_attr(*fallback_img, "src");
+            std::string fb_srcset = get_attr(*fallback_img, "srcset");
+            if (!fb_srcset.empty()) {
+                auto sp = fb_srcset.find(' ');
+                selected_src = (sp != std::string::npos) ? fb_srcset.substr(0, sp) : fb_srcset;
+            }
+            if (selected_src.empty()) selected_src = get_attr(*fallback_img, "src");
         }
 
         layout_node->picture_srcset = selected_src;
@@ -8786,7 +8852,36 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
 
         // Try to fetch and decode the actual image
+        // Check srcset first for responsive images
         std::string src = get_attr(node, "src");
+        std::string srcset_attr = get_attr(node, "srcset");
+        if (!srcset_attr.empty()) {
+            int vw = static_cast<int>(clever::css::Length::s_viewport_w);
+            if (vw <= 0) vw = 1280;
+            std::string best_url;
+            float best_w = -1;
+            std::istringstream ss(srcset_attr);
+            std::string token;
+            std::string candidate_url;
+            while (ss >> token) {
+                if (token.back() == ',') token.pop_back();
+                if (candidate_url.empty()) { candidate_url = token; continue; }
+                if (!token.empty() && (token.back() == 'w' || token.back() == 'W')) {
+                    float w_val = 0;
+                    try { w_val = std::stof(token.substr(0, token.size() - 1)); } catch (...) {}
+                    if (w_val > 0 && (best_url.empty() ||
+                        (w_val >= vw && (best_w < vw || w_val < best_w)) ||
+                        (best_w < vw && w_val > best_w))) {
+                        best_url = candidate_url; best_w = w_val;
+                    }
+                } else if (!token.empty() && (token.back() == 'x' || token.back() == 'X')) {
+                    if (best_url.empty()) best_url = candidate_url;
+                }
+                candidate_url.clear();
+            }
+            if (!candidate_url.empty() && best_url.empty()) best_url = candidate_url;
+            if (!best_url.empty()) src = best_url;
+        }
         std::string img_url = resolve_url(src, base_url);
         auto decoded = fetch_and_decode_image(img_url);
 

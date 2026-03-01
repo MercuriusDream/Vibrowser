@@ -15509,7 +15509,13 @@ void install_dom_bindings(JSContext* ctx,
             var tag = this.tagName.toLowerCase();
             if (tag === 'select') {
                 var idx = this.getAttribute('data-selected-index');
-                return idx !== null ? parseInt(idx, 10) : -1;
+                if (idx !== null) return parseInt(idx, 10);
+                // Default: find first option with 'selected' attr, or 0 (first option)
+                var opts = this.querySelectorAll('option');
+                for (var i = 0; i < opts.length; i++) {
+                    if (opts[i].hasAttribute('selected')) return i;
+                }
+                return opts.length > 0 ? 0 : -1;
             }
             return -1;
         },
@@ -15528,6 +15534,60 @@ void install_dom_bindings(JSContext* ctx,
         },
         configurable: true
     });
+
+    // .selectedOptions — returns array of selected option elements
+    Object.defineProperty(proto, 'selectedOptions', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'select') return [];
+            var idx = this.selectedIndex;
+            if (idx < 0) return [];
+            var opts = this.querySelectorAll('option');
+            return idx < opts.length ? [opts[idx]] : [];
+        },
+        configurable: true
+    });
+
+    // .length — number of options for select elements
+    Object.defineProperty(proto, 'length', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'select') return this.querySelectorAll('option').length;
+            return undefined;
+        },
+        configurable: true
+    });
+
+    // select.add(option, before) and select.remove(index)
+    proto.add = function(element, before) {
+        var tag = this.tagName.toLowerCase();
+        if (tag !== 'select') return;
+        if (before !== undefined && before !== null) {
+            if (typeof before === 'number') {
+                var opts = this.querySelectorAll('option');
+                if (before < opts.length) {
+                    this.insertBefore(element, opts[before]);
+                    return;
+                }
+            } else {
+                this.insertBefore(element, before);
+                return;
+            }
+        }
+        this.appendChild(element);
+    };
+    proto.remove = function(index) {
+        var tag = this.tagName.toLowerCase();
+        if (tag === 'select' && typeof index === 'number') {
+            var opts = this.querySelectorAll('option');
+            if (index >= 0 && index < opts.length) {
+                opts[index].parentNode.removeChild(opts[index]);
+            }
+            return;
+        }
+        // Default Element.remove() behavior
+        if (this.parentNode) this.parentNode.removeChild(this);
+    };
 
     // Clean up the dummy element from owned_nodes -- it will be GC'd
     // by JS, and is also in the owned_nodes list. We leave it there;
