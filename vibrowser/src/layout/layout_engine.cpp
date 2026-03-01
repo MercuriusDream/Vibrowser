@@ -10,7 +10,11 @@ namespace clever::layout {
 
 namespace {
 
+constexpr float kMarginCollapseEpsilon = 0.0001f;
+
 float collapse_vertical_margins(float first, float second) {
+    // CSS2.1 8.3.1: collapse two vertical margins by taking the
+    // larger positive/negative value, or summing opposite signs.
     if (first >= 0 && second >= 0) return std::max(first, second);
     if (first < 0 && second < 0) return std::min(first, second);
     return first + second;
@@ -18,7 +22,9 @@ float collapse_vertical_margins(float first, float second) {
 
 bool is_empty_block_for_margin_collapse(const LayoutNode& node) {
     if (node.mode != LayoutMode::Block || node.display == DisplayType::InlineBlock) return false;
-    if (node.specified_height >= 0 || node.min_height > 0) return false;
+    // A positive explicit height disqualifies collapse; zero height is still
+    // considered empty for the purpose of top/bottom margin collapsing.
+    if (node.specified_height > 0 || node.min_height > 0) return false;
     if (node.geometry.border.top != 0 || node.geometry.border.right != 0 ||
         node.geometry.border.bottom != 0 || node.geometry.border.left != 0) {
         return false;
@@ -36,7 +42,8 @@ bool is_empty_block_for_margin_collapse(const LayoutNode& node) {
         return false;
     }
 
-    return std::abs(node.geometry.height) < 0.0001f;
+    // The effective box height must be exactly zero before margins can merge.
+    return std::abs(node.geometry.height) < kMarginCollapseEpsilon;
 }
 
 std::string collapse_whitespace(const std::string& text, int white_space, bool white_space_pre,
@@ -1545,60 +1552,42 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             }
 
             // CSS margin collapsing (CSS2.1 Section 8.3.1):
-            // When two vertical margins meet, they collapse into a single margin:
-            //   - Both positive: take the larger
-            //   - Both negative: take the more negative (smaller value)
-            //   - Mixed (one positive, one negative): sum them
-            // Margins do NOT collapse across BFC boundaries, or when separated
-            // by border/padding.
+            // Collapse the current block's top margin with the previous in-flow
+            // block when they are adjacent siblings, or with the parent when this
+            // is the first in-flow block child.
             float top_margin = child->geometry.margin.top;
             float bottom_margin = child->geometry.margin.bottom;
 
-            // Check if this child is block-level and eligible for collapsing
-            // (inline-block, floats, and absolutely positioned elements don't collapse)
+            // Check if this child is block-level and eligible for block-block
+            // margin collapse in the normal flow.
             bool child_is_block = child->mode == LayoutMode::Block &&
                 child->display != DisplayType::InlineBlock &&
                 child->float_type == 0;
             bool child_is_empty_block = child_is_block &&
                 is_empty_block_for_margin_collapse(*child);
 
-            // Empty block margin collapsing:
-            // top and bottom margins collapse into a single carried margin.
+            // Empty blocks collapse their own top and bottom margins into one.
             if (child_is_empty_block) {
                 top_margin = collapse_vertical_margins(top_margin, bottom_margin);
             }
 
-            // Parent-child top margin collapsing: the first child's top margin
-            // collapses with its parent's top margin if:
-            //   - this is the first in-flow child
-            //   - the parent has no top border or top padding
-            //   - the parent does NOT establish a new BFC
-            // When collapsing, the child's top margin "escapes" to the parent
-            // (i.e., it is not applied as internal spacing inside the parent).
+            // Parent-child top margin collapsing applies only to the first in-flow
+            // block child and only when no BFC boundary exists between them.
             bool collapse_with_parent = first_child && child_is_block &&
                 !node.establishes_bfc &&
                 node.geometry.border.top == 0 && node.geometry.padding.top == 0;
             float carried_margin = top_margin;
 
             if (collapse_with_parent) {
-                // The child's top margin collapses with the parent's top margin.
-                // Apply the CSS collapsing rules:
+                // The child's top margin escapes to the parent margin.
                 float parent_top = node.geometry.margin.top;
-                float collapsed = collapse_vertical_margins(parent_top, top_margin);
-                node.geometry.margin.top = collapsed;
-                // The child is positioned at cursor_y (0) with no additional
-                // internal top margin offset — margin escapes to parent.
+                node.geometry.margin.top = collapse_vertical_margins(parent_top, top_margin);
                 child->geometry.y = cursor_y;
             } else if (!first_child && child_is_block &&
                        (prev_margin_bottom != 0 || top_margin != 0)) {
-                // Adjacent sibling margin collapsing:
-                // CSS spec: the collapsed margin is computed as follows:
-                //   - Both positive: max(prev_bottom, curr_top)
-                //   - Both negative: min(prev_bottom, curr_top) (more negative)
-                //   - Mixed: prev_bottom + curr_top (sum)
+                // Adjacent block siblings collapse to a single margin, replacing
+                // the prior cursor advance by the collapsed margin value.
                 float collapsed = collapse_vertical_margins(prev_margin_bottom, top_margin);
-                // cursor_y already includes prev_margin_bottom, so subtract it
-                // and add the collapsed value instead
                 cursor_y -= prev_margin_bottom;
                 child->geometry.y = cursor_y + collapsed;
                 carried_margin = collapsed;
@@ -1606,15 +1595,23 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                 child->geometry.y = cursor_y + top_margin;
             }
 
-            if (child_is_empty_block) {
-                // The element contributes a single collapsed margin to adjoining siblings.
-                prev_margin_bottom = carried_margin;
-                cursor_y = collapse_with_parent
-                    ? (child->geometry.y + carried_margin)
-                    : child->geometry.y;
+            if (child_is_block) {
+                if (child_is_empty_block) {
+                    // Empty block contributes only its collapsed own margin
+                    // to the next in-flow block.
+                    prev_margin_bottom = carried_margin;
+                    cursor_y = collapse_with_parent
+                        ? (child->geometry.y + carried_margin)
+                        : child->geometry.y;
+                } else {
+                    cursor_y = child->geometry.y + child->geometry.border_box_height() + bottom_margin;
+                    prev_margin_bottom = bottom_margin;
+                }
             } else {
+                // Any intervening non-block in-flow child (text/inline content)
+                // breaks adjacency for sibling margin collapse.
+                prev_margin_bottom = 0.0f;
                 cursor_y = child->geometry.y + child->geometry.border_box_height() + bottom_margin;
-                prev_margin_bottom = bottom_margin;
             }
             first_child = false;
         }
@@ -1634,30 +1631,29 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
     if (!node.establishes_bfc &&
         node.geometry.border.bottom == 0 && node.geometry.padding.bottom == 0 &&
         node.specified_height < 0 && node.min_height <= 0) {
-        // Find last in-flow non-float block-level child
+        // Find last in-flow child. Collapse only if that child is a block and is
+        // the last normal-flow child (not an inline/text child).
         LayoutNode* last_child = nullptr;
+        bool last_flow_child_is_block = false;
         for (auto it = node.children.rbegin(); it != node.children.rend(); ++it) {
             auto& c = *it;
             if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
             if (c->content_visibility == 1) continue;
             if (c->position_type == 2 || c->position_type == 3) continue;
             if (c->float_type != 0) continue;
-            if (c->display == DisplayType::InlineBlock) continue; // inline-block doesn't collapse
             last_child = c.get();
+            last_flow_child_is_block = (last_child->mode == LayoutMode::Block &&
+                                       last_child->display != DisplayType::InlineBlock);
             break;
         }
-        if (last_child) {
+        if (last_child && last_flow_child_is_block) {
             float child_bottom = last_child->geometry.margin.bottom;
-            float parent_bottom = node.geometry.margin.bottom;
-            float collapsed;
-            if (child_bottom >= 0 && parent_bottom >= 0) {
-                collapsed = std::max(parent_bottom, child_bottom);
-            } else if (child_bottom < 0 && parent_bottom < 0) {
-                collapsed = std::min(parent_bottom, child_bottom); // more negative
-            } else {
-                collapsed = parent_bottom + child_bottom; // mixed: sum
+            if (is_empty_block_for_margin_collapse(*last_child)) {
+                child_bottom = collapse_vertical_margins(last_child->geometry.margin.top,
+                                                       last_child->geometry.margin.bottom);
             }
-            node.geometry.margin.bottom = collapsed;
+            float parent_bottom = node.geometry.margin.bottom;
+            node.geometry.margin.bottom = collapse_vertical_margins(parent_bottom, child_bottom);
         }
     }
 }
