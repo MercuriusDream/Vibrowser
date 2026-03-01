@@ -1774,6 +1774,88 @@ std::string Tokenizer::try_consume_entity() {
         {"stigma", "\xcf\x9b"},    // U+03DB
         {"xcy", "\xd1\x85"},    // U+0445
 
+        // === Hebrew Letters ===
+        {"aleph", "\xd7\x90"},    // U+05D0
+        {"beth", "\xd7\x91"},    // U+05D1
+        {"gimel", "\xd7\x92"},    // U+05D2
+        {"daleth", "\xd7\x93"},    // U+05D3
+        {"he", "\xd7\x94"},    // U+05D4
+        {"waw", "\xd7\x95"},    // U+05D5
+        {"zayin", "\xd7\x96"},    // U+05D6
+        {"het", "\xd7\x97"},    // U+05D7
+        {"teth", "\xd7\x98"},    // U+05D8
+        {"yod", "\xd7\x99"},    // U+05D9
+        {"kaph", "\xd7\x9b"},    // U+05DB
+        {"lamed", "\xd7\x9c"},    // U+05DC
+        {"mem", "\xd7\x9e"},    // U+05DE
+        {"nun", "\xd7\xa0"},    // U+05E0
+        {"samekh", "\xd7\xa1"},    // U+05E1
+        {"ayin", "\xd7\xa2"},    // U+05E2
+        {"pe", "\xd7\xa4"},    // U+05E4
+        {"tsade", "\xd7\xa6"},    // U+05E6
+        {"qoph", "\xd7\xa7"},    // U+05E7
+        {"resh", "\xd7\xa8"},    // U+05E8
+        {"shin", "\xd7\xa9"},    // U+05E9
+        {"tav", "\xd7\xaa"},    // U+05EA
+
+        // === Double-Struck Digits ===
+        {"bopf0", "\xf0\x9d\x9f\xac"},    // U+1D7EC
+        {"bopf1", "\xf0\x9d\x9f\xad"},    // U+1D7ED
+        {"bopf2", "\xf0\x9d\x9f\xae"},    // U+1D7EE
+        {"bopf3", "\xf0\x9d\x9f\xaf"},    // U+1D7EF
+        {"bopf4", "\xf0\x9d\x9f\xb0"},    // U+1D7F0
+        {"bopf5", "\xf0\x9d\x9f\xb1"},    // U+1D7F1
+        {"bopf6", "\xf0\x9d\x9f\xb2"},    // U+1D7F2
+        {"bopf7", "\xf0\x9d\x9f\xb3"},    // U+1D7F3
+        {"bopf8", "\xf0\x9d\x9f\xb4"},    // U+1D7F4
+        {"bopf9", "\xf0\x9d\x9f\xb5"},    // U+1D7F5
+
+        // === Geometric Shapes ===
+        {"blacksquare", "\xe2\x96\xa0"},    // U+25A0
+        {"whitesquare", "\xe2\x96\xa1"},    // U+25A1
+        {"blackcircle", "\xe2\x97\x8f"},    // U+25CF
+        {"whitecircle", "\xe2\x97\x8b"},    // U+25CB
+        {"blacktriangle", "\xe2\x96\xb2"},    // U+25B2
+        {"whitetriangle", "\xe2\x96\xb3"},    // U+25B3
+        {"blacktriangledown", "\xe2\x96\xbc"},    // U+25BC
+        {"whitetriangledown", "\xe2\x96\xbd"},    // U+25BD
+
+        // === Additional Arrows ===
+        {"uparrowbarred", "\xe2\xa4\x92"},    // U+2912
+        {"downarrowbarred", "\xe2\xa4\x93"},    // U+2913
+        {"arrowup", "\xe2\x86\x91"},    // U+2191
+        {"arrowdown", "\xe2\x86\x93"},    // U+2193
+        {"arrowleft", "\xe2\x86\x90"},    // U+2190
+        {"arrowright", "\xe2\x86\x92"},    // U+2192
+
+        // === Additional Math Symbols ===
+        {"circlering", "\xe2\x8a\x9a"},    // U+229A
+        {"circlemultiply", "\xe2\x8a\x97"},    // U+2297
+        {"circleplus", "\xe2\x8a\x95"},    // U+2295
+        {"circleminus", "\xe2\x8a\x96"},    // U+2296
+        {"squareplus", "\xe2\x8a\x9e"},    // U+229E
+        {"squareminus", "\xe2\x8a\x9f"},    // U+229F
+        {"squaretimes", "\xe2\x8a\xa0"},    // U+22A0
+
+        // === Additional Punctuation and Marks ===
+        {"ellipsis", "\xe2\x80\xa6"},    // U+2026
+        {"middledot", "\xc2\xb7"},    // U+00B7
+        {"pilcrow", "\xc2\xb6"},    // U+00B6
+        {"section", "\xc2\xa7"},    // U+00A7
+        {"dagger", "\xe2\x80\xa0"},    // U+2020
+        {"doubledagger", "\xe2\x80\xa1"},    // U+2021
+        {"trademark", "\xe2\x84\xa2"},    // U+2122
+        {"registered", "\xc2\xae"},    // U+00AE
+        {"copyright", "\xc2\xa9"},    // U+00A9
+
+        // === Temperature Symbols ===
+        {"degC", "\xe2\x84\x83"},    // U+2103
+        {"degF", "\xe2\x84\x89"},    // U+2109
+
+        // === Music Notes ===
+        {"musicalnote", "\xe2\x99\xaa"},    // U+266A
+        {"twonotes", "\xe2\x99\xab"},    // U+266B
+
     };
 
 

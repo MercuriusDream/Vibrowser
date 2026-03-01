@@ -9,6 +9,7 @@ extern "C" {
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -4767,7 +4768,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JSValue clipboard = JS_NewObject(ctx);
         // writeText: copies text to clipboard (stub — resolves immediately)
         JS_SetPropertyStr(ctx, clipboard, "writeText",
-            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int argc, JSValueConst* argv) -> JSValue {
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
                 // On macOS we could use pasteboard, but for now just resolve
                 JSValue rf[2];
                 JSValue promise = JS_NewPromiseCapability(c, rf);
@@ -4824,7 +4825,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     {
         JSValue permissions = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, permissions, "query",
-            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int argc, JSValueConst* argv) -> JSValue {
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
                 // Return a PermissionStatus with state "granted" for most permissions
                 JSValue status = JS_NewObject(c);
                 JS_SetPropertyStr(c, status, "state", JS_NewString(c, "granted"));

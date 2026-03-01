@@ -1650,7 +1650,7 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
         origin_h -= geom.border.top + geom.border.bottom;
     }
 
-    // Apply background-clip: 0=border-box (default), 1=padding-box, 2=content-box
+    // Apply background-clip: 0=border-box (default), 1=padding-box, 2=content-box, 3=text
     if (node.background_clip == 1) {
         // padding-box: inset by border widths
         rect.x += geom.border.left;
@@ -1663,6 +1663,10 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
         rect.y += geom.border.top + geom.padding.top;
         rect.width -= geom.border.left + geom.border.right + geom.padding.left + geom.padding.right;
         rect.height -= geom.border.top + geom.border.bottom + geom.padding.top + geom.padding.bottom;
+    } else if (node.background_clip == 3) {
+        // text: background visible only where text is drawn
+        // TODO(background-clip:text): Requires clipping to glyph bounds during text rendering phase.
+        // Not yet implemented — treating as border-box for now.
     }
     if (rect.width <= 0 || rect.height <= 0) return;
 
@@ -1802,6 +1806,9 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
             }
         }
 
+        // Apply clip to ensure all background image modes respect the background-clip boundary.
+        list.push_clip(rect);
+
         // Draw based on background-repeat, clipped to the clipping box (rect)
         if (node.background_repeat == 3) {
             // no-repeat: draw once at computed position
@@ -1872,6 +1879,8 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
                 }
             }
         }
+
+        list.pop_clip();
         return;
     }
 
