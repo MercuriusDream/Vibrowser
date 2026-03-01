@@ -3739,12 +3739,8 @@ void PropertyCascade::apply_declaration(
                 if (t.z_scale != 1.0f) t.is_3d = true;
                 style.transforms.push_back(t);
             } else if (fn_name == "scalez") {
-                // scaleZ(z)
-                Transform t;
-                t.type = TransformType::Scale;
-                t.z_scale = parse_float(args, 1.0f);
-                if (t.z_scale != 1.0f) t.is_3d = true;
-                style.transforms.push_back(t);
+                // scaleZ(z) — no-op in 2D rendering
+                (void)args;
             } else if (fn_name == "rotate3d") {
                 // rotate3d(x, y, z, angle) — keep axis for 2D fallback
                 auto parts = split_transform_parts(args, 4);
@@ -3759,17 +3755,8 @@ void PropertyCascade::apply_declaration(
                     style.transforms.push_back(t);
                 }
             } else if (fn_name == "rotatex" || fn_name == "rotatey") {
-                // rotateX/rotateY
-                Transform t;
-                t.type = TransformType::Rotate;
-                t.angle = parse_angle_deg(args);
-                t.is_3d = true;
-                if (fn_name == "rotatex") {
-                    t.axis_x = 1.0f;
-                } else {
-                    t.axis_y = 1.0f;
-                }
-                style.transforms.push_back(t);
+                // rotateX/rotateY — no-op in 2D (out-of-plane rotation)
+                (void)args;
             } else if (fn_name == "rotatez") {
                 // rotateZ(angle) — equivalent to rotate(angle) in 2D
                 Transform t;
@@ -3779,26 +3766,13 @@ void PropertyCascade::apply_declaration(
                 t.is_3d = true;
                 style.transforms.push_back(t);
             } else if (fn_name == "perspective") {
-                // perspective(d) — store as perspective matrix transform
-                auto depth = parse_length(trim(args));
-                if (depth) {
-                    float depth_px = depth->to_px();
-                    if (depth_px > 0) {
-                        Transform t;
-                        t.type = TransformType::Matrix;
-                        t.is_3d = true;
-                        t.m4[11] = -1.0f / depth_px;
-                        style.transforms.push_back(t);
-                    }
-                }
+                // perspective() as transform function — no-op in 2D rendering
+                (void)args;
             } else if (fn_name == "matrix3d") {
-                // matrix3d(a1..a16) — store full 4x4 row-major matrix
-                Transform t;
-                t.type = TransformType::Matrix;
+                // matrix3d(a1..a16) — extract 2D components from 4x4 column-major matrix
+                // Column-major layout: [a,b,0,0, c,d,0,0, 0,0,1,0, tx,ty,0,1]
+                // 2D: a=vals[0], b=vals[1], c=vals[4], d=vals[5], tx=vals[12], ty=vals[13]
                 std::vector<float> vals16;
-                for (size_t i = 0; i < 16; ++i) {
-                    t.m4[i] = (i % 5 == 0) ? 1.0f : 0.0f;
-                }
                 {
                     std::string s = args;
                     size_t p = 0;
@@ -3811,12 +3785,18 @@ void PropertyCascade::apply_declaration(
                     }
                 }
                 if (vals16.size() >= 16) {
-                    for (size_t i = 0; i < 16; ++i) {
-                        t.m4[i] = vals16[i];
-                    }
+                    Transform t;
+                    t.type = TransformType::Matrix;
                     t.is_3d = true;
+                    // Extract 2D affine components from 4x4 column-major matrix
+                    t.m[0] = vals16[0];   // a
+                    t.m[1] = vals16[1];   // b
+                    t.m[2] = vals16[4];   // c
+                    t.m[3] = vals16[5];   // d
+                    t.m[4] = vals16[12];  // tx
+                    t.m[5] = vals16[13];  // ty
+                    style.transforms.push_back(t);
                 }
-                style.transforms.push_back(t);
             }
         }
         return;

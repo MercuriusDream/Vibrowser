@@ -354,8 +354,22 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
                     transform_count++;
                     break;
                 case clever::css::TransformType::Rotate:
-                    if (!t.is_3d || ((std::fabs(t.axis_x - 0.0f) <= eps) && (std::fabs(t.axis_y - 0.0f) <= eps) && (std::fabs(t.axis_z - 1.0f) <= eps))) {
+                    if (!t.is_3d) {
                         list.push_rotate(t.angle, origin_x, origin_y);
+                        break;
+                    }
+                    if (std::fabs(t.axis_x) <= eps && std::fabs(t.axis_y) <= eps) {
+                        list.push_rotate(t.angle, origin_x, origin_y);
+                        break;
+                    }
+                    if (std::fabs(t.axis_x - 1.0f) <= eps && std::fabs(t.axis_y) <= eps && std::fabs(t.axis_z) <= eps) {
+                        float rx = 1.0f - (1.0f - std::fabs(std::cos(t.angle * 3.14159265f / 180.0f))) * 0.2f;
+                        list.push_scale(1.0f, rx, origin_x, origin_y);
+                        break;
+                    }
+                    if (std::fabs(t.axis_y - 1.0f) <= eps && std::fabs(t.axis_x) <= eps && std::fabs(t.axis_z) <= eps) {
+                        float ry = 1.0f - (1.0f - std::fabs(std::cos(t.angle * 3.14159265f / 180.0f))) * 0.2f;
+                        list.push_scale(ry, 1.0f, origin_x, origin_y);
                         break;
                     }
                     if (std::fabs(t.axis_z) <= eps) {
@@ -408,12 +422,12 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
                     // Effective = T(ox,oy) * M * T(-ox,-oy)
                     // Adjusted e' = e + ox*(1 - a) - c*oy
                     // Adjusted f' = f - b*ox + oy*(1 - d)
-                    float a = t.m4[0];
-                    float b = t.m4[1];
-                    float c = t.m4[4];
-                    float d = t.m4[5];
-                    float e = t.m4[12] + origin_x * (1.0f - a) - c * origin_y;
-                    float f = t.m4[13] - b * origin_x + origin_y * (1.0f - d);
+                    float a = t.is_3d ? t.m4[0] : t.m[0];
+                    float b = t.is_3d ? t.m4[1] : t.m[1];
+                    float c = t.is_3d ? t.m4[4] : t.m[2];
+                    float d = t.is_3d ? t.m4[5] : t.m[3];
+                    float e = (t.is_3d ? t.m4[12] : t.m[4]) + origin_x * (1.0f - a) - c * origin_y;
+                    float f = (t.is_3d ? t.m4[13] : t.m[5]) - b * origin_x + origin_y * (1.0f - d);
                     list.push_matrix(a, b, c, d, e, f);
                     transform_count++;
                     break;
