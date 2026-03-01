@@ -1582,8 +1582,8 @@ void SoftwareRenderer::draw_image(const Rect& dest, const ImageData& image, int 
     float scale_x = static_cast<float>(image.width) / dest.width;
     float scale_y = static_cast<float>(image.height) / dest.height;
 
-    // crisp-edges (3) or pixelated (4): use nearest-neighbor sampling
-    bool nearest = (image_rendering == 3 || image_rendering == 4);
+    // pixelated (1) or crisp-edges (2): use nearest-neighbor sampling
+    bool nearest = (image_rendering == 1 || image_rendering == 2);
 
     for (int dy = dy0; dy < dy1; dy++) {
         float sy = (dy - dest.y) * scale_y;

@@ -3000,10 +3000,11 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                 style.object_position_y = v;
             }
         } else if (d.property == "image-rendering") {
-            if (val_lower == "smooth") style.image_rendering = 1;
-            else if (val_lower == "high-quality") style.image_rendering = 2;
-            else if (val_lower == "crisp-edges" || val_lower == "-webkit-optimize-contrast") style.image_rendering = 3;
-            else if (val_lower == "pixelated") style.image_rendering = 4;
+            if (val_lower == "auto") style.image_rendering = 0;
+            else if (val_lower == "smooth") style.image_rendering = 0;
+            else if (val_lower == "pixelated") style.image_rendering = 1;
+            else if (val_lower == "crisp-edges" || val_lower == "-webkit-optimize-contrast") style.image_rendering = 2;
+            else if (val_lower == "high-quality") style.image_rendering = 0;
             else style.image_rendering = 0;
         } else if (d.property == "hanging-punctuation") {
             if (val_lower == "first") style.hanging_punctuation = 1;

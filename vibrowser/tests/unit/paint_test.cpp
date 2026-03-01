@@ -9224,7 +9224,7 @@ TEST(PaintArea, AreaAttributesParsed) {
 }
 
 // ============================================================================
-// PaintImageRendering: PixelatedInline — style="image-rendering:pixelated" → image_rendering==4
+// PaintImageRendering: PixelatedInline — style="image-rendering:pixelated" → image_rendering==1
 // ============================================================================
 TEST(PaintImageRendering, PixelatedInline) {
     auto result = render_html(
@@ -9235,19 +9235,19 @@ TEST(PaintImageRendering, PixelatedInline) {
     ASSERT_TRUE(result.root != nullptr);
     std::function<const LayoutNode*(const LayoutNode&)> find_ir =
         [&](const LayoutNode& node) -> const LayoutNode* {
-        if (node.image_rendering == 4) return &node;
+        if (node.image_rendering == 1) return &node;
         for (auto& child : node.children) {
             if (auto* found = find_ir(*child)) return found;
         }
         return nullptr;
     };
     const auto* ir_node = find_ir(*result.root);
-    ASSERT_NE(ir_node, nullptr) << "Should find a node with image_rendering=4 (pixelated)";
-    EXPECT_EQ(ir_node->image_rendering, 4) << "image-rendering: pixelated should be 4";
+    ASSERT_NE(ir_node, nullptr) << "Should find a node with image_rendering=1 (pixelated)";
+    EXPECT_EQ(ir_node->image_rendering, 1) << "image-rendering: pixelated should be 1";
 }
 
 // ============================================================================
-// PaintImageRendering: CrispEdgesInline — style="image-rendering:crisp-edges" → image_rendering==3
+// PaintImageRendering: CrispEdgesInline — style="image-rendering:crisp-edges" → image_rendering==2
 // ============================================================================
 TEST(PaintImageRendering, CrispEdgesInline) {
     auto result = render_html(
@@ -9258,15 +9258,15 @@ TEST(PaintImageRendering, CrispEdgesInline) {
     ASSERT_TRUE(result.root != nullptr);
     std::function<const LayoutNode*(const LayoutNode&)> find_ir =
         [&](const LayoutNode& node) -> const LayoutNode* {
-        if (node.image_rendering == 3) return &node;
+        if (node.image_rendering == 2) return &node;
         for (auto& child : node.children) {
             if (auto* found = find_ir(*child)) return found;
         }
         return nullptr;
     };
     const auto* ir_node = find_ir(*result.root);
-    ASSERT_NE(ir_node, nullptr) << "Should find a node with image_rendering=3 (crisp-edges)";
-    EXPECT_EQ(ir_node->image_rendering, 3) << "image-rendering: crisp-edges should be 3";
+    ASSERT_NE(ir_node, nullptr) << "Should find a node with image_rendering=2 (crisp-edges)";
+    EXPECT_EQ(ir_node->image_rendering, 2) << "image-rendering: crisp-edges should be 2";
 }
 
 // ============================================================================
@@ -11961,13 +11961,13 @@ TEST(PaintIntegration, ImageRenderingInline) {
 
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.image_rendering == 4) {
+        if (n.image_rendering == 1) {
             found = true;
         }
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "image-rendering: pixelated should set image_rendering==4";
+    EXPECT_TRUE(found) << "image-rendering: pixelated should set image_rendering==1";
 }
 
 // ============================================================================
@@ -16139,7 +16139,7 @@ TEST_F(PaintTest, ImageRenderingCrispEdges) {
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
         if (n.tag_name == "div" && !found) {
-            EXPECT_EQ(n.image_rendering, 3);
+            EXPECT_EQ(n.image_rendering, 2);
             found = true;
         }
         for (auto& c : n.children) check(*c);
@@ -16162,7 +16162,7 @@ TEST_F(PaintTest, ImageRenderingPixelated) {
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
         if (n.tag_name == "div" && !found) {
-            EXPECT_EQ(n.image_rendering, 4);
+            EXPECT_EQ(n.image_rendering, 1);
             found = true;
         }
         for (auto& c : n.children) check(*c);
@@ -31871,7 +31871,7 @@ TEST_F(PaintTest, ImageRenderingPixelatedNearestNeighbor) {
     // Verify image_rendering is set on the layout node
     std::function<const clever::layout::LayoutNode*(const clever::layout::LayoutNode*)> find_node;
     find_node = [&](const clever::layout::LayoutNode* n) -> const clever::layout::LayoutNode* {
-        if (n->image_rendering == 4) return n; // pixelated = 4
+        if (n->image_rendering == 1) return n; // pixelated = 1
         for (auto& c : n->children) {
             auto* r = find_node(c.get());
             if (r) return r;
@@ -31880,7 +31880,7 @@ TEST_F(PaintTest, ImageRenderingPixelatedNearestNeighbor) {
     };
     auto* node = find_node(result.root.get());
     ASSERT_NE(node, nullptr);
-    EXPECT_EQ(node->image_rendering, 4); // pixelated
+    EXPECT_EQ(node->image_rendering, 1); // pixelated
 }
 
 // Test: image-rendering: crisp-edges parsed on layout node
@@ -31894,7 +31894,7 @@ TEST_F(PaintTest, ImageRenderingCrispEdgesNearest) {
     ASSERT_NE(result.root, nullptr);
     std::function<const clever::layout::LayoutNode*(const clever::layout::LayoutNode*)> find_node;
     find_node = [&](const clever::layout::LayoutNode* n) -> const clever::layout::LayoutNode* {
-        if (n->image_rendering == 3) return n; // crisp-edges = 3
+        if (n->image_rendering == 2) return n; // crisp-edges = 2
         for (auto& c : n->children) {
             auto* r = find_node(c.get());
             if (r) return r;
@@ -31903,7 +31903,7 @@ TEST_F(PaintTest, ImageRenderingCrispEdgesNearest) {
     };
     auto* node = find_node(result.root.get());
     ASSERT_NE(node, nullptr);
-    EXPECT_EQ(node->image_rendering, 3); // crisp-edges
+    EXPECT_EQ(node->image_rendering, 2); // crisp-edges
 }
 
 // Test: font-feature-settings parsed and stored on layout node
