@@ -7,6 +7,38 @@
 
 namespace clever::paint {
 
+namespace {
+int reflect_coordinate(int value, int limit) {
+    if (limit <= 1) return 0;
+    const int period = limit * 2 - 2;
+    int reflected = value % period;
+    if (reflected < 0) reflected += period;
+    if (reflected >= limit) reflected = period - reflected;
+    return reflected;
+}
+
+std::vector<float> make_gaussian_kernel(float radius, int& kernel_radius) {
+    kernel_radius = 0;
+    const float sigma = radius / 2.0f;
+    if (radius <= 0.0f || sigma <= 0.0f) return {};
+
+    kernel_radius = std::max(1, static_cast<int>(std::ceil(radius)));
+    const int kernel_size = kernel_radius * 2 + 1;
+    std::vector<float> kernel(kernel_size);
+    const float two_sigma_sq = 2.0f * sigma * sigma;
+    float sum = 0.0f;
+    for (int k = -kernel_radius; k <= kernel_radius; ++k) {
+        const float w = std::exp(-static_cast<float>(k * k) / two_sigma_sq);
+        kernel[k + kernel_radius] = w;
+        sum += w;
+    }
+    if (sum > 0.0f) {
+        for (float& w : kernel) w /= sum;
+    }
+    return kernel;
+}
+}  // namespace
+
 SoftwareRenderer::SoftwareRenderer(int width, int height)
     : width_(width), height_(height), pixels_(width * height * 4, 0),
       text_renderer_(std::make_unique<TextRenderer>()) {
@@ -1724,66 +1756,62 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
     int x1 = std::min(width_, static_cast<int>(bounds.x + bounds.width));
     int y1 = std::min(height_, static_cast<int>(bounds.y + bounds.height));
 
-    // Blur (type 9) — two-pass box blur, handled separately from per-pixel filters
+    // Blur (type 9) — Gaussian 2-pass separable convolution
     if (filter_type == 9) {
-        int radius = static_cast<int>(value);
-        if (radius <= 0) return;
-        if (radius > 50) radius = 50; // clamp to reasonable max
+        float radius = value;
+        if (radius <= 0.0f) return;
+        if (radius > 50.0f) radius = 50.0f; // clamp to reasonable max
 
         int rw = x1 - x0; // region width
         int rh = y1 - y0; // region height
         if (rw <= 0 || rh <= 0) return;
 
-        // Temporary buffer for intermediate results (same size as region, RGBA)
-        std::vector<uint8_t> temp(rw * rh * 4, 0);
+        int kernel_radius = 0;
+        std::vector<float> kernel = make_gaussian_kernel(radius, kernel_radius);
+        if (kernel.empty()) return;
+
+        // Temporary buffer for intermediate results (same size as region, RGBA, float precision)
+        std::vector<float> temp(rw * rh * 4, 0.0f);
 
         // --- Horizontal pass: read from pixels_, write to temp ---
         for (int py = y0; py < y1; py++) {
             for (int px = x0; px < x1; px++) {
-                int sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
-                int count = 0;
-                for (int kx = -radius; kx <= radius; kx++) {
-                    int sx = px + kx;
-                    // Clamp source x to region bounds
-                    if (sx < x0) sx = x0;
-                    if (sx >= x1) sx = x1 - 1;
+                float sum_r = 0.0f, sum_g = 0.0f, sum_b = 0.0f, sum_a = 0.0f;
+                for (int kx = -kernel_radius; kx <= kernel_radius; kx++) {
+                    int sx = x0 + reflect_coordinate((px - x0) + kx, rw);
+                    float w = kernel[kx + kernel_radius];
                     int src_idx = (py * width_ + sx) * 4;
-                    sum_r += pixels_[src_idx];
-                    sum_g += pixels_[src_idx + 1];
-                    sum_b += pixels_[src_idx + 2];
-                    sum_a += pixels_[src_idx + 3];
-                    count++;
+                    sum_r += pixels_[src_idx] * w;
+                    sum_g += pixels_[src_idx + 1] * w;
+                    sum_b += pixels_[src_idx + 2] * w;
+                    sum_a += pixels_[src_idx + 3] * w;
                 }
                 int dst_idx = ((py - y0) * rw + (px - x0)) * 4;
-                temp[dst_idx]     = static_cast<uint8_t>(sum_r / count);
-                temp[dst_idx + 1] = static_cast<uint8_t>(sum_g / count);
-                temp[dst_idx + 2] = static_cast<uint8_t>(sum_b / count);
-                temp[dst_idx + 3] = static_cast<uint8_t>(sum_a / count);
+                temp[dst_idx]     = sum_r;
+                temp[dst_idx + 1] = sum_g;
+                temp[dst_idx + 2] = sum_b;
+                temp[dst_idx + 3] = sum_a;
             }
         }
 
         // --- Vertical pass: read from temp, write back to pixels_ ---
         for (int py = y0; py < y1; py++) {
             for (int px = x0; px < x1; px++) {
-                int sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
-                int count = 0;
-                for (int ky = -radius; ky <= radius; ky++) {
-                    int sy = py + ky;
-                    // Clamp source y to region bounds
-                    if (sy < y0) sy = y0;
-                    if (sy >= y1) sy = y1 - 1;
+                float sum_r = 0.0f, sum_g = 0.0f, sum_b = 0.0f, sum_a = 0.0f;
+                for (int ky = -kernel_radius; ky <= kernel_radius; ky++) {
+                    int sy = y0 + reflect_coordinate((py - y0) + ky, rh);
+                    float w = kernel[ky + kernel_radius];
                     int src_idx = ((sy - y0) * rw + (px - x0)) * 4;
-                    sum_r += temp[src_idx];
-                    sum_g += temp[src_idx + 1];
-                    sum_b += temp[src_idx + 2];
-                    sum_a += temp[src_idx + 3];
-                    count++;
+                    sum_r += temp[src_idx] * w;
+                    sum_g += temp[src_idx + 1] * w;
+                    sum_b += temp[src_idx + 2] * w;
+                    sum_a += temp[src_idx + 3] * w;
                 }
                 int dst_idx = (py * width_ + px) * 4;
-                pixels_[dst_idx]     = static_cast<uint8_t>(sum_r / count);
-                pixels_[dst_idx + 1] = static_cast<uint8_t>(sum_g / count);
-                pixels_[dst_idx + 2] = static_cast<uint8_t>(sum_b / count);
-                pixels_[dst_idx + 3] = static_cast<uint8_t>(sum_a / count);
+                pixels_[dst_idx]     = static_cast<uint8_t>(std::lround(std::clamp(sum_r, 0.0f, 255.0f)));
+                pixels_[dst_idx + 1] = static_cast<uint8_t>(std::lround(std::clamp(sum_g, 0.0f, 255.0f)));
+                pixels_[dst_idx + 2] = static_cast<uint8_t>(std::lround(std::clamp(sum_b, 0.0f, 255.0f)));
+                pixels_[dst_idx + 3] = static_cast<uint8_t>(std::lround(std::clamp(sum_a, 0.0f, 255.0f)));
             }
         }
 
