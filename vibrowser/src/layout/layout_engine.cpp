@@ -1109,6 +1109,20 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
         if (node.geometry.height <= 0) node.geometry.height = max_h;
     }
 
+    // For replaced elements (images) with a natural aspect ratio, adjust height
+    // proportionally if max-width will clamp the width, before constraints are applied.
+    if (node.aspect_ratio_is_auto && node.image_width > 0 && node.image_height > 0
+        && node.specified_width > 0 && node.specified_height > 0
+        && node.geometry.width == node.specified_width) {
+        float effective_max_w = (node.max_width < 1e8f) ? node.max_width : node.geometry.width;
+        float effective_min_w = node.min_width;
+        float clamped_w = std::max(effective_min_w, std::min(effective_max_w, node.geometry.width));
+        if (clamped_w != node.geometry.width && node.specified_width > 0) {
+            float scale = clamped_w / node.specified_width;
+            node.geometry.height = node.specified_height * scale;
+        }
+    }
+
     apply_min_max_constraints(node);
 }
 
