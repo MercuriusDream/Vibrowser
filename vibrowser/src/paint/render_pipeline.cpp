@@ -1562,6 +1562,7 @@ uint32_t parse_html_color_attr(const std::string& value) {
 // Process counter-reset and counter-increment from a ComputedStyle
 void process_css_counters(const clever::css::ComputedStyle& style) {
     // Handle counter-reset: "name [value]"
+    // When counter-reset occurs, push current value to scope stack to support counters() nesting
     if (!style.counter_reset.empty()) {
         std::istringstream iss(style.counter_reset);
         std::string name;
@@ -1578,6 +1579,39 @@ void process_css_counters(const clever::css::ComputedStyle& style) {
                     iss.seekg(pos);
                 }
             }
+            // Push current value to scope stack before resetting
+            // This allows counters() function to build a scope chain for nested contexts
+            int current_val = 0;
+            auto it = css_counters.find(name);
+            if (it != css_counters.end()) {
+                current_val = it->second;
+            }
+            css_counter_scopes[name].push_back(current_val);
+            css_counters[name] = val;
+        }
+    }
+
+    // Handle counter-set: same as counter-reset (both establish a new scope level)
+    if (!style.counter_set.empty()) {
+        std::istringstream iss(style.counter_set);
+        std::string name;
+        while (iss >> name) {
+            int val = 0;
+            std::streampos pos = iss.tellg();
+            std::string maybe_num;
+            if (iss >> maybe_num) {
+                try {
+                    val = std::stoi(maybe_num);
+                } catch (...) {
+                    iss.seekg(pos);
+                }
+            }
+            int current_val = 0;
+            auto it = css_counters.find(name);
+            if (it != css_counters.end()) {
+                current_val = it->second;
+            }
+            css_counter_scopes[name].push_back(current_val);
             css_counters[name] = val;
         }
     }
@@ -1598,6 +1632,59 @@ void process_css_counters(const clever::css::ComputedStyle& style) {
                 }
             }
             css_counters[name] += inc;
+        }
+    }
+}
+
+// Pop counter scopes when an element with counter-reset/counter-set finishes
+// This is called after processing an element's descendants to restore parent scope
+void pop_css_counter_scopes(const clever::css::ComputedStyle& style) {
+    // Pop scope for each counter that was reset
+    if (!style.counter_reset.empty()) {
+        std::istringstream iss(style.counter_reset);
+        std::string name;
+        while (iss >> name) {
+            // Skip any number that follows the counter name
+            std::streampos pos = iss.tellg();
+            std::string maybe_num;
+            if (iss >> maybe_num) {
+                try {
+                    std::stoi(maybe_num);
+                } catch (...) {
+                    iss.seekg(pos);
+                }
+            }
+            // Pop the scope level
+            auto scope_it = css_counter_scopes.find(name);
+            if (scope_it != css_counter_scopes.end() && !scope_it->second.empty()) {
+                int prev_val = scope_it->second.back();
+                scope_it->second.pop_back();
+                // Restore previous counter value
+                css_counters[name] = prev_val;
+            }
+        }
+    }
+
+    // Pop scope for each counter that was set
+    if (!style.counter_set.empty()) {
+        std::istringstream iss(style.counter_set);
+        std::string name;
+        while (iss >> name) {
+            std::streampos pos = iss.tellg();
+            std::string maybe_num;
+            if (iss >> maybe_num) {
+                try {
+                    std::stoi(maybe_num);
+                } catch (...) {
+                    iss.seekg(pos);
+                }
+            }
+            auto scope_it = css_counter_scopes.find(name);
+            if (scope_it != css_counter_scopes.end() && !scope_it->second.empty()) {
+                int prev_val = scope_it->second.back();
+                scope_it->second.pop_back();
+                css_counters[name] = prev_val;
+            }
         }
     }
 }
@@ -5221,6 +5308,30 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                     style.clip_path_values = {top, right_v, bottom_v, left_v};
                     // Append border-radius values if present (for rounded inset)
                     style.clip_path_values.insert(style.clip_path_values.end(), radii.begin(), radii.end());
+                }
+            } else if (val_lower.find("polygon(") == 0) {
+                auto lp = val_lower.find('(');
+                auto rp = val_lower.rfind(')');
+                if (lp != std::string::npos && rp != std::string::npos && rp > lp) {
+                    std::string inner = trim(val_lower.substr(lp + 1, rp - lp - 1));
+                    for (char& c : inner) {
+                        if (c == ',') c = ' ';
+                    }
+                    auto parts = split_whitespace(inner);
+                    auto parse_coord = [](const std::string& s) -> float {
+                        try {
+                            if (s.back() == '%') return -std::stof(s.substr(0, s.size() - 1));
+                            std::string v = s;
+                            if (v.size() > 2 && v.substr(v.size() - 2) == "px") v = v.substr(0, v.size() - 2);
+                            return std::stof(v);
+                        } catch (...) { return 0.0f; }
+                    };
+                    style.clip_path_type = 4;
+                    style.clip_path_values.clear();
+                    for (size_t i = 0; i + 1 < parts.size(); i += 2) {
+                        style.clip_path_values.push_back(parse_coord(parts[i]));
+                        style.clip_path_values.push_back(parse_coord(parts[i + 1]));
+                    }
                 }
             } else if (val_lower.find("path(") == 0) {
                 // clip-path: path("M0,0 L100,0 L100,100 L0,100 Z")
@@ -14220,6 +14331,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (layout_node->font_size == 16.0f) layout_node->font_size = default_size;
     }
 
+    // Pop counter scopes after processing element and its descendants
+    pop_css_counter_scopes(style);
+
     return layout_node;
 }
 
@@ -15900,6 +16014,11 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
     // Reset interactive <details> toggle counter
     g_details_id_counter = 0;
     g_noscript_fallback = false;
+
+    // Reset CSS counter state at the start of each render
+    // This ensures clean counter state for each document render
+    css_counters.clear();
+    css_counter_scopes.clear();
 
     // Force light mode for CSS resolution. Most websites (including Google)
     // expect prefers-color-scheme: light. Our browser doesn't have a dark mode
