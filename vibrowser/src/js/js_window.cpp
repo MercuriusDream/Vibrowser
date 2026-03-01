@@ -4853,7 +4853,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
 
     // ---- navigator.sendBeacon (stub - returns true, no-op) ----
     JS_SetPropertyStr(ctx, navigator, "sendBeacon",
-        JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+        JS_NewCFunction(ctx, [](JSContext* /*c*/, JSValueConst, int, JSValueConst*) -> JSValue {
             return JS_TRUE;  // spec: returns true if queued successfully
         }, "sendBeacon", 2));
 
@@ -4899,7 +4899,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
             return promise;
         }, "share", 1));
     JS_SetPropertyStr(ctx, navigator, "canShare",
-        JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+        JS_NewCFunction(ctx, [](JSContext* /*c*/, JSValueConst, int, JSValueConst*) -> JSValue {
             return JS_FALSE;
         }, "canShare", 1));
 

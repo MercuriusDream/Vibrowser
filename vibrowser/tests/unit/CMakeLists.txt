@@ -70,6 +70,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/paint_test.cpp")
     add_executable(vibrowser_paint_tests paint_test.cpp)
     target_link_libraries(vibrowser_paint_tests PRIVATE vibrowser_paint GTest::gtest_main)
     add_test(NAME paint_tests COMMAND vibrowser_paint_tests)
+    set_tests_properties(paint_tests PROPERTIES TIMEOUT 120)
 endif()
 
 # Native image decoding tests (macOS only, Objective-C++)

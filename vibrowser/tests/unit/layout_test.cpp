@@ -1576,11 +1576,10 @@ TEST(LayoutEngine, BoxSizingBorderBoxWidth) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 600.0f);
 
-    // geometry.width = specified_width = 200 (the engine convention)
-    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 200.0f);
-    // border_box_width = border + padding + width + padding + border = 244
-    // This is correct for the engine's convention
-    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 244.0f);
+    // geometry.width = content box width = specified_width - padding - border = 200 - 40 - 4 = 156
+    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 156.0f);
+    // border_box_width = content_width + padding + border = 156 + 40 + 4 = 200 (= specified_width)
+    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 200.0f);
 }
 
 TEST(LayoutEngine, BoxSizingBorderBoxHeight) {
@@ -21907,10 +21906,10 @@ TEST(LayoutEngineTest, BorderBoxSizingPreservesGeometryWidthV116) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 600.0f);
 
-    // In this engine, geometry.width stores specified_width directly
-    EXPECT_FLOAT_EQ(cp->geometry.width, 200.0f);
-    // border_box_width = border + padding + width + padding + border = 10+15+200+15+10 = 250
-    EXPECT_FLOAT_EQ(cp->geometry.border_box_width(), 250.0f);
+    // geometry.width = content box width = 200 - (10+15)*2 = 200 - 50 = 150
+    EXPECT_FLOAT_EQ(cp->geometry.width, 150.0f);
+    // border_box_width = content + padding + border = 150 + 50 = 200 (= specified_width)
+    EXPECT_FLOAT_EQ(cp->geometry.border_box_width(), 200.0f);
 }
 
 // V116-5: Flex shrink reduces oversized children proportionally
@@ -22401,11 +22400,10 @@ TEST(LayoutEngineTest, BlockBorderBoxIncludesPaddingV119) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 600.0f);
 
-    // Engine convention: geometry.width stores specified_width directly
-    EXPECT_FLOAT_EQ(cp->geometry.width, 200.0f);
-    // border_box_width = border.left + padding.left + width + padding.right + border.right
-    // = 5 + 20 + 200 + 20 + 5 = 250
-    EXPECT_FLOAT_EQ(cp->geometry.border_box_width(), 250.0f);
+    // geometry.width = content box width = specified_width - padding - border = 200 - 40 - 10 = 150
+    EXPECT_FLOAT_EQ(cp->geometry.width, 150.0f);
+    // border_box_width = content + padding + border = 150 + 40 + 10 = 200 (= specified_width)
+    EXPECT_FLOAT_EQ(cp->geometry.border_box_width(), 200.0f);
 }
 
 // V119-2: Multiple block children with margins stack correctly
@@ -22628,10 +22626,10 @@ TEST(LayoutEngineTest, BorderBoxWidthIncludesPaddingBorderV120) {
     LayoutEngine engine;
     engine.compute(*root, 400.0f, 400.0f);
 
-    // Engine sets geometry.width = specified_width (300)
-    EXPECT_FLOAT_EQ(cp->geometry.width, 300.0f);
-    // border_box_width = width + padding.left + padding.right + border.left + border.right
-    EXPECT_FLOAT_EQ(cp->geometry.border_box_width(), 350.0f);
+    // geometry.width = content box width = specified_width - padding - border = 300 - 40 - 10 = 250
+    EXPECT_FLOAT_EQ(cp->geometry.width, 250.0f);
+    // border_box_width = content + padding + border = 250 + 40 + 10 = 300 (= specified_width)
+    EXPECT_FLOAT_EQ(cp->geometry.border_box_width(), 300.0f);
 }
 
 // V120-3: Flex column lays out children stacked vertically with correct positions
@@ -23081,14 +23079,14 @@ TEST(LayoutEngineTest, BorderBoxSizingSubtractsPaddingAndBorderV122) {
     LayoutEngine engine;
     engine.compute(*root, 400.0f, 600.0f);
 
-    // Engine convention: geometry.width = specified_width = 300
-    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 300.0f);
-    // border_box_width = border.left + padding.left + width + padding.right + border.right
-    //                  = 5 + 20 + 300 + 20 + 5 = 350
-    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 350.0f);
-    // geometry.height = specified_height = 150
+    // geometry.width = content box width = specified_width - padding - border = 300 - 40 - 10 = 250
+    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 250.0f);
+    // border_box_width = content + padding + border = 250 + 50 = 300 (= specified_width)
+    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 300.0f);
+    // geometry.height = specified_height (engine stores specified height directly, no border-box subtraction)
     EXPECT_FLOAT_EQ(child_ptr->geometry.height, 150.0f);
-    // border_box_height = 5 + 10 + 150 + 10 + 5 = 180
+    // border_box_height = height + padding_top + padding_bottom + border_top + border_bottom
+    //                   = 150 + 10 + 10 + 5 + 5 = 180
     EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_height(), 180.0f);
     // The border_box flag itself should be set
     EXPECT_TRUE(child_ptr->border_box);

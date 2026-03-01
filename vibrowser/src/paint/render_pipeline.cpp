@@ -14178,7 +14178,7 @@ static bool evaluate_media_feature(const std::string& expr, int vw, int vh);
 // Parse "sizes" attribute: "(max-width: 600px) 400px, (min-width: 601px) 800px, 100vw"
 // Returns the effective size in pixels for the given viewport width.
 // Evaluates conditions left-to-right; returns the first match, or last size as fallback.
-static float parse_sizes_attribute(const std::string& sizes, int viewport_width, float dpr) {
+static float parse_sizes_attribute(const std::string& sizes, int viewport_width, float /*dpr*/) {
     if (sizes.empty()) return static_cast<float>(viewport_width);
 
     std::string trimmed = sizes;
@@ -14275,7 +14275,7 @@ static float parse_sizes_attribute(const std::string& sizes, int viewport_width,
 // For DPR: picks descriptor >= actual DPR value, preferring closest match.
 // For width: picks smallest URL whose width >= effective_size.
 // Returns empty string if srcset is empty or invalid.
-static std::string select_best_srcset_url(const std::string& srcset, int viewport_width,
+static std::string select_best_srcset_url(const std::string& srcset, int /*viewport_width*/,
                                          float effective_size_px, float dpr) {
     if (srcset.empty()) return std::string();
 

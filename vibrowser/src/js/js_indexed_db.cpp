@@ -138,38 +138,31 @@ static void idb_object_store_finalizer(JSRuntime* /*rt*/, JSValue val) {
 }
 
 static JSClassDef idb_factory_class_def = {
-    "IDBFactory",
-    idb_factory_finalizer,
+    "IDBFactory", idb_factory_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef idb_open_request_class_def = {
-    "IDBOpenDBRequest",
-    idb_open_request_finalizer,
+    "IDBOpenDBRequest", idb_open_request_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef idb_request_class_def = {
-    "IDBRequest",
-    idb_request_finalizer,
+    "IDBRequest", idb_request_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef idb_delete_request_class_def = {
-    "IDBDeleteDBRequest",
-    idb_delete_request_finalizer,
+    "IDBDeleteDBRequest", idb_delete_request_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef idb_database_class_def = {
-    "IDBDatabase",
-    idb_database_finalizer,
+    "IDBDatabase", idb_database_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef idb_transaction_class_def = {
-    "IDBTransaction",
-    idb_transaction_finalizer,
+    "IDBTransaction", idb_transaction_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef idb_object_store_class_def = {
-    "IDBObjectStore",
-    idb_object_store_finalizer,
+    "IDBObjectStore", idb_object_store_finalizer, nullptr, nullptr, nullptr,
 };
 
 static void ensure_indexed_db_classes(JSContext* ctx) {

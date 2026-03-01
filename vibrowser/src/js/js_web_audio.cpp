@@ -178,7 +178,7 @@ static JSValue audio_context_decode_audio_data(JSContext* ctx,
     return JS_UNDEFINED;
 }
 
-static JSValue audio_context_resume(JSContext* ctx, JSValueConst this_val,
+static JSValue audio_context_resume(JSContext* /*ctx*/, JSValueConst this_val,
                                    int argc, JSValueConst* argv) {
     (void)argc;
     (void)argv;
@@ -190,7 +190,7 @@ static JSValue audio_context_resume(JSContext* ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
-static JSValue audio_context_suspend(JSContext* ctx, JSValueConst this_val,
+static JSValue audio_context_suspend(JSContext* /*ctx*/, JSValueConst this_val,
                                     int argc, JSValueConst* argv) {
     (void)argc;
     (void)argv;
@@ -202,7 +202,7 @@ static JSValue audio_context_suspend(JSContext* ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
-static JSValue audio_context_close(JSContext* ctx, JSValueConst this_val,
+static JSValue audio_context_close(JSContext* /*ctx*/, JSValueConst this_val,
                                   int argc, JSValueConst* argv) {
     (void)argc;
     (void)argv;
@@ -407,7 +407,7 @@ static JSValue audio_buffer_source_get_buffer(JSContext* ctx, JSValueConst this_
     return make_audio_buffer_object(ctx, 1, 0, 48000.0);
 }
 
-static JSValue audio_buffer_source_set_buffer(JSContext* ctx, JSValueConst this_val,
+static JSValue audio_buffer_source_set_buffer(JSContext* /*ctx*/, JSValueConst this_val,
                                              int argc, JSValueConst* argv) {
     auto* state = static_cast<AudioBufferSourceNodeState*>(
         JS_GetOpaque(this_val, audio_buffer_source_node_class_id));
@@ -574,38 +574,31 @@ static void destination_finalizer(JSRuntime* /*rt*/, JSValue val) {
 }
 
 static JSClassDef audio_context_class_def = {
-    "AudioContext",
-    audio_context_finalizer,
+    "AudioContext", audio_context_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef oscillator_node_class_def = {
-    "OscillatorNode",
-    oscillator_finalizer,
+    "OscillatorNode", oscillator_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef gain_node_class_def = {
-    "GainNode",
-    gain_finalizer,
+    "GainNode", gain_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef analyser_node_class_def = {
-    "AnalyserNode",
-    analyser_finalizer,
+    "AnalyserNode", analyser_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef audio_buffer_source_node_class_def = {
-    "AudioBufferSourceNode",
-    audio_buffer_source_finalizer,
+    "AudioBufferSourceNode", audio_buffer_source_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef audio_buffer_class_def = {
-    "AudioBuffer",
-    audio_buffer_finalizer,
+    "AudioBuffer", audio_buffer_finalizer, nullptr, nullptr, nullptr,
 };
 
 static JSClassDef audio_destination_node_class_def = {
-    "AudioDestinationNode",
-    destination_finalizer,
+    "AudioDestinationNode", destination_finalizer, nullptr, nullptr, nullptr,
 };
 
 static void ensure_web_audio_classes(JSContext* ctx) {
