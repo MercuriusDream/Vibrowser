@@ -16460,6 +16460,92 @@ void install_dom_bindings(JSContext* ctx,
         },
         configurable: true
     });
+    Object.defineProperty(proto, 'step', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return '';
+            return this.getAttribute('step') || '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            this.setAttribute('step', String(v));
+        },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'pattern', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return '';
+            return this.getAttribute('pattern') || '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            this.setAttribute('pattern', String(v));
+        },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'minLength', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return -1;
+            var raw = this.getAttribute('minlength');
+            if (raw === null || raw === '') return -1;
+            var parsed = parseInt(raw, 10);
+            return isNaN(parsed) ? -1 : parsed;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            var parsed = parseInt(v, 10);
+            if (isNaN(parsed)) this.removeAttribute('minlength');
+            else this.setAttribute('minlength', String(parsed));
+        },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'multiple', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            return isInputLikeTag(tag) ? this.hasAttribute('multiple') : false;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            if (v) this.setAttribute('multiple', '');
+            else this.removeAttribute('multiple');
+        },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'valueAsNumber', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return NaN;
+            if (tag !== 'input') return NaN;
+            var type = (this.getAttribute('type') || 'text').toLowerCase();
+            var rawValue = this.value || '';
+            if (type === 'number' || type === 'range') {
+                var parsed = parseFloat(rawValue);
+                return isNaN(parsed) ? NaN : parsed;
+            }
+            if (type === 'date' || type === 'datetime-local') {
+                var dateParsed = Date.parse(rawValue);
+                return isNaN(dateParsed) ? NaN : dateParsed;
+            }
+            if (type === 'time') {
+                var timeMatch = /^(\d{2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?$/.exec(rawValue);
+                if (!timeMatch) return NaN;
+                var hours = parseInt(timeMatch[1], 10);
+                var minutes = parseInt(timeMatch[2], 10);
+                var secs = timeMatch[3] ? parseFloat(timeMatch[3]) : 0;
+                if (isNaN(hours) || isNaN(minutes) || isNaN(secs)) return NaN;
+                if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59 || secs < 0 || secs >= 60) return NaN;
+                return ((hours * 60 + minutes) * 60 + secs) * 1000;
+            }
+            return NaN;
+        },
+        configurable: true
+    });
 
     // .href (get/set string) — a/link elements
     Object.defineProperty(proto, 'href', {
@@ -16612,6 +16698,32 @@ void install_dom_bindings(JSContext* ctx,
             var tag = this.tagName.toLowerCase();
             if (tag !== 'form') return;
             this.setAttribute('method', String(v));
+        },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'enctype', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'form') return '';
+            return this.getAttribute('enctype') || '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'form') return;
+            this.setAttribute('enctype', String(v));
+        },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'noValidate', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            return tag === 'form' ? this.hasAttribute('novalidate') : false;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'form') return;
+            if (v) this.setAttribute('novalidate', '');
+            else this.removeAttribute('novalidate');
         },
         configurable: true
     });

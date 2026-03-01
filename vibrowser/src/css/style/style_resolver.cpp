@@ -6685,6 +6685,7 @@ void PropertyCascade::apply_declaration(
         if (value_lower == "initial") {
             // Reset all properties to CSS initial values
             style = ComputedStyle(); // Default constructor = CSS initial values
+            style.css_all = "initial";
         } else if (value_lower == "inherit") {
             // For all: inherit, set inherited properties from parent
             // This is complex, so for now just mark it
