@@ -9741,9 +9741,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->display = clever::layout::DisplayType::InlineBlock;
 
         // Determine fill color: use accent-color if set, else default blue
-        uint32_t fill_color = 0xFF4299E1; // default blue
-        uint32_t ac = style.accent_color;
-        if (ac != 0 && ac != 0xFF000000) fill_color = ac;
+        uint32_t fill_color = 0xFF007AFFu; // default blue
+        uint32_t ac = layout_node->accent_color;
+        if (ac != 0) fill_color = ac;
 
         if (indeterminate) {
             // Indeterminate state: create 3 alternating colored stripes
