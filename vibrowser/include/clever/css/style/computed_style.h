@@ -86,7 +86,8 @@ struct Color {
 };
 
 struct Length {
-    enum class Unit { Px, Em, Rem, Percent, Vw, Vh, Auto, Zero, Calc, Ch, Lh, Vmin, Vmax };
+    enum class Unit { Px, Em, Rem, Percent, Vw, Vh, Auto, Zero, Calc, Ch, Lh, Vmin, Vmax,
+                      Cqw, Cqh, Cqi, Cqb, Cqmin, Cqmax };
     float value = 0;
     Unit unit = Unit::Px;
     std::shared_ptr<CalcExpr> calc_expr;  // non-null when unit == Calc

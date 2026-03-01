@@ -13676,37 +13676,114 @@ void flatten_layer_rules(clever::css::StyleSheet& sheet) {
 }
 
 // Evaluate a container query condition against a container's computed dimensions.
-// Supports: (min-width: Npx), (max-width: Npx), (width: Npx),
-//           (min-height: Npx), (max-height: Npx), (height: Npx),
-//           (width > Npx), (width < Npx), (width >= Npx), (width <= Npx)
-static bool evaluate_container_condition(const std::string& cond,
-                                          float container_w,
-                                          float container_h = 0) {
-    std::string c = cond;
-    // Strip outer parens
-    while (!c.empty() && c.front() == '(') c.erase(c.begin());
-    while (!c.empty() && c.back() == ')') c.pop_back();
-    while (!c.empty() && c.front() == ' ') c.erase(c.begin());
-    while (!c.empty() && c.back() == ' ') c.pop_back();
+// Supports:
+//   - (min-width: Npx), (max-width: Npx), (width: Npx)
+//   - (min-height: Npx), (max-height: Npx), (height: Npx)
+//   - (width > Npx), (width < Npx), (width >= Npx), (width <= Npx)
+//   - Combined queries: "(min-width: 800px) and (height > 200px)" and "(width: 100cqw) or (height: 50cqh)"
+static bool is_container_cond_word_char(char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '-';
+}
 
+static bool is_wrapped_by_matching_parens(const std::string& s) {
+    if (s.size() < 2 || s.front() != '(' || s.back() != ')') return false;
+
+    int depth = 0;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '(') {
+            ++depth;
+        } else if (s[i] == ')') {
+            if (depth == 0) return false;
+            --depth;
+            if (depth == 0 && i != s.size() - 1) return false;
+        }
+    }
+    return depth == 0;
+}
+
+static std::string trim_container_parens(std::string c) {
+    c = trim(c);
+    while (is_wrapped_by_matching_parens(c)) {
+        c = trim(c.substr(1, c.size() - 2));
+    }
+    return c;
+}
+
+static std::vector<std::string> split_container_condition_parts(
+    const std::string& cond, const std::string& keyword) {
+    std::vector<std::string> parts;
+    std::string c = cond;
+    std::string lower_cond = to_lower(c);
+    int depth = 0;
+    size_t start = 0;
+    for (size_t i = 0; i < lower_cond.size();) {
+        if (lower_cond[i] == '(') {
+            ++depth;
+            ++i;
+            continue;
+        }
+        if (lower_cond[i] == ')') {
+            if (depth > 0) --depth;
+            ++i;
+            continue;
+        }
+
+        if (depth == 0 &&
+            i + keyword.size() <= lower_cond.size() &&
+            lower_cond.compare(i, keyword.size(), keyword) == 0) {
+            bool left_ok = (i == 0) || !is_container_cond_word_char(lower_cond[i - 1]);
+            bool right_ok = (i + keyword.size() >= lower_cond.size()) ||
+                            !is_container_cond_word_char(lower_cond[i + keyword.size()]);
+            if (left_ok && right_ok) {
+                parts.push_back(trim(c.substr(start, i - start)));
+                i += keyword.size();
+                start = i;
+                continue;
+            }
+        }
+
+        ++i;
+    }
+
+    std::string tail = trim(c.substr(start));
+    if (!tail.empty() || parts.empty()) {
+        parts.push_back(tail);
+    }
+
+    return parts;
+}
+
+static float parse_container_length_value(const std::string& value,
+                                        bool use_container_width,
+                                        float container_w,
+                                        float container_h) {
+    float px = 0;
+    auto l = clever::css::parse_length(value);
+    if (!l) return px;
+
+    if (use_container_width) return l->to_px(container_w, 16.0f, 0);
+    return l->to_px(container_h, 16.0f, 0);
+}
+
+static bool evaluate_single_container_condition(const std::string& c,
+                                              float container_w,
+                                              float container_h) {
     // Handle comparison operators: "width > 300px", "width >= 300px", etc.
     struct OpEntry { const char* str; size_t len; };
     OpEntry ops[] = {{">=", 2}, {"<=", 2}, {">", 1}, {"<", 1}};
     for (auto& op : ops) {
         auto op_pos = c.find(op.str);
         if (op_pos != std::string::npos) {
-            std::string prop = c.substr(0, op_pos);
-            std::string val = c.substr(op_pos + op.len);
-            while (!prop.empty() && prop.back() == ' ') prop.pop_back();
-            while (!val.empty() && val.front() == ' ') val.erase(val.begin());
+            std::string prop = trim(c.substr(0, op_pos));
+            std::string val = trim(c.substr(op_pos + op.len));
 
-            float px_val = 0;
-            try {
-                auto l = clever::css::parse_length(val);
-                if (l) px_val = l->to_px();
-            } catch (...) {}
+            std::string prop_lower = to_lower(prop);
+            bool uses_width = (prop_lower.find("width") != std::string::npos &&
+                              prop_lower.find("height") == std::string::npos);
+            float px_val = parse_container_length_value(
+                val, uses_width, container_w, container_h);
+            float dim = uses_width ? container_w : container_h;
 
-            float dim = (prop == "height") ? container_h : container_w;
             if (std::string(op.str) == ">=") return dim >= px_val;
             if (std::string(op.str) == "<=") return dim <= px_val;
             if (std::string(op.str) == ">") return dim > px_val;
@@ -13717,27 +13794,58 @@ static bool evaluate_container_condition(const std::string& cond,
     // Handle "min-width: Npx", "max-width: Npx", etc.
     auto colon = c.find(':');
     if (colon != std::string::npos) {
-        std::string prop = c.substr(0, colon);
-        std::string val = c.substr(colon + 1);
-        while (!prop.empty() && prop.back() == ' ') prop.pop_back();
-        while (!val.empty() && val.front() == ' ') val.erase(val.begin());
+        std::string prop = trim(c.substr(0, colon));
+        std::string val = trim(c.substr(colon + 1));
 
-        float px_val = 0;
-        try {
-            auto l = clever::css::parse_length(val);
-            if (l) px_val = l->to_px();
-        } catch (...) {}
+        std::string prop_lower = to_lower(prop);
+        bool width_prop = (prop_lower == "min-width" ||
+                           prop_lower == "max-width" ||
+                           prop_lower == "width");
+        bool height_prop = (prop_lower == "min-height" ||
+                            prop_lower == "max-height" ||
+                            prop_lower == "height");
+        if (!width_prop && !height_prop) return false;
 
-        if (prop == "min-width") return container_w >= px_val;
-        if (prop == "max-width") return container_w <= px_val;
-        if (prop == "width") return container_w == px_val;
-        if (prop == "min-height") return container_h >= px_val;
-        if (prop == "max-height") return container_h <= px_val;
-        if (prop == "height") return container_h == px_val;
+        float px_val = parse_container_length_value(
+            val, width_prop, container_w, container_h);
+
+        if (prop_lower == "min-width") return container_w >= px_val;
+        if (prop_lower == "max-width") return container_w <= px_val;
+        if (prop_lower == "width") return container_w == px_val;
+        if (prop_lower == "min-height") return container_h >= px_val;
+        if (prop_lower == "max-height") return container_h <= px_val;
+        if (prop_lower == "height") return container_h == px_val;
     }
 
-    // Fallback: include the rules
     return true;
+}
+
+static bool evaluate_container_condition(const std::string& cond,
+                                          float container_w,
+                                          float container_h = 0) {
+    clever::layout::LayoutNode::s_container_width = container_w;
+    clever::layout::LayoutNode::s_container_height = container_h;
+
+    std::string c = trim_container_parens(cond);
+    if (c.empty()) return true;
+
+    auto or_parts = split_container_condition_parts(c, "or");
+    if (or_parts.size() > 1) {
+        for (const auto& part : or_parts) {
+            if (evaluate_container_condition(part, container_w, container_h)) return true;
+        }
+        return false;
+    }
+
+    auto and_parts = split_container_condition_parts(c, "and");
+    if (and_parts.size() > 1) {
+        for (const auto& part : and_parts) {
+            if (!evaluate_container_condition(part, container_w, container_h)) return false;
+        }
+        return true;
+    }
+
+    return evaluate_single_container_condition(c, container_w, container_h);
 }
 
 // Legacy flatten: used during @import processing where we don't yet have a layout tree.
@@ -13908,6 +14016,9 @@ static bool evaluate_container_queries_post_layout(
                     if (container->container_type == 3) {
                         cw = 0;
                     }
+
+                    clever::layout::LayoutNode::s_container_width = cw;
+                    clever::layout::LayoutNode::s_container_height = ch_val;
 
                     if (evaluate_container_condition(cr.condition, cw, ch_val)) {
                         // Apply each declaration directly to the layout node

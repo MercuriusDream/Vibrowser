@@ -851,6 +851,8 @@ struct LayoutNode {
     // CSS Container Queries: container-type and container-name
     int container_type = 0;       // 0=normal, 1=size, 2=inline-size, 3=block-size
     std::string container_name;
+    static inline float s_container_width = 0;
+    static inline float s_container_height = 0;
 
     // CSS forced-color-adjust: 0=auto, 1=none, 2=preserve-parent-color
     int forced_color_adjust = 0;

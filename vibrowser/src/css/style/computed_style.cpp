@@ -1,4 +1,5 @@
 #include <clever/css/style/computed_style.h>
+#include <clever/layout/box.h>
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
@@ -32,6 +33,22 @@ float Length::to_px(float parent_value, float root_font_size, float line_height)
             return (value / 100.0f) * std::min(s_viewport_w, s_viewport_h);
         case Unit::Vmax:
             return (value / 100.0f) * std::max(s_viewport_w, s_viewport_h);
+        case Unit::Cqw:
+            return (value / 100.0f) * clever::layout::LayoutNode::s_container_width;
+        case Unit::Cqh:
+            return (value / 100.0f) * clever::layout::LayoutNode::s_container_height;
+        case Unit::Cqi:
+            return (value / 100.0f) * clever::layout::LayoutNode::s_container_width;
+        case Unit::Cqb:
+            return (value / 100.0f) * clever::layout::LayoutNode::s_container_height;
+        case Unit::Cqmin:
+            return (value / 100.0f) *
+                   std::min(clever::layout::LayoutNode::s_container_width,
+                            clever::layout::LayoutNode::s_container_height);
+        case Unit::Cqmax:
+            return (value / 100.0f) *
+                   std::max(clever::layout::LayoutNode::s_container_width,
+                            clever::layout::LayoutNode::s_container_height);
         case Unit::Ch:
             // 1ch ≈ advance width of "0" glyph ≈ 0.6 * font-size
             return value * parent_value * 0.6f;

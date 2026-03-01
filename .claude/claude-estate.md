@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1974 — R40-R41 complete. CSS @layer, loading=lazy, DOMMatrix/DOMPoint, Performance API, matchMedia, History API, scroll-behavior, @font-face, list-style.
-**Momentum**: Cycle 1974 — 65+ commits pushed. 14/14 tests passing. 17/19 priority gaps DONE.
-**Cycle**: 1974
+**Current Focus**: Cycle 1975 — R40-R42 complete. CSS @layer, loading=lazy, DOMMatrix/DOMPoint, Performance API, matchMedia, History API, scroll-behavior, @font-face, accent-color, Canvas getTransform, CSS.registerProperty, userAgentData.
+**Momentum**: Cycle 1975 — 70+ commits pushed. 14/14 tests passing. 17/19 priority gaps DONE.
+**Cycle**: 1975
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
