@@ -10082,6 +10082,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             };
         for (auto& c : layout_node->children) collect_gradients(*c);
 
+        // Serialize the inline SVG for rasterization
+        layout_node->svg_content = serialize_svg_node(*layout_node);
+
         return layout_node;
     }
 
