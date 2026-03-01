@@ -542,6 +542,7 @@ void PropertyCascade::apply_declaration(
         if (prop == "text-transform") { style.text_transform = TextTransform::None; return; }
         if (prop == "text-indent") { style.text_indent = Length::zero(); return; }
         if (prop == "white-space") { style.white_space = WhiteSpace::Normal; return; }
+        if (prop == "text-wrap" || prop == "text-wrap-mode") { style.text_wrap = 0; return; }
         if (prop == "letter-spacing") { style.letter_spacing = Length::zero(); return; }
         if (prop == "word-spacing") { style.word_spacing = Length::zero(); return; }
         if (prop == "visibility") { style.visibility = Visibility::Visible; return; }
