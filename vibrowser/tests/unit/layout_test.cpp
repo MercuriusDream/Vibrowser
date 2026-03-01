@@ -30145,9 +30145,9 @@ TEST(LayoutEngineTest, LayoutV163_4) {
     engine.compute(*root, 400.0f, 300.0f);
 
     ASSERT_GE(root->children.size(), 2u);
-    // c1 at x=0, c2 at x=80 (flex layout places items by width)
+    // c1 at x=0, c2 at x=100 (c1 width 80 + margin-right 20 = 100)
     EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
-    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 80.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 100.0f);
 }
 
 // V163_5: padding-bottom increases parent total height

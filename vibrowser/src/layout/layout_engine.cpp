@@ -1322,15 +1322,28 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                 } else {
                     layout_block(*child, layout_width);
                     // Shrink-wrap width to content
+                    // When text-align is center/right, gc.x includes the centering
+                    // offset which would inflate the width. Use just gc.margin_box_width()
+                    // in that case to get the correct intrinsic width.
                     float max_cw = 0;
                     for (auto& gc : child->children) {
                         if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
-                        float w = gc->geometry.x + gc->geometry.margin_box_width();
-                        max_cw = std::max(max_cw, w);
+                        if (child->text_align == 0) {
+                            max_cw = std::max(max_cw, gc->geometry.x + gc->geometry.margin_box_width());
+                        } else {
+                            max_cw = std::max(max_cw, gc->geometry.margin_box_width());
+                        }
                     }
-                    child->geometry.width = max_cw
+                    float sw = max_cw
                         + child->geometry.padding.left + child->geometry.padding.right
                         + child->geometry.border.left + child->geometry.border.right;
+                    // Re-layout with shrink-wrapped width so internal alignment
+                    // (text-align) uses the correct content area, not the original
+                    // containing width.
+                    if (sw != child->geometry.width) {
+                        child->geometry.width = sw;
+                        layout_block(*child, sw);
+                    }
                 }
                 break;
             case LayoutMode::Inline:
@@ -1965,15 +1978,28 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
             layout_block(*child, child->specified_width >= 0 ? child->specified_width : containing_width);
             // Shrink-wrap width to content if no explicit width
             if (child->specified_width < 0) {
+                // When parent has text-align center/right, the centering offset
+                // in gc.x inflates the measurement. Use just gc.margin_box_width()
+                // in that case to avoid double-centering.
                 float max_child_w = 0;
                 for (auto& gc : child->children) {
                     if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
                     float w = gc->geometry.margin_box_width();
-                    max_child_w = std::max(max_child_w, gc->geometry.x + w);
+                    if (child->text_align == 0) {
+                        max_child_w = std::max(max_child_w, gc->geometry.x + w);
+                    } else {
+                        max_child_w = std::max(max_child_w, w);
+                    }
                 }
-                child->geometry.width = max_child_w
+                float sw = max_child_w
                     + child->geometry.padding.left + child->geometry.padding.right
                     + child->geometry.border.left + child->geometry.border.right;
+                // Re-layout with shrink-wrapped width so internal alignment
+                // (text-align) uses the correct content area.
+                if (sw != child->geometry.width) {
+                    child->geometry.width = sw;
+                    layout_block(*child, sw);
+                }
             }
         } else {
             layout_inline(*child, containing_width);
@@ -2665,10 +2691,22 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             }
         }
 
-        // Compute total used main size for this line
+        // Compute total used main size for this line (including padding/border/margin)
         float total_used = line_total_gap;
         for (size_t i = line.start; i < line.end; i++) {
+            auto* ch = items[i].child;
             total_used += items[i].basis;
+            if (is_row) {
+                total_used += ch->geometry.padding.left + ch->geometry.padding.right
+                            + ch->geometry.border.left + ch->geometry.border.right;
+                if (!is_margin_auto(ch->geometry.margin.left)) total_used += ch->geometry.margin.left;
+                if (!is_margin_auto(ch->geometry.margin.right)) total_used += ch->geometry.margin.right;
+            } else {
+                total_used += ch->geometry.padding.top + ch->geometry.padding.bottom
+                            + ch->geometry.border.top + ch->geometry.border.bottom;
+                if (!is_margin_auto(ch->geometry.margin.top)) total_used += ch->geometry.margin.top;
+                if (!is_margin_auto(ch->geometry.margin.bottom)) total_used += ch->geometry.margin.bottom;
+            }
         }
 
         // Per CSS Flexbox spec 8.1: auto margins on main axis absorb free space
@@ -2783,7 +2821,7 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                     child->geometry.height = std::min(child->geometry.height, child->max_height);
                 }
                 child->geometry.height = std::max(child->geometry.height, child->min_height);
-                child->geometry.x = cursor_main;
+                child->geometry.x = cursor_main + child->geometry.margin.left;
                 child->geometry.y = cross_cursor;
                 line.max_cross = std::max(line.max_cross, child->geometry.margin_box_height());
             } else {
@@ -2810,12 +2848,25 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                     child->geometry.width = std::min(child->geometry.width, child->max_width);
                 }
                 child->geometry.width = std::max(child->geometry.width, child->min_width);
-                child->geometry.y = cursor_main;
+                child->geometry.y = cursor_main + child->geometry.margin.top;
                 child->geometry.x = cross_cursor;
                 line.max_cross = std::max(line.max_cross, child->geometry.margin_box_width());
             }
 
-            cursor_main += item.basis;
+            // Advance cursor by full margin-box size on main axis
+            if (is_row) {
+                cursor_main += child->geometry.margin.left
+                    + child->geometry.border.left + child->geometry.padding.left
+                    + child->geometry.width
+                    + child->geometry.padding.right + child->geometry.border.right
+                    + child->geometry.margin.right;
+            } else {
+                cursor_main += child->geometry.margin.top
+                    + child->geometry.border.top + child->geometry.padding.top
+                    + child->geometry.height
+                    + child->geometry.padding.bottom + child->geometry.border.bottom
+                    + child->geometry.margin.bottom;
+            }
             if (i + 1 < line.end) {
                 cursor_main += gap_between;
             }
@@ -2837,7 +2888,14 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
         }
         for (size_t i = line.start; i < line.end; i++) {
             auto* child = items[i].child;
-            float child_cross = is_row ? child->geometry.height : child->geometry.width;
+            // Use full margin-box size for cross-axis alignment calculations
+            float child_cross_margin_box = is_row ? child->geometry.margin_box_height()
+                                                   : child->geometry.margin_box_width();
+            float child_cross_border_box = is_row
+                ? (child->geometry.height + child->geometry.padding.top + child->geometry.padding.bottom
+                   + child->geometry.border.top + child->geometry.border.bottom)
+                : (child->geometry.width + child->geometry.padding.left + child->geometry.padding.right
+                   + child->geometry.border.left + child->geometry.border.right);
 
             // In flexbox, auto margins on the cross-axis take priority over
             // align-items/align-self. Distribute remaining cross-axis space
@@ -2850,7 +2908,7 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                                                   : (auto_margin_left || auto_margin_right));
 
             if (has_cross_auto_margin) {
-                float remaining_cross = line_cross - child_cross;
+                float remaining_cross = line_cross - child_cross_border_box;
                 if (remaining_cross < 0) remaining_cross = 0;
                 if (is_row) {
                     if (auto_margin_top && auto_margin_bottom) {
@@ -2884,21 +2942,37 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             // Use align-self if set, otherwise fall back to parent's align-items
             int align = (child->align_self >= 0) ? child->align_self : node.align_items;
             switch (align) {
-                case 0: break; // flex-start
+                case 0: // flex-start
+                    if (is_row) child->geometry.y = cross_cursor + child->geometry.margin.top;
+                    else child->geometry.x = cross_cursor + child->geometry.margin.left;
+                    break;
                 case 1: // flex-end
-                    if (is_row) child->geometry.y = cross_cursor + line_cross - child_cross;
-                    else child->geometry.x = cross_cursor + line_cross - child_cross;
+                    if (is_row) child->geometry.y = cross_cursor + line_cross - child_cross_margin_box + child->geometry.margin.top;
+                    else child->geometry.x = cross_cursor + line_cross - child_cross_margin_box + child->geometry.margin.left;
                     break;
                 case 2: // center
-                    if (is_row) child->geometry.y = cross_cursor + (line_cross - child_cross) / 2.0f;
-                    else child->geometry.x = cross_cursor + (line_cross - child_cross) / 2.0f;
+                    if (is_row) child->geometry.y = cross_cursor + (line_cross - child_cross_margin_box) / 2.0f + child->geometry.margin.top;
+                    else child->geometry.x = cross_cursor + (line_cross - child_cross_margin_box) / 2.0f + child->geometry.margin.left;
                     break;
-                case 3: break; // baseline (treat as flex-start)
+                case 3: // baseline (treat as flex-start)
+                    if (is_row) child->geometry.y = cross_cursor + child->geometry.margin.top;
+                    else child->geometry.x = cross_cursor + child->geometry.margin.left;
+                    break;
                 case 4: // stretch
                     if (is_row && child->specified_height < 0) {
-                        child->geometry.height = line_cross;
+                        child->geometry.height = line_cross
+                            - child->geometry.padding.top - child->geometry.padding.bottom
+                            - child->geometry.border.top - child->geometry.border.bottom
+                            - child->geometry.margin.top - child->geometry.margin.bottom;
+                        if (child->geometry.height < 0) child->geometry.height = 0;
+                        child->geometry.y = cross_cursor + child->geometry.margin.top;
                     } else if (!is_row && child->specified_width < 0) {
-                        child->geometry.width = line_cross;
+                        child->geometry.width = line_cross
+                            - child->geometry.padding.left - child->geometry.padding.right
+                            - child->geometry.border.left - child->geometry.border.right
+                            - child->geometry.margin.left - child->geometry.margin.right;
+                        if (child->geometry.width < 0) child->geometry.width = 0;
+                        child->geometry.x = cross_cursor + child->geometry.margin.left;
                     }
                     break;
                 default: break;
