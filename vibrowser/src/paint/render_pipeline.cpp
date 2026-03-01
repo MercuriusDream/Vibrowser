@@ -1688,6 +1688,9 @@ int parse_counter_list_style_type(const std::string& style_str) {
     if (s == "lower-greek")           return 10;
     if (s == "lower-latin")           return 11;
     if (s == "upper-latin")           return 12;
+    if (s == "armenian")              return 13;
+    if (s == "georgian")              return 14;
+    if (s == "cjk-decimal")           return 15;
     return 3; // default to decimal
 }
 
@@ -1764,6 +1767,68 @@ std::string format_css_counter_value(int value, int style_type) {
             };
             if (value <= 0) return std::to_string(value);
             return std::string(greek[(value - 1) % 24]);
+        }
+        case 13: { // armenian
+            if (value <= 0) return std::to_string(value);
+            static const char* armenian_ones[] = {
+                "", "\xD5\xA1", "\xD5\xA2", "\xD5\xA3", "\xD5\xA4",
+                "\xD5\xA5", "\xD5\xA6", "\xD5\xA7", "\xD5\xA8", "\xD5\xA9"
+            };
+            static const char* armenian_tens[] = {
+                "", "\xD5\xAA", "\xD5\xAB", "\xD5\xAC", "\xD5\xAD",
+                "\xD5\xAE", "\xD5\xAF", "\xD5\xB0", "\xD5\xB1", "\xD5\xB2"
+            };
+            static const char* armenian_hundreds[] = {
+                "", "\xD5\xB3", "\xD5\xB4", "\xD5\xB5", "\xD5\xB6",
+                "\xD5\xB7", "\xD5\xB8", "\xD5\xB9", "\xD5\xBA", "\xD5\xBB"
+            };
+            if (value >= 9000) return std::to_string(value);
+            std::string result;
+            int hundreds = (value / 100) % 10;
+            int tens = (value / 10) % 10;
+            int ones = value % 10;
+            if (value >= 100) result += armenian_hundreds[hundreds];
+            if (value >= 10) result += armenian_tens[tens];
+            if (ones > 0) result += armenian_ones[ones];
+            return result;
+        }
+        case 14: { // georgian
+            if (value <= 0) return std::to_string(value);
+            static const char* georgian[] = {
+                "", "\xE1\x83\x90", "\xE1\x83\x91", "\xE1\x83\x92", "\xE1\x83\x93",
+                "\xE1\x83\x94", "\xE1\x83\x95", "\xE1\x83\x96", "\xE1\x83\x97", "\xE1\x83\x98",
+                "\xE1\x83\x99", "\xE1\x83\x9A", "\xE1\x83\x9B", "\xE1\x83\x9C", "\xE1\x83\x9D",
+                "\xE1\x83\x9E", "\xE1\x83\x9F", "\xE1\x83\xA0", "\xE1\x83\xA1", "\xE1\x83\xA2",
+                "\xE1\x83\xA3", "\xE1\x83\xA4", "\xE1\x83\xA5", "\xE1\x83\xA6", "\xE1\x83\xA7",
+                "\xE1\x83\xA8", "\xE1\x83\xA9", "\xE1\x83\xAA", "\xE1\x83\xAB", "\xE1\x83\xAC",
+                "\xE1\x83\xAD", "\xE1\x83\xAE", "\xE1\x83\xAF", "\xE1\x83\xB0", "\xE1\x83\xB1"
+            };
+            if (value >= 37) return std::to_string(value);
+            return std::string(georgian[value]);
+        }
+        case 15: { // cjk-decimal
+            if (value <= 0) return std::to_string(value);
+            static const char* cjk[] = {
+                "\xE9\x9B\xB6", "\xE4\xB8\x80", "\xE4\xBA\x8C", "\xE4\xB8\x89", "\xE5\x9B\x9B",
+                "\xE4\xBA\x94", "\xE5\x85\xAD", "\xE4\xB8\x83", "\xE5\x85\xAB", "\xE4\xB9\x9D"
+            };
+            if (value >= 1000) return std::to_string(value);
+            std::string result;
+            int hundreds = (value / 100) % 10;
+            int tens = (value / 10) % 10;
+            int ones = value % 10;
+            if (hundreds > 0) {
+                result += cjk[hundreds];
+                result += "\xE7\x99\xBE";
+            }
+            if (tens > 0) {
+                result += cjk[tens];
+                result += "\xE5\x8D\x81";
+            }
+            if (ones > 0) {
+                result += cjk[ones];
+            }
+            return result.empty() ? "0" : result;
         }
         default:
             return std::to_string(value);
@@ -11825,6 +11890,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 case clever::css::ListStyleType::LowerGreek: return "lower-greek";
                 case clever::css::ListStyleType::LowerLatin: return "lower-latin";
                 case clever::css::ListStyleType::UpperLatin: return "upper-latin";
+                case clever::css::ListStyleType::Armenian: return "armenian";
+                case clever::css::ListStyleType::Georgian: return "georgian";
+                case clever::css::ListStyleType::CjkDecimal: return "cjk-decimal";
                 default: return "";
             }
         };
@@ -11879,6 +11947,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             layout_node->list_style_type = 11; // lower-latin
         } else if (list_style == "upper-latin") {
             layout_node->list_style_type = 12; // upper-latin
+        } else if (list_style == "armenian") {
+            layout_node->list_style_type = 13; // armenian
+        } else if (list_style == "georgian") {
+            layout_node->list_style_type = 14; // georgian
+        } else if (list_style == "cjk-decimal") {
+            layout_node->list_style_type = 15; // cjk-decimal
         } else if (is_ordered) {
             layout_node->list_style_type = 3; // default to decimal for <ol>
         } else {
@@ -11936,6 +12010,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 };
                 int gi = (index - 1) % 24;
                 marker = std::string(greek[gi]) + ". ";
+            } else if (list_style == "armenian") {
+                marker = format_css_counter_value(index, 13) + ". ";
+            } else if (list_style == "georgian") {
+                marker = format_css_counter_value(index, 14) + ". ";
+            } else if (list_style == "cjk-decimal") {
+                marker = format_css_counter_value(index, 15) + ". ";
             } else if (is_ordered) {
                 marker = std::to_string(index) + ". "; // fallback decimal for <ol>
             } else {

@@ -6122,6 +6122,7 @@ void PropertyCascade::apply_declaration(
         else if (value_lower == "stretch") style.align_content = 3;
         else if (value_lower == "space-between") style.align_content = 4;
         else if (value_lower == "space-around") style.align_content = 5;
+        else if (value_lower == "space-evenly") style.align_content = 6;
         return;
     }
 
@@ -6241,6 +6242,7 @@ void PropertyCascade::apply_declaration(
             if (s == "stretch") return 3;
             if (s == "space-between") return 4;
             if (s == "space-around") return 5;
+            if (s == "space-evenly") return 6;
             return 0;
         };
         auto int_to_jc = [](int v) -> JustifyContent {
@@ -6251,6 +6253,7 @@ void PropertyCascade::apply_declaration(
                 case 3: return JustifyContent::FlexStart;
                 case 4: return JustifyContent::SpaceBetween;
                 case 5: return JustifyContent::SpaceAround;
+                case 6: return JustifyContent::SpaceEvenly;
                 default: return JustifyContent::FlexStart;
             }
         };
