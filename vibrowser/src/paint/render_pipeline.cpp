@@ -3056,23 +3056,65 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             else if (val_lower == "scale-down") style.object_fit = 4;
         } else if (d.property == "object-position") {
             auto parts = split_whitespace(val_lower);
-            auto parse_pos = [](const std::string& s) -> float {
-                if (s == "left" || s == "top") return 0.0f;
-                if (s == "center") return 50.0f;
-                if (s == "right" || s == "bottom") return 100.0f;
+            auto parse_pos = [](const std::string& s, bool is_x_axis) -> float {
+                if (is_x_axis) {
+                    if (s == "left") return 0.0f;
+                    if (s == "right") return 100.0f;
+                    if (s == "center") return 50.0f;
+                } else {
+                    if (s == "top") return 0.0f;
+                    if (s == "bottom") return 100.0f;
+                    if (s == "center") return 50.0f;
+                }
                 if (!s.empty() && s.back() == '%') {
                     try { return std::stof(s.substr(0, s.size() - 1)); } catch (...) { return 50.0f; }
                 }
                 try { return std::stof(s); } catch (...) { return 50.0f; }
             };
+            auto token_axis = [](const std::string& s) -> int {
+                if (s == "left" || s == "right") return 0;
+                if (s == "top" || s == "bottom") return 1;
+                return 2;
+            };
+            auto clamp_position = [](float v) -> float {
+                if (v < 0.0f) return 0.0f;
+                if (v > 100.0f) return 100.0f;
+                return v;
+            };
+
+            float object_x = 50.0f;
+            float object_y = 50.0f;
+
             if (parts.size() >= 2) {
-                style.object_position_x = parse_pos(parts[0]);
-                style.object_position_y = parse_pos(parts[1]);
+                int a0 = token_axis(parts[0]);
+                int a1 = token_axis(parts[1]);
+                float p0_x = clamp_position(parse_pos(parts[0], true));
+                float p0_y = clamp_position(parse_pos(parts[0], false));
+                float p1_x = clamp_position(parse_pos(parts[1], true));
+                float p1_y = clamp_position(parse_pos(parts[1], false));
+
+                if (a0 == 1 && a1 != 1) {
+                    object_x = p1_x;
+                    object_y = p0_y;
+                } else if (a1 == 1) {
+                    object_x = p0_x;
+                    object_y = p1_y;
+                } else {
+                    object_x = p0_x;
+                    object_y = p1_y;
+                }
             } else if (parts.size() == 1) {
-                float v = parse_pos(parts[0]);
-                style.object_position_x = v;
-                style.object_position_y = v;
+                const std::string& token = parts[0];
+                if (token_axis(token) == 1) {
+                    object_x = 50.0f;
+                    object_y = clamp_position(parse_pos(token, false));
+                } else {
+                    object_x = clamp_position(parse_pos(token, true));
+                    object_y = 50.0f;
+                }
             }
+            style.object_position_x = object_x;
+            style.object_position_y = object_y;
         } else if (d.property == "image-rendering") {
             if (val_lower == "auto") style.image_rendering = 0;
             else if (val_lower == "smooth") style.image_rendering = 0;
@@ -4336,20 +4378,31 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             auto l = clever::css::parse_length(d.value);
             if (l) style.height = *l;
         } else if (d.property == "aspect-ratio") {
-            // Parse: "auto" | <number> | <number>/<number>
-            if (val_lower == "auto") {
-                style.aspect_ratio = 0; // 0 = auto
-            } else {
-                auto slash = val_lower.find('/');
+            // Parse: "auto" | <number> | <number>/<number> | "auto <number>" | "auto <number>/<number>"
+            style.aspect_ratio = 0;
+            style.aspect_ratio_is_auto = false;
+
+            auto parse_aspect_ratio = [](const std::string& ratio_text, float& out_ratio) {
+                std::string ratio = trim(ratio_text);
+                size_t slash = ratio.find('/');
                 if (slash != std::string::npos) {
                     try {
-                        float w = std::stof(d.value.substr(0, slash));
-                        float h = std::stof(d.value.substr(slash + 1));
-                        if (h > 0) style.aspect_ratio = w / h;
+                        float w = std::stof(trim(ratio.substr(0, slash)));
+                        float h = std::stof(trim(ratio.substr(slash + 1)));
+                        if (h > 0) out_ratio = w / h;
                     } catch (...) {}
                 } else {
-                    try { style.aspect_ratio = std::stof(d.value); } catch (...) {}
+                    try { out_ratio = std::stof(ratio); } catch (...) {}
                 }
+            };
+
+            if (val_lower == "auto") {
+                style.aspect_ratio_is_auto = true;
+            } else if (val_lower.rfind("auto ", 0) == 0) {
+                style.aspect_ratio_is_auto = true;
+                parse_aspect_ratio(val_lower.substr(5), style.aspect_ratio);
+            } else {
+                parse_aspect_ratio(val_lower, style.aspect_ratio);
             }
         } else if (d.property == "transform") {
             if (val_lower == "none") {
@@ -14401,28 +14454,15 @@ static bool evaluate_media_feature(const std::string& expr, int vw, int vh) {
     while (!feature.empty() && feature.back() == ' ') feature.pop_back();
     while (!value.empty() && value.front() == ' ') value.erase(value.begin());
 
-    // Handle prefers-color-scheme: detect macOS system appearance
+    // Handle prefers-color-scheme: respect page's declared color-scheme
     if (feature == "prefers-color-scheme") {
-#ifdef __APPLE__
-        // Read macOS dark mode via CoreFoundation (works from C++)
-        bool system_dark = false;
-        CFStringRef key = CFSTR("AppleInterfaceStyle");
-        CFPropertyListRef val = CFPreferencesCopyAppValue(key, kCFPreferencesCurrentApplication);
-        if (val) {
-            if (CFGetTypeID(val) == CFStringGetTypeID()) {
-                CFStringRef str = (CFStringRef)val;
-                char buf[32] = {};
-                CFStringGetCString(str, buf, sizeof(buf), kCFStringEncodingUTF8);
-                if (std::string(buf) == "Dark") system_dark = true;
-            }
-            CFRelease(val);
-        }
-        if (value == "dark") return system_dark;
-        if (value == "light") return !system_dark;
+        // Use the page's declared color-scheme preference set via set_document_color_scheme()
+        // (from <meta name="color-scheme"> or CSS color-scheme property)
+        // This respects the page author's intent rather than forcing OS dark mode on all pages
+        bool prefers_dark = clever::css::is_dark_mode();
+        if (value == "dark") return prefers_dark;
+        if (value == "light") return !prefers_dark;
         return false;
-#else
-        return (value == "light");
-#endif
     }
 
     // Parse numeric value (remove "px"/"em" suffix)

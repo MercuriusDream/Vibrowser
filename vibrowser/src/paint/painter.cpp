@@ -887,10 +887,10 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
 
             if (clip_image) {
                 list.push_clip({
-                    abs_x + geom.border.left + geom.padding.left,
-                    abs_y + geom.border.top + geom.padding.top,
-                    geom.width,
-                    geom.height
+                    abs_x + geom.border.left,
+                    abs_y + geom.border.top,
+                    geom.width + geom.padding.left + geom.padding.right,
+                    geom.height + geom.padding.top + geom.padding.bottom
                 });
             }
 
