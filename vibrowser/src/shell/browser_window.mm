@@ -1416,15 +1416,20 @@ static std::string build_shell_message_html(const std::string& page_title,
     int height = static_cast<int>(std::round(bounds.size.height));
     if (width < 1) width = 800;
     if (height < 1) height = 600;
+    // Read DPR for JS devicePixelRatio (needed below for window metrics sync)
     NSScreen* windowScreen = self.window.screen;
     CGFloat scaleFactor = windowScreen ? windowScreen.backingScaleFactor : 1.0;
     if (!std::isfinite(scaleFactor) || scaleFactor <= 0.0) {
         scaleFactor = 1.0;
     }
-    int renderWidth = static_cast<int>(std::round(static_cast<CGFloat>(width) * scaleFactor));
-    int renderHeight = static_cast<int>(std::round(static_cast<CGFloat>(height) * scaleFactor));
-    if (renderWidth < 1) renderWidth = width;
-    if (renderHeight < 1) renderHeight = height;
+    // Use CSS pixel dimensions (logical points) for layout, not device pixels.
+    // The layout engine expects CSS pixel widths matching what CSS media queries
+    // and viewport units (vw/vh) should resolve to. Multiplying by DPR causes
+    // pages to render at half size on Retina displays.
+    // TODO: Add proper DPR support (layout at CSS pixels, render buffer at device pixels)
+    // for crisp Retina rendering. For now, accept non-Retina buffer quality.
+    int renderWidth = width;
+    int renderHeight = height;
 
     auto result = _toggledDetails.empty()
         ? clever::paint::render_html(html, [tab currentBaseURL], renderWidth, renderHeight)
