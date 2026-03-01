@@ -35,7 +35,14 @@ namespace clever::js {
 
 namespace {
 
-thread_local std::string g_navigator_clipboard_text;
+// =========================================================================
+// C-linkage clipboard helpers (implemented in browser_window.mm)
+// =========================================================================
+
+extern "C" {
+void clipboard_write_text(const char* text);
+const char* clipboard_read_text(void);
+}
 
 // =========================================================================
 // Class IDs for custom JS objects
@@ -17183,7 +17190,7 @@ void install_dom_bindings(JSContext* ctx,
                     if (!JS_IsException(text)) {
                         const char* text_bytes = JS_ToCString(c, text);
                         if (text_bytes) {
-                            g_navigator_clipboard_text = text_bytes;
+                            clipboard_write_text(text_bytes);
                             JS_FreeCString(c, text_bytes);
                         }
                         JS_FreeValue(c, text);
@@ -17192,7 +17199,7 @@ void install_dom_bindings(JSContext* ctx,
                         JS_FreeValue(c, exc);
                     }
                 } else {
-                    g_navigator_clipboard_text.clear();
+                    clipboard_write_text("");
                 }
 
                 JSValue rf[2];
@@ -17210,7 +17217,8 @@ void install_dom_bindings(JSContext* ctx,
                 JSValue rf[2];
                 JSValue promise = JS_NewPromiseCapability(c, rf);
                 if (JS_IsException(promise)) return promise;
-                JSValue value = JS_NewString(c, g_navigator_clipboard_text.c_str());
+                const char* text = clipboard_read_text();
+                JSValue value = JS_NewString(c, text ? text : "");
                 JSValue r = JS_Call(c, rf[0], JS_UNDEFINED, 1, &value);
                 JS_FreeValue(c, value);
                 JS_FreeValue(c, r);
@@ -21141,13 +21149,452 @@ if(typeof globalThis.AbstractRange==='undefined')
     document.fonts = fontFaceSet;
 })();
 )JS";
-        JSValue fonts_ret = JS_Eval(ctx, fonts_src, std::strlen(fonts_src),
+    JSValue fonts_ret = JS_Eval(ctx, fonts_src, std::strlen(fonts_src),
                                      "<document-fonts>", JS_EVAL_TYPE_GLOBAL);
         if (JS_IsException(fonts_ret)) {
             JSValue exc = JS_GetException(ctx);
             JS_FreeValue(ctx, exc);
         }
         JS_FreeValue(ctx, fonts_ret);
+    }
+
+    // ------------------------------------------------------------------
+    // Web Audio API stubs
+    // ------------------------------------------------------------------
+    {
+        const char* audio_src = R"JS(
+(function() {
+    'use strict';
+    if (typeof AudioContext !== 'undefined') return;
+
+    function toNumber(value, fallback) {
+        if (typeof value === 'number' && value === value && value !== Infinity && value !== -Infinity) return value;
+        if (typeof value === 'boolean') return value ? 1 : 0;
+        var parsed = parseFloat(value);
+        if (typeof parsed === 'number' && parsed === parsed && parsed !== Infinity && parsed !== -Infinity) return parsed;
+        return fallback;
+    }
+
+    function clamp(value, minValue, maxValue, fallback) {
+        value = toNumber(value, fallback);
+        if (value < minValue) return minValue;
+        if (value > maxValue) return maxValue;
+        return value;
+    }
+
+    function createAudioParam(initialValue, minValue, maxValue) {
+        var value = toNumber(initialValue, 0);
+        return {
+            value: value,
+            defaultValue: value,
+            minValue: minValue,
+            maxValue: maxValue,
+            automationRate: 'a-rate',
+            setValueAtTime: function(v, time) { this.value = toNumber(v, this.value); },
+            linearRampToValueAtTime: function(v, time) { this.value = toNumber(v, this.value); },
+            exponentialRampToValueAtTime: function(v, time) { this.value = toNumber(v, this.value); },
+            setTargetAtTime: function(v, time, timeConstant) { this.value = toNumber(v, this.value); },
+            setValueCurveAtTime: function(values, startTime, duration) {},
+            cancelScheduledValues: function(startTime) {},
+            cancelAndHoldAtTime: function(startTime) {}
+        };
+    }
+
+    function BaseAudioNode(context, type) {
+        this.context = context || null;
+        this.type = type || 'AudioNode';
+        this.numberOfInputs = 1;
+        this.numberOfOutputs = 1;
+        this.channelCount = 2;
+        this.channelCountMode = 'max';
+        this.channelInterpretation = 'speakers';
+        this._connections = [];
+    }
+    BaseAudioNode.prototype.connect = function(destination) {
+        if (destination) this._connections.push(destination);
+        return destination || null;
+    };
+    BaseAudioNode.prototype.disconnect = function() {
+        this._connections = [];
+    };
+
+    function AudioDestinationNode(context) {
+        BaseAudioNode.call(this, context, 'AudioDestinationNode');
+        this.maxChannelCount = 2;
+    }
+    AudioDestinationNode.prototype = Object.create(BaseAudioNode.prototype);
+    AudioDestinationNode.prototype.constructor = AudioDestinationNode;
+
+    function AudioListener() {
+        this.forwardX = 0;
+        this.forwardY = 0;
+        this.forwardZ = 1;
+        this.upX = 0;
+        this.upY = 1;
+        this.upZ = 0;
+        this.positionX = 0;
+        this.positionY = 0;
+        this.positionZ = 0;
+        this.speedOfSound = 343.3;
+        this.setPosition = function(x, y, z) {
+            this.positionX = toNumber(x, 0);
+            this.positionY = toNumber(y, 0);
+            this.positionZ = toNumber(z, 0);
+        };
+        this.setOrientation = function(x, y, z, upX, upY, upZ) {
+            this.forwardX = toNumber(x, 0);
+            this.forwardY = toNumber(y, 0);
+            this.forwardZ = toNumber(z, 1);
+            this.upX = toNumber(upX, 0);
+            this.upY = toNumber(upY, 1);
+            this.upZ = toNumber(upZ, 0);
+        };
+        this.setVelocity = function(x, y, z) {};
+    }
+
+    function AudioBuffer(numberOfChannels, length, sampleRate) {
+        this.numberOfChannels = clamp(toNumber(numberOfChannels, 1), 1, 32, 1);
+        this.length = Math.max(0, (length | 0));
+        this.sampleRate = clamp(toNumber(sampleRate, 44100), 1, 192000, 44100);
+        this.duration = this.sampleRate > 0 ? this.length / this.sampleRate : 0;
+        this._channels = [];
+        for (var i = 0; i < this.numberOfChannels; i++) {
+            this._channels[i] = new Float32Array(this.length);
+        }
+    }
+    AudioBuffer.prototype.getChannelData = function(channelIndex) {
+        var idx = (channelIndex | 0);
+        if (idx < 0 || idx >= this.numberOfChannels) {
+            throw new RangeError('Channel index out of range');
+        }
+        return this._channels[idx];
+    };
+    AudioBuffer.prototype.copyFromChannel = function(destination, channelNumber, startInChannel) {
+        var source = this.getChannelData(channelNumber || 0);
+        var start = Math.max(0, startInChannel | 0);
+        for (var i = 0; i < destination.length && start + i < source.length; i++) {
+            destination[i] = source[start + i];
+        }
+    };
+    AudioBuffer.prototype.copyToChannel = function(source, channelNumber, startInChannel) {
+        var destination = this.getChannelData(channelNumber || 0);
+        var start = Math.max(0, startInChannel | 0);
+        var count = Math.min(source.length, destination.length - start);
+        for (var i = 0; i < count; i++) {
+            destination[start + i] = source[i];
+        }
+    };
+
+    function GainNode(context) {
+        BaseAudioNode.call(this, context, 'GainNode');
+        this.gain = createAudioParam(1, -1, 1);
+    }
+    GainNode.prototype = Object.create(BaseAudioNode.prototype);
+    GainNode.prototype.constructor = GainNode;
+
+    function OscillatorNode(context) {
+        BaseAudioNode.call(this, context, 'OscillatorNode');
+        this.type = 'sine';
+        this.frequency = createAudioParam(440, -1, 1e9);
+        this.detune = createAudioParam(0, -2400, 2400);
+        this.pitch = 0;
+        this.channelCount = 1;
+        this.onended = null;
+        this._started = false;
+    }
+    OscillatorNode.prototype = Object.create(BaseAudioNode.prototype);
+    OscillatorNode.prototype.constructor = OscillatorNode;
+    OscillatorNode.prototype.start = function(when) {
+        this._started = true;
+    };
+    OscillatorNode.prototype.stop = function(when) {
+        this._started = false;
+        if (typeof this.onended === 'function') this.onended();
+    };
+    OscillatorNode.prototype.setPeriodicWave = function(periodicWave) {
+        this.periodicWave = periodicWave;
+    };
+
+    function AudioBufferSourceNode(context) {
+        BaseAudioNode.call(this, context, 'AudioBufferSourceNode');
+        this.buffer = null;
+        this.playbackRate = createAudioParam(1, 0.0001, 1024);
+        this.detune = createAudioParam(0, -1200, 1200);
+        this.loop = false;
+        this.loopStart = 0;
+        this.loopEnd = 0;
+        this.onended = null;
+        this._started = false;
+    }
+    AudioBufferSourceNode.prototype = Object.create(BaseAudioNode.prototype);
+    AudioBufferSourceNode.prototype.constructor = AudioBufferSourceNode;
+    AudioBufferSourceNode.prototype.start = function(when, offset, duration) {
+        this._started = true;
+    };
+    AudioBufferSourceNode.prototype.stop = function(when) {
+        this._started = false;
+        if (typeof this.onended === 'function') this.onended();
+    };
+    AudioBufferSourceNode.prototype.noteOn = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.noteOff = AudioBufferSourceNode.prototype.stop;
+
+    function AnalyserNode(context) {
+        BaseAudioNode.call(this, context, 'AnalyserNode');
+        this.fftSize = 2048;
+        this.frequencyBinCount = 1024;
+        this.minDecibels = -100;
+        this.maxDecibels = -30;
+        this.smoothingTimeConstant = 0.8;
+    }
+    AnalyserNode.prototype = Object.create(BaseAudioNode.prototype);
+    AnalyserNode.prototype.constructor = AnalyserNode;
+    AnalyserNode.prototype.getByteFrequencyData = function(array) {
+        for (var i = 0; i < array.length; i++) array[i] = 0;
+    };
+    AnalyserNode.prototype.getFloatFrequencyData = function(array) {
+        for (var i = 0; i < array.length; i++) array[i] = -Infinity;
+    };
+    AnalyserNode.prototype.getByteTimeDomainData = function(array) {
+        for (var i = 0; i < array.length; i++) array[i] = 128;
+    };
+    AnalyserNode.prototype.getFloatTimeDomainData = function(array) {
+        for (var i = 0; i < array.length; i++) array[i] = 0;
+    };
+
+    function BiquadFilterNode(context) {
+        BaseAudioNode.call(this, context, 'BiquadFilterNode');
+        this.type = 'lowpass';
+        this.frequency = createAudioParam(350, 10, 22000);
+        this.detune = createAudioParam(0, -1536, 1536);
+        this.Q = createAudioParam(1, 0.0001, 1000);
+        this.gain = createAudioParam(0, -40, 40);
+        this.frequency.setValueAtTime(this.frequency.value, 0);
+    }
+    BiquadFilterNode.prototype = Object.create(BaseAudioNode.prototype);
+    BiquadFilterNode.prototype.constructor = BiquadFilterNode;
+
+    function DynamicsCompressorNode(context) {
+        BaseAudioNode.call(this, context, 'DynamicsCompressorNode');
+        this.threshold = createAudioParam(-24, -100, 0);
+        this.knee = createAudioParam(30, 0, 40);
+        this.ratio = createAudioParam(12, 1, 20);
+        this.attack = createAudioParam(0.003, 0.0001, 1);
+        this.release = createAudioParam(0.25, 0.01, 1);
+        this.reduction = 0;
+    }
+    DynamicsCompressorNode.prototype = Object.create(BaseAudioNode.prototype);
+    DynamicsCompressorNode.prototype.constructor = DynamicsCompressorNode;
+
+    function ConvolverNode(context) {
+        BaseAudioNode.call(this, context, 'ConvolverNode');
+        this.buffer = null;
+        this.normalize = true;
+    }
+    ConvolverNode.prototype = Object.create(BaseAudioNode.prototype);
+    ConvolverNode.prototype.constructor = ConvolverNode;
+
+    function DelayNode(context, maxDelayTime) {
+        BaseAudioNode.call(this, context, 'DelayNode');
+        this.delayTime = createAudioParam(clamp(toNumber(maxDelayTime, 0), 0, 180, 0), 0, 180);
+    }
+    DelayNode.prototype = Object.create(BaseAudioNode.prototype);
+    DelayNode.prototype.constructor = DelayNode;
+
+    function StereoPannerNode(context) {
+        BaseAudioNode.call(this, context, 'StereoPannerNode');
+        this.pan = createAudioParam(0, -1, 1);
+    }
+    StereoPannerNode.prototype = Object.create(BaseAudioNode.prototype);
+    StereoPannerNode.prototype.constructor = StereoPannerNode;
+
+    function MediaElementAudioSourceNode(context, mediaElement) {
+        BaseAudioNode.call(this, context, 'MediaElementAudioSourceNode');
+        this.mediaElement = mediaElement || null;
+    }
+    MediaElementAudioSourceNode.prototype = Object.create(BaseAudioNode.prototype);
+    MediaElementAudioSourceNode.prototype.constructor = MediaElementAudioSourceNode;
+
+    function MediaStreamAudioSourceNode(context, stream) {
+        BaseAudioNode.call(this, context, 'MediaStreamAudioSourceNode');
+        this.mediaStream = stream || null;
+    }
+    MediaStreamAudioSourceNode.prototype = Object.create(BaseAudioNode.prototype);
+    MediaStreamAudioSourceNode.prototype.constructor = MediaStreamAudioSourceNode;
+
+    function AudioContextInitState() {
+        this.sampleRate = 44100;
+        this.listener = new AudioListener();
+        this.destination = new AudioDestinationNode(this);
+        this.baseLatency = 0.01;
+        this._state = 'suspended';
+        this._baseCurrentTime = 0;
+        this._timeAtStateChange = Date.now() / 1000;
+        this._closed = false;
+    }
+
+    function AudioContext(options) {
+        if (!(this instanceof AudioContext)) return new AudioContext(options);
+        options = options || {};
+        AudioContextInitState.call(this);
+        this.sampleRate = clamp(toNumber(options.sampleRate, 44100), 1, 192000, 44100);
+    }
+    AudioContext.prototype = Object.create(AudioContextInitState.prototype);
+    AudioContext.prototype.constructor = AudioContext;
+    Object.defineProperty(AudioContext.prototype, 'state', {
+        get: function() { return this._state; },
+        configurable: true
+    });
+    Object.defineProperty(AudioContext.prototype, 'currentTime', {
+        get: function() {
+            if (this._state === 'running') {
+                var now = Date.now() / 1000;
+                return this._baseCurrentTime + (now - this._timeAtStateChange);
+            }
+            return this._baseCurrentTime;
+        },
+        configurable: true
+    });
+
+    AudioContext.prototype.createGain = function() {
+        return new GainNode(this);
+    };
+    AudioContext.prototype.createOscillator = function() {
+        return new OscillatorNode(this);
+    };
+    AudioContext.prototype.createBufferSource = function() {
+        return new AudioBufferSourceNode(this);
+    };
+    AudioContext.prototype.createBuffer = function(numberOfChannels, length, sampleRate) {
+        return new AudioBuffer(numberOfChannels, length, sampleRate || this.sampleRate);
+    };
+    AudioContext.prototype.createAnalyser = function() {
+        return new AnalyserNode(this);
+    };
+    AudioContext.prototype.createBiquadFilter = function() {
+        return new BiquadFilterNode(this);
+    };
+    AudioContext.prototype.createDynamicsCompressor = function() {
+        return new DynamicsCompressorNode(this);
+    };
+    AudioContext.prototype.createConvolver = function() {
+        return new ConvolverNode(this);
+    };
+    AudioContext.prototype.createDelay = function(maxDelayTime) {
+        return new DelayNode(this, maxDelayTime);
+    };
+    AudioContext.prototype.createStereoPanner = function() {
+        return new StereoPannerNode(this);
+    };
+    AudioContext.prototype.createMediaElementSource = function(mediaElement) {
+        return new MediaElementAudioSourceNode(this, mediaElement);
+    };
+    AudioContext.prototype.createMediaStreamSource = function(mediaStream) {
+        return new MediaStreamAudioSourceNode(this, mediaStream);
+    };
+    AudioContext.prototype.decodeAudioData = function(audioData, successCallback, errorCallback) {
+        var context = this;
+        var promise = new Promise(function(resolve, reject) {
+            try {
+                var byteLength = audioData && (audioData.byteLength || audioData.length || 0) || 0;
+                var length = Math.max(1, (byteLength / 4) | 0);
+                var buffer = context.createBuffer(1, length, context.sampleRate);
+                if (typeof successCallback === 'function') successCallback(buffer);
+                resolve(buffer);
+            } catch (error) {
+                if (typeof errorCallback === 'function') errorCallback(error);
+                reject(error);
+            }
+        });
+        return promise;
+    };
+    AudioContext.prototype.resume = function() {
+        var context = this;
+        return new Promise(function(resolve) {
+            if (context._closed) {
+                resolve(context);
+                return;
+            }
+            if (context._state !== 'running') {
+                context._baseCurrentTime = context.currentTime;
+                context._timeAtStateChange = Date.now() / 1000;
+                context._state = 'running';
+            }
+            resolve(context);
+        });
+    };
+    AudioContext.prototype.suspend = function() {
+        var context = this;
+        return new Promise(function(resolve) {
+            if (context._closed) {
+                resolve(context);
+                return;
+            }
+            if (context._state === 'running') {
+                context._baseCurrentTime = context.currentTime;
+                context._timeAtStateChange = Date.now() / 1000;
+                context._state = 'suspended';
+            }
+            resolve(context);
+        });
+    };
+    AudioContext.prototype.close = function() {
+        var context = this;
+        return new Promise(function(resolve) {
+            if (!context._closed) {
+                context._state = 'closed';
+                context._closed = true;
+                context._baseCurrentTime = context.currentTime;
+                context._timeAtStateChange = Date.now() / 1000;
+            }
+            resolve();
+        });
+    };
+
+    function OfflineAudioContext(numberOfChannels, length, sampleRate) {
+        if (!(this instanceof OfflineAudioContext)) return new OfflineAudioContext(numberOfChannels, length, sampleRate);
+        if (numberOfChannels && typeof numberOfChannels === 'object') {
+            var options = numberOfChannels;
+            length = options.length;
+            sampleRate = options.sampleRate;
+            numberOfChannels = options.numberOfChannels;
+        }
+        this.numberOfChannels = clamp(toNumber(numberOfChannels, 1), 1, 32, 1);
+        this.length = Math.max(1, length | 0);
+        this.sampleRate = clamp(toNumber(sampleRate, 44100), 1, 192000, 44100);
+        AudioContext.call(this, { sampleRate: this.sampleRate });
+        this._renderingPromise = null;
+        this._renderedBuffer = null;
+    }
+    OfflineAudioContext.prototype = Object.create(AudioContext.prototype);
+    OfflineAudioContext.prototype.constructor = OfflineAudioContext;
+    OfflineAudioContext.prototype.startRendering = function() {
+        var context = this;
+        if (context._renderingPromise) return context._renderingPromise;
+        context._renderingPromise = new Promise(function(resolve) {
+            var buffer = new AudioBuffer(context.numberOfChannels, context.length, context.sampleRate);
+            context._renderedBuffer = buffer;
+            setTimeout(function() {
+                if (typeof context.oncomplete === 'function') {
+                    context.oncomplete({renderedBuffer: buffer});
+                }
+                resolve(buffer);
+            }, 0);
+        });
+        return context._renderingPromise;
+    };
+
+    globalThis.AudioContext = AudioContext;
+    globalThis.webkitAudioContext = AudioContext;
+    globalThis.OfflineAudioContext = OfflineAudioContext;
+})();
+)JS";
+        JSValue audio_ret = JS_Eval(ctx, audio_src, std::strlen(audio_src),
+                                    "<web-audio-stub>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(audio_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, audio_ret);
     }
 
     // ------------------------------------------------------------------
