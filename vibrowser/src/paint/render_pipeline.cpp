@@ -1473,6 +1473,11 @@ MetaViewportInfo parse_meta_viewport_from_head(const clever::html::SimpleNode& d
 
 // Forward declaration for evaluate_media_query (defined later in this file)
 bool evaluate_media_query(const std::string& condition, int vw, int vh);
+// Forward declarations for responsive image helpers (defined later in this file)
+static float parse_sizes_attribute(const std::string& sizes, int viewport_width, float dpr);
+static std::string select_best_srcset_url(const std::string& srcset, int viewport_width,
+                                          float effective_size, float dpr);
+static bool evaluate_media_feature(const std::string& expr, int vw, int vh);
 
 int parse_color_scheme_content(const std::string& content) {
     std::string normalized = to_lower(trim(content));
@@ -8959,50 +8964,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
                 std::string srcset = get_attr(*child, "srcset");
                 if (!srcset.empty()) {
-                    // Parse srcset: "url1 480w, url2 800w" or "url1 1x, url2 2x"
-                    // Select best candidate based on viewport width
-                    std::string best_url;
-                    float best_w = -1;
-                    float best_density = -1;
-
-                    std::istringstream ss(srcset);
-                    std::string token;
-                    std::string candidate_url;
-                    while (ss >> token) {
-                        if (token.back() == ',') token.pop_back();
-                        if (candidate_url.empty()) {
-                            candidate_url = token;
-                            continue;
-                        }
-                        // This token is the descriptor
-                        if (!token.empty() && (token.back() == 'w' || token.back() == 'W')) {
-                            float w_val = 0;
-                            try { w_val = std::stof(token.substr(0, token.size() - 1)); } catch (...) {}
-                            if (w_val > 0) {
-                                if (best_url.empty() || (w_val >= vw && (best_w < vw || w_val < best_w)) ||
-                                    (best_w < vw && w_val > best_w)) {
-                                    best_url = candidate_url;
-                                    best_w = w_val;
-                                }
-                            }
-                        } else if (!token.empty() && (token.back() == 'x' || token.back() == 'X')) {
-                            float d_val = 1;
-                            try { d_val = std::stof(token.substr(0, token.size() - 1)); } catch (...) {}
-                            if (d_val > best_density) {
-                                best_density = d_val;
-                                best_url = candidate_url;
-                            }
-                        }
-                        candidate_url.clear();
-                    }
-                    // If only URL with no descriptor, use it
-                    if (!candidate_url.empty() && best_url.empty()) best_url = candidate_url;
-                    if (best_url.empty() && !srcset.empty()) {
-                        // Fallback: just take the first URL
-                        auto sp = srcset.find(' ');
-                        best_url = (sp != std::string::npos) ? srcset.substr(0, sp) : srcset;
-                    }
-                    selected_src = best_url;
+                    // For <source>, we don't have sizes attribute here; use viewport width
+                    float effective_size = static_cast<float>(vw);
+                    float dpr = 2.0f;
+                    selected_src = select_best_srcset_url(srcset, vw, effective_size, dpr);
                 } else {
                     std::string src = get_attr(*child, "src");
                     if (!src.empty()) selected_src = src;
@@ -9126,28 +9091,14 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (!srcset_attr.empty()) {
             int vw = static_cast<int>(clever::css::Length::s_viewport_w);
             if (vw <= 0) vw = 1280;
-            std::string best_url;
-            float best_w = -1;
-            std::istringstream ss(srcset_attr);
-            std::string token;
-            std::string candidate_url;
-            while (ss >> token) {
-                if (token.back() == ',') token.pop_back();
-                if (candidate_url.empty()) { candidate_url = token; continue; }
-                if (!token.empty() && (token.back() == 'w' || token.back() == 'W')) {
-                    float w_val = 0;
-                    try { w_val = std::stof(token.substr(0, token.size() - 1)); } catch (...) {}
-                    if (w_val > 0 && (best_url.empty() ||
-                        (w_val >= vw && (best_w < vw || w_val < best_w)) ||
-                        (best_w < vw && w_val > best_w))) {
-                        best_url = candidate_url; best_w = w_val;
-                    }
-                } else if (!token.empty() && (token.back() == 'x' || token.back() == 'X')) {
-                    if (best_url.empty()) best_url = candidate_url;
-                }
-                candidate_url.clear();
-            }
-            if (!candidate_url.empty() && best_url.empty()) best_url = candidate_url;
+
+            // Parse sizes attribute to get effective size for width-based srcset
+            std::string sizes_attr = get_attr(node, "sizes");
+            float effective_size = parse_sizes_attribute(sizes_attr, vw, 2.0f);
+
+            // Select best image URL using responsive image helpers
+            float dpr = 2.0f;
+            std::string best_url = select_best_srcset_url(srcset_attr, vw, effective_size, dpr);
             if (!best_url.empty()) src = best_url;
         }
         std::string img_url = resolve_url(src, base_url);
@@ -14002,6 +13953,214 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     }
 
     return layout_node;
+}
+
+// ---- Responsive image helpers ----
+
+// Forward declaration for evaluate_media_feature (defined later in this file)
+static bool evaluate_media_feature(const std::string& expr, int vw, int vh);
+
+// Parse "sizes" attribute: "(max-width: 600px) 400px, (min-width: 601px) 800px, 100vw"
+// Returns the effective size in pixels for the given viewport width.
+// Evaluates conditions left-to-right; returns the first match, or last size as fallback.
+static float parse_sizes_attribute(const std::string& sizes, int viewport_width, float dpr) {
+    if (sizes.empty()) return static_cast<float>(viewport_width);
+
+    std::string trimmed = sizes;
+    while (!trimmed.empty() && trimmed.front() == ' ') trimmed.erase(trimmed.begin());
+    while (!trimmed.empty() && trimmed.back() == ' ') trimmed.pop_back();
+
+    // Parse comma-separated "condition size" pairs
+    std::istringstream ss(trimmed);
+    std::string token;
+    std::vector<std::pair<std::string, std::string>> pairs;
+    std::string current_pair;
+
+    while (std::getline(ss, token, ',')) {
+        while (!token.empty() && (token.front() == ' ' || token.front() == '\t')) token.erase(token.begin());
+        while (!token.empty() && (token.back() == ' ' || token.back() == '\t')) token.pop_back();
+        if (!token.empty()) current_pair = token;
+    }
+
+    // Parse each comma-separated size clause
+    size_t pos = 0;
+    std::string last_size;
+    while (pos < trimmed.size()) {
+        size_t next_comma = trimmed.find(',', pos);
+        if (next_comma == std::string::npos) next_comma = trimmed.size();
+
+        std::string clause = trimmed.substr(pos, next_comma - pos);
+        while (!clause.empty() && clause.front() == ' ') clause.erase(clause.begin());
+        while (!clause.empty() && clause.back() == ' ') clause.pop_back();
+
+        // Check if this clause starts with a media condition in parens
+        if (!clause.empty() && clause.front() == '(') {
+            // Find the matching closing paren
+            size_t close_paren = clause.find(')');
+            if (close_paren != std::string::npos) {
+                std::string condition = clause.substr(1, close_paren - 1);
+                std::string size_str = clause.substr(close_paren + 1);
+                while (!size_str.empty() && (size_str.front() == ' ' || size_str.front() == '\t'))
+                    size_str.erase(size_str.begin());
+                while (!size_str.empty() && (size_str.back() == ' ' || size_str.back() == '\t'))
+                    size_str.pop_back();
+
+                // Evaluate the condition
+                if (evaluate_media_feature(condition, viewport_width, static_cast<int>(viewport_width))) {
+                    last_size = size_str;
+                    break;
+                }
+            }
+        } else {
+            // No condition, this is the fallback size
+            last_size = clause;
+        }
+
+        pos = next_comma + 1;
+    }
+
+    // Parse the final size value
+    if (last_size.empty()) last_size = trimmed;
+    while (!last_size.empty() && (last_size.front() == ' ' || last_size.front() == '\t'))
+        last_size.erase(last_size.begin());
+    while (!last_size.empty() && (last_size.back() == ' ' || last_size.back() == '\t'))
+        last_size.pop_back();
+
+    // Convert size to pixels: "100vw" -> viewport_width, "400px" -> 400, "50%" -> 50% of viewport
+    if (last_size.empty()) return static_cast<float>(viewport_width);
+
+    if (last_size.size() >= 2 && last_size.substr(last_size.size() - 2) == "vw") {
+        try {
+            float vw_val = std::stof(last_size.substr(0, last_size.size() - 2));
+            return viewport_width * vw_val / 100.0f;
+        } catch (...) {}
+    }
+    if (last_size.size() >= 1 && last_size.back() == '%') {
+        try {
+            float pct_val = std::stof(last_size.substr(0, last_size.size() - 1));
+            return viewport_width * pct_val / 100.0f;
+        } catch (...) {}
+    }
+    if (last_size.size() >= 2 && last_size.substr(last_size.size() - 2) == "px") {
+        try {
+            return std::stof(last_size.substr(0, last_size.size() - 2));
+        } catch (...) {}
+    }
+
+    // Try plain number (assume pixels)
+    try {
+        return std::stof(last_size);
+    } catch (...) {}
+
+    return static_cast<float>(viewport_width);
+}
+
+// Select the best image URL from a srcset string based on viewport and DPR.
+// Supports both "Nx" (DPR) and "Nw" (width) descriptors.
+// For DPR: picks descriptor >= actual DPR value, preferring closest match.
+// For width: picks smallest URL whose width >= effective_size.
+// Returns empty string if srcset is empty or invalid.
+static std::string select_best_srcset_url(const std::string& srcset, int viewport_width,
+                                         float effective_size_px, float dpr) {
+    if (srcset.empty()) return std::string();
+
+    // Parse srcset candidates: "image1.jpg 1x, image2.jpg 2x, ..."
+    std::vector<std::pair<std::string, std::string>> candidates; // (url, descriptor)
+
+    std::istringstream ss(srcset);
+    std::string token;
+    std::string current_url;
+
+    while (ss >> token) {
+        // Remove trailing comma
+        if (!token.empty() && token.back() == ',') token.pop_back();
+
+        // URLs are first token after comma (or start)
+        if (current_url.empty()) {
+            current_url = token;
+        } else {
+            // This token is the descriptor for the previous URL
+            candidates.emplace_back(current_url, token);
+            current_url.clear();
+        }
+    }
+
+    // Handle last URL without descriptor
+    if (!current_url.empty()) {
+        candidates.emplace_back(current_url, std::string());
+    }
+
+    if (candidates.empty()) return std::string();
+
+    // Determine descriptor type (all 'x' or all 'w')
+    bool has_dpr = false, has_width = false;
+    for (const auto& [url, desc] : candidates) {
+        if (!desc.empty() && (desc.back() == 'x' || desc.back() == 'X')) has_dpr = true;
+        if (!desc.empty() && (desc.back() == 'w' || desc.back() == 'W')) has_width = true;
+    }
+
+    if (has_dpr) {
+        // DPR-based selection: pick descriptor >= dpr, preferring closest
+        float best_dpr = 0;
+        std::string best_url = candidates[0].first;
+
+        for (const auto& [url, desc] : candidates) {
+            if (desc.empty()) {
+                // URL with no descriptor, use if no better match
+                if (best_dpr == 0) best_url = url;
+                continue;
+            }
+
+            try {
+                float desc_val = std::stof(desc.substr(0, desc.size() - 1));
+                // Prefer descriptors that are >= target dpr
+                if (desc_val >= dpr) {
+                    // Pick closest match >= dpr
+                    if (best_dpr == 0 || (desc_val >= dpr && desc_val < best_dpr)) {
+                        best_dpr = desc_val;
+                        best_url = url;
+                    }
+                } else if (best_dpr == 0 || (best_dpr > 0 && desc_val > best_dpr)) {
+                    // Fall back to highest < dpr if no >= option yet
+                    best_dpr = desc_val;
+                    best_url = url;
+                }
+            } catch (...) {}
+        }
+        return best_url;
+    } else if (has_width) {
+        // Width-based selection: pick smallest width >= effective_size
+        std::vector<std::pair<float, std::string>> widths; // (width, url)
+
+        for (const auto& [url, desc] : candidates) {
+            if (desc.empty()) {
+                widths.emplace_back(0, url);
+            } else {
+                try {
+                    float w_val = std::stof(desc.substr(0, desc.size() - 1));
+                    widths.emplace_back(w_val, url);
+                } catch (...) {
+                    widths.emplace_back(0, url);
+                }
+            }
+        }
+
+        // Sort by width ascending
+        std::sort(widths.begin(), widths.end());
+
+        // Find smallest width >= effective_size
+        for (const auto& [w, url] : widths) {
+            if (w >= effective_size_px) return url;
+        }
+
+        // Fall back to largest available
+        if (!widths.empty()) return widths.back().second;
+
+        return candidates[0].first;
+    } else {
+        // No descriptors, just return first URL
+        return candidates[0].first;
+    }
 }
 
 // ---- Media query evaluation ----

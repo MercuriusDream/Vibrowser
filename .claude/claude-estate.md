@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1978 — R46-R48 complete. BFC margin collapsing, CSS animations runtime, Web Workers, font-feature-settings, Canvas 2D, text-wrap balance/pretty, font-variant OpenType mapping, HTML entities, visualViewport API.
-**Momentum**: Cycle 1978 — 90+ commits pushed. 14/14 tests passing. HN renders well. All major APIs covered.
-**Cycle**: 1978
+**Current Focus**: Cycle 1979 — CSS scroll-snap improvements, modern JS polyfills, HTML entity expansion, picture srcset, multi-column layout, system fonts, prefers-contrast/reduced-motion media queries.
+**Momentum**: Cycle 1979 — 90+ commits pushed. 14/14 tests passing. Parallel codex-spark agents active. Adding web platform completeness features.
+**Cycle**: 1979
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
@@ -2004,13 +2004,17 @@ Generated: 2026-03-01
 ### Tell The Next Claude
 
 - Build from `/Users/seong-useog/vibrowser/vibrowser` (NOT repo root). Clean rebuild: `rm -rf build && cmake -S . -B build && cmake --build build -j$(sysctl -n hw.ncpu)`
-- 14/14 tests passing. Entity table at 741/2231 entries.
+- 14/14 tests passing. Entity table at ~746/2231 entries (expanding in cycle 1979).
 - **DO NOT** call JS_AddIntrinsicWeakRef() — causes GC assertion on teardown
 - **DO NOT** use JS_Eval for global function definitions — use native JS_NewCFunction to avoid GC leaks
 - **AGENT CONFLICT RISK**: Agents use `git add -A` which can overwrite local changes. Always commit your direct work BEFORE agents finish, or accept that agents will bundle your changes.
 - Multi-column layout, details/summary, dialog, canvas 2D, localStorage, WebSocket, AbortController, fetch, CSS grid, flexbox, animations, transitions, @layer, loading=lazy, DOMMatrix, History API, scroll-behavior, @font-face matching — ALL implemented
-- `codex-spark` haiku agents are the primary subagent type. 4 per round. They commit+push directly.
-- High-value next targets: Service Worker lifecycle, WebSocket improvements, CSS `paint()` worklets, IndexedDB stubs, Web Audio stubs, `<video>`/`<audio>` playback, WebGL context stubs, improved form submission (multipart), HTTP/2 connection wiring
+- Service Worker, Cache API, IndexedDB, Web Audio, WebGL, RTCPeerConnection, HTMLMediaElement, navigator.clipboard, geolocation, permissions, Notification — ALL stubbed
+- `structuredClone`, `queueMicrotask`, `Object.hasOwn`, `Array.prototype.at`, `findLast`, `Object.fromEntries`, `AbortSignal.timeout`, `navigator.userAgentData`, `scheduler` — ALL added (cycle 1979)
+- system-ui/ui-serif/ui-sans-serif/ui-monospace font stacks mapped (cycle 1979)
+- prefers-color-scheme, prefers-reduced-motion, prefers-contrast media queries — ALL implemented (cycle 1979)
+- `codex-spark` haiku agents are the primary subagent type. 4-6 per round. They commit+push directly.
+- High-value next targets: CSS `paint()` Houdini worklets, improved form submission (multipart), HTTP/2 connection wiring, more HTML entities (1485 still missing), `<picture>` srcset (in progress), CSS `min-content`/`max-content` track sizing verification, CSS `gap` in grid rows, text-overflow ellipsis in grid/flex children, SVG animation
 
 ### Tell The Next Codex
 
