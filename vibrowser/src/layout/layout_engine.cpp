@@ -4806,20 +4806,36 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             }
             // Full auto-placement (column flow)
             else {
-                int search_col = dense_flow ? 0 : auto_cursor_col;
-                int search_row = dense_flow ? 0 : auto_cursor_row;
-                bool placed = false;
-                for (int c = search_col; !placed; c++) {
-                    while (c + pl.col_span > dyn_num_cols) add_implicit_col();
-                    int r_start = (c == search_col) ? search_row : 0;
-                    if (r_start < 0) r_start = 0;
-                    for (int r = r_start;; r++) {
-                        ensure_rows(r + pl.row_span);
-                        if (can_place(r, c, pl.row_span, pl.col_span)) {
-                            pl.row_start = r;
-                            pl.col_start = c;
-                            placed = true;
-                            break;
+                if (dense_flow) {
+                    bool placed = false;
+                    for (int c = 0; !placed; c++) {
+                        while (c + pl.col_span > dyn_num_cols) add_implicit_col();
+                        for (int r = 0;; r++) {
+                            ensure_rows(r + pl.row_span);
+                            if (can_place(r, c, pl.row_span, pl.col_span)) {
+                                pl.row_start = r;
+                                pl.col_start = c;
+                                placed = true;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    int search_col = auto_cursor_col;
+                    int search_row = auto_cursor_row;
+                    bool placed = false;
+                    for (int c = search_col; !placed; c++) {
+                        while (c + pl.col_span > dyn_num_cols) add_implicit_col();
+                        int r_start = (c == search_col) ? search_row : 0;
+                        if (r_start < 0) r_start = 0;
+                        for (int r = r_start;; r++) {
+                            ensure_rows(r + pl.row_span);
+                            if (can_place(r, c, pl.row_span, pl.col_span)) {
+                                pl.row_start = r;
+                                pl.col_start = c;
+                                placed = true;
+                                break;
+                            }
                         }
                     }
                 }
