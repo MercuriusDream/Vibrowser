@@ -5626,6 +5626,144 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_FreeValue(ctx, polyfill_scheduler);
     }
 
+    {
+        const char* polyfill_aggregate_error_src = R"JS(
+        if (typeof globalThis.AggregateError === 'undefined') {
+            var AggregateError = function(errors, message) {
+                if (!(this instanceof AggregateError)) {
+                    return new AggregateError(errors, message);
+                }
+                var msg = message || '';
+                this.name = 'AggregateError';
+                this.message = msg;
+                this.errors = Array.isArray(errors) ? errors : [];
+                if (typeof Error.captureStackTrace === 'function') {
+                    Error.captureStackTrace(this, AggregateError);
+                } else {
+                    this.stack = new Error().stack;
+                }
+            };
+            AggregateError.prototype = Object.create(Error.prototype);
+            AggregateError.prototype.constructor = AggregateError;
+            AggregateError.prototype.toString = function() {
+                return this.name + ': ' + this.message;
+            };
+            globalThis.AggregateError = AggregateError;
+        }
+)JS";
+        JSValue polyfill_aggregate_error = JS_Eval(ctx, polyfill_aggregate_error_src, std::strlen(polyfill_aggregate_error_src),
+                                                  "<polyfill-AggregateError>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_aggregate_error)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_aggregate_error);
+    }
+
+    {
+        const char* polyfill_symbol_async_iterator_src = R"JS(
+        if (typeof globalThis.Symbol !== 'undefined' && typeof globalThis.Symbol.asyncIterator === 'undefined') {
+            globalThis.Symbol.asyncIterator = (typeof globalThis.Symbol.for === 'function')
+                ? globalThis.Symbol.for('Symbol.asyncIterator')
+                : Symbol('Symbol.asyncIterator');
+        }
+)JS";
+        JSValue polyfill_symbol_async_iterator = JS_Eval(ctx, polyfill_symbol_async_iterator_src, std::strlen(polyfill_symbol_async_iterator_src),
+                                                  "<polyfill-Symbol.asyncIterator>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_symbol_async_iterator)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_symbol_async_iterator);
+    }
+
+    {
+        const char* polyfill_promise_allsettled_src = R"JS(
+        if (typeof globalThis.Promise !== 'undefined' && !globalThis.Promise.allSettled) {
+            Promise.allSettled = function(iterable) {
+                return Promise.resolve(iterable).then(function(values) {
+                    var pending = values.length;
+                    var resolved = new Array(values.length);
+                    if (!values.length) {
+                        return [];
+                    }
+
+                    return new Promise(function(resolve) {
+                        for (var i = 0; i < values.length; i++) {
+                            (function(i) {
+                                Promise.resolve(values[i]).then(function(value) {
+                                    resolved[i] = {
+                                        status: 'fulfilled',
+                                        value: value
+                                    };
+                                    pending--;
+                                    if (pending === 0) {
+                                        resolve(resolved);
+                                    }
+                                }, function(reason) {
+                                    resolved[i] = {
+                                        status: 'rejected',
+                                        reason: reason
+                                    };
+                                    pending--;
+                                    if (pending === 0) {
+                                        resolve(resolved);
+                                    }
+                                });
+                            })(i);
+                        }
+                    });
+                });
+            };
+        }
+)JS";
+        JSValue polyfill_promise_allsettled = JS_Eval(ctx, polyfill_promise_allsettled_src, std::strlen(polyfill_promise_allsettled_src),
+                                                  "<polyfill-PromiseAllSettled>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_promise_allsettled)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_promise_allsettled);
+    }
+
+    {
+        const char* polyfill_promise_any_src = R"JS(
+        if (typeof globalThis.Promise !== 'undefined' && !globalThis.Promise.any) {
+            Promise.any = function(iterable) {
+                return new Promise(function(resolve, reject) {
+                    if (!iterable.length) {
+                        reject(new AggregateError([], 'All promises were rejected'));
+                        return;
+                    }
+
+                    var errors = [];
+                    var pending = iterable.length;
+                    for (var i = 0; i < iterable.length; i++) {
+                        (function(i) {
+                            Promise.resolve(iterable[i]).then(function(value) {
+                                resolve(value);
+                            }, function(reason) {
+                                errors[i] = reason;
+                                pending--;
+                                if (pending === 0) {
+                                    reject(new AggregateError(errors, 'All promises were rejected'));
+                                }
+                            });
+                        })(i);
+                    }
+                });
+            };
+        }
+)JS";
+        JSValue polyfill_promise_any = JS_Eval(ctx, polyfill_promise_any_src, std::strlen(polyfill_promise_any_src),
+                                                  "<polyfill-PromiseAny>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_promise_any)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_promise_any);
+    }
+
     // ---- window.localStorage and window.sessionStorage ----
     ParsedURL parsed_url = parse_url(url);
     install_web_storage_bindings(ctx, parsed_url.origin);
