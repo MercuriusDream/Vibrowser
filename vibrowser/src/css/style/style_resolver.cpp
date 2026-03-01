@@ -115,6 +115,7 @@ Overflow parse_overflow_value(const std::string& v) {
     if (v == "hidden") return Overflow::Hidden;
     if (v == "scroll") return Overflow::Scroll;
     if (v == "auto") return Overflow::Auto;
+    if (v == "clip") return Overflow::Clip;
     return Overflow::Visible;
 }
 

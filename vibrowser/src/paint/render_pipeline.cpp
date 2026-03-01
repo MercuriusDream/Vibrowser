@@ -3812,7 +3812,18 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
         } else if (d.property == "text-overflow") {
             if (val_lower == "ellipsis") style.text_overflow = clever::css::TextOverflow::Ellipsis;
             else if (val_lower == "fade") style.text_overflow = clever::css::TextOverflow::Fade;
-            else style.text_overflow = clever::css::TextOverflow::Clip;
+            else if (d.value.length() > 0 && d.value[0] == '"') {
+                // Custom ellipsis string: text-overflow: "→"
+                auto end_quote = d.value.find('"', 1);
+                if (end_quote != std::string::npos) {
+                    style.text_overflow_string = d.value.substr(1, end_quote - 1);
+                    style.text_overflow = clever::css::TextOverflow::Ellipsis;
+                } else {
+                    style.text_overflow = clever::css::TextOverflow::Clip;
+                }
+            } else {
+                style.text_overflow = clever::css::TextOverflow::Clip;
+            }
         } else if (d.property == "word-break") {
             if (val_lower == "break-all") style.word_break = 1;
             else if (val_lower == "keep-all") style.word_break = 2;

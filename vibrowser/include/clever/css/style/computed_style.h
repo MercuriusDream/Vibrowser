@@ -38,7 +38,7 @@ enum class TextTransform { None, Capitalize, Uppercase, Lowercase };
 enum class FontStyle { Normal, Italic, Oblique };
 enum class FontWeight { Normal = 400, Bold = 700 };
 enum class WhiteSpace { Normal, NoWrap, Pre, PreWrap, PreLine, BreakSpaces };
-enum class Overflow { Visible, Hidden, Scroll, Auto };
+enum class Overflow { Visible, Hidden, Scroll, Auto, Clip };
 enum class Visibility { Visible, Hidden, Collapse };
 enum class FlexDirection { Row, RowReverse, Column, ColumnReverse };
 enum class FlexWrap { NoWrap, Wrap, WrapReverse };
@@ -401,6 +401,10 @@ struct ComputedStyle {
 
     // Text overflow
     TextOverflow text_overflow = TextOverflow::Clip;
+    // Custom text-overflow string (e.g., "→" from text-overflow: "→")
+    std::string text_overflow_string;
+    // Webkit line clamp ellipsis string (defaults to "...")
+    std::string webkit_line_clamp_string;
 
     // Word break and overflow wrap
     int word_break = 0;    // 0=normal, 1=break-all, 2=keep-all
