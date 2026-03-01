@@ -12,10 +12,103 @@
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
+#include <chrono>
+#include <deque>
 #include <sstream>
 #include <string>
+#include <map>
+#include <mutex>
 
 namespace clever::net {
+
+namespace {
+
+constexpr int kTlsPoolMaxPerHost = 4;
+const std::chrono::seconds kTlsIdleTimeout = std::chrono::seconds(30);
+
+struct PooledTlsConn {
+    std::unique_ptr<TlsSocket> tls;
+    int fd;
+    std::chrono::steady_clock::time_point returned_at;
+};
+
+std::map<std::string, std::deque<PooledTlsConn>> g_tls_pool;
+std::mutex g_tls_pool_mutex;
+
+std::unique_ptr<TlsSocket> acquire_tls_conn(const std::string& host, uint16_t port, int& fd) {
+    fd = -1;
+    const std::string key = host + ":" + std::to_string(port);
+
+    std::lock_guard<std::mutex> lock(g_tls_pool_mutex);
+
+    auto it = g_tls_pool.find(key);
+    if (it == g_tls_pool.end()) return nullptr;
+
+    auto now = std::chrono::steady_clock::now();
+    auto& list = it->second;
+
+    while (!list.empty()) {
+        PooledTlsConn conn = std::move(list.front());
+        list.pop_front();
+
+        if (now - conn.returned_at > kTlsIdleTimeout) {
+            if (conn.tls) {
+                conn.tls->close();
+            }
+            if (conn.fd >= 0) {
+                ::close(conn.fd);
+            }
+            continue;
+        }
+
+        fd = conn.fd;
+        return std::move(conn.tls);
+    }
+
+    if (list.empty()) {
+        g_tls_pool.erase(it);
+    }
+
+    return nullptr;
+}
+
+void release_tls_conn(const std::string& host,
+                     uint16_t port,
+                     std::unique_ptr<TlsSocket> tls,
+                     int fd) {
+    if (!tls || fd < 0) {
+        if (tls) {
+            tls->close();
+        }
+        if (fd >= 0) {
+            ::close(fd);
+        }
+        return;
+    }
+
+    const std::string key = host + ":" + std::to_string(port);
+    const auto now = std::chrono::steady_clock::now();
+
+    std::lock_guard<std::mutex> lock(g_tls_pool_mutex);
+    auto& list = g_tls_pool[key];
+
+    while (list.size() >= static_cast<size_t>(kTlsPoolMaxPerHost)) {
+        PooledTlsConn conn = std::move(list.front());
+        list.pop_front();
+
+        if (conn.tls) {
+            conn.tls->close();
+        }
+        if (conn.fd >= 0) {
+            ::close(conn.fd);
+        }
+    }
+
+    list.push_back(PooledTlsConn{std::move(tls), fd, now});
+}
+
+}  // namespace
 
 // ===========================================================================
 // CacheEntry helpers
@@ -414,144 +507,239 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
     auto data = request.serialize();
 
     if (request.use_tls) {
-        // ---- TLS path (no connection pooling) ----
-        int fd = connect_to(request.host, request.port);
-        if (fd < 0) {
-            return std::nullopt;
-        }
+        std::unique_ptr<TlsSocket> tls;
+        int fd = -1;
 
-        TlsSocket tls;
-        if (!tls.connect(request.host, request.port, fd)) {
-            ::close(fd);
-            return std::nullopt;
-        }
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            bool is_reused = false;
 
-        // Send request through TLS
-        if (!tls.send(data.data(), data.size())) {
-            tls.close();
-            ::close(fd);
-            return std::nullopt;
-        }
+            if (attempt == 0) {
+                tls = acquire_tls_conn(request.host, request.port, fd);
+                is_reused = (tls != nullptr);
 
-        // Receive response through TLS
-        std::vector<uint8_t> buffer;
-        auto deadline = std::chrono::steady_clock::now() + timeout_;
+                if (!tls) {
+                    fd = connect_to(request.host, request.port);
+                    if (fd < 0) {
+                        return std::nullopt;
+                    }
 
-        while (true) {
-            auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-                deadline - std::chrono::steady_clock::now());
-            if (remaining.count() <= 0) {
-                break;  // Timed out
-            }
-
-            // Use poll to wait for data on the underlying fd
-            struct pollfd pfd {};
-            pfd.fd = fd;
-            pfd.events = POLLIN;
-
-            int poll_rv = ::poll(&pfd, 1, static_cast<int>(remaining.count()));
-            if (poll_rv < 0) {
-                if (errno == EINTR) continue;
-                break;  // Error
-            }
-
-            auto chunk = tls.recv();
-            if (!chunk.has_value()) {
-                break;  // TLS error
-            }
-            if (chunk->empty()) {
-                if (poll_rv == 0) {
-                    // poll timed out and no TLS data — check if we already
-                    // have enough data to parse (Connection: close case)
-                    if (!buffer.empty()) break;
-                    continue;  // Keep waiting
+                    tls = std::make_unique<TlsSocket>();
+                    if (!tls->connect(request.host, request.port, fd)) {
+                        ::close(fd);
+                        return std::nullopt;
+                    }
+                } else if (!tls->is_connected()) {
+                    tls->close();
+                    ::close(fd);
+                    fd = -1;
+                    if (is_reused) {
+                        continue;
+                    }
+                    return std::nullopt;
                 }
-                // errSSLWouldBlock or graceful close — if we have a
-                // complete response in the buffer, return it
-                if (!buffer.empty()) {
-                    const char* sep = "\r\n\r\n";
-                    auto it2 = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
-                    if (it2 != buffer.end()) break;  // Have headers, done
+            } else {
+                is_reused = false;
+                if (fd >= 0) {
+                    tls->close();
+                    ::close(fd);
+                    tls.reset();
                 }
-                // No data yet, connection may have closed
-                break;
+
+                fd = connect_to(request.host, request.port);
+                if (fd < 0) {
+                    return std::nullopt;
+                }
+
+                tls = std::make_unique<TlsSocket>();
+                if (!tls->connect(request.host, request.port, fd)) {
+                    ::close(fd);
+                    return std::nullopt;
+                }
             }
 
-            buffer.insert(buffer.end(), chunk->begin(), chunk->end());
-
-            // Check if we have a complete response
-            const char* sep = "\r\n\r\n";
-            auto it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
-            if (it == buffer.end()) {
-                continue;  // Headers not yet complete
+            // Send request through TLS
+            if (!tls->send(data.data(), data.size())) {
+                if (is_reused && attempt == 0) {
+                    tls->close();
+                    ::close(fd);
+                    continue;
+                }
+                tls->close();
+                ::close(fd);
+                return std::nullopt;
             }
 
-            size_t header_end = static_cast<size_t>(it - buffer.begin()) + 4;
+            // Receive response through TLS
+            std::vector<uint8_t> buffer;
+            auto deadline = std::chrono::steady_clock::now() + timeout_;
 
-            // Check for Content-Length
-            std::string header_str(buffer.begin(),
-                                   buffer.begin() + static_cast<std::ptrdiff_t>(header_end));
-            std::string lower_header = header_str;
-            std::transform(lower_header.begin(), lower_header.end(),
-                           lower_header.begin(),
-                           [](unsigned char c) { return std::tolower(c); });
+            while (true) {
+                auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    deadline - std::chrono::steady_clock::now());
+                if (remaining.count() <= 0) {
+                    break;  // Timed out
+                }
 
-            std::string cl_header = "content-length:";
-            auto cl_pos = lower_header.find(cl_header);
-            if (cl_pos != std::string::npos) {
-                auto val_start = cl_pos + cl_header.size();
-                auto val_end = lower_header.find("\r\n", val_start);
-                if (val_end != std::string::npos) {
-                    std::string val = header_str.substr(val_start, val_end - val_start);
-                    while (!val.empty() && val.front() == ' ') val.erase(val.begin());
-                    try {
-                        size_t content_length = std::stoull(val);
-                        if (buffer.size() >= header_end + content_length) {
-                            tls.close();
-                            ::close(fd);
-                            return Response::parse(buffer);
+                // Use poll to wait for data on the underlying fd
+                struct pollfd pfd {};
+                pfd.fd = fd;
+                pfd.events = POLLIN;
+
+                int poll_rv = ::poll(&pfd, 1, static_cast<int>(remaining.count()));
+                if (poll_rv < 0) {
+                    if (errno == EINTR) continue;
+                    break;  // Error
+                }
+
+                auto chunk = tls->recv();
+                if (!chunk.has_value()) {
+                    break;  // TLS error
+                }
+                if (chunk->empty()) {
+                    if (poll_rv == 0) {
+                        // poll timed out and no TLS data — check if we already
+                        // have enough data to parse (Connection: close case)
+                        if (!buffer.empty()) break;
+                        continue;  // Keep waiting
+                    }
+                    // errSSLWouldBlock or graceful close — if we have a
+                    // complete response in the buffer, return it
+                    if (!buffer.empty()) {
+                        const char* sep = "\r\n\r\n";
+                        auto it2 = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
+                        if (it2 != buffer.end()) break;  // Have headers, done
+                    }
+                    // No data yet, connection may have closed
+                    break;
+                }
+
+                buffer.insert(buffer.end(), chunk->begin(), chunk->end());
+
+                // Check if we have a complete response
+                const char* sep = "\r\n\r\n";
+                auto it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
+                if (it == buffer.end()) {
+                    continue;  // Headers not yet complete
+                }
+
+                size_t header_end = static_cast<size_t>(it - buffer.begin()) + 4;
+
+                // Check for Content-Length
+                std::string header_str(buffer.begin(),
+                                       buffer.begin() + static_cast<std::ptrdiff_t>(header_end));
+                std::string lower_header = header_str;
+                std::transform(lower_header.begin(), lower_header.end(),
+                               lower_header.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+
+                std::string cl_header = "content-length:";
+                auto cl_pos = lower_header.find(cl_header);
+                if (cl_pos != std::string::npos) {
+                    auto val_start = cl_pos + cl_header.size();
+                    auto val_end = lower_header.find("\r\n", val_start);
+                    if (val_end != std::string::npos) {
+                        std::string val = header_str.substr(val_start, val_end - val_start);
+                        while (!val.empty() && val.front() == ' ') val.erase(val.begin());
+                        try {
+                            size_t content_length = std::stoull(val);
+                            if (buffer.size() >= header_end + content_length) {
+                                break;
+                            }
+                        } catch (...) {
+                            // Fall through
                         }
-                    } catch (...) {
-                        // Fall through
+                    }
+                    continue;
+                }
+
+                // Check for Transfer-Encoding: chunked
+                if (lower_header.find("transfer-encoding: chunked") != std::string::npos ||
+                    lower_header.find("transfer-encoding:chunked") != std::string::npos) {
+                    const char* end7 = "\r\n0\r\n\r\n";
+                    auto end_it = std::search(
+                        buffer.begin() + static_cast<std::ptrdiff_t>(header_end),
+                        buffer.end(),
+                        end7,
+                        end7 + 7);
+                    if (end_it != buffer.end()) {
+                        break;
+                    }
+                    // Also check "0\r\n\r\n" at very start of body
+                    const char* end5 = "0\r\n\r\n";
+                    auto body_start = buffer.begin() + static_cast<std::ptrdiff_t>(header_end);
+                    if (std::distance(body_start, buffer.end()) >= 5 &&
+                        std::equal(end5, end5 + 5, body_start)) {
+                        break;
+                    }
+                    continue;
+                }
+
+                // No Content-Length and not chunked — keep reading until connection close
+            }
+
+            if (buffer.empty()) {
+                if (is_reused && attempt == 0) {
+                    tls->close();
+                    ::close(fd);
+                    continue;
+                }
+                tls->close();
+                ::close(fd);
+                return std::nullopt;
+            }
+
+            auto resp = Response::parse(buffer);
+            if (!resp.has_value()) {
+                tls->close();
+                ::close(fd);
+                return std::nullopt;
+            }
+
+            bool is_http11 = false;
+            const char* crlf = "\r\n";
+            auto status_line_end = std::search(buffer.begin(), buffer.end(), crlf, crlf + 2);
+            if (status_line_end != buffer.end()) {
+                std::string status_line(buffer.begin(), status_line_end);
+                std::string lower_status_line = to_lower(status_line);
+                is_http11 = lower_status_line.starts_with("http/1.1");
+            }
+
+            // Decide keep-alive behavior:
+            // - Connection: close => close
+            // - Connection: keep-alive => keep
+            // - otherwise default keep for HTTP/1.1, close for older versions
+            auto conn_header = resp->headers.get("connection");
+            bool server_wants_close = false;
+            bool server_explicit_keep_alive = false;
+            if (conn_header.has_value()) {
+                std::istringstream stream(*conn_header);
+                std::string token;
+                while (std::getline(stream, token, ',')) {
+                    std::string lower_token = to_lower(trim(token));
+                    if (lower_token == "close") {
+                        server_wants_close = true;
+                    } else if (lower_token == "keep-alive") {
+                        server_explicit_keep_alive = true;
                     }
                 }
-                continue;
             }
 
-            // Check for Transfer-Encoding: chunked
-            if (lower_header.find("transfer-encoding: chunked") != std::string::npos ||
-                lower_header.find("transfer-encoding:chunked") != std::string::npos) {
-                const char* end7 = "\r\n0\r\n\r\n";
-                auto end_it = std::search(
-                    buffer.begin() + static_cast<std::ptrdiff_t>(header_end),
-                    buffer.end(), end7, end7 + 7);
-                if (end_it != buffer.end()) {
-                    tls.close();
-                    ::close(fd);
-                    return Response::parse(buffer);
-                }
-                // Also check "0\r\n\r\n" at very start of body
-                const char* end5 = "0\r\n\r\n";
-                auto body_start = buffer.begin() + static_cast<std::ptrdiff_t>(header_end);
-                if (std::distance(body_start, buffer.end()) >= 5 &&
-                    std::equal(end5, end5 + 5, body_start)) {
-                    tls.close();
-                    ::close(fd);
-                    return Response::parse(buffer);
-                }
-                continue;
+            bool should_keep_alive = false;
+            if (!server_wants_close) {
+                should_keep_alive = server_explicit_keep_alive || is_http11;
             }
 
-            // No Content-Length and not chunked — keep reading until connection close
+            if (!should_keep_alive) {
+                tls->close();
+                ::close(fd);
+            } else {
+                release_tls_conn(request.host, request.port, std::move(tls), fd);
+            }
+
+            return resp;
         }
 
-        tls.close();
-        ::close(fd);
-
-        if (buffer.empty()) {
-            return std::nullopt;
-        }
-        return Response::parse(buffer);
+        return std::nullopt;
 
     } else {
         // ---- Plain HTTP path with keep-alive connection pooling ----
