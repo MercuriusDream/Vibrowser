@@ -3479,6 +3479,18 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
                     }
                 }
             }
+
+            // Check for pending POST form submission data
+            if (loc.__formMethod === "POST" && typeof win.__setPendingFormSubmission === 'function') {
+                var formData = loc.__formData || '';
+                var formEnctype = loc.__formEnctype || 'application/x-www-form-urlencoded';
+                win.__setPendingFormSubmission(formData, formEnctype);
+                // Clear the form metadata after consuming it
+                delete loc.__formMethod;
+                delete loc.__formData;
+                delete loc.__formEnctype;
+            }
+
             updateProps(parseURL(newUrl));
         },
         configurable: true,
