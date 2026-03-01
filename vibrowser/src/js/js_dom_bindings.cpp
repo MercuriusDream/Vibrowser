@@ -6901,6 +6901,52 @@ static JSValue js_resize_observer_observe(JSContext* ctx,
             if (e == elem) return JS_UNDEFINED;
         }
         entry.observed_elements.push_back(elem);
+
+        if (JS_IsFunction(ctx, entry.callback)) {
+            JSValue entries = JS_NewArray(ctx);
+            JSValue init_entry = JS_NewObject(ctx);
+
+            float content_x = 0, content_y = 0, content_w = 0, content_h = 0;
+            float border_w = 0, border_h = 0;
+            auto geom_it = state->layout_geometry.find(elem);
+            if (geom_it != state->layout_geometry.end()) {
+                auto& lr = geom_it->second;
+                content_x = lr.x;
+                content_y = lr.y;
+                content_w = lr.width;
+                content_h = lr.height;
+                border_w = lr.border_left + lr.padding_left + lr.width +
+                           lr.padding_right + lr.border_right;
+                border_h = lr.border_top + lr.padding_top + lr.height +
+                           lr.padding_bottom + lr.border_bottom;
+            }
+
+            JSValue cr = make_dom_rect(ctx, content_x, content_y, content_w, content_h);
+            JS_SetPropertyStr(ctx, init_entry, "contentRect", cr);
+
+            JSValue cbs_arr = JS_NewArray(ctx);
+            JSValue cbs = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, cbs, "inlineSize", JS_NewFloat64(ctx, content_w));
+            JS_SetPropertyStr(ctx, cbs, "blockSize", JS_NewFloat64(ctx, content_h));
+            JS_SetPropertyUint32(ctx, cbs_arr, 0, cbs);
+            JS_SetPropertyStr(ctx, init_entry, "contentBoxSize", cbs_arr);
+
+            JSValue bbs_arr = JS_NewArray(ctx);
+            JSValue bbs = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, bbs, "inlineSize", JS_NewFloat64(ctx, border_w));
+            JS_SetPropertyStr(ctx, bbs, "blockSize", JS_NewFloat64(ctx, border_h));
+            JS_SetPropertyUint32(ctx, bbs_arr, 0, bbs);
+            JS_SetPropertyStr(ctx, init_entry, "borderBoxSize", bbs_arr);
+
+            JS_SetPropertyStr(ctx, init_entry, "target", wrap_element(ctx, elem));
+
+            JS_SetPropertyUint32(ctx, entries, 0, init_entry);
+
+            JSValue args[2] = { entries, entry.observer_obj };
+            JSValue ret = JS_Call(ctx, entry.callback, JS_UNDEFINED, 2, args);
+            JS_FreeValue(ctx, ret);
+            JS_FreeValue(ctx, entries);
+        }
     }
     return JS_UNDEFINED;
 }

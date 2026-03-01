@@ -223,6 +223,133 @@ bool SelectorMatcher::matches_compound(const ElementView& element, const Compoun
     return true;
 }
 
+bool SelectorMatcher::has_selector_matches(const ElementView& element,
+                                          const ComplexSelector& selector) const {
+    if (selector.parts.empty()) {
+        return false;
+    }
+
+    const auto add_descendants = [](const ElementView& base,
+                                   std::vector<const ElementView*>& out) {
+        std::vector<const ElementView*> stack;
+        for (const auto* child : base.children) {
+            if (child) {
+                stack.push_back(child);
+            }
+        }
+        while (!stack.empty()) {
+            const auto* current = stack.back();
+            stack.pop_back();
+            if (!current) continue;
+            out.push_back(current);
+            for (const auto* child : current->children) {
+                if (child) {
+                    stack.push_back(child);
+                }
+            }
+        }
+    };
+
+    const auto add_next_sibling = [](const ElementView& base,
+                                    std::vector<const ElementView*>& out) {
+        if (!base.parent || base.parent->children.empty()) {
+            return;
+        }
+        const auto& siblings = base.parent->children;
+        for (size_t i = 0; i < siblings.size(); ++i) {
+            if (siblings[i] == &base) {
+                if (i + 1 < siblings.size()) {
+                    out.push_back(siblings[i + 1]);
+                }
+                break;
+            }
+        }
+    };
+
+    const auto add_subsequent_siblings = [](const ElementView& base,
+                                           std::vector<const ElementView*>& out) {
+        if (!base.parent || base.parent->children.empty()) {
+            return;
+        }
+        const auto& siblings = base.parent->children;
+        for (size_t i = 0; i < siblings.size(); ++i) {
+            if (siblings[i] == &base) {
+                for (size_t j = i + 1; j < siblings.size(); ++j) {
+                    out.push_back(siblings[j]);
+                }
+                break;
+            }
+        }
+    };
+
+    auto add_targets_for_combinator = [&](const ElementView& base,
+                                         Combinator combinator,
+                                         std::vector<const ElementView*>& out) {
+        switch (combinator) {
+            case Combinator::Descendant:
+                add_descendants(base, out);
+                break;
+            case Combinator::Child:
+                for (const auto* child : base.children) {
+                    if (child) {
+                        out.push_back(child);
+                    }
+                }
+                break;
+            case Combinator::NextSibling:
+                add_next_sibling(base, out);
+                break;
+            case Combinator::SubsequentSibling:
+                add_subsequent_siblings(base, out);
+                break;
+        }
+    };
+
+    std::vector<const ElementView*> current_matches;
+
+    const auto& first_part = selector.parts[0];
+    const auto first_combinator =
+        first_part.combinator.value_or(Combinator::Descendant); // default is descendant
+    std::vector<const ElementView*> candidates;
+    add_targets_for_combinator(element, first_combinator, candidates);
+    for (const auto* candidate : candidates) {
+        if (candidate && matches_compound(*candidate, first_part.compound)) {
+            current_matches.push_back(candidate);
+        }
+    }
+
+    if (current_matches.empty()) {
+        return false;
+    }
+
+    for (size_t i = 1; i < selector.parts.size(); ++i) {
+        std::vector<const ElementView*> next_matches;
+        const auto& part = selector.parts[i];
+        const auto combinator = part.combinator.value_or(Combinator::Descendant);
+
+        for (const auto* current : current_matches) {
+            if (!current) {
+                continue;
+            }
+            std::vector<const ElementView*> relation_nodes;
+            add_targets_for_combinator(*current, combinator, relation_nodes);
+            for (const auto* node : relation_nodes) {
+                if (node && matches_compound(*node, part.compound)) {
+                    next_matches.push_back(node);
+                }
+            }
+        }
+
+        if (next_matches.empty()) {
+            return false;
+        }
+
+        current_matches = std::move(next_matches);
+    }
+
+    return !current_matches.empty();
+}
+
 bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSelector& simple) const {
     switch (simple.type) {
         case SimpleSelectorType::Universal:
@@ -477,22 +604,10 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 }
                 return total == 1;
             } else if (name == "has") {
-                // :has() — match if ANY child/descendant matches the argument selector
+                // :has() — match if any relation-defined selector matches from this element
                 auto inner_list = parse_selector_list(simple.argument);
                 for (const auto& sel : inner_list.selectors) {
-                    // Check direct children and all descendants
-                    std::vector<const ElementView*> stack;
-                    for (auto* child : element.children) {
-                        stack.push_back(child);
-                    }
-                    while (!stack.empty()) {
-                        const ElementView* desc = stack.back();
-                        stack.pop_back();
-                        if (matches(*desc, sel)) return true;
-                        for (auto* grandchild : desc->children) {
-                            stack.push_back(grandchild);
-                        }
-                    }
+                    if (has_selector_matches(element, sel)) return true;
                 }
                 return false;
             } else if (name == "enabled") {

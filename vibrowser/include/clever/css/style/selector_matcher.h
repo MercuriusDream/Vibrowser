@@ -26,6 +26,7 @@ class SelectorMatcher {
 public:
     bool matches(const ElementView& element, const ComplexSelector& selector) const;
     bool matches_compound(const ElementView& element, const CompoundSelector& compound) const;
+    bool has_selector_matches(const ElementView& element, const ComplexSelector& selector) const;
     bool matches_simple(const ElementView& element, const SimpleSelector& simple) const;
 };
 

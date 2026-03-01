@@ -6,10 +6,10 @@
 ## Current Status
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
-**Last Active**: 2026-03-01
-**Current Focus**: Round 28 complete, starting Round 29
-**Momentum**: Cycle 1966 — 30+ commits pushed across sessions. 14/14 tests passing.
-**Cycle**: 1966
+**Last Active**: 2026-03-02
+**Current Focus**: Round 29 agents dispatched — URL double-encoding bug FIXED (Wikipedia CSS)
+**Momentum**: Cycle 1967 — 30+ commits pushed across sessions. 14/14 tests passing. Wikipedia CSS loading fixed.
+**Cycle**: 1967
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
@@ -1546,6 +1546,21 @@ Generated: 2026-03-01
 *Claude Estate — no end condition. Only more work.*
 
 ## Session Log
+
+### Cycle 1967 (URL Bug Fix + Round 29 Dispatch) — 2026-03-02
+
+- **Theme**: Fixed critical Wikipedia CSS rendering bug — URL query string double-encoding
+- **Commits**: 22cceef
+- **Bug Fixed**:
+  - `percent_encode_query()` in `url_parser.cpp` was re-encoding existing `%XX` sequences (e.g., `%7C` → `%257C`)
+  - This caused Wikipedia's CSS URLs (which use `%7C` as pipe separators between module names) to fail
+  - First CSS file returned 383 bytes (error) instead of 190KB stylesheet
+  - Fix: preserve existing `%XX` sequences in query string encoding — check for `%` followed by two hex digits
+  - Updated 46 test assertions that expected the old (buggy) double-encoding behavior
+  - Removed debug logging from render_pipeline.cpp
+- **Round 29 Agents Dispatched**: fetch API, localStorage, IntersectionObserver, ResizeObserver, aspect-ratio, :has() selector
+  - NOTE: Explore agent confirmed ALL 8 checked features are already implemented! Agents may find duplicates.
+- **Validation**: 14/14 suites pass (2020 URL tests), 0 failures
 
 ### Cycle 1966 (Round 28 Feature Implementation) — 2026-03-01
 
