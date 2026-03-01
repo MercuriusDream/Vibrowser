@@ -1500,7 +1500,11 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             // Apply text-align centering for inline-like children in block context.
             // When a container has mixed block+inline content, inline-like children
             // (inline-block, images) should still respect the parent's text-align.
-            if (node.text_align != 0) {
+            int line_text_align = node.text_align;
+            bool inline_rtl = (node.direction == 1);
+            if (inline_rtl && line_text_align == 0) line_text_align = 2;
+            if (inline_rtl && line_text_align == 2) line_text_align = 0;
+            if (line_text_align != 0) {
                 bool child_inline_like = child->is_text
                     || child->mode == LayoutMode::Inline
                     || child->mode == LayoutMode::InlineBlock
@@ -1512,9 +1516,9 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                     float child_w = child->geometry.margin_box_width();
                     float extra = content_w - left_off - right_off - child_w;
                     if (extra > 0) {
-                        if (node.text_align == 1 || node.text_align == 4) { // center or -webkit-center
+                        if (line_text_align == 1 || line_text_align == 4) { // center or -webkit-center
                             child->geometry.x += extra / 2.0f;
-                        } else if (node.text_align == 2) { // right
+                        } else if (line_text_align == 2) { // right
                             child->geometry.x += extra;
                         }
                     }
@@ -2381,6 +2385,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
     int effective_text_align = node.text_align;
     // If text-align is "start" (0/left), RTL makes it right-aligned
     if (is_rtl && effective_text_align == 0) effective_text_align = 2; // right
+    if (is_rtl && effective_text_align == 2) effective_text_align = 0; // left
     if ((effective_text_align != 0 || node.text_align_last != 0) && containing_width > 0) {
         for (size_t li = 0; li < lines.size(); li++) {
             auto& line = lines[li];
@@ -2398,7 +2403,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 // text_align_last 1=left -> 0, 2=right -> 2, 3=center -> 1, 4=justify -> 3
                 switch (node.text_align_last) {
                     case 1: eff_align = 0; break; // left/start
-                    case 2: eff_align = 2; break; // right/end
+                    case 2: eff_align = is_rtl ? 0 : 2; break; // right/end
                     case 3: eff_align = 1; break; // center
                     case 4: eff_align = 3; break; // justify
                     default: break;
@@ -2430,6 +2435,38 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 for (size_t vi = line.start_idx; vi < line.end_idx; vi++) {
                     node.children[visible[vi]]->geometry.x += offset;
                 }
+            }
+        }
+    }
+
+    if (is_rtl && !has_inline_container) {
+        for (auto& line : lines) {
+            size_t count = line.end_idx - line.start_idx;
+            if (count <= 1) continue;
+
+            float min_x = std::numeric_limits<float>::max();
+            float max_x = 0.0f;
+            std::vector<float> widths;
+            widths.reserve(count);
+
+            for (size_t vi = line.start_idx; vi < line.end_idx; vi++) {
+                auto* child = node.children[visible[vi]].get();
+                float child_w = child->geometry.margin_box_width();
+                widths.push_back(child_w);
+                min_x = std::min(min_x, child->geometry.x);
+                max_x = std::max(max_x, child->geometry.x + child_w);
+            }
+
+            float line_width = max_x - min_x;
+            if (!std::isfinite(min_x) || !std::isfinite(max_x) || line_width <= 0) continue;
+
+            float cursor = min_x + line_width;
+            for (size_t idx = 0; idx < count; idx++) {
+                size_t vi = line.end_idx - 1 - idx;
+                auto* child = node.children[visible[vi]].get();
+                float child_w = widths[count - 1 - idx];
+                child->geometry.x = cursor - child_w + child->geometry.margin.left;
+                cursor -= child_w;
             }
         }
     }
@@ -2566,6 +2603,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
 void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
     bool is_row = (node.flex_direction == 0 || node.flex_direction == 1);
     bool is_reverse = (node.flex_direction == 1 || node.flex_direction == 3);
+    bool is_flex_row_rtl = (is_row && node.direction == 1 && node.flex_direction == 0);
 
     // For flex-direction: row, the main axis gap is column-gap.
     // For flex-direction: column, the main axis gap is row-gap.
@@ -2917,37 +2955,41 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
         // Justify-content for this line
         float cursor_main = 0;
         float gap_between = main_gap;
+        float justify_start = 0.0f;
 
         switch (node.justify_content) {
-            case 0: cursor_main = 0; break;
-            case 1: cursor_main = remaining_space; break;
-            case 2: cursor_main = remaining_space / 2.0f; break;
+            case 0: justify_start = 0; break;
+            case 1: justify_start = remaining_space; break;
+            case 2: justify_start = remaining_space / 2.0f; break;
             case 3: // space-between
                 if (line_count > 1) {
                     gap_between = main_gap + remaining_space / static_cast<float>(line_count - 1);
                 }
-                cursor_main = 0;
+                justify_start = 0;
                 break;
             case 4: // space-around
                 if (line_count > 0) {
                     float space_unit = remaining_space / static_cast<float>(line_count);
-                    cursor_main = space_unit / 2.0f;
+                    justify_start = space_unit / 2.0f;
                     gap_between = main_gap + space_unit;
                 }
                 break;
             case 5: // space-evenly
                 if (line_count > 0) {
                     float space_unit = remaining_space / static_cast<float>(line_count + 1);
-                    cursor_main = space_unit;
+                    justify_start = space_unit;
                     gap_between = main_gap + space_unit;
                 }
                 break;
             default: break;
         }
 
+        cursor_main = is_flex_row_rtl ? main_size - justify_start : justify_start;
+
         // Position items along main axis
         line.max_cross = 0;
-        for (size_t i = line.start; i < line.end; ++i) {
+        for (size_t line_offset = 0; line_offset < line_count; ++line_offset) {
+            size_t i = is_flex_row_rtl ? (line.end - 1 - line_offset) : (line.start + line_offset);
             auto& item = items[i];
             auto* child = item.child;
 
@@ -2978,7 +3020,16 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                     child->geometry.height = std::min(child->geometry.height, child->max_height);
                 }
                 child->geometry.height = std::max(child->geometry.height, child->min_height);
-                child->geometry.x = cursor_main + child->geometry.margin.left;
+                float child_main_outer = child->geometry.margin.left
+                    + child->geometry.border.left + child->geometry.padding.left
+                    + child->geometry.width
+                    + child->geometry.padding.right + child->geometry.border.right
+                    + child->geometry.margin.right;
+                if (is_flex_row_rtl) {
+                    child->geometry.x = cursor_main - child_main_outer + child->geometry.margin.left;
+                } else {
+                    child->geometry.x = cursor_main + child->geometry.margin.left;
+                }
                 child->geometry.y = cross_cursor;
                 line.max_cross = std::max(line.max_cross, child->geometry.margin_box_height());
             } else {
@@ -3023,11 +3074,16 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
 
             // Advance cursor by full margin-box size on main axis
             if (is_row) {
-                cursor_main += child->geometry.margin.left
+                float child_main_outer = child->geometry.margin.left
                     + child->geometry.border.left + child->geometry.padding.left
                     + child->geometry.width
                     + child->geometry.padding.right + child->geometry.border.right
                     + child->geometry.margin.right;
+                if (is_flex_row_rtl) {
+                    cursor_main -= child_main_outer;
+                } else {
+                    cursor_main += child_main_outer;
+                }
             } else {
                 cursor_main += child->geometry.margin.top
                     + child->geometry.border.top + child->geometry.padding.top
@@ -3035,8 +3091,12 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                     + child->geometry.padding.bottom + child->geometry.border.bottom
                     + child->geometry.margin.bottom;
             }
-            if (i + 1 < line.end) {
-                cursor_main += gap_between;
+            if (line_offset + 1 < line_count) {
+                if (is_flex_row_rtl) {
+                    cursor_main -= gap_between;
+                } else {
+                    cursor_main += gap_between;
+                }
             }
         }
 
