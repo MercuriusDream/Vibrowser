@@ -56,8 +56,12 @@ struct FontFaceRule {
     std::string font_family;
     std::string src;           // URL or local() reference
     std::string font_weight;   // "normal", "bold", "100"-"900"
+    int min_weight = 0;        // Parsed font-weight minimum (defaults to 0)
+    int max_weight = 900;      // Parsed font-weight maximum (defaults to 900)
     std::string font_style;    // "normal", "italic", "oblique"
     std::string unicode_range; // e.g., "U+0000-00FF"
+    int unicode_min = 0;       // Parsed Unicode range minimum codepoint.
+    int unicode_max = 0x10FFFF; // Parsed Unicode range maximum codepoint.
     std::string font_display;  // "auto", "block", "swap", "fallback", "optional"
     std::string size_adjust;
 };

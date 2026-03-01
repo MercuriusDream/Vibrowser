@@ -2,6 +2,7 @@
 #include <clever/css/parser/tokenizer.h>
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <unordered_map>
 
 namespace clever::css {
@@ -544,16 +545,176 @@ void StyleSheetParser::parse_font_face_rule(StyleSheet& sheet) {
             return s;
         };
 
+        auto to_lower = [](std::string s) -> std::string {
+            for (auto& ch : s) {
+                ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            }
+            return s;
+        };
+
+        auto trim = [](const std::string& s) -> std::string {
+            size_t start = 0;
+            while (start < s.size() &&
+                   std::isspace(static_cast<unsigned char>(s[start]))) {
+                ++start;
+            }
+            size_t end = s.size();
+            while (end > start &&
+                   std::isspace(static_cast<unsigned char>(s[end - 1]))) {
+                --end;
+            }
+            return (end <= start) ? "" : s.substr(start, end - start);
+        };
+
+        auto parse_single_font_weight = [&](const std::string& token, int& out) -> bool {
+            const auto lower = to_lower(trim(token));
+            if (lower.empty()) return false;
+            if (lower == "normal") {
+                out = 400;
+                return true;
+            }
+            if (lower == "bold") {
+                out = 700;
+                return true;
+            }
+            if (!std::all_of(lower.begin(), lower.end(),
+                             [](unsigned char c) { return std::isdigit(c); })) {
+                return false;
+            }
+            try {
+                int value = std::stoi(lower);
+                if (value < 100 || value > 900) return false;
+                out = value;
+                return true;
+            } catch (...) {
+                return false;
+            }
+        };
+
+        auto parse_font_weight_range = [&](const std::string& value,
+                                          int& min_weight,
+                                          int& max_weight) -> bool {
+            int first = 0;
+            int second = 0;
+            std::vector<std::string> tokens;
+            bool in_token = false;
+            std::string token;
+            for (char ch : value) {
+                if (std::isspace(static_cast<unsigned char>(ch))) {
+                    if (in_token) {
+                        tokens.push_back(token);
+                        token.clear();
+                        in_token = false;
+                    }
+                    continue;
+                }
+                if (ch == ',') break;
+                token += ch;
+                in_token = true;
+            }
+            if (in_token) tokens.push_back(token);
+            if (tokens.empty() || tokens.size() > 2) return false;
+            if (!parse_single_font_weight(tokens[0], first)) return false;
+            if (tokens.size() == 1) {
+                min_weight = first;
+                max_weight = first;
+                return true;
+            }
+            if (!parse_single_font_weight(tokens[1], second)) return false;
+            min_weight = std::min(first, second);
+            max_weight = std::max(first, second);
+            return true;
+        };
+
+        auto parse_unicode_codepoint = [&](const std::string& hex, int& out) -> bool {
+            const auto trimmed = trim(hex);
+            if (trimmed.empty()) return false;
+            if (!std::all_of(trimmed.begin(), trimmed.end(),
+                             [](unsigned char c) { return std::isxdigit(c); })) {
+                return false;
+            }
+            try {
+                long value = std::stol(trimmed, nullptr, 16);
+                if (value < 0 || value > 0x10FFFF) return false;
+                out = static_cast<int>(value);
+                return true;
+            } catch (...) {
+                return false;
+            }
+        };
+
+        auto parse_unicode_range = [&](const std::string& value,
+                                      int& min_cp,
+                                      int& max_cp) -> bool {
+            bool parsed_any = false;
+            int parsed_min = std::numeric_limits<int>::max();
+            int parsed_max = -1;
+            size_t pos = 0;
+            while (pos < value.size()) {
+                size_t comma = value.find(',', pos);
+                std::string token = trim(value.substr(pos, comma - pos));
+                pos = (comma == std::string::npos) ? value.size() : comma + 1;
+                if (token.empty()) continue;
+
+                token = to_lower(token);
+                if (token.size() < 3 ||
+                    token[0] != 'u' ||
+                    token[1] != '+') {
+                    continue;
+                }
+
+                std::string range = token.substr(2);
+                const auto dash = range.find('-');
+                int min_value = 0;
+                int max_value = 0;
+                if (dash == std::string::npos) {
+                    if (!parse_unicode_codepoint(range, min_value)) continue;
+                    max_value = min_value;
+                } else {
+                    if (dash == 0 || dash + 1 >= range.size()) continue;
+                    if (!parse_unicode_codepoint(range.substr(0, dash), min_value)) continue;
+                    if (!parse_unicode_codepoint(range.substr(dash + 1), max_value)) continue;
+                    if (min_value > max_value) std::swap(min_value, max_value);
+                }
+
+                parsed_any = true;
+                parsed_min = std::min(parsed_min, min_value);
+                parsed_max = std::max(parsed_max, max_value);
+            }
+            if (!parsed_any) return false;
+            min_cp = parsed_min;
+            max_cp = parsed_max;
+            return true;
+        };
+
         if (decl.property == "font-family") {
             rule.font_family = unquote(value_str);
         } else if (decl.property == "src") {
             rule.src = value_str;
         } else if (decl.property == "font-weight") {
             rule.font_weight = value_str;
+            int min_weight = 0;
+            int max_weight = 0;
+            if (parse_font_weight_range(value_str, min_weight, max_weight)) {
+                rule.min_weight = min_weight;
+                rule.max_weight = max_weight;
+            } else {
+                rule.min_weight = 400;
+                rule.max_weight = 400;
+            }
         } else if (decl.property == "font-style") {
             rule.font_style = value_str;
         } else if (decl.property == "unicode-range") {
             rule.unicode_range = value_str;
+            int unicode_min = 0;
+            int unicode_max = 0x10FFFF;
+            if (parse_unicode_range(value_str, unicode_min, unicode_max)) {
+                rule.unicode_min = unicode_min;
+                rule.unicode_max = unicode_max;
+            } else {
+                rule.unicode_min = 0;
+                rule.unicode_max = 0x10FFFF;
+            }
         } else if (decl.property == "font-display") {
             rule.font_display = value_str;
         } else if (decl.property == "size-adjust") {

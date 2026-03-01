@@ -3009,6 +3009,9 @@ void PropertyCascade::apply_declaration(
         else if (value_lower == "lower-greek") style.list_style_type = ListStyleType::LowerGreek;
         else if (value_lower == "lower-latin") style.list_style_type = ListStyleType::LowerLatin;
         else if (value_lower == "upper-latin") style.list_style_type = ListStyleType::UpperLatin;
+        else if (value_lower == "armenian") style.list_style_type = ListStyleType::Armenian;
+        else if (value_lower == "georgian") style.list_style_type = ListStyleType::Georgian;
+        else if (value_lower == "cjk-decimal") style.list_style_type = ListStyleType::CjkDecimal;
         return;
     }
 
@@ -3071,6 +3074,9 @@ void PropertyCascade::apply_declaration(
             else if (tok == "lower-greek") style.list_style_type = ListStyleType::LowerGreek;
             else if (tok == "lower-latin") style.list_style_type = ListStyleType::LowerLatin;
             else if (tok == "upper-latin") style.list_style_type = ListStyleType::UpperLatin;
+            else if (tok == "armenian") style.list_style_type = ListStyleType::Armenian;
+            else if (tok == "georgian") style.list_style_type = ListStyleType::Georgian;
+            else if (tok == "cjk-decimal") style.list_style_type = ListStyleType::CjkDecimal;
         }
         return;
     }

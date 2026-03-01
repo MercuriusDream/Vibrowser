@@ -109,6 +109,63 @@ static JSValue js_window_set_pending_form_submission(JSContext* ctx, JSValueCons
     return JS_UNDEFINED;
 }
 
+// Build and dispatch a Window hashchange event.
+// - Calls window.onhashchange if set.
+// - Dispatches to window.addEventListener('hashchange', ...) listeners.
+static void fire_hashchange_event(JSContext* ctx,
+                                 const std::string& old_url,
+                                 const std::string& new_url) {
+    JSValue global = JS_GetGlobalObject(ctx);
+
+    JSValue event = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "hashchange"));
+    JS_SetPropertyStr(ctx, event, "oldURL", JS_NewString(ctx, old_url.c_str()));
+    JS_SetPropertyStr(ctx, event, "newURL", JS_NewString(ctx, new_url.c_str()));
+    JS_SetPropertyStr(ctx, event, "bubbles", JS_FALSE);
+    JS_SetPropertyStr(ctx, event, "cancelable", JS_FALSE);
+    JS_SetPropertyStr(ctx, event, "defaultPrevented", JS_FALSE);
+    JS_SetPropertyStr(ctx, event, "target", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, event, "currentTarget", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, event, "eventPhase", JS_NewInt32(ctx, 2)); // AT_TARGET
+
+    JSValue handler = JS_GetPropertyStr(ctx, global, "onhashchange");
+    if (JS_IsFunction(ctx, handler)) {
+        JSValue result = JS_Call(ctx, handler, global, 1, &event);
+        if (JS_IsException(result)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, result);
+    }
+    JS_FreeValue(ctx, handler);
+
+    dispatch_window_listeners(ctx, "hashchange", event);
+
+    JS_FreeValue(ctx, event);
+    JS_FreeValue(ctx, global);
+}
+
+static JSValue js_window_fire_hashchange(JSContext* ctx, JSValueConst /*this_val*/,
+                                          int argc, JSValueConst* argv) {
+    if (argc < 2) {
+        return JS_UNDEFINED;
+    }
+
+    const char* old_url = JS_ToCString(ctx, argv[0]);
+    const char* new_url = JS_ToCString(ctx, argv[1]);
+    if (!old_url || !new_url) {
+        if (old_url) JS_FreeCString(ctx, old_url);
+        if (new_url) JS_FreeCString(ctx, new_url);
+        return JS_UNDEFINED;
+    }
+
+    fire_hashchange_event(ctx, old_url, new_url);
+
+    JS_FreeCString(ctx, old_url);
+    JS_FreeCString(ctx, new_url);
+    return JS_UNDEFINED;
+}
+
 // C++ native implementation of URL.createObjectURL(blob).
 // Reads blob._parts (array of string parts) and blob.type (MIME type),
 // assembles the data, stores it in the registry, and returns the blob: URL.
@@ -3883,6 +3940,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
 (function(loc, win) {
     // Internal storage for the current href
     var _href = loc.href;
+    var _hash = loc.hash;
 
     // URL parser (mirrors the C++ ParsedURL logic)
     function parseURL(url) {
@@ -3952,7 +4010,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         loc.host = p.host;
         loc.port = p.port;
         loc.search = p.search;
-        loc.hash = p.hash;
+        _hash = p.hash;
     }
 
     // Define href as a getter/setter via Object.defineProperty
@@ -3998,7 +4056,37 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
                 delete loc.__formEnctype;
             }
 
-            updateProps(parseURL(newUrl));
+            var oldHref = _href;
+            var oldPathname = loc.pathname;
+            var oldSearch = loc.search;
+            var oldHash = loc.hash;
+            var parsed = parseURL(newUrl);
+            var isHashOnlyChange = (oldPathname === parsed.pathname &&
+                                    oldSearch === parsed.search &&
+                                    oldHash !== parsed.hash);
+
+            updateProps(parsed);
+
+            if (isHashOnlyChange && typeof win.__fireHashChange === "function") {
+                win.__fireHashChange(oldHref, _href);
+            }
+        },
+        configurable: true,
+        enumerable: true
+    });
+
+    // Define hash as an accessor so assignments trigger navigation.
+    Object.defineProperty(loc, 'hash', {
+        get: function() { return _hash; },
+        set: function(v) {
+            var hashValue = String(v);
+            var base = _href.split('#')[0];
+            if (hashValue === '') {
+                loc.href = base;
+            } else {
+                if (hashValue.charAt(0) !== '#') hashValue = '#' + hashValue;
+                loc.href = base + hashValue;
+            }
         },
         configurable: true,
         enumerable: true
@@ -4062,7 +4150,15 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // assign(url): navigate to url, adding to history (same-origin only per spec)
     loc.assign = function(url) { loc.href = String(url); };
     // replace(url): navigate to url, replacing current history entry
-    loc.replace = function(url) { loc.href = String(url); };
+    loc.replace = function(url) {
+        var newUrl = String(url);
+        if (typeof history !== 'undefined' && history &&
+            typeof history.replaceState === 'function') {
+            history.replaceState(history.state, '', newUrl);
+        } else {
+            loc.href = newUrl;
+        }
+    };
     loc.reload = function() { loc.href = _href; };
     loc.toString = function() { return _href; };
 
@@ -4107,6 +4203,8 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // It stores the form body and content-type for the fetch pipeline to use.
     JS_SetPropertyStr(ctx, global, "__setPendingFormSubmission",
         JS_NewCFunction(ctx, js_window_set_pending_form_submission, "__setPendingFormSubmission", 2));
+    JS_SetPropertyStr(ctx, global, "__fireHashChange",
+        JS_NewCFunction(ctx, js_window_fire_hashchange, "__fireHashChange", 2));
 
     // ---- window.navigator ----
     JSValue navigator = JS_NewObject(ctx);
@@ -4335,6 +4433,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
             JS_NewCFunction(ctx, js_history_get_state, "__getState", 0));
 
         JS_SetPropertyStr(ctx, global, "history", history);
+        JS_SetPropertyStr(ctx, global, "onhashchange", JS_NULL);
         JS_SetPropertyStr(ctx, global, "onpopstate", JS_NULL);
     }
 

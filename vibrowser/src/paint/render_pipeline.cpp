@@ -157,6 +157,154 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+struct FontFaceCandidate {
+    const clever::css::FontFaceRule* rule = nullptr;
+    int weight = 400;
+    bool italic = false;
+};
+
+enum class FontFaceStyle { Normal, Italic, Oblique };
+enum class FontDisplayPolicy { Auto, Block, Swap, Fallback, Optional };
+
+static constexpr int kFontWeightMin = 100;
+static constexpr int kFontWeightMax = 900;
+static constexpr int kDefaultWeight = 400;
+static constexpr int kFontDisplayBlockMs = 100;
+static constexpr int kFontDisplayFallbackMs = 100;
+static constexpr int kFontDisplayOptionalMs = 50;
+static constexpr int kUnicodeMin = 0;
+static constexpr int kUnicodeMax = 0x10FFFF;
+
+std::string normalize_font_family_key(const std::string& family_name) {
+    std::string value;
+    value.reserve(family_name.size());
+    for (char ch : family_name) {
+        if (ch == '"' || ch == '\'') continue;
+        value += static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return trim(value);
+}
+
+FontFaceStyle normalize_font_face_style(const std::string& style) {
+    auto normalized = to_lower(trim(style));
+    if (normalized == "italic") return FontFaceStyle::Italic;
+    if (normalized == "oblique") return FontFaceStyle::Oblique;
+    return FontFaceStyle::Normal;
+}
+
+int normalize_font_weight(int weight) {
+    if (weight < kFontWeightMin || weight > kFontWeightMax) return kDefaultWeight;
+    return weight;
+}
+
+FontDisplayPolicy parse_font_display_policy(const std::string& value) {
+    auto normalized = to_lower(trim(value));
+    if (normalized == "block") return FontDisplayPolicy::Block;
+    if (normalized == "swap") return FontDisplayPolicy::Swap;
+    if (normalized == "fallback") return FontDisplayPolicy::Fallback;
+    if (normalized == "optional") return FontDisplayPolicy::Optional;
+    return FontDisplayPolicy::Auto;
+}
+
+std::chrono::milliseconds font_display_timeout(FontDisplayPolicy policy) {
+    switch (policy) {
+        case FontDisplayPolicy::Block:
+        case FontDisplayPolicy::Fallback:
+            return std::chrono::milliseconds(kFontDisplayBlockMs);
+        case FontDisplayPolicy::Optional:
+            return std::chrono::milliseconds(kFontDisplayOptionalMs);
+        case FontDisplayPolicy::Auto:
+        case FontDisplayPolicy::Swap:
+        default:
+            return std::chrono::milliseconds(0);
+    }
+}
+
+bool should_cache_font(FontDisplayPolicy policy) {
+    return policy != FontDisplayPolicy::Optional;
+}
+
+bool font_face_matches_codepoint(const clever::css::FontFaceRule& rule,
+                                 std::optional<uint32_t> codepoint) {
+    if (!codepoint.has_value()) return true;
+    int cp = static_cast<int>(*codepoint);
+    return cp >= rule.unicode_min && cp <= rule.unicode_max;
+}
+
+const clever::css::FontFaceRule* match_best_font_face(
+    const std::vector<clever::css::FontFaceRule>& font_faces,
+    const std::string& font_family,
+    int font_weight,
+    const std::string& font_style,
+    std::optional<uint32_t> codepoint = std::nullopt) {
+    auto requested_family = normalize_font_family_key(font_family);
+    auto requested_style = normalize_font_face_style(font_style);
+    const clever::css::FontFaceRule* best_rule = nullptr;
+
+    int best_style_rank = std::numeric_limits<int>::max();
+    int best_weight_rank = std::numeric_limits<int>::max();
+    int best_distance = std::numeric_limits<int>::max();
+    int best_span = std::numeric_limits<int>::max();
+
+    for (auto& ff : font_faces) {
+        if (!font_face_matches_codepoint(ff, codepoint)) continue;
+        if (normalize_font_family_key(ff.font_family) != requested_family) continue;
+
+        FontFaceStyle rule_style = normalize_font_face_style(ff.font_style);
+        int style_rank = 2;
+        if (requested_style == FontFaceStyle::Normal) {
+            style_rank = (rule_style == FontFaceStyle::Normal) ? 0 : 1;
+        } else if (requested_style == FontFaceStyle::Italic) {
+            style_rank = (rule_style == FontFaceStyle::Italic) ? 0 :
+                        (rule_style == FontFaceStyle::Oblique) ? 1 : 2;
+        } else {
+            style_rank = (rule_style == FontFaceStyle::Oblique) ? 0 :
+                        (rule_style == FontFaceStyle::Italic) ? 1 : 2;
+        }
+
+        int min_weight = ff.min_weight;
+        int max_weight = ff.max_weight;
+        if (min_weight > max_weight) std::swap(min_weight, max_weight);
+        font_weight = normalize_font_weight(font_weight);
+
+        int weight_rank = 2;
+        int weight_distance = 0;
+        if (min_weight == max_weight) {
+            if (font_weight == min_weight) {
+                weight_rank = 0;
+                weight_distance = 0;
+            } else {
+                weight_rank = 2;
+                weight_distance = std::abs(font_weight - min_weight);
+            }
+        } else if (font_weight >= min_weight && font_weight <= max_weight) {
+            weight_rank = 1;
+            weight_distance = 0;
+        } else if (font_weight < min_weight) {
+            weight_rank = 2;
+            weight_distance = min_weight - font_weight;
+        } else {
+            weight_rank = 2;
+            weight_distance = font_weight - max_weight;
+        }
+
+        int span = std::abs(max_weight - min_weight);
+        if (!best_rule || style_rank < best_style_rank ||
+            (style_rank == best_style_rank &&
+             (weight_rank < best_weight_rank ||
+              (weight_rank == best_weight_rank &&
+               (weight_distance < best_distance ||
+                (weight_distance == best_distance && span < best_span))))) {
+            best_rule = &ff;
+            best_style_rank = style_rank;
+            best_weight_rank = weight_rank;
+            best_distance = weight_distance;
+            best_span = span;
+        }
+    }
+    return best_rule;
+}
+
 bool transition_property_list_matches(const std::string& transition_property,
                                       const std::string& property) {
     std::string list = to_lower(trim(transition_property));
@@ -14652,18 +14800,78 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             // Persists across renders so each URL is fetched at most once.
             static std::unordered_map<std::string, std::vector<uint8_t>> font_cache;
 
-            // Parse font-weight string to int
-            auto parse_font_weight = [](const std::string& w) -> int {
-                if (w.empty() || w == "normal") return 400;
-                if (w == "bold") return 700;
-                try { return std::stoi(w); } catch (...) { return 400; }
+            struct FontFaceRegistrationRequest {
+                const clever::css::FontFaceRule* rule = nullptr;
+                int weight = kDefaultWeight;
+                bool italic = false;
             };
+
+            std::vector<FontFaceRegistrationRequest> font_requests;
+
+            auto register_request = [&](const clever::css::FontFaceRule& ff,
+                                        int weight,
+                                        const std::string& style_for_match) {
+                const auto* matched = match_best_font_face(result.font_faces,
+                                                           ff.font_family,
+                                                           normalize_font_weight(weight),
+                                                           style_for_match);
+                if (!matched) return;
+                if (!matched->src.empty() && matched->font_family.empty()) return;
+
+                FontFaceRegistrationRequest req;
+                req.rule = matched;
+                req.weight = normalize_font_weight(weight);
+                req.italic = (normalize_font_face_style(matched->font_style) != FontFaceStyle::Normal);
+
+                for (auto& existing : font_requests) {
+                    if (existing.rule == req.rule &&
+                        existing.weight == req.weight &&
+                        existing.italic == req.italic) {
+                        return;
+                    }
+                }
+                font_requests.push_back(req);
+            };
+
+            auto collect_weight_requests = [&](const clever::css::FontFaceRule& ff) {
+                if (ff.min_weight > ff.max_weight) return;
+                const std::string request_style =
+                    ff.font_style.empty() ? "normal" : ff.font_style;
+
+                if (ff.min_weight == 0 && ff.max_weight == 900) {
+                    register_request(ff, kDefaultWeight, request_style);
+                    return;
+                }
+
+                if (ff.min_weight == ff.max_weight) {
+                    register_request(ff, ff.min_weight, request_style);
+                    return;
+                }
+
+                register_request(ff, ff.min_weight, request_style);
+                register_request(ff, ff.max_weight, request_style);
+            };
+
+            for (auto& ff : result.font_faces) {
+                if (ff.font_family.empty() || ff.src.empty()) continue;
+                collect_weight_requests(ff);
+            }
+
+            if (font_requests.empty()) {
+                // Nothing to register.
+            } else {
+                // Parse font-weight string to int
+                auto parse_font_weight = [](const std::string& w) -> int {
+                    if (w.empty() || to_lower(w) == "normal") return kDefaultWeight;
+                    if (to_lower(w) == "bold") return 700;
+                    try { return std::stoi(w); } catch (...) { return kDefaultWeight; }
+                };
+            }
 
             // Prepare font bytes for CoreText: decompress WOFF1 to SFNT if needed.
             // WOFF2 (Brotli-compressed) is passed through as-is; modern CoreText
             // may handle it, and there is no bundled Brotli decompressor.
-            auto prepare_font_bytes = [](const std::vector<uint8_t>& raw)
-                    -> const std::vector<uint8_t>* {
+            auto prepare_font_bytes = [](const std::vector<uint8_t>& raw) -> const std::vector<uint8_t>* {
                 // WOFF1 magic: 'wOFF' = 0x774F4646
                 if (raw.size() >= 4 &&
                     raw[0] == 0x77 && raw[1] == 0x4F &&
@@ -14677,21 +14885,48 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 return &raw;
             };
 
-            for (auto& ff : result.font_faces) {
-                if (ff.font_family.empty() || ff.src.empty()) continue;
+            auto load_font_bytes = [&](const std::string& font_url,
+                                       FontDisplayPolicy font_display) -> std::optional<std::vector<uint8_t>> {
+                auto timeout = font_display_timeout(font_display);
+                if (timeout.count() == 0) {
+                    auto response = fetch_with_redirects(font_url, "*/*", 10);
+                    if (!response || response->status != 200 || response->body.empty()) {
+                        return std::nullopt;
+                    }
+                    return response->body;
+                }
+
+                auto async_response = get_resource_thread_pool().submit([font_url]() -> std::optional<std::vector<uint8_t>> {
+                    auto response = fetch_with_redirects(font_url, "*/*", 10);
+                    if (!response || response->status != 200 || response->body.empty()) {
+                        return std::nullopt;
+                    }
+                    return response->body;
+                });
+
+                if (async_response.wait_for(timeout) != std::future_status::ready) {
+                    return std::nullopt;
+                }
+                return async_response.get();
+            };
+
+            for (auto& req : font_requests) {
+                const auto* ff = req.rule;
+                if (!ff || ff->font_family.empty() || ff->src.empty()) continue;
 
                 std::string font_url = extract_preferred_font_url(ff.src);
                 if (font_url.empty()) continue;
 
                 const std::string lower_font_url = to_lower(font_url);
+                const FontDisplayPolicy font_display = parse_font_display_policy(ff->font_display);
+                const bool allow_cache = should_cache_font(font_display);
+
                 if (lower_font_url.rfind("data:", 0) == 0) {
                     auto cache_it = font_cache.find(font_url);
                     if (cache_it != font_cache.end()) {
-                        int weight = parse_font_weight(ff.font_weight);
-                        bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
                         const auto* font_bytes = prepare_font_bytes(cache_it->second);
                         clever::paint::TextRenderer::register_font(
-                            ff.font_family, *font_bytes, weight, italic);
+                            ff->font_family, *font_bytes, req.weight, req.italic);
                         continue;
                     }
 
@@ -14700,11 +14935,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
                     // Cache raw decoded bytes (WOFF decompression happens per-registration)
                     font_cache[font_url] = *decoded_font_data;
-                    int weight = parse_font_weight(ff.font_weight);
-                    bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
                     const auto* font_bytes = prepare_font_bytes(*decoded_font_data);
                     clever::paint::TextRenderer::register_font(
-                        ff.font_family, *font_bytes, weight, italic);
+                        ff->font_family, *font_bytes, req.weight, req.italic);
                     continue;
                 }
 
@@ -14715,30 +14948,27 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 // Check cache first
                 auto cache_it = font_cache.find(font_url);
                 if (cache_it != font_cache.end()) {
-                    // Already fetched — register (TextRenderer deduplicates internally)
-                    int weight = parse_font_weight(ff.font_weight);
-                    bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
                     const auto* font_bytes = prepare_font_bytes(cache_it->second);
                     clever::paint::TextRenderer::register_font(
-                        ff.font_family, *font_bytes, weight, italic);
+                        ff->font_family, *font_bytes, req.weight, req.italic);
                     continue;
                 }
 
-                // Download the font file (follow up to 10 redirects)
-                auto response = fetch_with_redirects(font_url, "*/*", 10);
-                if (!response || response->status != 200 || response->body.empty()) {
+                auto response = load_font_bytes(font_url, font_display);
+                if (!response.has_value() || response->value().empty()) {
                     continue;
                 }
 
                 // Store raw bytes in cache
-                font_cache[font_url] = response->body;
+                if (allow_cache) {
+                    font_cache[font_url] = *response;
+                }
 
                 // Decompress WOFF1 if necessary, then register with CoreText
-                int weight = parse_font_weight(ff.font_weight);
-                bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
-                const auto* font_bytes = prepare_font_bytes(response->body);
+                const auto& downloaded = allow_cache ? font_cache[font_url] : *response;
+                const auto* font_bytes = prepare_font_bytes(downloaded);
                 clever::paint::TextRenderer::register_font(
-                    ff.font_family, *font_bytes, weight, italic);
+                    ff->font_family, *font_bytes, req.weight, req.italic);
             }
         }
 

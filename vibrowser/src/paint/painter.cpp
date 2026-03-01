@@ -5008,6 +5008,29 @@ void Painter::paint_list_marker(const clever::layout::LayoutNode& node, DisplayL
             return r;
         };
 
+        auto to_utf8 = [](uint32_t cp) -> std::string {
+            std::string out;
+            if (cp <= 0x7F) {
+                out.push_back(static_cast<char>(cp));
+            } else if (cp <= 0x7FF) {
+                out.push_back(static_cast<char>(0xC0 | ((cp >> 6) & 0x1F)));
+                out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            } else if (cp <= 0xFFFF) {
+                out.push_back(static_cast<char>(0xE0 | ((cp >> 12) & 0x0F)));
+                out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            }
+            return out;
+        };
+
+        auto utf8_len = [](const std::string& text) -> size_t {
+            size_t len = 0;
+            for (unsigned char c : text) {
+                if ((c & 0xC0) != 0x80) ++len;
+            }
+            return len;
+        };
+
         // Helper: spreadsheet-style alpha encoding (1=a, 27=aa, 28=ab...)
         auto to_alpha = [](int n, bool upper) -> std::string {
             if (n <= 0) return std::to_string(n);
@@ -5054,13 +5077,51 @@ void Painter::paint_list_marker(const clever::layout::LayoutNode& node, DisplayL
                 marker_str = std::string(greek[(idx - 1) % 24]) + ".";
                 break;
             }
+            case 13: { // armenian
+                if (idx <= 0) {
+                    marker_str = std::to_string(idx) + ".";
+                    break;
+                }
+                // Armenian letters: 37 markers, then wrap
+                uint32_t cp = 0x0561 + static_cast<uint32_t>((idx - 1) % 37);
+                marker_str = to_utf8(cp) + ".";
+                break;
+            }
+            case 14: { // georgian
+                if (idx <= 0) {
+                    marker_str = std::to_string(idx) + ".";
+                    break;
+                }
+                // Georgian letters: ა to ჰ (33 markers), then wrap
+                uint32_t cp = 0x10D0 + static_cast<uint32_t>((idx - 1) % 33);
+                marker_str = to_utf8(cp) + ".";
+                break;
+            }
+            case 15: { // cjk-decimal
+                static const char* digits[] = {
+                    "\xE3\x80\x87", // 〇
+                    "\xE4\xB8\x80", // 一
+                    "\xE4\xBA\x8C", // 二
+                    "\xE4\xB8\x89", // 三
+                    "\xE5\x9B\x9B", // 四
+                    "\xE4\xBA\x94", // 五
+                    "\xE5\x85\xAD", // 六
+                    "\xE4\xB8\x83", // 七
+                    "\xE5\x85\xAB", // 八
+                    "\xE4\xB9\x9D", // 九
+                    "\xE5\x8D\x81"  // 十
+                };
+                if (idx >= 0 && idx <= 10) marker_str = std::string(digits[idx]) + ".";
+                else marker_str = std::to_string(idx) + ".";
+                break;
+            }
             default:
                 marker_str = std::to_string(idx) + "."; // fallback decimal
                 break;
         }
         float text_x = (node.list_style_position == 1)
             ? abs_x + 2.0f
-            : abs_x - (static_cast<float>(marker_str.length()) * effective_font_size * 0.6f) - 4.0f;
+            : abs_x - (static_cast<float>(utf8_len(marker_str)) * effective_font_size * 0.6f) - 4.0f;
         list.draw_text(marker_str, text_x, abs_y, effective_font_size, color);
     }
 }

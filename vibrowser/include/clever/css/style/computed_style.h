@@ -49,7 +49,8 @@ enum class ListStyleType {
     Disc = 0, Circle = 1, Square = 2, Decimal = 3,
     DecimalLeadingZero = 4, LowerRoman = 5, UpperRoman = 6,
     LowerAlpha = 7, UpperAlpha = 8, None = 9,
-    LowerGreek = 10, LowerLatin = 11, UpperLatin = 12
+    LowerGreek = 10, LowerLatin = 11, UpperLatin = 12,
+    Armenian = 13, Georgian = 14, CjkDecimal = 15
 };
 enum class BorderStyle { None, Solid, Dashed, Dotted, Double, Groove, Ridge, Inset, Outset };
 enum class TextOverflow { Clip, Ellipsis, Fade };
