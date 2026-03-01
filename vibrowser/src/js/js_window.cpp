@@ -6,6 +6,7 @@ extern "C" {
 #include <quickjs.h>
 }
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -125,7 +126,7 @@ static JSValue js_window_atob(JSContext* ctx, JSValueConst /*this_val*/,
 }
 
 // =========================================================================
-// performance.now() -- high-resolution timestamp
+// Performance API — mark, measure, getEntries, timing, navigation
 // =========================================================================
 
 // Page load start time, set once per install_window_bindings call.
@@ -134,58 +135,275 @@ static std::chrono::steady_clock::time_point page_start_time;
 // Wall-clock epoch time origin (milliseconds since Unix epoch), for performance.timeOrigin
 static double page_time_origin_ms = 0.0;
 
-static JSValue js_performance_now(JSContext* ctx, JSValueConst /*this_val*/,
-                                   int /*argc*/, JSValueConst* /*argv*/) {
+// A single performance entry (mark or measure)
+struct PerformanceEntry {
+    std::string name;
+    std::string entry_type; // "mark" or "measure"
+    double start_time = 0.0;
+    double duration = 0.0;
+};
+
+// Per-context performance state stored as a plain C++ object, accessed via
+// a hidden property on the global object (same pattern as RAFState).
+struct PerformanceState {
+    std::vector<PerformanceEntry> entries;
+};
+
+static double perf_now_ms() {
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
         now - page_start_time);
-    double ms = static_cast<double>(elapsed.count()) / 1000.0;
-    return JS_NewFloat64(ctx, ms);
+    return static_cast<double>(elapsed.count()) / 1000.0;
 }
 
-// performance.getEntries() — returns empty array
+static PerformanceState* get_perf_state(JSContext* ctx) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue val = JS_GetPropertyStr(ctx, global, "__perf_state_ptr");
+    PerformanceState* state = nullptr;
+    if (JS_IsNumber(val)) {
+        int64_t ptr_val = 0;
+        JS_ToInt64(ctx, &ptr_val, val);
+        state = reinterpret_cast<PerformanceState*>(static_cast<uintptr_t>(ptr_val));
+    }
+    JS_FreeValue(ctx, val);
+    JS_FreeValue(ctx, global);
+    return state;
+}
+
+// Build a plain JS object representing a PerformanceEntry
+static JSValue make_perf_entry_obj(JSContext* ctx, const PerformanceEntry& e) {
+    JSValue obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, obj, "name",      JS_NewString(ctx, e.name.c_str()));
+    JS_SetPropertyStr(ctx, obj, "entryType", JS_NewString(ctx, e.entry_type.c_str()));
+    JS_SetPropertyStr(ctx, obj, "startTime", JS_NewFloat64(ctx, e.start_time));
+    JS_SetPropertyStr(ctx, obj, "duration",  JS_NewFloat64(ctx, e.duration));
+    return obj;
+}
+
+static JSValue js_performance_now(JSContext* ctx, JSValueConst /*this_val*/,
+                                   int /*argc*/, JSValueConst* /*argv*/) {
+    return JS_NewFloat64(ctx, perf_now_ms());
+}
+
+// performance.mark(name [, options]) — stores a PerformanceMark entry
+static JSValue js_performance_mark(JSContext* ctx, JSValueConst /*this_val*/,
+                                    int argc, JSValueConst* argv) {
+    if (argc < 1 || !JS_IsString(argv[0]))
+        return JS_ThrowTypeError(ctx, "performance.mark: name must be a string");
+
+    const char* name_cstr = JS_ToCString(ctx, argv[0]);
+    if (!name_cstr) return JS_EXCEPTION;
+    std::string name(name_cstr);
+    JS_FreeCString(ctx, name_cstr);
+
+    // options.startTime overrides current time (optional)
+    double start_time = perf_now_ms();
+    if (argc >= 2 && JS_IsObject(argv[1])) {
+        JSValue st = JS_GetPropertyStr(ctx, argv[1], "startTime");
+        if (JS_IsNumber(st)) {
+            double v = 0.0;
+            JS_ToFloat64(ctx, &v, st);
+            start_time = v;
+        }
+        JS_FreeValue(ctx, st);
+    }
+
+    PerformanceEntry entry;
+    entry.name       = name;
+    entry.entry_type = "mark";
+    entry.start_time = start_time;
+    entry.duration   = 0.0;
+
+    auto* state = get_perf_state(ctx);
+    if (state) state->entries.push_back(entry);
+
+    return make_perf_entry_obj(ctx, entry);
+}
+
+// performance.measure(name [, startMarkOrOptions [, endMark]])
+static JSValue js_performance_measure(JSContext* ctx, JSValueConst /*this_val*/,
+                                       int argc, JSValueConst* argv) {
+    if (argc < 1 || !JS_IsString(argv[0]))
+        return JS_ThrowTypeError(ctx, "performance.measure: name must be a string");
+
+    const char* name_cstr = JS_ToCString(ctx, argv[0]);
+    if (!name_cstr) return JS_EXCEPTION;
+    std::string name(name_cstr);
+    JS_FreeCString(ctx, name_cstr);
+
+    auto* state = get_perf_state(ctx);
+
+    // Helper: look up the most recent mark with given name, return its startTime
+    auto find_mark_time = [&](const std::string& mark_name) -> double {
+        if (!state) return 0.0;
+        for (int i = static_cast<int>(state->entries.size()) - 1; i >= 0; --i) {
+            if (state->entries[i].entry_type == "mark" &&
+                state->entries[i].name == mark_name)
+                return state->entries[i].start_time;
+        }
+        return 0.0; // default to navigationStart (0)
+    };
+
+    double start_time = 0.0;
+    double end_time   = perf_now_ms();
+
+    if (argc >= 2) {
+        if (JS_IsString(argv[1])) {
+            // startMark name
+            const char* sm = JS_ToCString(ctx, argv[1]);
+            if (sm) { start_time = find_mark_time(sm); JS_FreeCString(ctx, sm); }
+        } else if (JS_IsObject(argv[1])) {
+            // options object: { start, end, startTime, duration }
+            JSValue js_start = JS_GetPropertyStr(ctx, argv[1], "start");
+            JSValue js_end   = JS_GetPropertyStr(ctx, argv[1], "end");
+            JSValue js_st    = JS_GetPropertyStr(ctx, argv[1], "startTime");
+            JSValue js_dur   = JS_GetPropertyStr(ctx, argv[1], "duration");
+            if (JS_IsString(js_start)) {
+                const char* s = JS_ToCString(ctx, js_start);
+                if (s) { start_time = find_mark_time(s); JS_FreeCString(ctx, s); }
+            } else if (JS_IsNumber(js_st)) {
+                JS_ToFloat64(ctx, &start_time, js_st);
+            }
+            if (JS_IsString(js_end)) {
+                const char* s = JS_ToCString(ctx, js_end);
+                if (s) { end_time = find_mark_time(s); JS_FreeCString(ctx, s); }
+            } else if (JS_IsNumber(js_dur)) {
+                double dur = 0.0;
+                JS_ToFloat64(ctx, &dur, js_dur);
+                end_time = start_time + dur;
+            }
+            JS_FreeValue(ctx, js_start);
+            JS_FreeValue(ctx, js_end);
+            JS_FreeValue(ctx, js_st);
+            JS_FreeValue(ctx, js_dur);
+        }
+    }
+
+    if (argc >= 3 && JS_IsString(argv[2])) {
+        const char* em = JS_ToCString(ctx, argv[2]);
+        if (em) { end_time = find_mark_time(em); JS_FreeCString(ctx, em); }
+    }
+
+    PerformanceEntry entry;
+    entry.name       = name;
+    entry.entry_type = "measure";
+    entry.start_time = start_time;
+    entry.duration   = end_time - start_time;
+
+    if (state) state->entries.push_back(entry);
+
+    return make_perf_entry_obj(ctx, entry);
+}
+
+// performance.getEntries() — returns all entries
 static JSValue js_performance_get_entries(JSContext* ctx, JSValueConst /*this_val*/,
                                            int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_NewArray(ctx);
+    JSValue arr = JS_NewArray(ctx);
+    auto* state = get_perf_state(ctx);
+    if (!state) return arr;
+    uint32_t idx = 0;
+    for (const auto& e : state->entries) {
+        JS_SetPropertyUint32(ctx, arr, idx++, make_perf_entry_obj(ctx, e));
+    }
+    return arr;
 }
 
-// performance.getEntriesByType(type) — returns empty array
+// performance.getEntriesByType(type)
 static JSValue js_performance_get_entries_by_type(JSContext* ctx, JSValueConst /*this_val*/,
-                                                    int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_NewArray(ctx);
+                                                    int argc, JSValueConst* argv) {
+    JSValue arr = JS_NewArray(ctx);
+    if (argc < 1 || !JS_IsString(argv[0])) return arr;
+    const char* type_cstr = JS_ToCString(ctx, argv[0]);
+    if (!type_cstr) return arr;
+    std::string type(type_cstr);
+    JS_FreeCString(ctx, type_cstr);
+    auto* state = get_perf_state(ctx);
+    if (!state) return arr;
+    uint32_t idx = 0;
+    for (const auto& e : state->entries) {
+        if (e.entry_type == type)
+            JS_SetPropertyUint32(ctx, arr, idx++, make_perf_entry_obj(ctx, e));
+    }
+    return arr;
 }
 
-// performance.getEntriesByName(name) — returns empty array
+// performance.getEntriesByName(name [, type])
 static JSValue js_performance_get_entries_by_name(JSContext* ctx, JSValueConst /*this_val*/,
-                                                    int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_NewArray(ctx);
+                                                    int argc, JSValueConst* argv) {
+    JSValue arr = JS_NewArray(ctx);
+    if (argc < 1 || !JS_IsString(argv[0])) return arr;
+    const char* name_cstr = JS_ToCString(ctx, argv[0]);
+    if (!name_cstr) return arr;
+    std::string name(name_cstr);
+    JS_FreeCString(ctx, name_cstr);
+    std::string type_filter;
+    if (argc >= 2 && JS_IsString(argv[1])) {
+        const char* tc = JS_ToCString(ctx, argv[1]);
+        if (tc) { type_filter = tc; JS_FreeCString(ctx, tc); }
+    }
+    auto* state = get_perf_state(ctx);
+    if (!state) return arr;
+    uint32_t idx = 0;
+    for (const auto& e : state->entries) {
+        if (e.name == name && (type_filter.empty() || e.entry_type == type_filter))
+            JS_SetPropertyUint32(ctx, arr, idx++, make_perf_entry_obj(ctx, e));
+    }
+    return arr;
 }
 
-// performance.mark(name) — no-op, returns undefined
-static JSValue js_performance_mark(JSContext* /*ctx*/, JSValueConst /*this_val*/,
-                                    int /*argc*/, JSValueConst* /*argv*/) {
+// performance.clearMarks([name])
+static JSValue js_performance_clear_marks(JSContext* ctx, JSValueConst /*this_val*/,
+                                           int argc, JSValueConst* argv) {
+    auto* state = get_perf_state(ctx);
+    if (!state) return JS_UNDEFINED;
+    if (argc >= 1 && JS_IsString(argv[0])) {
+        const char* nc = JS_ToCString(ctx, argv[0]);
+        if (nc) {
+            std::string name(nc);
+            JS_FreeCString(ctx, nc);
+            state->entries.erase(
+                std::remove_if(state->entries.begin(), state->entries.end(),
+                    [&](const PerformanceEntry& e) {
+                        return e.entry_type == "mark" && e.name == name;
+                    }),
+                state->entries.end());
+        }
+    } else {
+        state->entries.erase(
+            std::remove_if(state->entries.begin(), state->entries.end(),
+                [](const PerformanceEntry& e) { return e.entry_type == "mark"; }),
+            state->entries.end());
+    }
     return JS_UNDEFINED;
 }
 
-// performance.measure(name, startMark, endMark) — no-op, returns undefined
-static JSValue js_performance_measure(JSContext* /*ctx*/, JSValueConst /*this_val*/,
-                                       int /*argc*/, JSValueConst* /*argv*/) {
+// performance.clearMeasures([name])
+static JSValue js_performance_clear_measures(JSContext* ctx, JSValueConst /*this_val*/,
+                                              int argc, JSValueConst* argv) {
+    auto* state = get_perf_state(ctx);
+    if (!state) return JS_UNDEFINED;
+    if (argc >= 1 && JS_IsString(argv[0])) {
+        const char* nc = JS_ToCString(ctx, argv[0]);
+        if (nc) {
+            std::string name(nc);
+            JS_FreeCString(ctx, nc);
+            state->entries.erase(
+                std::remove_if(state->entries.begin(), state->entries.end(),
+                    [&](const PerformanceEntry& e) {
+                        return e.entry_type == "measure" && e.name == name;
+                    }),
+                state->entries.end());
+        }
+    } else {
+        state->entries.erase(
+            std::remove_if(state->entries.begin(), state->entries.end(),
+                [](const PerformanceEntry& e) { return e.entry_type == "measure"; }),
+            state->entries.end());
+    }
     return JS_UNDEFINED;
 }
 
-// performance.clearMarks() — no-op
-static JSValue js_performance_clear_marks(JSContext* /*ctx*/, JSValueConst /*this_val*/,
-                                           int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_UNDEFINED;
-}
-
-// performance.clearMeasures() — no-op
-static JSValue js_performance_clear_measures(JSContext* /*ctx*/, JSValueConst /*this_val*/,
-                                              int /*argc*/, JSValueConst* /*argv*/) {
-    return JS_UNDEFINED;
-}
-
-// performance.clearResourceTimings() — no-op
+// performance.clearResourceTimings() — no-op (we don't track resource entries yet)
 static JSValue js_performance_clear_resource_timings(JSContext* /*ctx*/, JSValueConst /*this_val*/,
                                                       int /*argc*/, JSValueConst* /*argv*/) {
     return JS_UNDEFINED;
@@ -196,6 +414,16 @@ static JSValue js_performance_to_json(JSContext* ctx, JSValueConst /*this_val*/,
                                        int /*argc*/, JSValueConst* /*argv*/) {
     JSValue obj = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, obj, "timeOrigin", JS_NewFloat64(ctx, page_time_origin_ms));
+    // Include current entries array
+    auto* state = get_perf_state(ctx);
+    JSValue arr = JS_NewArray(ctx);
+    if (state) {
+        uint32_t idx = 0;
+        for (const auto& e : state->entries) {
+            JS_SetPropertyUint32(ctx, arr, idx++, make_perf_entry_obj(ctx, e));
+        }
+    }
+    JS_SetPropertyStr(ctx, obj, "entries", arr);
     return obj;
 }
 
@@ -2579,6 +2807,14 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_NewCFunction(ctx, js_window_atob, "atob", 1));
 
     // ---- window.performance ----
+    // Allocate per-context storage for marks/measures
+    {
+        auto* perf_state = new PerformanceState();
+        JS_SetPropertyStr(ctx, global, "__perf_state_ptr",
+            JS_NewInt64(ctx, static_cast<int64_t>(
+                reinterpret_cast<uintptr_t>(perf_state))));
+    }
+
     JSValue performance = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, performance, "now",
         JS_NewCFunction(ctx, js_performance_now, "now", 0));
@@ -2602,6 +2838,51 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_NewCFunction(ctx, js_performance_clear_resource_timings, "clearResourceTimings", 0));
     JS_SetPropertyStr(ctx, performance, "toJSON",
         JS_NewCFunction(ctx, js_performance_to_json, "toJSON", 0));
+
+    // performance.timing — Navigation Timing Level 1
+    // All timestamps are Unix epoch milliseconds (like Date.now())
+    {
+        JSValue timing = JS_NewObject(ctx);
+        double nav_start = page_time_origin_ms; // navigationStart = page load epoch ms
+        // We record DOMContentLoaded/load as occurring shortly after nav start.
+        // These are placeholders — a real implementation would record these at
+        // the actual event dispatch points in the render pipeline.
+        double dcl_start = nav_start;
+        double dcl_end   = nav_start;
+        double load_start = nav_start;
+        double load_end   = nav_start;
+        JS_SetPropertyStr(ctx, timing, "navigationStart",           JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "unloadEventStart",          JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, timing, "unloadEventEnd",            JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, timing, "redirectStart",             JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, timing, "redirectEnd",               JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, timing, "fetchStart",                JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "domainLookupStart",         JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "domainLookupEnd",           JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "connectStart",              JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "connectEnd",                JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "secureConnectionStart",     JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, timing, "requestStart",              JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "responseStart",             JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "responseEnd",               JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "domLoading",                JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "domInteractive",            JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "domContentLoadedEventStart",JS_NewFloat64(ctx, dcl_start));
+        JS_SetPropertyStr(ctx, timing, "domContentLoadedEventEnd",  JS_NewFloat64(ctx, dcl_end));
+        JS_SetPropertyStr(ctx, timing, "domComplete",               JS_NewFloat64(ctx, nav_start));
+        JS_SetPropertyStr(ctx, timing, "loadEventStart",            JS_NewFloat64(ctx, load_start));
+        JS_SetPropertyStr(ctx, timing, "loadEventEnd",              JS_NewFloat64(ctx, load_end));
+        JS_SetPropertyStr(ctx, performance, "timing", timing);
+    }
+
+    // performance.navigation — Navigation Timing Level 1
+    {
+        JSValue nav = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, nav, "type",          JS_NewInt32(ctx, 0)); // 0 = navigate
+        JS_SetPropertyStr(ctx, nav, "redirectCount",  JS_NewInt32(ctx, 0));
+        JS_SetPropertyStr(ctx, performance, "navigation", nav);
+    }
+
     JS_SetPropertyStr(ctx, global, "performance", performance);
 
     // ---- requestAnimationFrame / cancelAnimationFrame ----
@@ -3164,6 +3445,38 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
                     }
                 }
             }
+        } else if (init && typeof init === 'object') {
+            // Support FormData, another URLSearchParams, or plain object with entries()
+            if (typeof init.entries === 'function') {
+                // FormData or URLSearchParams — iterate entries
+                var entries = init.entries();
+                if (entries && typeof entries[Symbol.iterator] === 'function') {
+                    for (var pair of entries) {
+                        if (pair && pair.length >= 2) {
+                            this._params.push([String(pair[0]), String(pair[1])]);
+                        }
+                    }
+                } else if (Array.isArray(entries)) {
+                    for (var j = 0; j < entries.length; j++) {
+                        if (entries[j] && entries[j].length >= 2) {
+                            this._params.push([String(entries[j][0]), String(entries[j][1])]);
+                        }
+                    }
+                }
+            } else if (Array.isArray(init)) {
+                // Array of [key, value] pairs
+                for (var k = 0; k < init.length; k++) {
+                    if (Array.isArray(init[k]) && init[k].length >= 2) {
+                        this._params.push([String(init[k][0]), String(init[k][1])]);
+                    }
+                }
+            } else {
+                // Plain object: iterate own properties
+                var keys = Object.keys(init);
+                for (var m = 0; m < keys.length; m++) {
+                    this._params.push([keys[m], String(init[keys[m]])]);
+                }
+            }
         }
     };
     URLSearchParams.prototype.get = function(name) {
@@ -3216,13 +3529,30 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         }
     };
     URLSearchParams.prototype.entries = function() {
-        return this._params[Symbol.iterator] ? this._params : this._params.slice();
+        return this._params.slice();
+    };
+    URLSearchParams.prototype[Symbol.iterator] = function() {
+        var arr = this._params;
+        var idx = 0;
+        return {
+            next: function() {
+                if (idx < arr.length) {
+                    return { value: arr[idx++].slice(), done: false };
+                }
+                return { value: undefined, done: true };
+            },
+            [Symbol.iterator]: function() { return this; }
+        };
     };
     URLSearchParams.prototype.keys = function() {
-        return this._params.map(function(p) { return p[0]; });
+        var result = this._params.map(function(p) { return p[0]; });
+        result[Symbol.iterator] = Array.prototype[Symbol.iterator];
+        return result;
     };
     URLSearchParams.prototype.values = function() {
-        return this._params.map(function(p) { return p[1]; });
+        var result = this._params.map(function(p) { return p[1]; });
+        result[Symbol.iterator] = Array.prototype[Symbol.iterator];
+        return result;
     };
     URLSearchParams.prototype.append = function(name, value) {
         this._params.push([String(name), String(value)]);
@@ -3239,7 +3569,6 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
             return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
         });
     };
-    URLSearchParams.prototype.size = 0;
     Object.defineProperty(URLSearchParams.prototype, 'size', {
         get: function() { return this._params.length; },
         configurable: true

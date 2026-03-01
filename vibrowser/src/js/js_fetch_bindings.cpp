@@ -1117,6 +1117,71 @@ static JSValue create_response_object(JSContext* ctx,
 }
 
 // =========================================================================
+// FormData declarations (moved here so js_global_fetch can reference them)
+// =========================================================================
+
+static JSClassID formdata_class_id = 0;
+
+struct FormDataState {
+    std::vector<std::pair<std::string, std::string>> entries;
+};
+
+// Helper: URL-encode a string (application/x-www-form-urlencoded style)
+static std::string url_encode_value(const std::string& s, bool encode_space_as_plus = true) {
+    std::string out;
+    out.reserve(s.size() * 3);
+    for (unsigned char c : s) {
+        if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+            (c >= 'a' && c <= 'z') || c == '-' || c == '_' || c == '.' || c == '~') {
+            out += static_cast<char>(c);
+        } else if (c == ' ' && encode_space_as_plus) {
+            out += '+';
+        } else {
+            char buf[4];
+            std::snprintf(buf, sizeof(buf), "%%%02X", c);
+            out += buf;
+        }
+    }
+    return out;
+}
+
+// Serialize FormData entries as multipart/form-data body
+static std::string formdata_to_multipart(const std::vector<std::pair<std::string, std::string>>& entries,
+                                          std::string& boundary_out) {
+    static std::mt19937_64 rng{std::random_device{}()};
+    std::uniform_int_distribution<uint64_t> dist;
+    std::string boundary = "----FormBoundary";
+    char buf[17];
+    std::snprintf(buf, sizeof(buf), "%016llx",
+                  static_cast<unsigned long long>(dist(rng)));
+    boundary += buf;
+    boundary_out = boundary;
+
+    std::string body;
+    for (const auto& [name, value] : entries) {
+        body += "--" + boundary + "\r\n";
+        body += "Content-Disposition: form-data; name=\"" + name + "\"\r\n";
+        body += "\r\n";
+        body += value;
+        body += "\r\n";
+    }
+    body += "--" + boundary + "--\r\n";
+    return body;
+}
+
+// Serialize FormData entries as application/x-www-form-urlencoded body
+static std::string formdata_to_urlencoded(const std::vector<std::pair<std::string, std::string>>& entries) {
+    std::string out;
+    for (size_t i = 0; i < entries.size(); i++) {
+        if (i > 0) out += '&';
+        out += url_encode_value(entries[i].first, true);
+        out += '=';
+        out += url_encode_value(entries[i].second, true);
+    }
+    return out;
+}
+
+// =========================================================================
 // Global fetch(url, options?) -> Promise<Response>
 // =========================================================================
 
@@ -1178,13 +1243,67 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
         }
         JS_FreeValue(ctx, headers_val);
 
-        // body
+        // body — support string, FormData, URLSearchParams
         JSValue body_val = JS_GetPropertyStr(ctx, argv[1], "body");
         if (JS_IsString(body_val)) {
             const char* b = JS_ToCString(ctx, body_val);
             if (b) {
                 body = b;
                 JS_FreeCString(ctx, b);
+            }
+        } else if (JS_IsObject(body_val)) {
+            // Check if it's a FormData instance (has opaque data with formdata_class_id)
+            auto* fd_state = static_cast<FormDataState*>(
+                JS_GetOpaque(body_val, formdata_class_id));
+            if (fd_state) {
+                // Serialize as multipart/form-data
+                std::string boundary;
+                body = formdata_to_multipart(fd_state->entries, boundary);
+                // Set Content-Type header if not already set (overwrite)
+                if (req_headers.find("content-type") == req_headers.end() &&
+                    req_headers.find("Content-Type") == req_headers.end()) {
+                    req_headers["Content-Type"] =
+                        "multipart/form-data; boundary=" + boundary;
+                }
+            } else {
+                // Check if it's a URLSearchParams-like object (has _params array and toString)
+                JSValue to_str_fn = JS_GetPropertyStr(ctx, body_val, "toString");
+                JSValue params_val = JS_GetPropertyStr(ctx, body_val, "_params");
+                bool is_usp = JS_IsArray(ctx, params_val);
+                JS_FreeValue(ctx, params_val);
+
+                if (is_usp && JS_IsFunction(ctx, to_str_fn)) {
+                    // Serialize URLSearchParams via toString()
+                    JSValue serialized = JS_Call(ctx, to_str_fn, body_val, 0, nullptr);
+                    if (JS_IsString(serialized)) {
+                        const char* s = JS_ToCString(ctx, serialized);
+                        if (s) {
+                            body = s;
+                            JS_FreeCString(ctx, s);
+                        }
+                    }
+                    JS_FreeValue(ctx, serialized);
+                    // Set Content-Type header if not already set
+                    if (req_headers.find("content-type") == req_headers.end() &&
+                        req_headers.find("Content-Type") == req_headers.end()) {
+                        req_headers["Content-Type"] =
+                            "application/x-www-form-urlencoded";
+                    }
+                } else {
+                    // Fallback: try JSON.stringify or toString
+                    if (JS_IsFunction(ctx, to_str_fn)) {
+                        JSValue str_val = JS_Call(ctx, to_str_fn, body_val, 0, nullptr);
+                        if (JS_IsString(str_val)) {
+                            const char* s = JS_ToCString(ctx, str_val);
+                            if (s) {
+                                body = s;
+                                JS_FreeCString(ctx, s);
+                            }
+                        }
+                        JS_FreeValue(ctx, str_val);
+                    }
+                }
+                JS_FreeValue(ctx, to_str_fn);
             }
         }
         JS_FreeValue(ctx, body_val);
@@ -2514,12 +2633,6 @@ static const JSCFunctionListEntry ws_proto_funcs[] = {
 // FormData class
 // =========================================================================
 
-static JSClassID formdata_class_id = 0;
-
-struct FormDataState {
-    std::vector<std::pair<std::string, std::string>> entries;
-};
-
 static void js_formdata_finalizer(JSRuntime* /*rt*/, JSValue val) {
     auto* state = static_cast<FormDataState*>(JS_GetOpaque(val, formdata_class_id));
     delete state;
@@ -2746,9 +2859,9 @@ static JSValue js_formdata_forEach(JSContext* ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
-// Constructor: new FormData()
+// Constructor: new FormData() or new FormData(formElement)
 static JSValue js_formdata_constructor(JSContext* ctx, JSValueConst new_target,
-                                         int /*argc*/, JSValueConst* /*argv*/) {
+                                         int argc, JSValueConst* argv) {
     JSValue proto = JS_GetPropertyStr(ctx, new_target, "prototype");
     if (JS_IsException(proto)) return JS_EXCEPTION;
 
@@ -2758,6 +2871,81 @@ static JSValue js_formdata_constructor(JSContext* ctx, JSValueConst new_target,
 
     auto* state = new FormDataState();
     JS_SetOpaque(obj, state);
+
+    // If a form element was passed, collect all named form controls
+    if (argc >= 1 && JS_IsObject(argv[0])) {
+        // Use querySelectorAll on the form element to gather input/textarea/select elements.
+        // We call the JS method directly on the element object.
+        JSValue form = argv[0];
+
+        // Helper lambda: call form.querySelectorAll(selector) and iterate
+        // We use a JS eval approach to extract form field data safely.
+        const char* collect_src = R"JS(
+(function(form) {
+    var result = [];
+    if (!form || typeof form.querySelectorAll !== 'function') return result;
+    var inputs = form.querySelectorAll('input, textarea, select');
+    for (var i = 0; i < inputs.length; i++) {
+        var el = inputs[i];
+        var name = el.name || el.getAttribute('name');
+        if (!name || el.disabled) continue;
+        var tag = (el.tagName || '').toLowerCase();
+        var type = (el.type || '').toLowerCase();
+        if (tag === 'input') {
+            if (type === 'checkbox' || type === 'radio') {
+                if (el.checked) {
+                    result.push([name, el.value || 'on']);
+                }
+            } else if (type !== 'submit' && type !== 'image' && type !== 'button' && type !== 'file') {
+                result.push([name, el.value || '']);
+            }
+        } else if (tag === 'textarea') {
+            result.push([name, el.value || el.textContent || '']);
+        } else if (tag === 'select') {
+            var opts = el.options || el.querySelectorAll('option');
+            for (var j = 0; j < (opts ? opts.length : 0); j++) {
+                if (opts[j].selected) {
+                    result.push([name, opts[j].value || opts[j].textContent || '']);
+                    break;
+                }
+            }
+        }
+    }
+    return result;
+})
+)JS";
+        JSValue collect_fn = JS_Eval(ctx, collect_src, std::strlen(collect_src),
+                                      "<formdata-collect>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsFunction(ctx, collect_fn)) {
+            JSValue result = JS_Call(ctx, collect_fn, JS_UNDEFINED, 1, &form);
+            if (JS_IsArray(ctx, result)) {
+                JSValue len_val = JS_GetPropertyStr(ctx, result, "length");
+                int32_t len = 0;
+                JS_ToInt32(ctx, &len, len_val);
+                JS_FreeValue(ctx, len_val);
+                for (int32_t i = 0; i < len; i++) {
+                    JSValue pair = JS_GetPropertyUint32(ctx, result, static_cast<uint32_t>(i));
+                    if (JS_IsArray(ctx, pair)) {
+                        JSValue kv = JS_GetPropertyUint32(ctx, pair, 0);
+                        JSValue vv = JS_GetPropertyUint32(ctx, pair, 1);
+                        const char* k = JS_ToCString(ctx, kv);
+                        const char* v = JS_ToCString(ctx, vv);
+                        if (k && v) {
+                            state->entries.emplace_back(k, v);
+                        }
+                        if (k) JS_FreeCString(ctx, k);
+                        if (v) JS_FreeCString(ctx, v);
+                        JS_FreeValue(ctx, kv);
+                        JS_FreeValue(ctx, vv);
+                    }
+                    JS_FreeValue(ctx, pair);
+                }
+            }
+            JS_FreeValue(ctx, result);
+        }
+        JS_FreeValue(ctx, collect_fn);
+    }
+
     return obj;
 }
 
@@ -2900,6 +3088,45 @@ void install_fetch_bindings(JSContext* ctx) {
     JS_SetPropertyStr(ctx, global, "FormData", formdata_ctor);
     JS_SetPropertyStr(ctx, global, "Response", response_ctor);
     JS_FreeValue(ctx, global);
+
+    // ------------------------------------------------------------------
+    // FormData.prototype[Symbol.iterator] — enables for...of iteration
+    // Also add FormData.prototype.size getter
+    // ------------------------------------------------------------------
+    {
+        const char* fd_iter_src = R"JS(
+(function() {
+    if (typeof FormData !== 'undefined' && FormData.prototype) {
+        // Symbol.iterator — iterates [key, value] pairs (same as entries())
+        FormData.prototype[Symbol.iterator] = function() {
+            var arr = this.entries();
+            var idx = 0;
+            return {
+                next: function() {
+                    if (idx < arr.length) {
+                        return { value: arr[idx++], done: false };
+                    }
+                    return { value: undefined, done: true };
+                },
+                [Symbol.iterator]: function() { return this; }
+            };
+        };
+        // size getter
+        Object.defineProperty(FormData.prototype, 'size', {
+            get: function() { return this.keys().length; },
+            configurable: true
+        });
+    }
+})();
+)JS";
+        JSValue fd_iter_ret = JS_Eval(ctx, fd_iter_src, std::strlen(fd_iter_src),
+                                       "<formdata-iterator>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(fd_iter_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, fd_iter_ret);
+    }
 
     // ------------------------------------------------------------------
     // WebSocket.prototype.addEventListener / removeEventListener / binaryType

@@ -433,6 +433,19 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
     } else if (node.specified_width < 0 && node.specified_height >= 0 && effective_aspect_ratio(node) > 0) {
         // Width is auto, height is set, and aspect-ratio exists: compute width from height
         w = node.specified_height * effective_aspect_ratio(node);
+    } else if (node.float_type != 0) {
+        // CSS spec §9.5: floats with width:auto use shrink-to-fit sizing.
+        // shrink-to-fit = min(max-content-width, available-width).
+        // We compute max-content intrinsic width and clamp to containing width.
+        const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
+        float max_content_w = measure_intrinsic_width(node, /*max_content=*/true, mp);
+        // measure_intrinsic_width returns the outer content dimension including
+        // padding+border. Clamp to available containing_width minus margins.
+        float horiz_margins = 0;
+        if (!is_margin_auto(node.geometry.margin.left)) horiz_margins += node.geometry.margin.left;
+        if (!is_margin_auto(node.geometry.margin.right)) horiz_margins += node.geometry.margin.right;
+        float avail = std::max(0.0f, containing_width - horiz_margins);
+        w = std::min(max_content_w, avail);
     } else {
         float horiz_margins = 0;
         // Only subtract non-auto margins
@@ -1286,14 +1299,17 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             cursor_y = clear_y;
         }
 
-        // Determine available width considering floats
+        // Determine available width considering floats at current cursor_y
         float left_off = 0, right_off = 0;
         available_at_y(cursor_y, 20, left_off, right_off); // estimate 20px height
         float avail_w = content_w - left_off - right_off;
         if (avail_w < 0) avail_w = content_w;
 
-        // Layout child
-        float layout_width = (child->float_type != 0) ? avail_w : content_w;
+        // Layout child.
+        // Floats are laid out with the full content_w as their containing block so that
+        // compute_width can correctly compute shrink-to-fit against the full width.
+        // Normal-flow elements get content_w too (they use margin collapsing instead).
+        float layout_width = content_w;
         switch (child->mode) {
             case LayoutMode::Block:
                 layout_block(*child, layout_width);
@@ -1335,28 +1351,78 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
         }
 
         if (child->float_type != 0) {
-            // Float element — position beside existing floats
+            // Float element — position beside existing floats of the same side.
+            // CSS §9.5: floats stack horizontally; if no room, drop to below the
+            // lowest blocking float.
             float child_w = child->geometry.margin_box_width();
             float child_h = child->geometry.margin_box_height();
 
-            if (child->float_type == 1) {
-                child->geometry.x = left_off + child->geometry.margin.left;
-            } else {
-                child->geometry.x = content_w - right_off - child_w + child->geometry.margin.left;
+            // Find the y position where the float fits.
+            // Start at cursor_y and move down if there's insufficient horizontal room.
+            float float_y = cursor_y;
+            while (true) {
+                float lo = 0, ro = 0;
+                available_at_y(float_y, child_h, lo, ro);
+                float room = content_w - lo - ro;
+                if (room >= child_w) {
+                    // It fits here
+                    left_off = lo;
+                    right_off = ro;
+                    break;
+                }
+                // Doesn't fit: find the lowest y where one of the active floats ends.
+                float next_y = float_y + 1.0f; // fallback: nudge down 1px
+                for (auto& f : floats) {
+                    float f_end = f.y + f.height;
+                    if (f_end > float_y) {
+                        if (next_y == float_y + 1.0f || f_end < next_y) {
+                            next_y = f_end;
+                        }
+                    }
+                }
+                float_y = next_y;
+                // Safety: if we've moved past all floats and still no room, give up.
+                bool any_active = false;
+                for (auto& f : floats) {
+                    if (f.y + f.height > float_y) { any_active = true; break; }
+                }
+                if (!any_active) {
+                    left_off = 0;
+                    right_off = 0;
+                    break;
+                }
             }
-            child->geometry.y = cursor_y + child->geometry.margin.top;
 
+            // The margin-box left edge of this float relative to the container content area.
+            // For left floats: place right after existing left floats (left_off is right edge of prev left floats).
+            // For right floats: place from the right, left of existing right floats.
+            float float_margin_box_x; // left edge of float margin box in content coords
+            if (child->float_type == 1) {
+                // left float: margin box starts at left_off
+                float_margin_box_x = left_off;
+            } else {
+                // right float: margin box starts so that its right edge aligns with (content_w - right_off)
+                float_margin_box_x = content_w - right_off - child_w;
+            }
+            // geometry.x is the border-box x, offset by margin.left within the margin box
+            child->geometry.x = float_margin_box_x + child->geometry.margin.left;
+            child->geometry.y = float_y + child->geometry.margin.top;
+
+            // Register float region. x = left edge of margin box, y = top of margin box,
+            // width = margin_box_width, height = margin_box_height.
+            // available_at_y computes: left_offset = f.x + effective_width (=margin_box_width)
+            // giving the right edge of this float's margin box correctly.
             floats.push_back({
-                child->geometry.x,
-                cursor_y,
-                child_w,
-                child_h,
+                float_margin_box_x,   // x: left edge of margin box (NOT child->geometry.x)
+                float_y,              // y: top of margin box
+                child_w,              // width: margin_box_width
+                child_h,              // height: margin_box_height
                 child->float_type,
                 child->shape_outside_type,
                 child->shape_outside_values,
                 child->shape_margin
             });
-            // Floats don't advance cursor_y
+            // Floats don't advance cursor_y (out of normal flow)
         } else {
             // Normal flow — position after considering floats
             available_at_y(cursor_y, child->geometry.margin_box_height(), left_off, right_off);
@@ -3246,6 +3312,16 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         while (ti < s.size()) {
             while (ti < s.size() && s[ti] == ' ') ti++;
             if (ti >= s.size()) break;
+            // Skip named grid lines in brackets: [name] [name2]
+            if (s[ti] == '[') {
+                size_t end_bracket = s.find(']', ti);
+                if (end_bracket != std::string::npos) {
+                    ti = end_bracket + 1;
+                } else {
+                    ti++;
+                }
+                continue;
+            }
             if (ti + 7 <= s.size() && s.substr(ti, 7) == "minmax(") {
                 size_t start = ti;
                 int d = 0;
@@ -3255,6 +3331,18 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                     ti++;
                 }
                 tokens.push_back(s.substr(start, ti - start));
+            } else if (ti + 12 <= s.size() && s.substr(ti, 12) == "fit-content(") {
+                // fit-content(value) — treat like minmax(auto, value)
+                size_t start = ti;
+                int d = 0;
+                while (ti < s.size()) {
+                    if (s[ti] == '(') d++;
+                    else if (s[ti] == ')') { d--; if (d == 0) { ti++; break; } }
+                    ti++;
+                }
+                // Extract the inner value and treat as a max-bounded auto track
+                std::string inner = s.substr(start + 12, (ti - 1) - (start + 12));
+                tokens.push_back("minmax(auto, " + inner + ")");
             } else {
                 size_t start = ti;
                 while (ti < s.size() && s[ti] != ' ') ti++;
@@ -3563,17 +3651,74 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     };
     std::vector<GridPlacement> placements(grid_items.size());
 
+    // Helper: split a string by a delimiter, trimming whitespace from each token
+    auto split_trim = [](const std::string& s, char delim) -> std::vector<std::string> {
+        std::vector<std::string> parts;
+        std::istringstream ss(s);
+        std::string tok;
+        while (std::getline(ss, tok, delim)) {
+            while (!tok.empty() && tok.front() == ' ') tok.erase(tok.begin());
+            while (!tok.empty() && tok.back() == ' ') tok.pop_back();
+            parts.push_back(tok);
+        }
+        return parts;
+    };
+
     // First pass: resolve grid-area and explicit grid-column / grid-row
     for (size_t idx = 0; idx < grid_items.size(); idx++) {
         auto* child = grid_items[idx];
         auto& pl = placements[idx];
 
-        if (!child->grid_area.empty() && !area_map.empty()) {
-            auto ait = area_map.find(child->grid_area);
-            if (ait != area_map.end()) {
-                auto& ar = ait->second;
-                child->grid_column = std::to_string(ar.col_start + 1) + " / " + std::to_string(ar.col_end + 1);
-                child->grid_row = std::to_string(ar.row_start + 1) + " / " + std::to_string(ar.row_end + 1);
+        if (!child->grid_area.empty()) {
+            // grid-area can be:
+            //   (a) a named area: "header"
+            //   (b) a 4-value shorthand: "row-start / col-start / row-end / col-end"
+            bool handled = false;
+
+            // Check for 4-value shorthand (contains '/')
+            auto area_parts = split_trim(child->grid_area, '/');
+            if (area_parts.size() == 4) {
+                // 4-value: row-start / col-start / row-end / col-end
+                child->grid_row    = area_parts[0] + " / " + area_parts[2];
+                child->grid_column = area_parts[1] + " / " + area_parts[3];
+                handled = true;
+            } else if (area_parts.size() == 3) {
+                // 3-value: row-start / col-start / row-end  (col-end = auto)
+                child->grid_row    = area_parts[0] + " / " + area_parts[2];
+                child->grid_column = area_parts[1] + " / auto";
+                handled = true;
+            } else if (area_parts.size() == 2) {
+                // 2-value: row-start / col-start (both span 1)
+                child->grid_row    = area_parts[0];
+                child->grid_column = area_parts[1];
+                handled = true;
+            } else if (!area_map.empty()) {
+                // Named area lookup
+                auto ait = area_map.find(child->grid_area);
+                if (ait != area_map.end()) {
+                    auto& ar = ait->second;
+                    child->grid_column = std::to_string(ar.col_start + 1) + " / " + std::to_string(ar.col_end + 1);
+                    child->grid_row    = std::to_string(ar.row_start + 1) + " / " + std::to_string(ar.row_end + 1);
+                    handled = true;
+                }
+            }
+            (void)handled;
+        }
+
+        // Merge grid-column-start/end into grid-column if not already set
+        if (child->grid_column.empty()) {
+            if (!child->grid_column_start.empty() || !child->grid_column_end.empty()) {
+                std::string cs = child->grid_column_start.empty() ? "auto" : child->grid_column_start;
+                std::string ce = child->grid_column_end.empty()   ? "auto" : child->grid_column_end;
+                child->grid_column = cs + " / " + ce;
+            }
+        }
+        // Merge grid-row-start/end into grid-row if not already set
+        if (child->grid_row.empty()) {
+            if (!child->grid_row_start.empty() || !child->grid_row_end.empty()) {
+                std::string rs = child->grid_row_start.empty() ? "auto" : child->grid_row_start;
+                std::string re = child->grid_row_end.empty()   ? "auto" : child->grid_row_end;
+                child->grid_row = rs + " / " + re;
             }
         }
 
@@ -3595,33 +3740,86 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         }
     }
 
+    // grid-auto-flow: 0=row, 1=column, 2=row dense, 3=column dense
     bool column_flow = (node.grid_auto_flow == 1 || node.grid_auto_flow == 3);
+    bool dense_flow  = (node.grid_auto_flow == 2 || node.grid_auto_flow == 3);
 
+    // For column-flow grids, num_cols is determined dynamically as items are placed.
+    // We start with the template columns but may add implicit columns.
+    // Parse implicit column track size for column-flow grids.
+    auto parse_auto_track_size = [&](const std::string& spec, float avail) -> float {
+        if (spec.empty()) return 0.0f;
+        // Handle minmax()
+        if (spec.find("minmax(") != std::string::npos) {
+            auto toks = tokenize_tracks(spec);
+            auto sp   = parse_track_specs(toks, avail);
+            if (!sp.empty()) {
+                // For implicit tracks: if max is fr, use the min value as fixed size;
+                // if max is fixed, use the max (already resolved in parse_track_specs).
+                if (sp[0].is_fr) return sp[0].min_value > 0 ? sp[0].min_value : 0.0f;
+                return sp[0].value;
+            }
+        }
+        try {
+            if (spec.find("px") != std::string::npos) return std::stof(spec);
+            if (spec.find('%') != std::string::npos)  return avail * std::stof(spec) / 100.0f;
+            if (spec.find("fr") != std::string::npos) return 0.0f; // fr = will fill remaining
+        } catch (...) {}
+        return 0.0f; // "auto" = content-sized
+    };
+    float auto_col_size = parse_auto_track_size(node.grid_auto_columns, content_w);
+
+    // Estimated grid dimensions for the occupied array
     int estimated_rows = std::max(num_rows, static_cast<int>((grid_items.size() + num_cols - 1) / num_cols));
     estimated_rows = std::max(estimated_rows, 1);
-    std::vector<bool> occupied(estimated_rows * num_cols, false);
+    // For column-flow, we may add implicit columns; start with enough room.
+    int dyn_num_cols = num_cols; // may grow in column-flow mode
+    std::vector<bool> occupied(estimated_rows * dyn_num_cols, false);
+
+    // Lambda: resize occupied grid if needed (row-dimension growth)
+    auto ensure_rows = [&](int needed_rows) {
+        int cur_rows = static_cast<int>(occupied.size()) / dyn_num_cols;
+        if (needed_rows > cur_rows) {
+            occupied.resize(needed_rows * dyn_num_cols, false);
+        }
+    };
+
+    // Lambda: add an implicit column (for column-flow grids)
+    auto add_implicit_col = [&]() {
+        int cur_rows = static_cast<int>(occupied.size()) / dyn_num_cols;
+        // Insert a new column into each row
+        std::vector<bool> new_occ;
+        new_occ.reserve(cur_rows * (dyn_num_cols + 1));
+        for (int r = 0; r < cur_rows; r++) {
+            for (int c = 0; c < dyn_num_cols; c++) {
+                new_occ.push_back(occupied[r * dyn_num_cols + c]);
+            }
+            new_occ.push_back(false); // new column cell
+        }
+        occupied = std::move(new_occ);
+        // Add the implicit column width
+        float new_w = auto_col_size > 0 ? auto_col_size : (col_widths.empty() ? content_w : col_widths.back());
+        col_widths.push_back(new_w);
+        dyn_num_cols++;
+    };
 
     auto is_occupied = [&](int r, int c) -> bool {
-        if (r < 0 || c < 0 || c >= num_cols) return true;
-        if (r >= static_cast<int>(occupied.size()) / num_cols) return false;
-        return occupied[r * num_cols + c];
+        if (r < 0 || c < 0 || c >= dyn_num_cols) return true;
+        if (r >= static_cast<int>(occupied.size()) / dyn_num_cols) return false;
+        return occupied[r * dyn_num_cols + c];
     };
 
     auto mark_occupied = [&](int r_start, int c_start, int r_span, int c_span) {
-        int needed_rows = r_start + r_span;
-        int current_rows = static_cast<int>(occupied.size()) / num_cols;
-        if (needed_rows > current_rows) {
-            occupied.resize(needed_rows * num_cols, false);
-        }
+        ensure_rows(r_start + r_span);
         for (int r = r_start; r < r_start + r_span; r++) {
-            for (int c = c_start; c < c_start + c_span && c < num_cols; c++) {
-                occupied[r * num_cols + c] = true;
+            for (int c = c_start; c < c_start + c_span && c < dyn_num_cols; c++) {
+                occupied[r * dyn_num_cols + c] = true;
             }
         }
     };
 
     auto can_place = [&](int r_start, int c_start, int r_span, int c_span) -> bool {
-        if (c_start + c_span > num_cols) return false;
+        if (c_start < 0 || c_start + c_span > dyn_num_cols) return false;
         for (int r = r_start; r < r_start + r_span; r++) {
             for (int c = c_start; c < c_start + c_span; c++) {
                 if (is_occupied(r, c)) return false;
@@ -3630,95 +3828,165 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         return true;
     };
 
-    // Place explicitly-positioned items first
+    // Place explicitly-positioned items first (mark their cells as occupied)
     for (size_t idx = 0; idx < grid_items.size(); idx++) {
         auto& pl = placements[idx];
         if (pl.col_start >= 0 && pl.row_start >= 0) {
+            // Grow column count if item exceeds current template
+            while (pl.col_start + pl.col_span > dyn_num_cols) add_implicit_col();
+            ensure_rows(pl.row_start + pl.row_span);
             mark_occupied(pl.row_start, pl.col_start, pl.row_span, pl.col_span);
         }
     }
 
-    // Auto-place remaining items
+    // Auto-place remaining items following the CSS Grid auto-placement algorithm.
+    // For dense mode, the cursor resets to (0,0) for each item.
+    // For non-dense mode, the cursor advances monotonically.
     int auto_cursor_row = 0;
     int auto_cursor_col = 0;
 
     for (size_t idx = 0; idx < grid_items.size(); idx++) {
         auto& pl = placements[idx];
-        if (pl.col_start >= 0 && pl.row_start >= 0) continue;
+        if (pl.col_start >= 0 && pl.row_start >= 0) continue; // already placed
 
-        if (pl.col_start >= 0) {
-            for (int r = 0; ; r++) {
-                if (can_place(r, pl.col_start, pl.row_span, pl.col_span)) {
-                    pl.row_start = r;
-                    break;
-                }
-                if (r > 10000) { pl.row_start = 0; break; }
-            }
-        } else if (pl.row_start >= 0) {
-            for (int c = 0; c < num_cols; c++) {
-                if (can_place(pl.row_start, c, pl.row_span, pl.col_span)) {
-                    pl.col_start = c;
-                    break;
-                }
-            }
-            if (pl.col_start < 0) pl.col_start = 0;
-        } else {
-            if (column_flow) {
-                for (int iter = 0; iter < 100000; iter++) {
-                    if (can_place(auto_cursor_row, auto_cursor_col, pl.row_span, pl.col_span)) {
-                        pl.row_start = auto_cursor_row;
-                        pl.col_start = auto_cursor_col;
+        if (!column_flow) {
+            // ROW flow: fill row by row
+            // If item has a fixed column but needs auto row:
+            if (pl.col_start >= 0) {
+                // Column is fixed, find first available row
+                int search_row = dense_flow ? 0 : auto_cursor_row;
+                for (int r = search_row; r < search_row + 100000; r++) {
+                    ensure_rows(r + pl.row_span);
+                    if (can_place(r, pl.col_start, pl.row_span, pl.col_span)) {
+                        pl.row_start = r;
                         break;
                     }
-                    auto_cursor_row++;
-                    int max_auto = static_cast<int>(occupied.size()) / num_cols + pl.row_span + 1;
-                    if (auto_cursor_row >= max_auto) {
-                        auto_cursor_row = 0;
-                        auto_cursor_col++;
-                        if (auto_cursor_col >= num_cols) {
-                            pl.row_start = 0;
-                            pl.col_start = 0;
+                }
+                if (pl.row_start < 0) { pl.row_start = 0; }
+            }
+            // If item has a fixed row but needs auto column:
+            else if (pl.row_start >= 0) {
+                int search_col = dense_flow ? 0 : 0; // always search from 0 for row-fixed items
+                for (int c = search_col; c < dyn_num_cols; c++) {
+                    if (can_place(pl.row_start, c, pl.row_span, pl.col_span)) {
+                        pl.col_start = c;
+                        break;
+                    }
+                }
+                if (pl.col_start < 0) pl.col_start = 0;
+            }
+            // Full auto-placement
+            else {
+                int search_row = dense_flow ? 0 : auto_cursor_row;
+                int search_col = dense_flow ? 0 : auto_cursor_col;
+                bool placed = false;
+                for (int r = search_row; !placed; r++) {
+                    ensure_rows(r + pl.row_span);
+                    int c_start = (r == search_row) ? search_col : 0;
+                    for (int c = c_start; c + pl.col_span <= dyn_num_cols; c++) {
+                        if (can_place(r, c, pl.row_span, pl.col_span)) {
+                            pl.row_start = r;
+                            pl.col_start = c;
+                            placed = true;
                             break;
                         }
                     }
-                }
-                if (pl.row_start < 0) { pl.row_start = 0; pl.col_start = 0; }
-            } else {
-                for (int iter = 0; iter < 100000; iter++) {
-                    if (auto_cursor_col + pl.col_span <= num_cols &&
-                        can_place(auto_cursor_row, auto_cursor_col, pl.row_span, pl.col_span)) {
-                        pl.row_start = auto_cursor_row;
-                        pl.col_start = auto_cursor_col;
-                        break;
-                    }
-                    auto_cursor_col++;
-                    if (auto_cursor_col + pl.col_span > num_cols) {
-                        auto_cursor_col = 0;
-                        auto_cursor_row++;
+                    if (r > search_row + 10000) {
+                        pl.row_start = search_row; pl.col_start = 0; placed = true;
                     }
                 }
-                if (pl.row_start < 0) { pl.row_start = 0; pl.col_start = 0; }
             }
-        }
 
-        if (pl.col_start + pl.col_span > num_cols) {
-            pl.col_start = std::max(0, num_cols - pl.col_span);
-        }
+            // Validate column bounds
+            if (pl.col_start + pl.col_span > dyn_num_cols) {
+                pl.col_start = std::max(0, dyn_num_cols - pl.col_span);
+            }
 
-        mark_occupied(pl.row_start, pl.col_start, pl.row_span, pl.col_span);
+            mark_occupied(pl.row_start, pl.col_start, pl.row_span, pl.col_span);
 
-        if (!column_flow) {
-            auto_cursor_col = pl.col_start + pl.col_span;
-            auto_cursor_row = pl.row_start;
-            if (auto_cursor_col >= num_cols) {
-                auto_cursor_col = 0;
-                auto_cursor_row++;
+            // Advance cursor (only in non-dense mode)
+            if (!dense_flow) {
+                auto_cursor_col = pl.col_start + pl.col_span;
+                auto_cursor_row = pl.row_start;
+                if (auto_cursor_col >= dyn_num_cols) {
+                    auto_cursor_col = 0;
+                    auto_cursor_row++;
+                }
             }
         } else {
-            auto_cursor_row = pl.row_start + pl.row_span;
-            auto_cursor_col = pl.col_start;
+            // COLUMN flow: fill column by column
+            // If item has a fixed row but needs auto column:
+            if (pl.row_start >= 0) {
+                int search_col = dense_flow ? 0 : auto_cursor_col;
+                for (int c = search_col; ; c++) {
+                    while (c + pl.col_span > dyn_num_cols) add_implicit_col();
+                    if (can_place(pl.row_start, c, pl.row_span, pl.col_span)) {
+                        pl.col_start = c;
+                        break;
+                    }
+                    if (c > search_col + 10000) { pl.col_start = 0; break; }
+                }
+            }
+            // If item has a fixed column but needs auto row:
+            else if (pl.col_start >= 0) {
+                int max_rows = static_cast<int>(occupied.size()) / dyn_num_cols;
+                int search_row = dense_flow ? 0 : auto_cursor_row;
+                for (int r = search_row; r < search_row + 100000; r++) {
+                    ensure_rows(r + pl.row_span);
+                    if (can_place(r, pl.col_start, pl.row_span, pl.col_span)) {
+                        pl.row_start = r;
+                        break;
+                    }
+                    (void)max_rows;
+                }
+                if (pl.row_start < 0) pl.row_start = 0;
+            }
+            // Full auto-placement (column flow)
+            else {
+                int search_col = dense_flow ? 0 : auto_cursor_col;
+                int search_row = dense_flow ? 0 : auto_cursor_row;
+                bool placed = false;
+                for (int c = search_col; !placed; c++) {
+                    while (c + pl.col_span > dyn_num_cols) add_implicit_col();
+                    int r_start = (c == search_col) ? search_row : 0;
+                    int max_rows = static_cast<int>(occupied.size()) / dyn_num_cols;
+                    for (int r = r_start; r < r_start + max_rows + pl.row_span + 1; r++) {
+                        ensure_rows(r + pl.row_span);
+                        if (can_place(r, c, pl.row_span, pl.col_span)) {
+                            pl.row_start = r;
+                            pl.col_start = c;
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (c > search_col + 10000) {
+                        pl.row_start = 0; pl.col_start = 0; placed = true;
+                    }
+                }
+            }
+
+            // Validate column bounds
+            if (pl.col_start + pl.col_span > dyn_num_cols) {
+                pl.col_start = std::max(0, dyn_num_cols - pl.col_span);
+            }
+
+            mark_occupied(pl.row_start, pl.col_start, pl.row_span, pl.col_span);
+
+            // Advance cursor (only in non-dense mode)
+            if (!dense_flow) {
+                auto_cursor_row = pl.row_start + pl.row_span;
+                auto_cursor_col = pl.col_start;
+                int max_rows = static_cast<int>(occupied.size()) / dyn_num_cols;
+                if (auto_cursor_row >= max_rows) {
+                    auto_cursor_row = 0;
+                    auto_cursor_col = pl.col_start + 1;
+                }
+            }
         }
     }
+
+    // Update num_cols in case implicit columns were added
+    num_cols = dyn_num_cols;
 
     // -----------------------------------------------------------------------
     // Step 6: Determine final row count
@@ -3787,16 +4055,32 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     // -----------------------------------------------------------------------
     std::vector<float> row_heights(num_rows, 0.0f);
 
+    // Parse grid-auto-rows: supports px, %, fr, auto, minmax()
+    // Returns the fixed minimum row height (fr means content-sized for implicit rows).
     float grid_auto_row_h = 0;
+    float grid_auto_row_min = 0; // minimum for minmax() implicit rows
     if (!node.grid_auto_rows.empty()) {
         try {
             std::string ar = node.grid_auto_rows;
-            if (ar.find("px") != std::string::npos) {
+            // minmax() support
+            if (ar.find("minmax(") != std::string::npos) {
+                auto toks = tokenize_tracks(ar);
+                auto sp   = parse_track_specs(toks, node.geometry.height);
+                if (!sp.empty()) {
+                    if (!sp[0].is_fr) {
+                        grid_auto_row_h = sp[0].value;
+                    }
+                    grid_auto_row_min = sp[0].min_value;
+                }
+            } else if (ar.find("px") != std::string::npos) {
                 grid_auto_row_h = std::stof(ar);
             } else if (ar.find('%') != std::string::npos) {
                 float pct = std::stof(ar);
                 grid_auto_row_h = node.geometry.height * pct / 100.0f;
+            } else if (ar.find("fr") != std::string::npos) {
+                // fr for auto rows: content-sized (grid_auto_row_h stays 0)
             }
+            // "auto" stays at 0 (content-sized)
         } catch (...) {}
     }
 
@@ -3813,11 +4097,10 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                 row_fixed_total += row_heights[r];
             }
         } else {
-            if (grid_auto_row_h > 0) {
-                row_heights[r] = std::max(grid_auto_row_h, row_content_heights[r]);
-            } else {
-                row_heights[r] = row_content_heights[r];
-            }
+            float rh = row_content_heights[r];
+            if (grid_auto_row_h > 0) rh = std::max(rh, grid_auto_row_h);
+            if (grid_auto_row_min > 0) rh = std::max(rh, grid_auto_row_min);
+            row_heights[r] = rh;
             row_fixed_total += row_heights[r];
         }
     }
@@ -3945,15 +4228,20 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
             float extra = container_content_h - total_content_height;
             float offset = 0;
             float inter_row_extra = 0;
-            if (node.align_content == 1) {
+            if (node.align_content == 1) {          // end
                 offset = extra;
-            } else if (node.align_content == 2) {
+            } else if (node.align_content == 2) {   // center
                 offset = extra / 2.0f;
-            } else if (node.align_content == 4 && num_rows > 1) {
+            } else if (node.align_content == 3) {   // stretch — handled by fr units, skip
+                // no-op: stretch is handled at row sizing time
+            } else if (node.align_content == 4 && num_rows > 1) { // space-between
                 inter_row_extra = extra / static_cast<float>(num_rows - 1);
-            } else if (node.align_content == 5 && num_rows > 0) {
+            } else if (node.align_content == 5 && num_rows > 0) { // space-around
                 inter_row_extra = extra / static_cast<float>(num_rows);
                 offset = inter_row_extra / 2.0f;
+            } else if (node.align_content == 6 && num_rows > 0) { // space-evenly
+                inter_row_extra = extra / static_cast<float>(num_rows + 1);
+                offset = inter_row_extra;
             }
             if (offset > 0 || inter_row_extra > 0) {
                 for (size_t idx = 0; idx < grid_items.size(); idx++) {
@@ -3961,6 +4249,41 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                     float shift = offset + static_cast<float>(pl.row_start) * inter_row_extra;
                     grid_items[idx]->geometry.y += shift;
                 }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 12: justify-content -- distribute remaining horizontal space among columns
+    // -----------------------------------------------------------------------
+    // Compute total column widths used
+    float total_col_width = 0;
+    for (int c = 0; c < num_cols; c++) total_col_width += col_widths[c];
+    if (num_cols > 1) total_col_width += (num_cols - 1) * col_gap;
+
+    if (node.justify_content > 0 && num_cols > 0 && total_col_width < content_w) {
+        float extra = content_w - total_col_width;
+        float col_offset = 0;
+        float inter_col_extra = 0;
+        // justify_content: 0=start, 1=end, 2=center, 3=space-between, 4=space-around, 5=space-evenly
+        if (node.justify_content == 1) {          // end / flex-end
+            col_offset = extra;
+        } else if (node.justify_content == 2) {   // center
+            col_offset = extra / 2.0f;
+        } else if (node.justify_content == 3 && num_cols > 1) { // space-between
+            inter_col_extra = extra / static_cast<float>(num_cols - 1);
+        } else if (node.justify_content == 4 && num_cols > 0) { // space-around
+            inter_col_extra = extra / static_cast<float>(num_cols);
+            col_offset = inter_col_extra / 2.0f;
+        } else if (node.justify_content == 5 && num_cols > 0) { // space-evenly
+            inter_col_extra = extra / static_cast<float>(num_cols + 1);
+            col_offset = inter_col_extra;
+        }
+        if (col_offset > 0 || inter_col_extra > 0) {
+            for (size_t idx = 0; idx < grid_items.size(); idx++) {
+                auto& pl = placements[idx];
+                float x_shift = col_offset + static_cast<float>(pl.col_start) * inter_col_extra;
+                grid_items[idx]->geometry.x += x_shift;
             }
         }
     }

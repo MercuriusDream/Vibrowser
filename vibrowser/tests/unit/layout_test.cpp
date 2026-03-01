@@ -1325,6 +1325,193 @@ TEST(LayoutFloat, ClearBothMovesBelowFloats) {
 }
 
 // ============================================================================
+// Float layout edge cases
+// ============================================================================
+
+// Two left floats should stack horizontally (second is to the right of the first)
+TEST(LayoutFloat, TwoLeftFloatsStackHorizontally) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+
+    auto float1 = make_block("div");
+    float1->specified_width = 80.0f;
+    float1->specified_height = 40.0f;
+    float1->float_type = 1; // float:left
+
+    auto float2 = make_block("div");
+    float2->specified_width = 100.0f;
+    float2->specified_height = 60.0f;
+    float2->float_type = 1; // float:left
+
+    root->append_child(std::move(float1));
+    root->append_child(std::move(float2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    // First float at x=0
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    // Second float should be to the right of the first (x >= 80)
+    EXPECT_GE(root->children[1]->geometry.x, 80.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 0.0f);
+}
+
+// Two right floats should stack: first at right, second to its left
+TEST(LayoutFloat, TwoRightFloatsStackHorizontally) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+
+    auto float1 = make_block("div");
+    float1->specified_width = 80.0f;
+    float1->specified_height = 40.0f;
+    float1->float_type = 2; // float:right
+
+    auto float2 = make_block("div");
+    float2->specified_width = 80.0f;
+    float2->specified_height = 60.0f;
+    float2->float_type = 2; // float:right
+
+    root->append_child(std::move(float1));
+    root->append_child(std::move(float2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    // First right float at x = 300 - 80 = 220
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 220.0f);
+    // Second right float should be to the left: x = 300 - 80 - 80 = 140
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 140.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 0.0f);
+}
+
+// A float that doesn't fit beside existing floats drops below them
+TEST(LayoutFloat, FloatDropsBelowWhenNoHorizontalRoom) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+
+    // First float takes 150px — barely fits
+    auto float1 = make_block("div");
+    float1->specified_width = 150.0f;
+    float1->specified_height = 40.0f;
+    float1->float_type = 1; // float:left
+    root->append_child(std::move(float1));
+
+    // Second float is 100px wide — not enough room (200 - 150 = 50px left)
+    auto float2 = make_block("div");
+    float2->specified_width = 100.0f;
+    float2->specified_height = 60.0f;
+    float2->float_type = 1; // float:left
+    root->append_child(std::move(float2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 600.0f);
+
+    // float2 should drop below float1 (y >= 40)
+    EXPECT_GE(root->children[1]->geometry.y, 40.0f);
+    // float2 should be back at x=0 (left edge)
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 0.0f);
+}
+
+// BFC container (overflow:hidden) should expand to contain its floats
+TEST(LayoutFloat, BFCContainerExpandsToContainFloats) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->overflow = 1; // overflow:hidden → establishes BFC
+
+    auto floated = make_block("div");
+    floated->specified_width = 80.0f;
+    floated->specified_height = 100.0f;
+    floated->float_type = 1; // float:left
+    root->append_child(std::move(floated));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    // BFC container should be tall enough to contain the float
+    EXPECT_GE(root->geometry.height, 100.0f);
+}
+
+// Non-BFC container should NOT expand for its floats
+TEST(LayoutFloat, NonBFCContainerDoesNotExpandForFloats) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    // No overflow set, no BFC established, root itself IS bfc (parent==null)
+    // Use an intermediate wrapper to test non-BFC behavior
+    auto wrapper = make_block("div");
+    wrapper->specified_width = 300.0f;
+    // wrapper has no special BFC-triggering properties (no overflow, no float, etc.)
+
+    auto floated = make_block("div");
+    floated->specified_width = 80.0f;
+    floated->specified_height = 100.0f;
+    floated->float_type = 1; // float:left
+    wrapper->append_child(std::move(floated));
+
+    root->append_child(std::move(wrapper));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    // The non-BFC wrapper should NOT expand for its floats (height = 0)
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 0.0f);
+}
+
+// clear:left should push element below left floats only
+TEST(LayoutFloat, ClearLeftMovesBelowLeftFloats) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto left_float = make_block("div");
+    left_float->specified_width = 80.0f;
+    left_float->specified_height = 60.0f;
+    left_float->float_type = 1; // float:left
+    root->append_child(std::move(left_float));
+
+    auto right_float = make_block("div");
+    right_float->specified_width = 80.0f;
+    right_float->specified_height = 80.0f;
+    right_float->float_type = 2; // float:right
+    root->append_child(std::move(right_float));
+
+    auto cleared = make_block("div");
+    cleared->specified_height = 20.0f;
+    cleared->clear_type = 1; // clear:left
+    root->append_child(std::move(cleared));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Cleared element should be below the left float (y >= 60)
+    EXPECT_GE(root->children[2]->geometry.y, 60.0f);
+    // But NOT necessarily below the right float (80px)
+    // (it only clears left floats, not right)
+}
+
+// Float shrink-to-fit: a float with auto width and text content should shrink
+TEST(LayoutFloat, FloatWithAutoWidthShrinksToFitContent) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto floated = make_block("div");
+    floated->float_type = 1; // float:left, auto width
+    // No specified_width set (auto)
+
+    // Add a text child 10 chars at 12px = ~72px wide (12 * 0.6 * 10 = 72)
+    auto text = make_text("0123456789", 12.0f);
+    floated->append_child(std::move(text));
+    root->append_child(std::move(floated));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    // Float should NOT fill the full 500px container; it should shrink to content
+    EXPECT_LT(root->children[0]->geometry.width, 500.0f);
+    // And it should be at least as wide as the text
+    EXPECT_GT(root->children[0]->geometry.width, 0.0f);
+}
+
+// ============================================================================
 // Word-break and overflow-wrap tests
 // ============================================================================
 

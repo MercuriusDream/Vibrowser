@@ -154,3 +154,6 @@ std::vector<std::string> detect_changed_transition_properties(
     const clever::css::ComputedStyle& new_style);
 
 } // namespace clever::paint
+
+// Image fetch API for JS Image element (thin header, no heavy dependencies)
+#include <clever/paint/image_fetch.h>

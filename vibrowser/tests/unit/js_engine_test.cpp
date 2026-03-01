@@ -10065,6 +10065,145 @@ TEST(JSDom, AnimationKeyframeEffectAndTimeline) {
 }
 
 // ============================================================================
+// Web Animations API: element.animate() applies final keyframe to inline style
+// ============================================================================
+TEST(JSDom, AnimateAppliesStyleToElement) {
+    auto doc = clever::html::parse("<html><body><div id='box'></div></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var el = document.getElementById('box');
+        // Array keyframes: final opacity=1 and transform should be applied
+        var anim = el.animate(
+            [{ opacity: '0', transform: 'scale(0.5)' },
+             { opacity: '1', transform: 'scale(1)' }],
+            { duration: 300, fill: 'forwards' }
+        );
+        var style = el.getAttribute('style') || '';
+        var checks = [];
+        checks.push(anim.playState === 'finished');
+        checks.push(typeof anim.finished === 'object');
+        checks.push(typeof anim.ready === 'object');
+        checks.push(typeof anim.cancel === 'function');
+        checks.push(typeof anim.play === 'function');
+        checks.push(typeof anim.pause === 'function');
+        checks.push(typeof anim.reverse === 'function');
+        checks.push(typeof anim.updatePlaybackRate === 'function');
+        checks.push(typeof anim.commitStyles === 'function');
+        checks.push(style.indexOf('opacity') >= 0);
+        String(checks.every(function(c) { return c; }));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
+// Web Animations API: element.animate() sets CSS transition when duration > 0
+// ============================================================================
+TEST(JSDom, AnimateSetsTransitionProperty) {
+    auto doc = clever::html::parse("<html><body><div id='box'></div></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var el = document.getElementById('box');
+        el.animate(
+            [{ opacity: '0' }, { opacity: '1' }],
+            { duration: 300, easing: 'ease-out' }
+        );
+        var style = el.getAttribute('style') || '';
+        style.indexOf('transition') >= 0 ? 'has-transition' : 'no-transition';
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "has-transition");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
+// Web Animations API: element.animate() with numeric options (duration as number)
+// ============================================================================
+TEST(JSDom, AnimateNumericOptions) {
+    auto doc = clever::html::parse("<html><body><div id='box'></div></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var el = document.getElementById('box');
+        var anim = el.animate([{ opacity: '0' }, { opacity: '1' }], 500);
+        anim.playState + ',' + (anim.currentTime === 0);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "finished,true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
+// Web Animations API: element.animate() with object-with-arrays keyframe form
+// ============================================================================
+TEST(JSDom, AnimateObjectWithArrayKeyframes) {
+    auto doc = clever::html::parse("<html><body><div id='box'></div></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var el = document.getElementById('box');
+        var anim = el.animate(
+            { opacity: [0, 1], transform: ['scale(0)', 'scale(1)'] },
+            { duration: 400 }
+        );
+        var style = el.getAttribute('style') || '';
+        var checks = [];
+        checks.push(anim.playState === 'finished');
+        checks.push(style.indexOf('opacity') >= 0);
+        checks.push(style.indexOf('transform') >= 0);
+        String(checks.every(function(c) { return c; }));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
+// Web Animations API: element.animate() with null keyframes (no crash)
+// ============================================================================
+TEST(JSDom, AnimateNullKeyframes) {
+    auto doc = clever::html::parse("<html><body><div id='box'></div></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var el = document.getElementById('box');
+        var anim = el.animate(null, 300);
+        anim.playState;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "finished");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
+// Web Animations API: element.animate() finished promise is thenable
+// (Promise.then() fires after flushing microtask queue)
+// ============================================================================
+TEST(JSDom, AnimateFinishedPromiseThenable) {
+    auto doc = clever::html::parse("<html><body><div id='box'></div></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    // Step 1: create animation and attach .then() handler
+    engine.evaluate(R"(
+        var el = document.getElementById('box');
+        var anim = el.animate([{opacity:'0'},{opacity:'1'}], {duration:100});
+        var thenFired = false;
+        anim.finished.then(function() { thenFired = true; });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // Step 2: flush pending promise microtasks so the .then() callback fires
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    // Step 3: verify the callback ran
+    auto result = engine.evaluate("String(thenFired)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
 // PerformanceEntry: constructor exists and toJSON works
 // ============================================================================
 TEST(JSDom, PerformanceEntryConstructorAndToJSON) {
@@ -10726,7 +10865,7 @@ TEST(JSDom, ImageConstructor) {
         checks.push(typeof img === 'object');
         checks.push(img.tagName === 'IMG');
         checks.push(img.src === '');
-        checks.push(img.complete === false);
+        checks.push(img.complete === true);  // spec: complete=true when src is empty
         checks.push(img.width === 0);
         // Constructor with dimensions
         var img2 = new Image(100, 50);

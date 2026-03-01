@@ -1,4 +1,5 @@
 #include <clever/paint/render_pipeline.h>
+#include <clever/paint/image_fetch.h>
 #include <clever/paint/software_renderer.h>
 #include <clever/paint/painter.h>
 #include <clever/paint/text_renderer.h>
@@ -5158,12 +5159,13 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             else if (val_lower == "center") style.justify_items = 2;
             else if (val_lower == "stretch") style.justify_items = 3;
         } else if (d.property == "align-content") {
-            if (val_lower == "start") style.align_content = 0;
-            else if (val_lower == "end") style.align_content = 1;
+            if (val_lower == "start" || val_lower == "flex-start" || val_lower == "normal") style.align_content = 0;
+            else if (val_lower == "end" || val_lower == "flex-end") style.align_content = 1;
             else if (val_lower == "center") style.align_content = 2;
             else if (val_lower == "stretch") style.align_content = 3;
             else if (val_lower == "space-between") style.align_content = 4;
             else if (val_lower == "space-around") style.align_content = 5;
+            else if (val_lower == "space-evenly") style.align_content = 6;
         } else if (d.property == "forced-color-adjust") {
             if (val_lower == "auto") style.forced_color_adjust = 0;
             else if (val_lower == "none") style.forced_color_adjust = 1;
@@ -5347,12 +5349,13 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             // CSS place-content shorthand: sets align-content and justify-content
             auto parts = split_whitespace(val_lower);
             auto parse_align_val = [](const std::string& s) -> int {
-                if (s == "flex-start" || s == "start") return 0;
+                if (s == "flex-start" || s == "start" || s == "normal") return 0;
                 if (s == "flex-end" || s == "end") return 1;
                 if (s == "center") return 2;
                 if (s == "stretch") return 3;
                 if (s == "space-between") return 4;
                 if (s == "space-around") return 5;
+                if (s == "space-evenly") return 6;
                 return 0;
             };
             auto int_to_jc = [](int v) -> clever::css::JustifyContent {
@@ -5363,6 +5366,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                     case 3: return clever::css::JustifyContent::FlexStart; // stretch -> flex-start for JC
                     case 4: return clever::css::JustifyContent::SpaceBetween;
                     case 5: return clever::css::JustifyContent::SpaceAround;
+                    case 6: return clever::css::JustifyContent::SpaceEvenly;
                     default: return clever::css::JustifyContent::FlexStart;
                 }
             };
@@ -13824,6 +13828,21 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
     }
 
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// Public API: fetch and decode an image for the JS Image element
+// ---------------------------------------------------------------------------
+JSImageData fetch_image_for_js(const std::string& url) {
+    JSImageData out;
+    if (url.empty()) return out;
+    DecodedImage img = fetch_and_decode_image(url);
+    if (img.pixels && !img.pixels->empty() && img.width > 0 && img.height > 0) {
+        out.pixels = img.pixels;
+        out.width  = img.width;
+        out.height = img.height;
+    }
+    return out;
 }
 
 } // namespace clever::paint

@@ -1,6 +1,7 @@
 #include <clever/js/js_dom_bindings.h>
 #include <clever/layout/box.h>
 #include <clever/net/cookie_jar.h>
+#include <clever/paint/image_fetch.h>
 #include <clever/url/url.h>
 
 extern "C" {
@@ -4998,11 +4999,159 @@ static JSValue js_element_get_animations(JSContext* ctx,
                                           JSValueConst /*this_val*/,
                                           int /*argc*/,
                                           JSValueConst* /*argv*/) {
-    // Return empty array
+    // Return empty array — active animation tracking not yet implemented
     return JS_NewArray(ctx);
 }
 
-// animate() — returns a minimal Animation-like object with play/pause/cancel/finish
+// =========================================================================
+// Web Animations API — element.animate(keyframes, options)
+//
+// Since our renderer is synchronous, we implement this as:
+// 1. Parse keyframes to extract CSS property values per keyframe stop
+// 2. Parse options (duration, fill, easing, iterations, delay)
+// 3. Apply the first keyframe immediately (for fill: backwards/both)
+// 4. Set CSS transition on the element with specified duration/easing
+// 5. Apply the final keyframe values to trigger CSS transitions
+// 6. Return an Animation object that reports playState='finished' with
+//    resolved finished/ready promises
+//
+// This handles the most common use case: sites use element.animate() to
+// fade/slide elements in, checking anim.finished.then() or anim.onfinish.
+// =========================================================================
+
+// Helper: get a string property from a JS object
+static std::string js_get_string_prop(JSContext* ctx, JSValueConst obj,
+                                       const char* key) {
+    JSValue val = JS_GetPropertyStr(ctx, obj, key);
+    std::string result;
+    if (JS_IsString(val)) {
+        const char* s = JS_ToCString(ctx, val);
+        if (s) { result = s; JS_FreeCString(ctx, s); }
+    }
+    JS_FreeValue(ctx, val);
+    return result;
+}
+
+// Helper: get a double property from a JS object (returns default_val if missing/non-numeric)
+static double js_get_double_prop(JSContext* ctx, JSValueConst obj,
+                                  const char* key, double default_val) {
+    JSValue val = JS_GetPropertyStr(ctx, obj, key);
+    double result = default_val;
+    if (!JS_IsUndefined(val) && !JS_IsNull(val)) {
+        double d = 0;
+        if (JS_ToFloat64(ctx, &d, val) == 0) result = d;
+    }
+    JS_FreeValue(ctx, val);
+    return result;
+}
+
+// Helper: build a CSS easing string from the animate() options easing field
+static std::string animate_easing_to_css(const std::string& easing) {
+    if (easing == "linear") return "linear";
+    if (easing == "ease-in") return "ease-in";
+    if (easing == "ease-out") return "ease-out";
+    if (easing == "ease-in-out") return "ease-in-out";
+    if (easing.size() >= 13 && easing.substr(0, 13) == "cubic-bezier(") return easing;
+    if (easing.size() >= 6 && easing.substr(0, 6) == "steps(") return easing;
+    return "ease"; // Default
+}
+
+// Helper: extract all enumerable CSS properties from a keyframe object
+// Skips non-CSS fields: offset, easing, composite
+static void extract_keyframe_props(JSContext* ctx, JSValueConst kf_obj,
+                                    std::unordered_map<std::string, std::string>& out) {
+    static const std::unordered_set<std::string> skip_keys = {
+        "offset", "easing", "composite"
+    };
+    JSPropertyEnum* props = nullptr;
+    uint32_t count = 0;
+    if (JS_GetOwnPropertyNames(ctx, &props, &count, kf_obj,
+                               JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0) {
+        return;
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        const char* key_cstr = JS_AtomToCString(ctx, props[i].atom);
+        JS_FreeAtom(ctx, props[i].atom);
+        if (!key_cstr) continue;
+        std::string key(key_cstr);
+        JS_FreeCString(ctx, key_cstr);
+        if (skip_keys.count(key)) continue;
+        JSValue v = JS_GetPropertyStr(ctx, kf_obj, key.c_str());
+        if (JS_IsString(v)) {
+            const char* val_cstr = JS_ToCString(ctx, v);
+            if (val_cstr) {
+                out[camel_to_kebab(key)] = val_cstr;
+                JS_FreeCString(ctx, val_cstr);
+            }
+        } else if (JS_IsNumber(v)) {
+            double d = 0;
+            JS_ToFloat64(ctx, &d, v);
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%g", d);
+            out[camel_to_kebab(key)] = buf;
+        }
+        JS_FreeValue(ctx, v);
+    }
+    js_free(ctx, props);
+}
+
+// Helper: apply a set of CSS properties to a SimpleNode inline style
+static void animate_apply_style_props(JSContext* ctx,
+                               clever::html::SimpleNode* node,
+                               const std::unordered_map<std::string, std::string>& props) {
+    if (props.empty()) return;
+    auto current = parse_style_attr(get_attr(*node, "style"));
+    for (const auto& kv : props) {
+        if (kv.second.empty()) {
+            current.erase(kv.first);
+        } else {
+            current[kv.first] = kv.second;
+        }
+    }
+    set_attr(*node, "style", serialize_style(current));
+}
+
+// Helper: build a CSS transition string for a set of properties
+static std::string build_animate_transition(
+        const std::unordered_map<std::string, std::string>& props,
+        double duration_ms, const std::string& easing, double delay_ms) {
+    if (props.empty()) return "";
+    char dur_buf[64], del_buf[64];
+    snprintf(dur_buf, sizeof(dur_buf), "%.3fs", duration_ms / 1000.0);
+    snprintf(del_buf, sizeof(del_buf), "%.3fs", delay_ms / 1000.0);
+    std::string css_easing = animate_easing_to_css(easing);
+    std::string result;
+    for (const auto& kv : props) {
+        if (!result.empty()) result += ", ";
+        result += kv.first;
+        result += " ";
+        result += dur_buf;
+        result += " ";
+        result += css_easing;
+        result += " ";
+        result += del_buf;
+    }
+    return result;
+}
+
+// Helper: make a resolved Promise
+static JSValue make_resolved_promise(JSContext* ctx, JSValueConst resolve_with) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue promise_ctor = JS_GetPropertyStr(ctx, global, "Promise");
+    JSValue result = JS_UNDEFINED;
+    if (JS_IsFunction(ctx, promise_ctor)) {
+        JSValue resolve_fn = JS_GetPropertyStr(ctx, promise_ctor, "resolve");
+        if (JS_IsFunction(ctx, resolve_fn)) {
+            result = JS_Call(ctx, resolve_fn, promise_ctor, 1, &resolve_with);
+        }
+        JS_FreeValue(ctx, resolve_fn);
+    }
+    JS_FreeValue(ctx, promise_ctor);
+    JS_FreeValue(ctx, global);
+    return result;
+}
+
+// Animation control method noop (play/pause/cancel/finish/reverse etc.)
 static JSValue js_animation_noop(JSContext* /*ctx*/,
                                   JSValueConst /*this_val*/,
                                   int /*argc*/,
@@ -5010,12 +5159,11 @@ static JSValue js_animation_noop(JSContext* /*ctx*/,
     return JS_UNDEFINED;
 }
 
-static JSValue js_element_animate(JSContext* ctx,
-                                   JSValueConst /*this_val*/,
-                                   int /*argc*/,
-                                   JSValueConst* /*argv*/) {
-    // Return a minimal Animation-like object
+// Helper: build and return a proper Animation object
+static JSValue build_animation_object(JSContext* ctx) {
     JSValue anim = JS_NewObject(ctx);
+
+    // Methods
     JS_SetPropertyStr(ctx, anim, "play",
         JS_NewCFunction(ctx, js_animation_noop, "play", 0));
     JS_SetPropertyStr(ctx, anim, "pause",
@@ -5026,31 +5174,224 @@ static JSValue js_element_animate(JSContext* ctx,
         JS_NewCFunction(ctx, js_animation_noop, "finish", 0));
     JS_SetPropertyStr(ctx, anim, "reverse",
         JS_NewCFunction(ctx, js_animation_noop, "reverse", 0));
+    JS_SetPropertyStr(ctx, anim, "updatePlaybackRate",
+        JS_NewCFunction(ctx, js_animation_noop, "updatePlaybackRate", 1));
+    JS_SetPropertyStr(ctx, anim, "commitStyles",
+        JS_NewCFunction(ctx, js_animation_noop, "commitStyles", 0));
+    JS_SetPropertyStr(ctx, anim, "persist",
+        JS_NewCFunction(ctx, js_animation_noop, "persist", 0));
+
+    // State properties — immediately 'finished' since we're synchronous
     JS_SetPropertyStr(ctx, anim, "playState", JS_NewString(ctx, "finished"));
     JS_SetPropertyStr(ctx, anim, "currentTime", JS_NewFloat64(ctx, 0));
+    JS_SetPropertyStr(ctx, anim, "startTime", JS_NewFloat64(ctx, 0));
     JS_SetPropertyStr(ctx, anim, "playbackRate", JS_NewFloat64(ctx, 1));
     JS_SetPropertyStr(ctx, anim, "effect", JS_NULL);
     JS_SetPropertyStr(ctx, anim, "timeline", JS_NULL);
     JS_SetPropertyStr(ctx, anim, "onfinish", JS_NULL);
     JS_SetPropertyStr(ctx, anim, "oncancel", JS_NULL);
+    JS_SetPropertyStr(ctx, anim, "onremove", JS_NULL);
     JS_SetPropertyStr(ctx, anim, "id", JS_NewString(ctx, ""));
+    JS_SetPropertyStr(ctx, anim, "pending", JS_FALSE);
+    JS_SetPropertyStr(ctx, anim, "replaceState", JS_NewString(ctx, "active"));
+
     // finished / ready as resolved promises
-    {
-        JSValue global = JS_GetGlobalObject(ctx);
-        JSValue promise_ctor = JS_GetPropertyStr(ctx, global, "Promise");
-        if (JS_IsFunction(ctx, promise_ctor)) {
-            JSValue resolve_fn = JS_GetPropertyStr(ctx, promise_ctor, "resolve");
-            if (JS_IsFunction(ctx, resolve_fn)) {
-                JSValue resolved = JS_Call(ctx, resolve_fn, promise_ctor, 0, nullptr);
-                JS_SetPropertyStr(ctx, anim, "finished", JS_DupValue(ctx, resolved));
-                JS_SetPropertyStr(ctx, anim, "ready", resolved);
-            }
-            JS_FreeValue(ctx, resolve_fn);
-        }
-        JS_FreeValue(ctx, promise_ctor);
-        JS_FreeValue(ctx, global);
-    }
+    JSValue undef = JS_UNDEFINED;
+    JSValue finished = make_resolved_promise(ctx, undef);
+    if (JS_IsException(finished)) finished = JS_UNDEFINED;
+    JSValue ready = make_resolved_promise(ctx, undef);
+    if (JS_IsException(ready)) ready = JS_UNDEFINED;
+    JS_SetPropertyStr(ctx, anim, "finished", finished);
+    JS_SetPropertyStr(ctx, anim, "ready", ready);
+
     return anim;
+}
+
+static JSValue js_element_animate(JSContext* ctx,
+                                   JSValueConst this_val,
+                                   int argc,
+                                   JSValueConst* argv) {
+    // --- Parse the element ---
+    auto* node = unwrap_element(ctx, this_val);
+
+    // --- Parse keyframes argument ---
+    // Supports:
+    //   1) Array of keyframe objects: [{opacity: 0}, {opacity: 1}]
+    //   2) Object with property arrays: {opacity: [0, 1], transform: ['scale(0)', 'scale(1)']}
+    //   3) null/undefined (no-op, just return Animation object)
+    std::unordered_map<std::string, std::string> first_kf_props;
+    std::unordered_map<std::string, std::string> last_kf_props;
+
+    if (argc >= 1 && !JS_IsNull(argv[0]) && !JS_IsUndefined(argv[0])) {
+        JSValue kf_arg = argv[0];
+
+        if (JS_IsArray(ctx, kf_arg)) {
+            // Array of keyframe objects: [{opacity: 0, transform: 'scale(0)'}, ...]
+            JSValue length_val = JS_GetPropertyStr(ctx, kf_arg, "length");
+            int32_t length = 0;
+            JS_ToInt32(ctx, &length, length_val);
+            JS_FreeValue(ctx, length_val);
+
+            std::vector<std::unordered_map<std::string, std::string>> all_kf;
+            all_kf.reserve(static_cast<size_t>(length));
+            for (int32_t i = 0; i < length; i++) {
+                JSValue kf = JS_GetPropertyUint32(ctx, kf_arg, static_cast<uint32_t>(i));
+                if (!JS_IsNull(kf) && !JS_IsUndefined(kf) && JS_IsObject(kf)) {
+                    std::unordered_map<std::string, std::string> kf_props;
+                    extract_keyframe_props(ctx, kf, kf_props);
+                    all_kf.push_back(std::move(kf_props));
+                }
+                JS_FreeValue(ctx, kf);
+            }
+            if (!all_kf.empty()) {
+                first_kf_props = all_kf.front();
+                last_kf_props = all_kf.back();
+            }
+        } else if (JS_IsObject(kf_arg)) {
+            // Object with property arrays: {opacity: [0, 1], transform: ['...', '...']}
+            // Each CSS property maps to an array of values at each keyframe offset.
+            static const std::unordered_set<std::string> skip_keys_obj = {
+                "offset", "easing", "composite"
+            };
+            JSPropertyEnum* obj_props = nullptr;
+            uint32_t obj_count = 0;
+            if (JS_GetOwnPropertyNames(ctx, &obj_props, &obj_count, kf_arg,
+                                       JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) >= 0) {
+                // Find max array length to determine number of keyframe positions
+                int32_t max_len = 0;
+                for (uint32_t i = 0; i < obj_count; i++) {
+                    const char* k = JS_AtomToCString(ctx, obj_props[i].atom);
+                    JS_FreeAtom(ctx, obj_props[i].atom);
+                    if (!k) continue;
+                    std::string key(k);
+                    JS_FreeCString(ctx, k);
+                    if (skip_keys_obj.count(key)) continue;
+                    JSValue arr = JS_GetPropertyStr(ctx, kf_arg, key.c_str());
+                    if (JS_IsArray(ctx, arr)) {
+                        JSValue len_v = JS_GetPropertyStr(ctx, arr, "length");
+                        int32_t len = 0;
+                        JS_ToInt32(ctx, &len, len_v);
+                        JS_FreeValue(ctx, len_v);
+                        if (len > max_len) max_len = len;
+                    }
+                    JS_FreeValue(ctx, arr);
+                }
+                js_free(ctx, obj_props);
+
+                if (max_len >= 2) {
+                    // Re-enumerate to extract first and last values for each property
+                    JSPropertyEnum* obj_props2 = nullptr;
+                    uint32_t obj_count2 = 0;
+                    if (JS_GetOwnPropertyNames(ctx, &obj_props2, &obj_count2, kf_arg,
+                                               JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) >= 0) {
+                        for (uint32_t i = 0; i < obj_count2; i++) {
+                            const char* k = JS_AtomToCString(ctx, obj_props2[i].atom);
+                            JS_FreeAtom(ctx, obj_props2[i].atom);
+                            if (!k) continue;
+                            std::string key(k);
+                            JS_FreeCString(ctx, k);
+                            if (skip_keys_obj.count(key)) continue;
+                            std::string css_key = camel_to_kebab(key);
+                            JSValue arr = JS_GetPropertyStr(ctx, kf_arg, key.c_str());
+                            if (JS_IsArray(ctx, arr)) {
+                                // Extract first value (index 0)
+                                JSValue v0 = JS_GetPropertyUint32(ctx, arr, 0);
+                                if (JS_IsString(v0)) {
+                                    const char* vs = JS_ToCString(ctx, v0);
+                                    if (vs) { first_kf_props[css_key] = vs; JS_FreeCString(ctx, vs); }
+                                } else if (JS_IsNumber(v0)) {
+                                    double d = 0; JS_ToFloat64(ctx, &d, v0);
+                                    char buf[64]; snprintf(buf, sizeof(buf), "%g", d);
+                                    first_kf_props[css_key] = buf;
+                                }
+                                JS_FreeValue(ctx, v0);
+                                // Extract last value (index max_len-1)
+                                JSValue vlast = JS_GetPropertyUint32(ctx, arr,
+                                    static_cast<uint32_t>(max_len - 1));
+                                if (JS_IsString(vlast)) {
+                                    const char* vs = JS_ToCString(ctx, vlast);
+                                    if (vs) { last_kf_props[css_key] = vs; JS_FreeCString(ctx, vs); }
+                                } else if (JS_IsNumber(vlast)) {
+                                    double d = 0; JS_ToFloat64(ctx, &d, vlast);
+                                    char buf[64]; snprintf(buf, sizeof(buf), "%g", d);
+                                    last_kf_props[css_key] = buf;
+                                }
+                                JS_FreeValue(ctx, vlast);
+                            }
+                            JS_FreeValue(ctx, arr);
+                        }
+                        js_free(ctx, obj_props2);
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Parse options argument ---
+    double duration_ms = 0.0;
+    double delay_ms = 0.0;
+    std::string fill = "auto";
+    std::string easing = "ease";
+    std::string direction = "normal";
+
+    if (argc >= 2) {
+        JSValue opts = argv[1];
+        if (JS_IsNumber(opts)) {
+            // options is just a number (duration in ms)
+            JS_ToFloat64(ctx, &duration_ms, opts);
+        } else if (JS_IsObject(opts)) {
+            duration_ms = js_get_double_prop(ctx, opts, "duration", 0.0);
+            delay_ms = js_get_double_prop(ctx, opts, "delay", 0.0);
+            std::string fill_str = js_get_string_prop(ctx, opts, "fill");
+            if (!fill_str.empty()) fill = fill_str;
+            std::string easing_str = js_get_string_prop(ctx, opts, "easing");
+            if (!easing_str.empty()) easing = easing_str;
+            std::string dir_str = js_get_string_prop(ctx, opts, "direction");
+            if (!dir_str.empty()) direction = dir_str;
+        }
+    }
+
+    // --- Apply animation effects to the element ---
+    if (node) {
+        // For reversed direction, swap start and end keyframes
+        const auto& start_props = (direction == "reverse") ? last_kf_props : first_kf_props;
+        const auto& end_props   = (direction == "reverse") ? first_kf_props : last_kf_props;
+
+        // For fill: backwards or both — apply start state immediately
+        bool apply_start = (fill == "backwards" || fill == "both");
+
+        if (apply_start && !start_props.empty()) {
+            animate_apply_style_props(ctx, node, start_props);
+        }
+
+        if (!end_props.empty()) {
+            // Set CSS transition so the render pipeline can animate the change
+            if (duration_ms > 0) {
+                auto current_style = parse_style_attr(get_attr(*node, "style"));
+                std::string new_transition = build_animate_transition(
+                    end_props, duration_ms, easing, delay_ms);
+                if (!new_transition.empty()) {
+                    // Merge with existing transition (if any)
+                    auto existing_it = current_style.find("transition");
+                    if (existing_it != current_style.end() &&
+                        !existing_it->second.empty()) {
+                        new_transition = existing_it->second + ", " + new_transition;
+                    }
+                    current_style["transition"] = new_transition;
+                    set_attr(*node, "style", serialize_style(current_style));
+                }
+            }
+            // Apply the final keyframe values (triggers CSS transition if set)
+            animate_apply_style_props(ctx, node, end_props);
+        }
+
+        // Mark DOM as modified so the render pipeline picks up the changes
+        auto* dom_state = get_dom_state(ctx);
+        if (dom_state) dom_state->modified = true;
+    }
+
+    // --- Build and return Animation object ---
+    return build_animation_object(ctx);
 }
 
 // =========================================================================
@@ -9261,9 +9602,8 @@ static JSValue js_canvas2d_stroke(JSContext* /*ctx*/, JSValueConst this_val,
     // Miter joins are naturally filled by the overlapping thick segments.
 
     float prev_x = 0, prev_y = 0;
-    float pprev_x = 0, pprev_y = 0;  // point before prev (for join detection)
     bool have_prev = false;
-    bool have_pprev = false;
+    bool have_pprev = false;  // true when we have a prior segment (for join detection)
 
     for (auto& pt : s->path_points) {
         if (pt.is_move) {
@@ -9294,7 +9634,6 @@ static JSValue js_canvas2d_stroke(JSContext* /*ctx*/, JSValueConst this_val,
                                 static_cast<int>(pt.x), static_cast<int>(pt.y),
                                 s->stroke_color, s->global_alpha);
             }
-            pprev_x = prev_x; pprev_y = prev_y;
             prev_x = pt.x; prev_y = pt.y;
             have_pprev = true;
         }
@@ -12677,6 +13016,48 @@ static JSValue js_text_decoder_decode(JSContext* ctx, JSValueConst this_val,
 }
 
 // =========================================================================
+// Image loading: C++ bridge for HTMLImageElement src setter
+// =========================================================================
+
+// js_img_fetch_sync(url) -> { ok: bool, naturalWidth: int, naturalHeight: int, __pixels: Array }
+// Called from JavaScript when img.src is set, to fetch and decode the image synchronously.
+// Returns an object with load result; JS code fires load/error events based on 'ok'.
+static JSValue js_img_fetch_sync(JSContext* ctx, JSValueConst /*this_val*/,
+                                  int argc, JSValueConst* argv) {
+    JSValue result = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, result, "ok", JS_FALSE);
+    JS_SetPropertyStr(ctx, result, "naturalWidth", JS_NewInt32(ctx, 0));
+    JS_SetPropertyStr(ctx, result, "naturalHeight", JS_NewInt32(ctx, 0));
+    JS_SetPropertyStr(ctx, result, "__pixels", JS_NewArray(ctx));
+
+    if (argc < 1) return result;
+    const char* url_cstr = JS_ToCString(ctx, argv[0]);
+    if (!url_cstr) return result;
+    std::string url(url_cstr);
+    JS_FreeCString(ctx, url_cstr);
+
+    if (url.empty()) return result;
+
+    // Use the render_pipeline image fetching infrastructure
+    clever::paint::JSImageData img = clever::paint::fetch_image_for_js(url);
+    if (!img.success()) return result;
+
+    // Build the __pixels flat JS array of RGBA bytes
+    JSValue pix_arr = JS_NewArray(ctx);
+    size_t total = static_cast<size_t>(img.width) * static_cast<size_t>(img.height) * 4;
+    for (size_t i = 0; i < total; i++) {
+        JS_SetPropertyUint32(ctx, pix_arr, static_cast<uint32_t>(i),
+                             JS_NewInt32(ctx, static_cast<int>((*img.pixels)[i])));
+    }
+
+    JS_SetPropertyStr(ctx, result, "ok", JS_TRUE);
+    JS_SetPropertyStr(ctx, result, "naturalWidth", JS_NewInt32(ctx, img.width));
+    JS_SetPropertyStr(ctx, result, "naturalHeight", JS_NewInt32(ctx, img.height));
+    JS_SetPropertyStr(ctx, result, "__pixels", pix_arr);
+    return result;
+}
+
+// =========================================================================
 // Public API
 // =========================================================================
 
@@ -13356,6 +13737,10 @@ void install_dom_bindings(JSContext* ctx,
     }
 
     JS_SetPropertyStr(ctx, global, "document", doc_obj);
+
+    // ---- __imgFetchSync: C++ bridge for HTMLImageElement load/error events ----
+    JS_SetPropertyStr(ctx, global, "__imgFetchSync",
+        JS_NewCFunction(ctx, js_img_fetch_sync, "__imgFetchSync", 1));
 
     // ---- document.location as getter/setter that delegates to window.location ----
     {
@@ -15934,49 +16319,135 @@ if (typeof queueMicrotask === 'undefined') {
     {
         const char* anim_src = R"JS(
 (function() {
-    if (typeof Animation !== 'undefined') return;
-    globalThis.Animation = function(effect, timeline) {
-        this.effect = effect || null;
-        this.timeline = timeline || null;
-        this.playState = 'idle';
-        this.currentTime = null;
-        this.playbackRate = 1;
-        this.id = '';
-        this.onfinish = null;
-        this.oncancel = null;
-        this.onremove = null;
-        this.finished = Promise.resolve(this);
-        this.ready = Promise.resolve(this);
-    };
-    Animation.prototype.play = function() { this.playState = 'running'; };
-    Animation.prototype.pause = function() { this.playState = 'paused'; };
-    Animation.prototype.cancel = function() { this.playState = 'idle'; this.currentTime = null; };
-    Animation.prototype.finish = function() { this.playState = 'finished'; };
-    Animation.prototype.reverse = function() {};
-    Animation.prototype.updatePlaybackRate = function(rate) { this.playbackRate = rate; };
-    Animation.prototype.commitStyles = function() {};
-    Animation.prototype.persist = function() {};
+    // Animation constructor — used by 'new Animation(effect, timeline)'
+    // The element.animate() method is implemented natively in C++ and
+    // returns an object with these same properties/methods.
+    if (typeof Animation === 'undefined') {
+        globalThis.Animation = function(effect, timeline) {
+            this.effect = effect || null;
+            this.timeline = timeline || null;
+            this.playState = 'idle';
+            this.currentTime = null;
+            this.startTime = null;
+            this.playbackRate = 1;
+            this.id = '';
+            this.pending = false;
+            this.replaceState = 'active';
+            this.onfinish = null;
+            this.oncancel = null;
+            this.onremove = null;
+            var self = this;
+            this.finished = new Promise(function(resolve) {
+                self._finishResolve = resolve;
+            });
+            this.ready = Promise.resolve(this);
+        };
+        Animation.prototype.play = function() {
+            this.playState = 'running';
+        };
+        Animation.prototype.pause = function() {
+            this.playState = 'paused';
+        };
+        Animation.prototype.cancel = function() {
+            this.playState = 'idle';
+            this.currentTime = null;
+            if (typeof this.oncancel === 'function') {
+                try { this.oncancel({}); } catch(e) {}
+            }
+        };
+        Animation.prototype.finish = function() {
+            this.playState = 'finished';
+            if (this._finishResolve) {
+                try { this._finishResolve(this); } catch(e) {}
+            }
+            if (typeof this.onfinish === 'function') {
+                try { this.onfinish({}); } catch(e) {}
+            }
+        };
+        Animation.prototype.reverse = function() {
+            this.playbackRate = -(this.playbackRate || 1);
+        };
+        Animation.prototype.updatePlaybackRate = function(rate) {
+            this.playbackRate = rate;
+        };
+        Animation.prototype.commitStyles = function() {};
+        Animation.prototype.persist = function() {};
+    }
 
-    globalThis.KeyframeEffect = function(target, keyframes, options) {
-        this.target = target;
-        this.composite = 'replace';
-        this.pseudoElement = null;
-    };
-    KeyframeEffect.prototype.getKeyframes = function() { return []; };
-    KeyframeEffect.prototype.setKeyframes = function() {};
-    KeyframeEffect.prototype.getComputedTiming = function() {
-        return { duration: 0, fill: 'auto', delay: 0, endDelay: 0, direction: 'normal',
-                 easing: 'linear', iterations: 1, iterationStart: 0, activeDuration: 0,
-                 localTime: null, progress: null, currentIteration: null };
-    };
+    if (typeof KeyframeEffect === 'undefined') {
+        globalThis.KeyframeEffect = function(target, keyframes, options) {
+            this.target = target || null;
+            this.composite = 'replace';
+            this.pseudoElement = null;
+            this._keyframes = keyframes || [];
+            this._options = options || {};
+        };
+        KeyframeEffect.prototype.getKeyframes = function() {
+            return Array.isArray(this._keyframes) ? this._keyframes : [];
+        };
+        KeyframeEffect.prototype.setKeyframes = function(kf) {
+            this._keyframes = kf || [];
+        };
+        KeyframeEffect.prototype.getComputedTiming = function() {
+            var opts = this._options || {};
+            return {
+                duration: opts.duration || 0,
+                fill: opts.fill || 'auto',
+                delay: opts.delay || 0,
+                endDelay: opts.endDelay || 0,
+                direction: opts.direction || 'normal',
+                easing: opts.easing || 'linear',
+                iterations: opts.iterations || 1,
+                iterationStart: opts.iterationStart || 0,
+                activeDuration: opts.duration || 0,
+                localTime: null,
+                progress: null,
+                currentIteration: null
+            };
+        };
+    }
 
-    globalThis.DocumentTimeline = function() { this.currentTime = performance.now(); };
+    if (typeof DocumentTimeline === 'undefined') {
+        globalThis.DocumentTimeline = function(opts) {
+            this.currentTime = performance.now();
+            this._originTime = (opts && opts.originTime) || 0;
+        };
+    }
 
     if (typeof document !== 'undefined' && !document.timeline) {
         document.timeline = new DocumentTimeline();
     }
     if (typeof document !== 'undefined' && !document.getAnimations) {
         document.getAnimations = function() { return []; };
+    }
+
+    // Patch element.animate to fire onfinish callbacks properly.
+    // The native C++ implementation applies styles immediately and returns
+    // an Animation-like object. We wrap it here to ensure onfinish fires.
+    if (typeof Element !== 'undefined' && Element.prototype &&
+        typeof Element.prototype.animate === 'function') {
+        var _native_animate = Element.prototype.animate;
+        Element.prototype.animate = function(keyframes, options) {
+            var anim = _native_animate.call(this, keyframes, options);
+            if (!anim) return anim;
+            // Parse duration for scheduling onfinish
+            var duration = 0;
+            if (typeof options === 'number') {
+                duration = options;
+            } else if (options && typeof options === 'object') {
+                duration = options.duration || 0;
+            }
+            // Schedule onfinish callback after duration (treated as immediate
+            // by flush_ready_timers since we're synchronous)
+            var delay = (options && options.delay) || 0;
+            var totalDelay = (duration || 0) + (delay || 0);
+            setTimeout(function() {
+                if (typeof anim.onfinish === 'function') {
+                    try { anim.onfinish({ type: 'finish', target: anim }); } catch(e) {}
+                }
+            }, totalDelay);
+            return anim;
+        };
     }
 })();
 )JS";
@@ -16121,18 +16592,26 @@ if (typeof queueMicrotask === 'undefined') {
         static const char* image_src = R"JS(
 (function() {
     if (typeof globalThis.Image !== 'undefined') return;
+
     function HTMLImageElement(width, height) {
         this.tagName = 'IMG';
         this.nodeName = 'IMG';
         this.nodeType = 1;
-        this.src = '';
         this.alt = '';
         this.crossOrigin = null;
         this.naturalWidth = 0;
         this.naturalHeight = 0;
-        this.complete = false;
         this.loading = 'auto';
         this.decoding = 'auto';
+        this.currentSrc = '';
+        // Internal state
+        this._src = '';
+        this._complete = false;   // tracks actual load state
+        this._loaded = false;     // true once successfully loaded
+        this._errored = false;    // true if load failed
+        this.__pixels = null;     // RGBA pixel data array (for canvas)
+        this._pendingResolvers = [];  // resolve callbacks for decode()
+        this._pendingRejecters = [];  // reject callbacks for decode()
         if (typeof width === 'number') this.width = width;
         else this.width = 0;
         if (typeof height === 'number') this.height = height;
@@ -16141,6 +16620,109 @@ if (typeof queueMicrotask === 'undefined') {
         this.onerror = null;
         this._listeners = {};
     }
+
+    // complete: true if src is empty, or image loaded/errored
+    Object.defineProperty(HTMLImageElement.prototype, 'complete', {
+        get: function() {
+            if (!this._src || this._src === '') return true;
+            return this._complete;
+        },
+        configurable: true,
+        enumerable: true
+    });
+
+    // src: getter/setter that triggers load
+    Object.defineProperty(HTMLImageElement.prototype, 'src', {
+        get: function() { return this._src; },
+        set: function(v) {
+            var newSrc = String(v);
+            this._src = newSrc;
+            this._complete = false;
+            this._loaded = false;
+            this._errored = false;
+            this.naturalWidth = 0;
+            this.naturalHeight = 0;
+            this.__pixels = null;
+            this.currentSrc = '';
+
+            if (!newSrc || newSrc === '') {
+                this._complete = true;
+                return;
+            }
+
+            var self = this;
+            // Use Promise.resolve().then() to dispatch load asynchronously (microtask)
+            // but with synchronous fetch via the C++ bridge
+            Promise.resolve().then(function() {
+                var result;
+                try {
+                    result = globalThis.__imgFetchSync(newSrc);
+                } catch(e) {
+                    result = { ok: false };
+                }
+
+                // Check that src hasn't changed since we started
+                if (self._src !== newSrc) return;
+
+                if (result && result.ok) {
+                    self.naturalWidth = result.naturalWidth || 0;
+                    self.naturalHeight = result.naturalHeight || 0;
+                    self.__pixels = result.__pixels || null;
+                    self.currentSrc = newSrc;
+                    self._loaded = true;
+                    self._complete = true;
+
+                    // Flush pending decode() promises
+                    var resolvers = self._pendingResolvers;
+                    self._pendingResolvers = [];
+                    self._pendingRejecters = [];
+                    for (var i = 0; i < resolvers.length; i++) resolvers[i]();
+
+                    // Fire load event
+                    var evt = { type: 'load', target: self, currentTarget: self, bubbles: false,
+                                cancelable: false, defaultPrevented: false,
+                                preventDefault: function() { this.defaultPrevented = true; },
+                                stopPropagation: function() {},
+                                stopImmediatePropagation: function() {} };
+                    if (typeof self.onload === 'function') {
+                        try { self.onload.call(self, evt); } catch(e) {}
+                    }
+                    var loadListeners = (self._listeners && self._listeners['load']) || [];
+                    for (var i = 0; i < loadListeners.length; i++) {
+                        try { loadListeners[i].call(self, evt); } catch(e) {}
+                    }
+                } else {
+                    self._errored = true;
+                    self._complete = true;
+
+                    // Reject pending decode() promises
+                    var rejecters = self._pendingRejecters;
+                    self._pendingResolvers = [];
+                    self._pendingRejecters = [];
+                    for (var i = 0; i < rejecters.length; i++) {
+                        try { rejecters[i](new DOMException('The source image could not be decoded.', 'EncodingError')); } catch(e) {}
+                    }
+
+                    // Fire error event
+                    var evt = { type: 'error', target: self, currentTarget: self, bubbles: false,
+                                cancelable: false, defaultPrevented: false,
+                                preventDefault: function() { this.defaultPrevented = true; },
+                                stopPropagation: function() {},
+                                stopImmediatePropagation: function() {} };
+                    if (typeof self.onerror === 'function') {
+                        try { self.onerror.call(self, evt); } catch(e) {}
+                    }
+                    var errListeners = (self._listeners && self._listeners['error']) || [];
+                    for (var i = 0; i < errListeners.length; i++) {
+                        try { errListeners[i].call(self, evt); } catch(e) {}
+                    }
+                }
+            });
+        },
+        configurable: true,
+        enumerable: true
+    });
+
     HTMLImageElement.prototype.addEventListener = function(type, fn) {
         if (!this._listeners[type]) this._listeners[type] = [];
         this._listeners[type].push(fn);
@@ -16150,12 +16732,31 @@ if (typeof queueMicrotask === 'undefined') {
         this._listeners[type] = this._listeners[type].filter(function(f) { return f !== fn; });
     };
     HTMLImageElement.prototype.decode = function() {
-        return Promise.resolve();
+        var self = this;
+        // No src: reject immediately
+        if (!this._src || this._src === '') {
+            return Promise.reject(new DOMException('The source image could not be decoded.', 'EncodingError'));
+        }
+        // Already loaded successfully: resolve immediately
+        if (this._loaded) {
+            return Promise.resolve();
+        }
+        // Already errored: reject immediately
+        if (this._errored) {
+            return Promise.reject(new DOMException('The source image could not be decoded.', 'EncodingError'));
+        }
+        // Still loading: return a promise that resolves/rejects when load completes
+        return new Promise(function(resolve, reject) {
+            self._pendingResolvers.push(resolve);
+            self._pendingRejecters.push(reject);
+        });
     };
     HTMLImageElement.prototype.getAttribute = function(name) {
+        if (name === 'src') return this._src !== undefined ? String(this._src) : null;
         return this[name] !== undefined ? String(this[name]) : null;
     };
     HTMLImageElement.prototype.setAttribute = function(name, value) {
+        if (name === 'src') { this.src = value; return; }
         this[name] = value;
     };
     globalThis.HTMLImageElement = HTMLImageElement;
