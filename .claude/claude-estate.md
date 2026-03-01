@@ -33,6 +33,28 @@
 
 ## TODO
 
+### Priority: Real-World Rendering Gaps
+
+These are known gaps that impact real website rendering:
+
+| # | Feature | Impact | Effort | Status |
+|---|---------|--------|--------|--------|
+| P1 | Service Workers — full install/activate lifecycle | PWAs, offline-first sites, push notifications | High | Stubs only |
+| P2 | HTML `<dialog>` — showModal(), close(), returnValue, ::backdrop | Modal dialogs on every modern site | Medium | R30-1 dispatched |
+| P3 | WebGL (Canvas getContext("webgl")) | 3D graphics, data viz (Three.js, D3 WebGL) | Very High | Not started |
+| P4 | CSS `text-wrap: balance` | Headlines on news/blog sites | Medium | R30-2 dispatched |
+| P5 | CSS logical properties (margin-inline, padding-block, etc.) | Wikipedia, every modern CSS framework | Medium | R30-4 dispatched |
+| P6 | CSS `gap` in flexbox | Nearly every modern layout | Medium | R30-5 dispatched |
+| P7 | CSS `clamp()`/`min()`/`max()` functions | Responsive typography, fluid layouts | Medium | R30-6 dispatched |
+| P8 | CSS `color-mix()` improvements | Modern design systems | Low | R30-3 dispatched |
+| P9 | `<video>` / `<audio>` playback | YouTube, media sites | Very High | Not started |
+| P10 | Shadow DOM (custom elements v1) | Web components, lit-html, Shoelace UI | High | Not started |
+| P11 | CSS Subgrid | Complex grid layouts | High | Not started |
+| P12 | Scroll-driven animations | Modern scroll effects | Medium | Not started |
+| P13 | View Transitions API | SPA page transitions | Medium | Not started |
+| P14 | Popover API (`popover` attribute) | Tooltips, dropdowns, menus | Medium | Not started |
+| P15 | CSS `@scope` | Scoped component styling | Medium | Not started |
+
 ### Task Backlog (1500 Tasks)
 
 Generated: 2026-03-01
@@ -1559,8 +1581,12 @@ Generated: 2026-03-01
   - Updated 46 test assertions that expected the old (buggy) double-encoding behavior
   - Removed debug logging from render_pipeline.cpp
 - **Round 29 Agents Dispatched**: fetch API, localStorage, IntersectionObserver, ResizeObserver, aspect-ratio, :has() selector
-  - NOTE: Explore agent confirmed ALL 8 checked features are already implemented! Agents may find duplicates.
-- **Validation**: 14/14 suites pass (2020 URL tests), 0 failures
+  - fetch, localStorage, IntersectionObserver, ResizeObserver — confirmed already implemented (no code changes)
+  - aspect-ratio: enhanced parsing + height derivation (commit 325a7f7)
+  - :has() selector: improved matching with all combinators
+- **file:// URL support**: Added local file loading to fetchAndRender, fixed http:// auto-prepend for file:// and data: URLs (commit dae5c44)
+- **Wikipedia CSS verified**: Screenshot confirms Wikipedia renders with proper CSS styling
+- **Validation**: 14/14 suites pass, 0 failures
 
 ### Cycle 1966 (Round 28 Feature Implementation) — 2026-03-01
 
