@@ -466,7 +466,11 @@ static std::string build_shell_message_html(const std::string& page_title,
 }
 
 - (instancetype)init {
-    NSRect frame = NSMakeRect(100, 100, 1024, 768);
+    // Center the window on the main screen
+    NSScreen* screen = [NSScreen mainScreen];
+    CGFloat screenW = screen ? screen.frame.size.width : 1920;
+    CGFloat screenH = screen ? screen.frame.size.height : 1080;
+    NSRect frame = NSMakeRect((screenW - 1024) / 2, (screenH - 768) / 2, 1024, 768);
     NSUInteger styleMask = NSWindowStyleMaskTitled |
                            NSWindowStyleMaskClosable |
                            NSWindowStyleMaskResizable |

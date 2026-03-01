@@ -1914,6 +1914,35 @@ bool parse_radial_gradient(const std::string& value,
     return stops.size() >= 2;
 }
 
+// Helper: parse an angular string (deg/turn/rad/grad) into degrees.
+// Checks "grad" before "rad" to avoid prefix collision.
+static bool conic_parse_angle(const std::string& s, float& out_deg) {
+    if (s.empty()) return false;
+    if (s.find("turn") != std::string::npos) {
+        try { out_deg = std::stof(s) * 360.0f; return true; } catch (...) {}
+    } else if (s.find("grad") != std::string::npos) {
+        // gradians: 400grad = 360deg
+        try { out_deg = std::stof(s) * 360.0f / 400.0f; return true; } catch (...) {}
+    } else if (s.find("rad") != std::string::npos) {
+        try { out_deg = std::stof(s) * 180.0f / static_cast<float>(M_PI); return true; } catch (...) {}
+    } else if (s.find("deg") != std::string::npos) {
+        try { out_deg = std::stof(s); return true; } catch (...) {}
+    }
+    return false;
+}
+
+// Helper: parse a conic gradient stop position string into a 0-1 fraction.
+// Handles: % (percentage) and angular units (deg/turn/rad/grad) where 360deg = 1.0.
+static bool conic_parse_stop_pos(const std::string& s, float& out_pos) {
+    if (s.empty()) return false;
+    if (s.back() == '%') {
+        try { out_pos = std::stof(s) / 100.0f; return true; } catch (...) { return false; }
+    }
+    float deg = 0;
+    if (conic_parse_angle(s, deg)) { out_pos = deg / 360.0f; return true; }
+    return false;
+}
+
 // Parse conic-gradient() into from-angle and color stops
 bool parse_conic_gradient(const std::string& value,
                            float& from_angle,
@@ -1943,24 +1972,16 @@ bool parse_conic_gradient(const std::string& value,
     if (!current.empty()) parts.push_back(trim(current));
     if (parts.size() < 2) return false;
 
-    // Check first part for "from Xdeg" or "from Xdeg at X Y"
+    // Check first part for "from Xangle [at X Y]"
     size_t color_start = 0;
     from_angle = 0;
     std::string first = to_lower(parts[0]);
     if (first.find("from ") == 0) {
-        // Parse "from 90deg" or "from 0.5turn"
-        std::string angle_str = first.substr(5);
+        std::string angle_str = trim(first.substr(5));
         // Strip "at ..." part if present
         auto at_pos = angle_str.find(" at ");
-        if (at_pos != std::string::npos) angle_str = angle_str.substr(0, at_pos);
-        angle_str = trim(angle_str);
-        if (angle_str.find("deg") != std::string::npos) {
-            try { from_angle = std::stof(angle_str); } catch (...) {}
-        } else if (angle_str.find("turn") != std::string::npos) {
-            try { from_angle = std::stof(angle_str) * 360.0f; } catch (...) {}
-        } else if (angle_str.find("rad") != std::string::npos) {
-            try { from_angle = std::stof(angle_str) * 180.0f / static_cast<float>(M_PI); } catch (...) {}
-        }
+        if (at_pos != std::string::npos) angle_str = trim(angle_str.substr(0, at_pos));
+        conic_parse_angle(angle_str, from_angle);
         color_start = 1;
     } else {
         // Try to parse first part as a color — if it works, start from 0
@@ -1968,43 +1989,67 @@ bool parse_conic_gradient(const std::string& value,
         if (c) {
             color_start = 0;
         } else {
-            // Skip unrecognized shape/position keywords
+            // Skip unrecognized shape/position keywords (e.g. "at center")
             color_start = 1;
         }
     }
 
-    // Parse color stops
+    // Parse color stops. Each stop: "color [pos1 [pos2]]"
+    // pos can be a percentage or angular value. Two positions create a hard stop.
     stops.clear();
     size_t num_colors = parts.size() - color_start;
     if (num_colors < 2) return false;
+
+    auto make_argb = [](const clever::css::Color& c) -> uint32_t {
+        return (static_cast<uint32_t>(c.a) << 24) |
+               (static_cast<uint32_t>(c.r) << 16) |
+               (static_cast<uint32_t>(c.g) << 8)  |
+               static_cast<uint32_t>(c.b);
+    };
+
     for (size_t i = color_start; i < parts.size(); i++) {
         std::string part = trim(parts[i]);
-        auto c = clever::css::parse_color(part);
         float pos = static_cast<float>(i - color_start) / static_cast<float>(num_colors - 1);
+
+        // Try parsing entire part as a plain color (no position token)
+        auto c = clever::css::parse_color(part);
         if (c) {
-            uint32_t argb = (static_cast<uint32_t>(c->a) << 24) |
-                            (static_cast<uint32_t>(c->r) << 16) |
-                            (static_cast<uint32_t>(c->g) << 8) |
-                            static_cast<uint32_t>(c->b);
-            stops.push_back({argb, pos});
-        } else {
-            auto sp = part.rfind(' ');
-            if (sp != std::string::npos) {
-                auto color_part = trim(part.substr(0, sp));
-                auto pos_part = trim(part.substr(sp + 1));
-                auto cc = clever::css::parse_color(color_part);
-                if (cc) {
-                    uint32_t argb = (static_cast<uint32_t>(cc->a) << 24) |
-                                    (static_cast<uint32_t>(cc->r) << 16) |
-                                    (static_cast<uint32_t>(cc->g) << 8) |
-                                    static_cast<uint32_t>(cc->b);
-                    if (pos_part.back() == '%') {
-                        try { pos = std::stof(pos_part) / 100.0f; } catch (...) {}
-                    }
-                    stops.push_back({argb, pos});
-                }
-            }
+            stops.push_back({make_argb(*c), pos});
+            continue;
         }
+
+        // Split on rightmost space(s) to separate color from position token(s).
+        // Walk backwards to find a valid position suffix.
+        bool parsed = false;
+        for (int split = static_cast<int>(part.size()) - 1; split > 0 && !parsed; split--) {
+            if (part[split] != ' ') continue;
+            std::string color_part = trim(part.substr(0, split));
+            std::string rest = trim(part.substr(split + 1));
+            auto cc = clever::css::parse_color(color_part);
+            if (!cc) continue;
+
+            uint32_t argb = make_argb(*cc);
+            float pos1 = pos, pos2 = -1.0f;
+            std::string tok1, tok2;
+            auto space_in_rest = rest.find(' ');
+            if (space_in_rest != std::string::npos) {
+                tok1 = trim(rest.substr(0, space_in_rest));
+                tok2 = trim(rest.substr(space_in_rest + 1));
+            } else {
+                tok1 = rest;
+            }
+
+            if (!conic_parse_stop_pos(tok1, pos1)) continue;
+            if (!tok2.empty()) conic_parse_stop_pos(tok2, pos2);
+
+            stops.push_back({argb, pos1});
+            if (pos2 >= 0.0f) {
+                // Hard stop: repeat color at second position
+                stops.push_back({argb, pos2});
+            }
+            parsed = true;
+        }
+        // If unparseable, skip this stop
     }
 
     return stops.size() >= 2;
@@ -7018,8 +7063,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     // Use the auto margin sentinel from box.h
     using clever::layout::MARGIN_AUTO;
 
-    // Guard against deeply nested DOM trees causing stack overflow
-    static constexpr int kMaxTreeDepth = 256;
+    // Guard against deeply nested DOM trees causing stack overflow.
+    // Each frame holds a ComputedStyle (~3.7 KB) plus other local variables;
+    // capping at 64 keeps peak stack usage well under 1 MB while still handling
+    // deeply-nested real-world HTML.
+    static constexpr int kMaxTreeDepth = 64;
     thread_local int tree_depth = 0;
     if (tree_depth >= kMaxTreeDepth) return nullptr;
     struct DepthGuard { DepthGuard() { ++tree_depth; } ~DepthGuard() { --tree_depth; } } dg;
@@ -7458,7 +7506,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
         // Pre-build child ElementViews recursively for :has() selector matching
         // These need to exist before we resolve this element's style
-        static constexpr int kMaxViewTreeDepth = 256;
+        static constexpr int kMaxViewTreeDepth = 64;
         std::function<void(const clever::html::SimpleNode&, clever::css::ElementView*, int)> pre_build_views;
         pre_build_views = [&](const clever::html::SimpleNode& parent_node,
                               clever::css::ElementView* pview, int depth) {
@@ -7981,7 +8029,16 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         case clever::css::VerticalAlign::Bottom: layout_node->vertical_align = 3; break;
         case clever::css::VerticalAlign::TextTop: layout_node->vertical_align = 4; break;
         case clever::css::VerticalAlign::TextBottom: layout_node->vertical_align = 5; break;
-        default: layout_node->vertical_align = 0; break;
+        default: {
+            // Baseline: check for length/percentage offset value
+            if (style.vertical_align_offset != 0) {
+                layout_node->vertical_align = 8; // length/percentage offset
+                layout_node->vertical_align_offset = style.vertical_align_offset;
+            } else {
+                layout_node->vertical_align = 0; // pure baseline
+            }
+            break;
+        }
     }
     layout_node->color = color_to_argb(style.color);
     layout_node->background_color = color_to_argb(style.background_color);
@@ -10558,7 +10615,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->mode = clever::layout::LayoutMode::Inline;
         layout_node->display = clever::layout::DisplayType::Inline;
         layout_node->font_size = layout_node->font_size * 0.83f;
-        layout_node->vertical_offset = layout_node->font_size * 0.3f; // shift down
+        // Use layout-time sub alignment so line box height accounts for the shift.
+        // vertical_align=6 (sub) is handled in position_inline_children.
+        // Also keep vertical_offset for paint-time compatibility.
+        layout_node->vertical_align = 6; // sub
+        layout_node->vertical_offset = layout_node->font_size * 0.3f; // shift down (paint fallback)
     }
 
     // Handle <sup> — superscript (reduced font size, shifted up)
@@ -10567,7 +10628,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->mode = clever::layout::LayoutMode::Inline;
         layout_node->display = clever::layout::DisplayType::Inline;
         layout_node->font_size = layout_node->font_size * 0.83f;
-        layout_node->vertical_offset = -(layout_node->font_size * 0.4f); // shift up
+        // Use layout-time super alignment so line box height accounts for the shift.
+        // vertical_align=7 (super) is handled in position_inline_children.
+        // Also keep vertical_offset for paint-time compatibility.
+        layout_node->vertical_align = 7; // super
+        layout_node->vertical_offset = -(layout_node->font_size * 0.4f); // shift up (paint fallback)
     }
 
     // Handle <small> — smaller text (0.83x font size, inline)
@@ -11341,7 +11406,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->border_image_width_val = style.border_image_width_val;
     layout_node->border_image_outset = style.border_image_outset;
     layout_node->border_image_repeat = style.border_image_repeat;
-    // Pre-parse border-image gradient source for painter
+    // Pre-parse border-image gradient source for painter, or fetch URL image
     if (!style.border_image_source.empty()) {
         if (style.border_image_source.find("linear-gradient") != std::string::npos) {
             float angle;
@@ -11358,6 +11423,36 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 layout_node->border_image_gradient_type = 2;
                 layout_node->border_image_radial_shape = shape;
                 layout_node->border_image_gradient_stops = std::move(stops);
+            }
+        } else {
+            // URL-based border image: extract URL and decode pixels
+            std::string bi_url;
+            const std::string& bi_src = style.border_image_source;
+            auto url_pos = bi_src.find("url(");
+            if (url_pos != std::string::npos) {
+                auto inner_start = url_pos + 4;
+                auto inner_end = bi_src.find(')', inner_start);
+                if (inner_end != std::string::npos) {
+                    bi_url = bi_src.substr(inner_start, inner_end - inner_start);
+                    if (bi_url.size() >= 2 &&
+                        ((bi_url.front() == '"' && bi_url.back() == '"') ||
+                         (bi_url.front() == '\'' && bi_url.back() == '\''))) {
+                        bi_url = bi_url.substr(1, bi_url.size() - 2);
+                    }
+                }
+            } else if (bi_src.find("://") != std::string::npos ||
+                       (!bi_src.empty() && bi_src.front() == '/') ||
+                       bi_src.find('.') != std::string::npos) {
+                bi_url = bi_src;
+            }
+            if (!bi_url.empty()) {
+                std::string resolved_bi_url = resolve_url(bi_url, base_url);
+                auto decoded = fetch_and_decode_image(resolved_bi_url);
+                if (decoded.pixels && !decoded.pixels->empty()) {
+                    layout_node->border_image_pixels = decoded.pixels;
+                    layout_node->border_image_img_width = decoded.width;
+                    layout_node->border_image_img_height = decoded.height;
+                }
             }
         }
     }

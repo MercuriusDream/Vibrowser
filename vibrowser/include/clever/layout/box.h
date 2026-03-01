@@ -386,8 +386,12 @@ struct LayoutNode {
     // Text indent (first line of block, in px)
     float text_indent = 0;
 
-    // Vertical align: 0=baseline, 1=top, 2=middle, 3=bottom, 4=text-top, 5=text-bottom
+    // Vertical align: 0=baseline, 1=top, 2=middle, 3=bottom, 4=text-top, 5=text-bottom,
+    //                 6=sub, 7=super, 8=length/percentage offset from baseline
     int vertical_align = 0;
+    // Pixel offset for length/percentage vertical-align (used when vertical_align == 8).
+    // Positive = shift element down from baseline, negative = shift up.
+    float vertical_align_offset = 0;
 
     // White-space handling
     // white_space: 0=normal, 1=nowrap, 2=pre, 3=pre-wrap, 4=pre-line, 5=break-spaces
@@ -812,6 +816,10 @@ struct LayoutNode {
     float border_image_width_val = 1;     // multiplier, default 1
     float border_image_outset = 0;        // px
     int border_image_repeat = 0;          // 0=stretch, 1=repeat, 2=round, 3=space
+    // Pre-decoded border-image URL pixels (from render_pipeline, when source is url())
+    std::shared_ptr<std::vector<uint8_t>> border_image_pixels; // RGBA, row-major
+    int border_image_img_width = 0;
+    int border_image_img_height = 0;
     // Pre-parsed border-image gradient (from render_pipeline)
     int border_image_gradient_type = 0;   // 0=none, 1=linear, 2=radial
     float border_image_gradient_angle = 0;

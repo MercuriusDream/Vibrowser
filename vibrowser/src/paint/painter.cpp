@@ -23,6 +23,13 @@ DisplayList Painter::paint(const clever::layout::LayoutNode& root, float viewpor
 
 void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& list,
                           float offset_x, float offset_y) {
+    // Guard against extremely deep paint trees causing stack overflow.
+    // paint_node is a large function (~5000 lines); each frame is several KB.
+    static constexpr int kMaxPaintDepth = 256;
+    static thread_local int paint_depth = 0;
+    if (paint_depth >= kMaxPaintDepth) return;
+    struct PaintDepthGuard { PaintDepthGuard() { ++paint_depth; } ~PaintDepthGuard() { --paint_depth; } } pdg;
+
     // Skip display:none nodes entirely (no space, no painting)
     if (node.display == clever::layout::DisplayType::None) return;
 

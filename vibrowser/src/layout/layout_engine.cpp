@@ -527,6 +527,12 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         return;
     }
 
+    // Guard against deeply nested layouts causing stack overflow.
+    static constexpr int kMaxLayoutDepth = 256;
+    static thread_local int layout_depth = 0;
+    if (layout_depth >= kMaxLayoutDepth) return;
+    struct LayoutDepthGuard { LayoutDepthGuard() { ++layout_depth; } ~LayoutDepthGuard() { --layout_depth; } } ldg;
+
     // Determine if this node establishes a new Block Formatting Context (BFC).
     // A BFC contains floats, prevents parent-child margin collapsing across the
     // boundary, and includes floated descendants in its height.
@@ -2371,15 +2377,62 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
         }
     }
 
-    // Apply vertical-align within each line
+    // Apply vertical-align within each line.
+    //
+    // Font metric conventions:
+    //   ascent  = 0.8 * font_size  (top of em box to baseline)
+    //   descent = 0.2 * font_size  (baseline to bottom of em box)
+    //   x-height ~= 0.5 * font_size (height of lowercase 'x')
+
+    // Helper: typographic ascent from top of layout box.
+    // Text/inline: font_size * 0.8 (ascent portion).
+    // Replaced elements (explicit height, non-inline): baseline at bottom, ascent = full height.
+    auto child_ascent = [](const LayoutNode& n) -> float {
+        float h = n.geometry.margin_box_height();
+        if (!n.is_text && n.display != DisplayType::Inline) return h;
+        float fs = n.font_size;
+        if (fs <= 0) return h;
+        return fs * 0.8f;
+    };
+
     for (auto& line : lines) {
-        // Compute line height for this line
+        // Pass 1: compute line box height
         float max_h = 0;
         for (size_t vi = line.start_idx; vi < line.end_idx; vi++) {
             auto& child = node.children[visible[vi]];
             max_h = std::max(max_h, child->geometry.margin_box_height());
         }
 
+        // Compute shared baseline position (from top of line box).
+        // Only baseline-aligned items (va 0, 6, 7, 8) contribute.
+        float line_ascent = 0;
+        for (size_t vi = line.start_idx; vi < line.end_idx; vi++) {
+            auto& child = node.children[visible[vi]];
+            int va = child->vertical_align;
+            if (va == 1 || va == 2 || va == 3 || va == 4 || va == 5) continue;
+            float a = child_ascent(*child);
+            if (va == 6) { // sub: box shifts down, so its ascent from line top increases
+                a += node.font_size * 0.25f;
+            } else if (va == 7) { // super: box shifts up, so ascent from line top decreases
+                float s = node.font_size * 0.5f;
+                a = (a > s) ? a - s : 0;
+            } else if (va == 8) { // length/percentage offset
+                a += child->vertical_align_offset;
+            }
+            if (a > line_ascent) line_ascent = a;
+        }
+        // Ensure line_ascent covers the parent's own ascent
+        {
+            float node_ascent = node.font_size > 0 ? node.font_size * 0.8f : max_h * 0.8f;
+            if (node_ascent > line_ascent) line_ascent = node_ascent;
+        }
+
+        float parent_fs = node.font_size > 0 ? node.font_size : max_h;
+        float parent_ascent  = parent_fs * 0.8f;
+        float parent_descent = parent_fs * 0.2f;
+        float baseline_y = line_ascent; // baseline from top of line box
+
+        // Pass 2: assign vertical offsets
         for (size_t vi = line.start_idx; vi < line.end_idx; vi++) {
             auto& child = node.children[visible[vi]];
             float child_h = child->geometry.margin_box_height();
@@ -2389,38 +2442,62 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 case 1: // top
                     va_offset = 0;
                     break;
-                case 2: // middle
-                    va_offset = (max_h - child_h) / 2.0f;
-                    break;
-                case 3: // bottom
-                    va_offset = max_h - child_h;
-                    break;
-                case 4: // text-top — align top with parent's text top
-                    va_offset = 0;
-                    break;
-                case 5: // text-bottom — align bottom with parent's text bottom
-                    va_offset = max_h - child_h;
-                    break;
-                default: { // baseline (0) — align child baseline with line baseline
-                    // For same-height elements, just bottom-align (equivalent to baseline)
-                    if (std::abs(max_h - child_h) < 0.5f) {
-                        va_offset = 0; // same height — no offset needed
+
+                case 2: { // middle — midpoint at baseline + 0.5 * x-height
+                    // Replaced/non-text elements use simple centering (matches browsers)
+                    bool is_text_like = (child->is_text ||
+                                        (child->font_size > 0 && child->specified_height < 0));
+                    if (is_text_like && parent_fs > 0) {
+                        float mid_target = baseline_y - parent_fs * 0.25f; // half x-height
+                        va_offset = mid_target - child_h / 2.0f;
                     } else {
-                        // Mixed heights: align baselines
-                        // For text: baseline = ascent (80% of font size from top)
-                        // For replaced elements: baseline = bottom edge
-                        float line_baseline = max_h * 0.8f;
-                        float child_baseline = child_h; // replaced elements: bottom = baseline
-                        if (child->is_text || child->display == clever::layout::DisplayType::Inline) {
-                            child_baseline = child->font_size > 0 ? child->font_size * 0.8f : child_h;
-                        }
-                        va_offset = line_baseline - child_baseline;
-                        if (va_offset < 0) va_offset = 0;
-                        if (va_offset > max_h - child_h) va_offset = max_h - child_h;
+                        va_offset = (max_h - child_h) / 2.0f;
                     }
                     break;
                 }
+
+                case 3: // bottom
+                    va_offset = max_h - child_h;
+                    break;
+
+                case 4: { // text-top — align top of child with top of parent's content area
+                    va_offset = baseline_y - parent_ascent;
+                    break;
+                }
+
+                case 5: { // text-bottom — align bottom of child with bottom of parent's content area
+                    va_offset = (baseline_y + parent_descent) - child_h;
+                    break;
+                }
+
+                case 6: { // sub — lower baseline by ~0.25 * parent font_size
+                    float child_a = child_ascent(*child);
+                    va_offset = (baseline_y + parent_fs * 0.25f) - child_a;
+                    break;
+                }
+
+                case 7: { // super — raise baseline by ~0.5 * parent font_size
+                    float child_a = child_ascent(*child);
+                    va_offset = (baseline_y - parent_fs * 0.5f) - child_a;
+                    break;
+                }
+
+                case 8: { // length/percentage offset from baseline
+                    float child_a = child_ascent(*child);
+                    va_offset = (baseline_y + child->vertical_align_offset) - child_a;
+                    break;
+                }
+
+                default: { // baseline (0)
+                    float child_a = child_ascent(*child);
+                    va_offset = baseline_y - child_a;
+                    break;
+                }
             }
+
+            // Clamp to keep element within the line box
+            va_offset = std::max(0.0f, va_offset);
+            va_offset = std::min(va_offset, std::max(0.0f, max_h - child_h));
 
             if (va_offset > 0) {
                 child->geometry.y += va_offset;
@@ -4507,13 +4584,16 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     }
 
     // ---- Layout captions with caption_side=top before the table rows ----
+    // Caption positions are relative to the table's content area.
+    // The painter adds the table's border+padding when computing child offsets,
+    // so we must NOT add border/padding to child positions here.
     float caption_top_height = 0;
     float caption_bottom_height = 0;
     for (auto* cap : captions) {
         layout_block(*cap, content_w);
-        cap->geometry.x = node.geometry.padding.left + node.geometry.border.left;
+        cap->geometry.x = 0; // relative to table content area
         if (cap->caption_side == 0) { // top
-            cap->geometry.y = node.geometry.padding.top + node.geometry.border.top + caption_top_height;
+            cap->geometry.y = caption_top_height;
             caption_top_height += cap->geometry.margin_box_height();
         }
         // bottom captions positioned later
@@ -4521,7 +4601,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
 
     if (rows.empty()) {
         // Layout bottom captions even if no rows
-        float bottom_y = node.geometry.padding.top + node.geometry.border.top + caption_top_height;
+        float bottom_y = caption_top_height;
         for (auto* cap : captions) {
             if (cap->caption_side == 1) { // bottom
                 cap->geometry.y = bottom_y + caption_bottom_height;
@@ -4644,12 +4724,25 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     } else {
         // ---- Auto table layout (CSS 2.1 Section 17.5.2.2) ----
         // Scan ALL rows: use maximum explicit/intrinsic width per column.
-        for (auto* row : rows) {
+        // Use scan_occupancy to skip columns already occupied by rowspans from prior rows,
+        // ensuring correct column index assignment when rowspan cells are present.
+        for (size_t ri = 0; ri < rows.size(); ri++) {
+            auto* row = rows[ri];
             int col_idx = 0;
             for (auto& cell : row->children) {
                 if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
                 if (cell->position_type == 2 || cell->position_type == 3) continue;
                 if (!is_table_cell(*cell)) continue;
+
+                // Skip columns already occupied by a rowspan from a prior row
+                while (col_idx < num_cols &&
+                       ri < scan_occupancy.size() &&
+                       static_cast<size_t>(col_idx) < scan_occupancy[ri].size() &&
+                       scan_occupancy[ri][static_cast<size_t>(col_idx)] != 0) {
+                    col_idx++;
+                }
+                if (col_idx >= num_cols) break;
+
                 int span = cell->colspan;
                 if (span < 1) span = 1;
 
@@ -4668,11 +4761,35 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                         col_widths[static_cast<size_t>(col_idx)] = width_hint;
                     }
                 } else if (width_hint > 0 && span > 1) {
-                    float per_col = width_hint / static_cast<float>(span);
+                    // For colspan cells: distribute width across spanned columns.
+                    // Only grow columns that need to grow to fit the cell.
+                    float spanned_h_spacing = h_spacing * static_cast<float>(span - 1);
+                    float available_from_cols = 0;
+                    int unset_cols = 0;
                     for (int s = 0; s < span && (col_idx + s) < num_cols; s++) {
                         float cur = col_widths[static_cast<size_t>(col_idx + s)];
-                        if (cur < 0 || per_col > cur) {
-                            col_widths[static_cast<size_t>(col_idx + s)] = per_col;
+                        if (cur >= 0) available_from_cols += cur;
+                        else unset_cols++;
+                    }
+                    float deficit = width_hint - available_from_cols - spanned_h_spacing;
+                    if (deficit > 0) {
+                        if (unset_cols > 0) {
+                            // Distribute deficit among unset columns
+                            float per_unset = deficit / static_cast<float>(unset_cols);
+                            for (int s = 0; s < span && (col_idx + s) < num_cols; s++) {
+                                if (col_widths[static_cast<size_t>(col_idx + s)] < 0) {
+                                    col_widths[static_cast<size_t>(col_idx + s)] = per_unset;
+                                }
+                            }
+                        } else {
+                            // All columns are set; grow them proportionally
+                            float total_set = available_from_cols;
+                            if (total_set > 0) {
+                                float scale = (total_set + deficit) / total_set;
+                                for (int s = 0; s < span && (col_idx + s) < num_cols; s++) {
+                                    col_widths[static_cast<size_t>(col_idx + s)] *= scale;
+                                }
+                            }
                         }
                     }
                 }
@@ -4683,14 +4800,24 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
 
     // Track which columns have explicit cell widths vs intrinsic (auto) widths.
     // We need this to decide which columns to expand when filling the table width.
+    // Use scan_occupancy to correctly handle rowspan-occupied columns.
     std::vector<bool> col_has_explicit_width(static_cast<size_t>(num_cols), false);
     if (!is_fixed_layout) {
-        for (auto* row : rows) {
+        for (size_t ri = 0; ri < rows.size(); ri++) {
+            auto* row = rows[ri];
             int col_idx = 0;
             for (auto& cell : row->children) {
                 if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
                 if (cell->position_type == 2 || cell->position_type == 3) continue;
                 if (!is_table_cell(*cell)) continue;
+                // Skip columns already occupied by a rowspan from a prior row
+                while (col_idx < num_cols &&
+                       ri < scan_occupancy.size() &&
+                       static_cast<size_t>(col_idx) < scan_occupancy[ri].size() &&
+                       scan_occupancy[ri][static_cast<size_t>(col_idx)] != 0) {
+                    col_idx++;
+                }
+                if (col_idx >= num_cols) break;
                 int span = cell->colspan;
                 if (span < 1) span = 1;
                 if (span == 1 && col_idx < num_cols &&
@@ -4804,8 +4931,9 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     }
 
     // ---- Lay out each row ----
-    // Start with vertical edge spacing before first row, plus top caption height
-    float cursor_y = node.geometry.padding.top + node.geometry.border.top + caption_top_height + v_spacing;
+    // cursor_y is relative to the table's content area (the painter adds border+padding
+    // when computing child offsets, so we must not include them here).
+    float cursor_y = caption_top_height + v_spacing;
 
     // Track row y-positions and heights for rowspan height adjustment
     std::vector<float> row_y_positions(static_cast<size_t>(num_rows_total), 0);
@@ -4862,8 +4990,10 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             cell->line_height = row->line_height;
         }
 
-        // Position cells in this row — start with horizontal edge spacing
-        float cursor_x = node.geometry.padding.left + node.geometry.border.left + h_spacing;
+        // Position cells in this row — cursor_x is relative to the table's content area.
+        // Rows have no border or padding, so cell x-positions within a row equal their
+        // position within the table content area starting at h_spacing (the edge gap).
+        float cursor_x = h_spacing;
         int cell_col = 0;
         float row_height = 0;
 
@@ -4991,8 +5121,8 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             cell_col += span;
         }
 
-        // Set row geometry
-        row->geometry.x = node.geometry.padding.left + node.geometry.border.left;
+        // Set row geometry — positions are relative to table content area (painter adds border+padding)
+        row->geometry.x = 0;
         row->geometry.y = cursor_y;
         row->geometry.width = content_w;
         row->geometry.height = row_height;
@@ -5027,7 +5157,10 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     }
 
     // ---- Rowspan height adjustment ----
-    // For cells with rowspan > 1, compute total spanned height and extend cell height
+    // For cells with rowspan > 1:
+    //  - If the cell's natural height exceeds the total spanned rows' height,
+    //    expand the last spanned row so subsequent rows don't visually overlap.
+    //  - Then extend the cell height to cover the (possibly expanded) spanned rows.
     for (auto& rsi : rowspan_cells) {
         int end_row = std::min(rsi.start_row + rsi.rspan, num_rows_total);
         float total_spanned_h = 0;
@@ -5035,7 +5168,27 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             total_spanned_h += row_heights[static_cast<size_t>(r)];
             if (r > rsi.start_row) total_spanned_h += v_spacing;
         }
-        // Extend cell height to cover spanned rows
+        // If the rowspan cell is taller than the rows it spans, grow the last row
+        float cell_natural_h = rsi.cell->geometry.height;
+        if (cell_natural_h > total_spanned_h && end_row > rsi.start_row) {
+            float extra = cell_natural_h - total_spanned_h;
+            int last_idx = end_row - 1;
+            row_heights[static_cast<size_t>(last_idx)] += extra;
+            if (last_idx < num_rows_total) {
+                rows[static_cast<size_t>(last_idx)]->geometry.height = row_heights[static_cast<size_t>(last_idx)];
+            }
+            // Shift y-positions of rows that come after the expanded row
+            float running_y = row_y_positions[static_cast<size_t>(last_idx)]
+                            + row_heights[static_cast<size_t>(last_idx)];
+            for (int r = last_idx + 1; r < num_rows_total; r++) {
+                running_y += v_spacing;
+                row_y_positions[static_cast<size_t>(r)] = running_y;
+                rows[static_cast<size_t>(r)]->geometry.y = running_y;
+                running_y += row_heights[static_cast<size_t>(r)];
+            }
+            total_spanned_h = cell_natural_h;
+        }
+        // Extend cell height to cover the total spanned height
         if (total_spanned_h > rsi.cell->geometry.height) {
             rsi.cell->geometry.height = total_spanned_h;
         }
@@ -5043,8 +5196,15 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         apply_min_max_constraints(*rsi.cell);
     }
 
-    // Add vertical edge spacing after last row
-    cursor_y += v_spacing;
+    // Recompute cursor_y: the end of the last row (in table content-area coordinates)
+    // plus the trailing vertical edge spacing.
+    if (num_rows_total > 0) {
+        cursor_y = row_y_positions[static_cast<size_t>(num_rows_total - 1)]
+                 + row_heights[static_cast<size_t>(num_rows_total - 1)]
+                 + v_spacing;
+    } else {
+        cursor_y += v_spacing; // trailing edge spacing (no rows case handled above)
+    }
 
     // ---- Layout bottom captions ----
     for (auto* cap : captions) {
@@ -5055,10 +5215,10 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     }
     cursor_y += caption_bottom_height;
 
-    // Compute table height
-    float total_content_height = cursor_y
-        - (node.geometry.padding.top + node.geometry.border.top);
-    float total_height = total_content_height
+    // Compute table border-box height.
+    // cursor_y is relative to the table content area, so add the table's own
+    // border and padding to get the total border-box height.
+    float total_height = cursor_y
         + node.geometry.padding.top + node.geometry.padding.bottom
         + node.geometry.border.top + node.geometry.border.bottom;
 

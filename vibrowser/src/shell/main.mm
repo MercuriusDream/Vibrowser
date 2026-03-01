@@ -138,11 +138,33 @@ std::string getWelcomeHTML() {
     _browserController = [[BrowserWindowController alloc] init];
     [_browserController showWindow:nil];
     [_browserController.window makeKeyAndOrderFront:nil];
+    [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
     [_browserController focusAddressBarAndSelectAll];
 
-    // Render a welcome page on startup
-    std::string html = getWelcomeHTML();
-    [_browserController renderHTML:[NSString stringWithUTF8String:html.c_str()]];
+    // Check for command-line URL argument
+    NSArray* args = [[NSProcessInfo processInfo] arguments];
+    NSString* cmdLineURL = nil;
+    for (NSUInteger i = 1; i < args.count; i++) {
+        NSString* arg = args[i];
+        if ([arg hasPrefix:@"http://"] || [arg hasPrefix:@"https://"] || [arg hasPrefix:@"file://"]) {
+            cmdLineURL = arg;
+            break;
+        }
+    }
+
+    if (cmdLineURL) {
+        // Show welcome first, then navigate after window is fully set up
+        std::string html = getWelcomeHTML();
+        [_browserController renderHTML:[NSString stringWithUTF8String:html.c_str()]];
+        NSString* url = [cmdLineURL copy];
+        BrowserWindowController* ctrl = _browserController;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [ctrl navigateToURL:url];
+        });
+    } else {
+        std::string html = getWelcomeHTML();
+        [_browserController renderHTML:[NSString stringWithUTF8String:html.c_str()]];
+    }
 
     // Populate bookmarks menu with saved bookmarks
     [_browserController rebuildBookmarksMenu];
