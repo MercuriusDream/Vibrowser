@@ -5385,6 +5385,12 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     // Also separate out <caption> elements for separate layout
     std::vector<LayoutNode*> rows;
     std::vector<LayoutNode*> captions;
+    struct SectionInfo {
+        LayoutNode* section;
+        int first_row; // index into `rows` where this section starts
+        int last_row;  // index into `rows` where this section ends (inclusive)
+    };
+    std::vector<SectionInfo> section_infos;
     auto is_table_section_tag = [](const std::string& tag) {
         if (tag.size() < 5) return false;
         std::string t;
@@ -5442,6 +5448,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         }
         if (is_table_section(*child)) {
             // Flatten: collect tr children from thead/tbody/tfoot
+            int section_first = static_cast<int>(rows.size());
             for (auto& grandchild : child->children) {
                 if (grandchild->display == DisplayType::None || grandchild->mode == LayoutMode::None) {
                     grandchild->geometry.width = 0;
@@ -5453,9 +5460,13 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                     rows.push_back(grandchild.get());
                 }
             }
-            // Zero out the section wrapper dimensions (it's transparent)
+            int section_last = static_cast<int>(rows.size()) - 1;
+            // Zero section dimensions for now; they will be updated after row layout
             child->geometry.width = 0;
             child->geometry.height = 0;
+            if (section_last >= section_first) {
+                section_infos.push_back({child.get(), section_first, section_last});
+            }
             continue;
         }
         if (is_table_row(*child)) {
@@ -6095,6 +6106,24 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         }
         // Apply min/max constraints after rowspan height extension
         apply_min_max_constraints(*rsi.cell);
+    }
+
+    // Update section (thead/tbody/tfoot) geometry so their backgrounds can be painted.
+    // Rows are currently positioned relative to the table content area; we now give
+    // each section a real geometry and make its rows relative to the section.
+    for (auto& si : section_infos) {
+        if (si.first_row < 0 || si.last_row >= num_rows_total) continue;
+        float sec_y = row_y_positions[static_cast<size_t>(si.first_row)];
+        float sec_bottom = row_y_positions[static_cast<size_t>(si.last_row)]
+                         + row_heights[static_cast<size_t>(si.last_row)];
+        si.section->geometry.x = 0.0f;
+        si.section->geometry.y = sec_y;
+        si.section->geometry.width = content_w;
+        si.section->geometry.height = sec_bottom - sec_y;
+        // Make each row's y relative to the section (not the table)
+        for (int ri = si.first_row; ri <= si.last_row; ++ri) {
+            rows[static_cast<size_t>(ri)]->geometry.y -= sec_y;
+        }
     }
 
     // Recompute cursor_y: the end of the last row (in table content-area coordinates)
