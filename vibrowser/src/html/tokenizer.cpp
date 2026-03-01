@@ -941,7 +941,18 @@ std::string Tokenizer::try_consume_entity() {
         {"section", "\xC2\xA7"},       // U+00A7 section sign (alias for sect)
         {"doubledagger", "\xE2\x80\xA1"}, // U+2021 double dagger (alias for Dagger)
         {"bullet", "\xE2\x80\xA2"},    // U+2022 bullet (alias for bull)
+        {"check", "\xE2\x9C\x93"},     // U+2713 check mark
         {"ellipsis", "\xE2\x80\xA6"},  // U+2026 horizontal ellipsis (alias for hellip)
+        {"mldr", "\xE2\x80\xA6"},      // U+2026 horizontal ellipsis
+
+        // === Additional Currency Symbols ===
+        {"ruble", "\xE2\x82\xBD"},     // U+20BD ruble sign
+
+        // === Additional Mathematical Symbols ===
+        {"mnplus", "\xE2\x88\x93"},    // U+2213 minus-or-plus sign
+
+        // === Additional Arrow Symbols ===
+        {"varr", "\xE2\x86\x95"},      // U+2195 up down arrow
     };
 
     auto it = entities.find(lookup);
