@@ -2477,14 +2477,21 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         needs_wrap = true;
     }
 
-    // CSS writing-mode: vertical-rl (1) or vertical-lr (2)
-    // Draw each character stacked vertically
+    // CSS writing-mode: vertical-rl (1), vertical-lr (2), sideways-rl (3), sideways-lr (4)
+    // Draw each character stacked vertically and rotate baseline flow.
     bool vertical_handled = false;
+    bool vertical_rotated = false;
+    float vertical_deco_len = 0.0f;
     int wm = node.parent ? node.parent->writing_mode : node.writing_mode;
-    if (wm == 1 || wm == 2) {
+    if (wm == 1 || wm == 2 || wm == 3 || wm == 4) {
+        const float rotate_angle = (wm == 1 || wm == 3) ? 90.0f : -90.0f;
+        list.push_rotate(rotate_angle, text_x, text_y);
+        vertical_rotated = true;
+
         float draw_x = text_x;
         float draw_y = text_y;
         float step = effective_font_size * node.line_height;
+        int stack_count = 0;
         // Walk through text, drawing one character (or UTF-8 sequence) at a time
         size_t i = 0;
         while (i < text_to_render.size()) {
@@ -2501,7 +2508,9 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
                            node.letter_spacing);
             draw_y += step;
             i += clen;
+            ++stack_count;
         }
+        vertical_deco_len = static_cast<float>(stack_count) * step;
         vertical_handled = true;
     }
 
@@ -3046,8 +3055,12 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         const float deco_x = text_x;
         float deco_w = geom.width;
         if (deco_w <= 0) {
-            deco_w = static_cast<float>(text_to_render.size()) *
-                     (node.font_size * 0.6f + node.letter_spacing);
+            if (vertical_rotated && vertical_deco_len > 0.0f) {
+                deco_w = vertical_deco_len;
+            } else {
+                deco_w = static_cast<float>(text_to_render.size()) *
+                         (node.font_size * 0.6f + node.letter_spacing);
+            }
         }
         if (deco_w > 0) {
             auto draw_deco_line = [&](float line_y) {
@@ -3106,6 +3119,9 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
             if (deco_bits & 2) draw_deco_line(text_y);                      // overline
             if (deco_bits & 4) draw_deco_line(text_y + node.font_size * 0.5f); // line-through
         }
+    }
+    if (vertical_rotated) {
+        list.pop_transform();
     }
     // Draw text-emphasis marks above/below each character
     if (node.text_emphasis_style != "none" && !node.text_emphasis_style.empty() &&

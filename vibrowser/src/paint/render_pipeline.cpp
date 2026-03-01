@@ -16399,14 +16399,39 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             std::function<void(clever::layout::LayoutNode&)> detect_overflow =
                 [&](clever::layout::LayoutNode& node) {
                     // Compute scroll content dimensions for all scroll containers
+                    // using all descendant content bounds, not just direct children.
+                    float max_bottom = 0.0f;
+                    float max_right = 0.0f;
                     if (node.is_scroll_container) {
+                        auto accumulate_descendant_bounds =
+                            [&](const clever::layout::LayoutNode& child,
+                                float offset_x,
+                                float offset_y,
+                                auto&& self,
+                                float& max_right,
+                                float& max_bottom) -> void {
+                                const float child_x = offset_x + child.geometry.x;
+                                const float child_y = offset_y + child.geometry.y;
+                                const float child_bottom = child_y + child.geometry.margin_box_height();
+                                const float child_right = child_x + child.geometry.margin_box_width();
+
+                                if (child_bottom > max_bottom) max_bottom = child_bottom;
+                                if (child_right > max_right) max_right = child_right;
+
+                                for (auto& grandchild : child.children) {
+                                    if (grandchild) {
+                                        self(*grandchild, child_x, child_y, self, max_right, max_bottom);
+                                    }
+                                }
+                            };
+
                         float max_bottom = 0;
                         float max_right = 0;
                         for (auto& child : node.children) {
-                            float child_bottom = child->geometry.y + child->geometry.margin_box_height();
-                            float child_right = child->geometry.x + child->geometry.margin_box_width();
-                            if (child_bottom > max_bottom) max_bottom = child_bottom;
-                            if (child_right > max_right) max_right = child_right;
+                            if (child) {
+                                accumulate_descendant_bounds(
+                                    *child, 0.0f, 0.0f, accumulate_descendant_bounds, max_right, max_bottom);
+                            }
                         }
                         node.scroll_content_height = max_bottom;
                         node.scroll_content_width = max_right;
@@ -16420,20 +16445,17 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                         if (node.scroll_left < 0) node.scroll_left = 0;
                     }
 
+                    node.overflow_indicator_bottom = false;
+                    node.overflow_indicator_right = false;
                     if (node.overflow >= 2) {
                         // overflow: 2=scroll, 3=auto
-                        // Check if any child extends beyond this element's content box.
-                        // Child positions are relative to the content area, so compare
+                        // Child and descendant positions are relative to the content area, so compare
                         // against the content box dimensions (geometry.width, geometry.height).
-                        for (auto& child : node.children) {
-                            float child_bottom = child->geometry.y + child->geometry.margin_box_height();
-                            float child_right = child->geometry.x + child->geometry.margin_box_width();
-                            if (child_bottom > node.geometry.height) {
-                                node.overflow_indicator_bottom = true;
-                            }
-                            if (child_right > node.geometry.width) {
-                                node.overflow_indicator_right = true;
-                            }
+                        if (max_bottom > node.geometry.height) {
+                            node.overflow_indicator_bottom = true;
+                        }
+                        if (max_right > node.geometry.width) {
+                            node.overflow_indicator_right = true;
                         }
 
                         // For overflow:scroll (2), always show indicators
