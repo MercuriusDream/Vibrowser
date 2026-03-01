@@ -5452,9 +5452,31 @@ void PropertyCascade::apply_declaration(
 
     // ---- CSS animation-timeline (NOT inherited) ----
     if (prop == "animation-timeline") {
-        if (value_lower == "auto") style.animation_timeline = "auto";
-        else if (value_lower == "none") style.animation_timeline = "none";
-        else style.animation_timeline = value_str;
+        std::string lower_val = to_lower(value_str);
+        style.animation_timeline = value_str;
+
+        if (lower_val == "auto") {
+            style.animation_timeline_type = 0;
+        } else if (lower_val == "none") {
+            style.animation_timeline_type = 1;
+        } else if (lower_val.find("scroll(") != std::string::npos) {
+            style.animation_timeline_type = 2;
+            style.animation_timeline_raw = value_str;
+            // Parse axis from scroll(block), scroll(inline), scroll(x), scroll(y)
+            if (value_str.find("inline") != std::string::npos) {
+                style.animation_timeline_axis = 1;
+            } else if (value_str.find("x") != std::string::npos) {
+                style.animation_timeline_axis = 2;
+            } else if (value_str.find("y") != std::string::npos) {
+                style.animation_timeline_axis = 3;
+            } else {
+                style.animation_timeline_axis = 0;
+            }
+        } else if (lower_val.find("view(") != std::string::npos) {
+            style.animation_timeline_type = 3;
+            style.animation_timeline_raw = value_str;
+            style.animation_timeline_axis = 0;
+        }
         return;
     }
 
@@ -6402,6 +6424,28 @@ void PropertyCascade::apply_declaration(
     // ---- CSS animation-range (NOT inherited) ----
     if (prop == "animation-range") {
         style.animation_range = value_str;
+
+        // Parse animation-range: "entry 0% cover 100%" format
+        auto range_lower = to_lower(value_str);
+        auto tokens = split_whitespace(range_lower);
+
+        // Simple parsing: extract percentage values
+        for (size_t i = 0; i < tokens.size(); i++) {
+            if (tokens[i].find('%') != std::string::npos) {
+                float pct = std::stof(tokens[i]);
+                pct = std::clamp(pct, 0.0f, 100.0f);
+                float offset = pct / 100.0f;
+
+                // Determine if this is start or end based on position
+                if (i == 1 || (i > 0 && tokens[i-1].find("entry") != std::string::npos)) {
+                    style.animation_range_start = Length::percent(pct);
+                    style.animation_range_start_offset = offset;
+                } else {
+                    style.animation_range_end = Length::percent(pct);
+                    style.animation_range_end_offset = offset;
+                }
+            }
+        }
         return;
     }
 
@@ -6922,6 +6966,41 @@ bool StyleResolver::evaluate_supports_condition(const std::string& condition) co
     return true; // Be permissive
 }
 
+bool StyleResolver::is_element_in_scope(const ElementView& element, const ScopeRule& scope) const {
+    auto scope_start_list = parse_selector_list(scope.scope_start);
+    if (scope_start_list.selectors.empty()) {
+        return false;
+    }
+
+    bool has_scope_start_ancestor = false;
+    for (const ElementView* anc = element.parent; anc; anc = anc->parent) {
+        for (const auto& complex_sel : scope_start_list.selectors) {
+            if (matcher_.matches(*anc, complex_sel)) {
+                has_scope_start_ancestor = true;
+                break;
+            }
+        }
+        if (has_scope_start_ancestor) break;
+    }
+
+    if (!has_scope_start_ancestor) {
+        return false;
+    }
+
+    if (!scope.scope_end.empty()) {
+        auto scope_end_list = parse_selector_list(scope.scope_end);
+        for (const ElementView* anc = element.parent; anc; anc = anc->parent) {
+            for (const auto& complex_sel : scope_end_list.selectors) {
+                if (matcher_.matches(*anc, complex_sel)) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
 // --- Helper: collect from a rule list ---
 
 void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
@@ -7004,6 +7083,12 @@ std::vector<MatchedRule> StyleResolver::collect_matching_rules(const ElementView
                 collect_from_rules(mq.rules, element, result, source_order);
             }
         }
+
+        for (const auto& scope : sheet.scope_rules) {
+            if (is_element_in_scope(element, scope)) {
+                collect_from_rules(scope.rules, element, result, source_order);
+            }
+        }
     }
 
     return result;
@@ -7022,6 +7107,12 @@ std::vector<MatchedRule> StyleResolver::collect_pseudo_rules(
         for (const auto& mq : sheet.media_queries) {
             if (evaluate_media_condition(mq.condition)) {
                 collect_pseudo_from_rules(mq.rules, element, pseudo_name, result, source_order);
+            }
+        }
+
+        for (const auto& scope : sheet.scope_rules) {
+            if (is_element_in_scope(element, scope)) {
+                collect_pseudo_from_rules(scope.rules, element, pseudo_name, result, source_order);
             }
         }
     }

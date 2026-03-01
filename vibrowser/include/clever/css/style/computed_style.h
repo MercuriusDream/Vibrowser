@@ -608,6 +608,9 @@ struct ComputedStyle {
 
     // CSS animation-timeline: "auto" (default), "none", "scroll()", "view()", or custom name
     std::string animation_timeline = "auto";
+    int animation_timeline_type = 0;  // 0=auto, 1=none, 2=scroll(), 3=view()
+    int animation_timeline_axis = 0;  // 0=block, 1=inline, 2=x, 3=y
+    std::string animation_timeline_raw;  // For scroll()/view() parameters
 
     // Border image
     std::string border_image_source;      // url or gradient, empty = none
@@ -851,6 +854,10 @@ struct ComputedStyle {
 
     // CSS animation-range: "normal", "entry", "exit", etc.
     std::string animation_range = "normal";
+    Length animation_range_start = Length::percent(0);
+    float animation_range_start_offset = 0.0f;  // 0.0-1.0 for percentage offsets
+    Length animation_range_end = Length::percent(100);
+    float animation_range_end_offset = 1.0f;  // 0.0-1.0 for percentage offsets
 
     // CSS individual transform properties (CSS Transforms Level 2)
     std::string css_rotate = "none";     // e.g. "45deg", "x 30deg", "none"

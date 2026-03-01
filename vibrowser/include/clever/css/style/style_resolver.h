@@ -62,6 +62,8 @@ private:
     bool evaluate_media_condition(const std::string& condition) const;
     // Evaluate a @supports condition string
     bool evaluate_supports_condition(const std::string& condition) const;
+    // Check if element is within @scope boundaries
+    bool is_element_in_scope(const ElementView& element, const ScopeRule& scope) const;
     // Helper: collect rules from a rule list into matched results
     void collect_from_rules(const std::vector<StyleRule>& rules,
                             const ElementView& element,
