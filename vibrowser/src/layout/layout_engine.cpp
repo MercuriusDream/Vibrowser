@@ -4353,7 +4353,7 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                 child->grid_row    = area_parts[0];
                 child->grid_column = area_parts[1];
                 handled = true;
-            } else if (!area_map.empty()) {
+            } else {
                 // Named area lookup
                 auto ait = area_map.find(child->grid_area);
                 if (ait != area_map.end()) {
