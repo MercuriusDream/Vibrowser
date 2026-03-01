@@ -757,14 +757,14 @@ void set_document_color_scheme(const std::string& value) {
         if (c == ',') c = ' ';
     }
 
-    bool has_dark = false;
+    bool dark_mode = false;
     std::istringstream iss(normalized);
     std::string token;
-    while (iss >> token) {
-        if (token == "dark") has_dark = true;
+    if (iss >> token) {
+        dark_mode = token == "dark";
     }
 
-    set_dark_mode(has_dark);
+    set_dark_mode(dark_mode);
 }
 
 int get_dark_mode_override() {
