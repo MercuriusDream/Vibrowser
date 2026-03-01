@@ -2950,7 +2950,12 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         }
 
         // Build effective font features from font_feature_settings + font_variant_numeric
-        std::string effective_features = node.font_feature_settings;
+        std::string effective_features;
+        for (size_t fi = 0; fi < node.font_feature_settings.size(); ++fi) {
+            if (fi > 0) effective_features += ", ";
+            effective_features += "\"" + node.font_feature_settings[fi].first + "\" " +
+                                  std::to_string(node.font_feature_settings[fi].second);
+        }
         if (node.font_variant_numeric != 0) {
             // Map font_variant_numeric to OpenType feature tags
             const char* tag = nullptr;

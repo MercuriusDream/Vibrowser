@@ -7216,7 +7216,7 @@ TEST(LayoutNodeProps, FontVariantLigaturesDefaultsZero) {
 
 TEST(LayoutNodeProps, FontFeatureSettingsDefaultsEmpty) {
     LayoutNode n;
-    EXPECT_EQ(n.font_feature_settings, "");
+    EXPECT_TRUE(n.font_feature_settings.empty());
 }
 
 TEST(LayoutNodeProps, FontVariationSettingsDefaultsEmpty) {

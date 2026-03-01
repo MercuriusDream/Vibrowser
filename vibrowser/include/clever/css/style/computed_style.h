@@ -541,8 +541,8 @@ struct ComputedStyle {
     // Font variant numeric: 0=normal, 1=ordinal, 2=slashed-zero, 3=lining-nums, 4=oldstyle-nums, 5=proportional-nums, 6=tabular-nums
     int font_variant_numeric = 0;
 
-    // Font feature settings (OpenType feature tags, e.g. "\"liga\" 1, \"kern\" 1")
-    std::string font_feature_settings;
+    // Font feature settings (OpenType feature tags), e.g. ("liga", 1), ("kern", 1)
+    std::vector<std::pair<std::string, int>> font_feature_settings;
 
     // Font variation settings (OpenType variable font axes, e.g. ""wght" 700")
     std::string font_variation_settings;

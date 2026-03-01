@@ -2114,6 +2114,75 @@ std::optional<Color> parse_color(const std::string& input) {
     return std::nullopt;
 }
 
+std::vector<std::pair<std::string, int>> parse_font_feature_settings(const std::string& value) {
+    std::string trimmed = trim(value);
+    if (trimmed.empty()) return {};
+
+    if (to_lower(trimmed) == "normal") {
+        return {};
+    }
+
+    std::vector<std::pair<std::string, int>> settings;
+    std::vector<std::string> segments;
+    std::string current;
+    bool in_quotes = false;
+
+    for (char ch : trimmed) {
+        if (ch == '"') {
+            in_quotes = !in_quotes;
+            current += ch;
+            continue;
+        }
+        if (ch == ',' && !in_quotes) {
+            segments.push_back(trim(current));
+            current.clear();
+            continue;
+        }
+        current += ch;
+    }
+    segments.push_back(trim(current));
+
+    for (const auto& seg_raw : segments) {
+        std::string seg = trim(seg_raw);
+        if (seg.empty()) continue;
+
+        std::string tag;
+        int value = 1;
+        std::string rest;
+        size_t quote_start = seg.find('"');
+
+        if (quote_start != std::string::npos) {
+            size_t quote_end = seg.find('"', quote_start + 1);
+            if (quote_end == std::string::npos) continue;
+            tag = trim(seg.substr(quote_start + 1, quote_end - quote_start - 1));
+            if (tag.size() != 4) continue;
+            rest = trim(seg.substr(quote_end + 1));
+        } else {
+            size_t tag_end = seg.find_first_of(" \t");
+            if (tag_end == std::string::npos) {
+                tag = seg;
+            } else {
+                tag = seg.substr(0, tag_end);
+                rest = trim(seg.substr(tag_end + 1));
+            }
+        }
+
+        tag = to_lower(trim(tag));
+        if (tag.size() != 4) continue;
+
+        if (!rest.empty()) {
+            int parsed = 1;
+            std::istringstream iss(rest);
+            if (iss >> parsed && (parsed == 0 || parsed == 1)) {
+                value = parsed;
+            }
+        }
+        settings.push_back({tag, value});
+    }
+
+    return settings;
+}
+
 std::optional<Length> parse_length(const std::string& input, const std::string& /*unit_hint*/) {
     std::string value = trim(input);
 

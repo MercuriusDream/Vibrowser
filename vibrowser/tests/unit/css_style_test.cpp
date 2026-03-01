@@ -7101,7 +7101,11 @@ TEST(PropertyCascadeTest, FontFeatureAndVariationSettings) {
     EXPECT_TRUE(style.font_variation_settings.empty());
 
     cascade.apply_declaration(style, make_decl("font-feature-settings", "\"kern\" 1, \"liga\" 0"), parent);
-    EXPECT_EQ(style.font_feature_settings, "\"kern\" 1, \"liga\" 0");
+    EXPECT_EQ(style.font_feature_settings.size(), 2);
+    EXPECT_EQ(style.font_feature_settings[0].first, "kern");
+    EXPECT_EQ(style.font_feature_settings[0].second, 1);
+    EXPECT_EQ(style.font_feature_settings[1].first, "liga");
+    EXPECT_EQ(style.font_feature_settings[1].second, 0);
 
     cascade.apply_declaration(style, make_decl("font-variation-settings", "\"wght\" 700"), parent);
     EXPECT_EQ(style.font_variation_settings, "\"wght\" 700");

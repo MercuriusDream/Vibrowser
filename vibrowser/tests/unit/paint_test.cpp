@@ -10689,8 +10689,8 @@ TEST(PaintIntegration, FontFeatureSettingsInline) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.font_feature_settings.find("liga") != std::string::npos) {
-            found = true;
+        for (const auto& pair : n.font_feature_settings) {
+            if (pair.first == "liga") { found = true; break; }
         }
         for (auto& c : n.children) check(*c);
     };
@@ -10705,7 +10705,7 @@ TEST(PaintIntegration, FontFeatureSettingsNormal) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.font_feature_settings == "normal") {
+        if (n.font_feature_settings.empty()) {
             found = true;
         }
         for (auto& c : n.children) check(*c);
@@ -10724,8 +10724,11 @@ TEST(PaintIntegration, FontFeatureSettingsInherited) {
         if (!n.text_content.empty() && n.text_content == "Child") {
             // Text nodes should inherit font-feature-settings through their parent
         }
-        if (n.font_feature_settings.find("smcp") != std::string::npos) {
-            found = true;
+        for (const auto& pair : n.font_feature_settings) {
+            if (pair.first == "smcp") {
+                found = true;
+                break;
+            }
         }
         for (auto& c : n.children) check(*c);
     };

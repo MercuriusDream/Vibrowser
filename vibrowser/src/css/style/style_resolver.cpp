@@ -7,6 +7,8 @@
 
 namespace clever::css {
 
+std::vector<std::pair<std::string, int>> parse_font_feature_settings(const std::string& value);
+
 void apply_inline_property(EdgeSizes& edge, const std::string& side, const Length& value, Direction dir) {
     if (side == "start") {
         if (dir == Direction::Ltr) edge.left = value;
@@ -5046,7 +5048,7 @@ void PropertyCascade::apply_declaration(
 
     // ---- Font feature settings (inherited) ----
     if (prop == "font-feature-settings") {
-        style.font_feature_settings = value_str;
+        style.font_feature_settings = parse_font_feature_settings(value_str);
         return;
     }
 

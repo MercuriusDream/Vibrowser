@@ -52,6 +52,10 @@ namespace clever::js {
 bool consume_pending_post_submission(std::string& out_body, std::string& out_content_type);
 } // namespace clever::js
 
+namespace clever::css {
+std::vector<std::pair<std::string, int>> parse_font_feature_settings(const std::string& value);
+} // namespace clever::css
+
 namespace clever::paint {
 
 // Thread-local state for interactive <details> toggle (accessible from both
@@ -5372,7 +5376,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "historical-forms") style.font_variant_alternates = 1;
             else style.font_variant_alternates = 0; // normal
         } else if (d.property == "font-feature-settings") {
-            style.font_feature_settings = d.value;
+            style.font_feature_settings = clever::css::parse_font_feature_settings(d.value);
         } else if (d.property == "font-variation-settings") {
             style.font_variation_settings = d.value;
         } else if (d.property == "font-optical-sizing") {

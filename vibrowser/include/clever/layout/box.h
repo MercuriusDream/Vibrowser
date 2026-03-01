@@ -759,7 +759,7 @@ struct LayoutNode {
     int font_variant_numeric = 0;
 
     // Font feature settings (OpenType feature tags)
-    std::string font_feature_settings;
+    std::vector<std::pair<std::string, int>> font_feature_settings;
 
     // Font variation settings (OpenType variable font axes)
     std::string font_variation_settings;
