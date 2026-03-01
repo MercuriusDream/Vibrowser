@@ -3023,6 +3023,48 @@ static JSValue js_css_supports(JSContext* ctx, JSValueConst /*this_val*/,
     }
 }
 
+static JSValue js_css_escape(JSContext* ctx, JSValueConst /*this_val*/,
+                             int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_ThrowTypeError(ctx, "CSS.escape requires 1 argument");
+    const char* str = JS_ToCString(ctx, argv[0]);
+    if (!str) return JS_EXCEPTION;
+    
+    std::string result;
+    size_t len = std::strlen(str);
+    for (size_t i = 0; i < len; i++) {
+        char c = str[i];
+        if (c == 0) {
+            result += "\\fffd ";
+        } else if ((c >= 0x01 && c <= 0x1f) || c == 0x7f) {
+            char buf[8];
+            snprintf(buf, sizeof(buf), "\\%x ", (unsigned char)c);
+            result += buf;
+        } else if (i == 0 && c >= '0' && c <= '9') {
+            char buf[8];
+            snprintf(buf, sizeof(buf), "\\%x ", (unsigned char)c);
+            result += buf;
+        } else if (i == 0 && c == '-' && len == 1) {
+            result += "\\-";
+        } else if (c == '-' || c == '_' || c >= 0x80 ||
+                   (c >= '0' && c <= '9') ||
+                   (c >= 'A' && c <= 'Z') ||
+                   (c >= 'a' && c <= 'z')) {
+            result += c;
+        } else {
+            result += '\\';
+            result += c;
+        }
+    }
+    JS_FreeCString(ctx, str);
+    return JS_NewStringLen(ctx, result.c_str(), result.size());
+}
+
+static JSValue js_css_register_property(JSContext* ctx, JSValueConst /*this_val*/,
+                                        int argc, JSValueConst* argv) {
+    // Stub — records custom property definition (no runtime effect yet)
+    return JS_UNDEFINED;
+}
+
 // =========================================================================
 // Intl constructors and format helpers
 // =========================================================================
@@ -4331,10 +4373,14 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_NewCFunction(ctx, js_cancel_idle_callback,
                         "cancelIdleCallback", 1));
 
-    // ---- CSS.supports (Cycle 220) ----
+ // ---- CSS.supports (Cycle 220) ----
     JSValue css_obj = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, css_obj, "supports",
         JS_NewCFunction(ctx, js_css_supports, "supports", 1));
+    JS_SetPropertyStr(ctx, css_obj, "escape",
+        JS_NewCFunction(ctx, js_css_escape, "escape", 1));
+    JS_SetPropertyStr(ctx, css_obj, "registerProperty",
+        JS_NewCFunction(ctx, js_css_register_property, "registerProperty", 1));
     JS_SetPropertyStr(ctx, global, "CSS", css_obj);
 
     // ---- Intl constructors (NumberFormat / DateTimeFormat / Collator / PluralRules) ----
