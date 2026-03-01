@@ -7,11 +7,11 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
-**Current Focus**: Round 20 — next gap-hunting cycle
-**Momentum**: Cycle 1955 — 11 commits pushed across sessions. 13/13 tests passing.
-**Cycle**: 1955
-**Workflow**: Multi-phase feature implementation. Use 6 Sonnet subagents in parallel. Commit and push after each round.
-**User Issue**: Centering bug FIXED — flex cross-axis now uses min-height for alignment
+**Current Focus**: Centering/layout bug fixes, then Round 21
+**Momentum**: Cycle 1958 — 13 commits pushed across sessions. 13/13 tests passing.
+**Cycle**: 1958
+**Workflow**: Multi-phase feature implementation. Use 4-6 Sonnet subagents in parallel. Commit and push after each round.
+**User Issue**: Flex layout + inline-block centering FIXED (67ece72). Remaining: text centering slightly off, Mac UI issues.
 
 ## Implementation Roadmap
 
@@ -37,6 +37,13 @@
 - [x] Fix centering: webkit-center (text_align==4) handled same as center in position_inline_children (ea81bd6)
 - [x] Fix centering: <center> margin check relaxed from ==0 to !=-1 (ea81bd6)
 - [ ] Fix weird screen resolution issues — partially done (DPR param + backingScaleFactor + meta viewport in Round 4), needs visual verification
+
+### User-Reported TODOs (High Priority)
+
+- [ ] **Fix Mac UI white blank area** — vibrowser window has large white blank area/padding, wastes screen space. Investigate NSWindow/NSView layout, content view sizing, scroll view insets, or WebView sizing that causes empty white region. Compare with expected full-bleed rendering.
+- [ ] **Fix Google rendering too small** — google.com content renders very small/zoomed out compared to Chrome. Likely causes: (1) viewport meta tag not properly applied or missing, (2) CSS viewport units (vw/vh) resolving to wrong values, (3) device pixel ratio (DPR) scaling not factored into layout viewport, (4) content_width used for layout doesn't match visible window width, (5) Google's responsive CSS not triggering correctly for our viewport size. Investigate by comparing vibrowser layout_viewport_width vs Chrome, check if viewport meta tag is parsed and applied, check if media queries fire correctly for our viewport.
+- [ ] **Fix text-align:center slightly off** — plain text centering is visibly right-of-center. Layout engine uses CTLineGetTypographicBounds for measurement which should match rendering. Possible causes: (1) text_content has trailing whitespace from HTML parsing that's measured but not rendered, (2) collapse_whitespace not stripping trailing space, (3) line.width includes extra cursor advancement, (4) font metrics discrepancy between layout TextRenderer and paint TextRenderer instances. Debug by logging measured_width vs containing_width vs offset for centered text.
+- [ ] **Fix flex column align-items:center visual issues** — Test 6 centering looks "weird" per user. May be related to margin-box dimension calculation or text wrapping inside flex children.
 
 ### P0 — Centering Bugs (User Root-Cause Analysis)
 
@@ -147,6 +154,21 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycle 1958 (Centering Fix Round) — 2026-03-01
+
+- **Theme**: Layout engine centering fixes — flex margin-box, inline-block shrink-wrap re-layout
+- **Commit**: 67ece72
+- **Fixes**:
+  - Flex main-axis: total_used now includes padding/border/margin for correct justify-content
+  - Flex main-axis: children positioned at cursor_main + margin.left, cursor advances by full margin-box
+  - Flex cross-axis: align-items uses margin-box dimensions, stretch subtracts margin-box
+  - Inline-block shrink-wrap: re-layout with correct width so internal text-align uses actual content area
+  - Updated LayoutV163_4 test for correct flex margin-right positioning
+- **Verified**: Test 5 (inline-block centering) now matches Chrome in side-by-side comparison
+- **Still Off**: Test 1 (text slightly right of center), Test 4 (minor vertical alignment), Test 6 (visual oddities)
+- **User Requests Added to TODOs**: Mac UI white blank area, Google rendering too small, text centering accuracy
+- **Validation**: 13/13 suites pass, 0 failures
 
 ### Cycles 1954-1955 (Feature Round 19) — 2026-03-01
 
@@ -8460,28 +8482,33 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Sessions | 184 |
-| Total Cycles | 1955 |
+| Total Sessions | 185 |
+| Total Cycles | 1957 |
 | Files Created | ~137 |
-| Files Modified | 170+ |
-| Lines Added (est.) | 234000+ |
+| Files Modified | 175+ |
+| Lines Added (est.) | 235000+ |
 | Tests Added | 10844 |
-| Bugs Fixed | 300 |
-| Features Added | 2710 |
+| Bugs Fixed | 301 |
+| Features Added | 2722 |
 
 ## Tell The Next Claude
 
-**LATEST (Cycle 1955) — Rounds 16-19: Deep Web Platform APIs**
+**LATEST (Cycle 1958) — Flex/Inline-Block Centering Fixes + User TODOs**
 
+- Cycle 1958 (67ece72): Flex layout margin-box positioning, inline-block shrink-wrap re-layout. Test 5 now matches Chrome.
+- Round 20 (3048ab3): FIX <center> tag text-align inheritance to ComputedStyle, CSS transitions 20+ props, XHR arraybuffer/blob, navigator.permissions.query, real structuredClone, elementsFromPoint, BroadcastChannel, IndexedDB in-memory, ReadableStream body, scroll-snap parsing, legacy align attribute on div/p/h1-h6
 - Round 19 (b0b556d, 0c8fbac): IntersectionObserver real viewport, rAF queued model, crypto.getRandomValues native, matchMedia 28 features, document.fonts, URL.createObjectURL blob registry, popstate direct dispatch, Connection: keep-alive
-- Round 18 (0b0f625): CSS.supports 260+ props, Response.formData, custom CSS properties, Shadow DOM rendering, MutationObserver, Clipboard/Selection/Range
-- Round 17 (4b1a739): scrollIntoView, form validation, HTMLSelectElement, getComputedStyle, ResizeObserver, media queries
-- Round 16 (5cc6622): Image decode, Performance API, float layout, FormData, grid, element.animate
-- 7 commits pushed this session: 5cc6622, 4b1a739, 0b0f625, b0b556d, 0c8fbac
-- LESSON LEARNED: Concurrent agents on same file cause overwrites. Use single large agent or isolate by file.
-- Top remaining: incremental render pipeline, GPU compositing, :has() selector, CanvasGradient class
+- 9 commits pushed this session: 5cc6622, 4b1a739, 0b0f625, b0b556d, 0c8fbac, 3048ab3, 67ece72
+- USER TODO LIST:
+  - [ ] Mac UI white blank area — investigate NSWindow/NSView sizing
+  - [ ] Google rendering too small — viewport meta/DPR/media queries
+  - [ ] Text-align:center slightly off — font measurement discrepancy
+  - [ ] Flex column align-items visual issues
+- LESSON LEARNED: Inline-block shrink-wrap must re-layout children — first layout uses containing_width for text-align centering, but shrink-wrapped width is much smaller. Without re-layout, internal children are positioned for the wrong width.
+- LESSON LEARNED: Always test with screenshots using `http://localhost:8888/test.html` (python3 -m http.server 8888). file:// protocol not supported.
+- Top remaining: USER TODOs above, then incremental render pipeline, GPU compositing
 
-**STATUS: WORKING BROWSER WITH MAJOR RENDERING FIXES — 12,080 TESTS!!!** — Launch with `open vibrowser/build/src/shell/vibrowser.app`
+**STATUS: 13 COMMITS THIS SESSION — 12,080 TESTS, 13/13 PASS** — Launch with `open vibrowser/build/src/shell/vibrowser.app`
 
 Build: `cd vibrowser && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
