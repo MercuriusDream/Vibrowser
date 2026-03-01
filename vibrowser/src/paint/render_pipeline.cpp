@@ -10416,11 +10416,19 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
         if (is_multiple || visible_rows > 1) {
             // Listbox mode: create visible option children (including optgroup support)
+            float cumulative_y = 0;
             for (auto& child : node.children) {
                 if (child->type != clever::html::SimpleNode::Element) continue;
                 std::string child_tag = to_lower(child->tag_name);
                 if (child_tag == "option") {
-                    layout_node->append_child(make_listbox_option(*child, false));
+                    auto opt = make_listbox_option(*child, false);
+                    // Pre-compute the y-offset for this option to ensure vertical stacking.
+                    // The layout engine will call position_block_children, but as a safeguard,
+                    // set initial y-offset here. geometry.y will be overwritten during layout,
+                    // but this helps ensure the children are structured correctly.
+                    opt->geometry.y = cumulative_y;
+                    cumulative_y += row_h;
+                    layout_node->append_child(std::move(opt));
                 } else if (child_tag == "optgroup") {
                     bool og_disabled = has_attr(*child, "disabled");
                     std::string og_label = get_attr(*child, "label");
@@ -10447,6 +10455,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                         label_text->font_weight = 700;
                         label_text->color = label_node->color;
                         label_node->append_child(std::move(label_text));
+                        label_node->geometry.y = cumulative_y;
+                        cumulative_y += row_h;
                         layout_node->append_child(std::move(label_node));
                     }
                     // Render options within the optgroup (indented)
@@ -10456,6 +10466,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                             auto opt_node = make_listbox_option(*opt_child, og_disabled);
                             // Indent options inside optgroup
                             opt_node->geometry.padding = {1, 4, 1, 16};
+                            opt_node->geometry.y = cumulative_y;
+                            cumulative_y += row_h;
                             layout_node->append_child(std::move(opt_node));
                         }
                     }
