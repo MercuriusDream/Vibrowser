@@ -30,6 +30,7 @@
 #endif
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <future>
@@ -65,6 +66,17 @@ thread_local std::vector<clever::paint::FormData> collected_forms;
 
 // Thread-local datalist option collection during layout tree building
 thread_local std::unordered_map<std::string, std::vector<std::string>> collected_datalists;
+
+// Transition runtime state persisted across render_html calls on this thread.
+thread_local bool g_transition_runtime_enabled = false;
+thread_local std::unique_ptr<AnimationController> g_transition_animation_controller;
+thread_local std::unordered_map<std::string, clever::css::ComputedStyle> g_previous_styles_by_key;
+thread_local std::unordered_map<std::string, clever::layout::LayoutNode*> g_current_layout_nodes_by_key;
+thread_local std::unordered_set<std::string> g_current_style_keys;
+thread_local std::unordered_map<std::string, std::unique_ptr<clever::layout::LayoutNode>> g_transition_runtime_nodes;
+thread_local std::unordered_map<clever::layout::LayoutNode*, std::string> g_transition_runtime_node_to_key;
+thread_local bool g_transition_has_last_tick = false;
+thread_local std::chrono::steady_clock::time_point g_transition_last_tick_time;
 
 std::string trim(const std::string& s) {
     auto start = s.find_first_not_of(" \t\n\r");
@@ -127,6 +139,127 @@ std::string to_lower(const std::string& s) {
     std::transform(result.begin(), result.end(), result.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return result;
+}
+
+bool transition_property_list_matches(const std::string& transition_property,
+                                      const std::string& property) {
+    std::string list = to_lower(trim(transition_property));
+    if (list.empty() || list == "all") return true;
+    if (list == "none") return false;
+
+    for (char& ch : list) {
+        if (ch == ',') ch = ' ';
+    }
+    auto tokens = split_whitespace(list);
+    return std::find(tokens.begin(), tokens.end(), property) != tokens.end();
+}
+
+std::optional<clever::css::TransitionDef> transition_def_for_property(
+    const clever::css::ComputedStyle& style,
+    const std::string& property) {
+    std::optional<clever::css::TransitionDef> exact_match;
+    std::optional<clever::css::TransitionDef> all_match;
+    for (const auto& def : style.transitions) {
+        std::string def_property = to_lower(trim(def.property));
+        if (def_property == property) {
+            exact_match = def;
+            break;
+        }
+        if (def_property == "all" && !all_match.has_value()) {
+            all_match = def;
+        }
+    }
+
+    if (exact_match.has_value() && exact_match->duration_ms > 0.0f) {
+        return exact_match;
+    }
+    if (all_match.has_value() && all_match->duration_ms > 0.0f) {
+        auto def = *all_match;
+        def.property = property;
+        return def;
+    }
+
+    auto scalar_def = build_transition_def_from_style(style);
+    if (scalar_def.duration_ms <= 0.0f) return std::nullopt;
+    if (!transition_property_list_matches(style.transition_property, property)) {
+        return std::nullopt;
+    }
+    scalar_def.property = property;
+    return scalar_def;
+}
+
+std::string build_style_key_for_node(const clever::html::SimpleNode& node) {
+    if (node.type != clever::html::SimpleNode::Element) return "";
+
+    for (const auto& attr : node.attributes) {
+        if (attr.name == "id" && !attr.value.empty()) {
+            return "id:" + attr.value;
+        }
+    }
+
+    std::vector<std::string> segments;
+    const clever::html::SimpleNode* current = &node;
+    while (current && current->type != clever::html::SimpleNode::Document) {
+        if (current->type == clever::html::SimpleNode::Element) {
+            std::string tag = to_lower(current->tag_name);
+            size_t same_tag_index = 1;
+            if (current->parent) {
+                for (const auto& sibling : current->parent->children) {
+                    if (!sibling || sibling->type != clever::html::SimpleNode::Element) continue;
+                    if (to_lower(sibling->tag_name) != tag) continue;
+                    if (sibling.get() == current) break;
+                    same_tag_index++;
+                }
+            }
+            segments.push_back(tag + "[" + std::to_string(same_tag_index) + "]");
+        }
+        current = current->parent;
+    }
+
+    std::reverse(segments.begin(), segments.end());
+    std::string key;
+    for (size_t i = 0; i < segments.size(); i++) {
+        if (i > 0) key += "/";
+        key += segments[i];
+    }
+    return key;
+}
+
+clever::layout::LayoutNode* get_or_create_transition_runtime_node(const std::string& style_key) {
+    auto it = g_transition_runtime_nodes.find(style_key);
+    if (it != g_transition_runtime_nodes.end()) {
+        return it->second.get();
+    }
+
+    auto runtime_node = std::make_unique<clever::layout::LayoutNode>();
+    runtime_node->tag_name = "#transition-runtime";
+    auto* node_ptr = runtime_node.get();
+    g_transition_runtime_nodes[style_key] = std::move(runtime_node);
+    g_transition_runtime_node_to_key[node_ptr] = style_key;
+    return node_ptr;
+}
+
+void prune_transition_runtime_state() {
+    for (auto it = g_previous_styles_by_key.begin(); it != g_previous_styles_by_key.end();) {
+        if (g_current_style_keys.find(it->first) == g_current_style_keys.end()) {
+            it = g_previous_styles_by_key.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = g_transition_runtime_nodes.begin(); it != g_transition_runtime_nodes.end();) {
+        if (g_current_style_keys.find(it->first) == g_current_style_keys.end()) {
+            auto* runtime_node = it->second.get();
+            if (g_transition_animation_controller) {
+                g_transition_animation_controller->remove_animations_for_element(runtime_node);
+            }
+            g_transition_runtime_node_to_key.erase(runtime_node);
+            it = g_transition_runtime_nodes.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 } // end anonymous namespace (temporarily, for easing/interpolation functions)
@@ -619,6 +752,47 @@ clever::css::Transform interpolate_transform(const clever::css::Transform& from,
         result.m[i] = interpolate_float(from.m[i], to.m[i], t);
     }
     return result;
+}
+
+clever::css::TransitionDef build_transition_def_from_style(
+    const clever::css::ComputedStyle& style) {
+    clever::css::TransitionDef def;
+    def.property = to_lower(trim(style.transition_property.empty() ? "all" : style.transition_property));
+    def.duration_ms = style.transition_duration * 1000.0f;
+    def.delay_ms = style.transition_delay * 1000.0f;
+    def.timing_function = style.transition_timing;
+    def.bezier_x1 = style.transition_bezier_x1;
+    def.bezier_y1 = style.transition_bezier_y1;
+    def.bezier_x2 = style.transition_bezier_x2;
+    def.bezier_y2 = style.transition_bezier_y2;
+    def.steps_count = style.transition_steps_count;
+    return def;
+}
+
+std::vector<std::string> detect_changed_transition_properties(
+    const clever::css::ComputedStyle& old_style,
+    const clever::css::ComputedStyle& new_style) {
+    std::vector<std::string> changed;
+    auto float_changed = [](float a, float b) {
+        return std::fabs(a - b) > 1e-4f;
+    };
+
+    if (float_changed(old_style.opacity, new_style.opacity)) {
+        changed.push_back("opacity");
+    }
+    if (old_style.background_color != new_style.background_color) {
+        changed.push_back("background-color");
+    }
+    if (old_style.color != new_style.color) {
+        changed.push_back("color");
+    }
+    if (float_changed(old_style.font_size.to_px(), new_style.font_size.to_px())) {
+        changed.push_back("font-size");
+    }
+    if (float_changed(old_style.border_radius, new_style.border_radius)) {
+        changed.push_back("border-radius");
+    }
+    return changed;
 }
 
 // =========================================================================
@@ -3805,6 +3979,14 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             }
         } else if (d.property == "pointer-events") {
             if (val_lower == "none") style.pointer_events = clever::css::PointerEvents::None;
+            else if (val_lower == "visiblepainted") style.pointer_events = clever::css::PointerEvents::VisiblePainted;
+            else if (val_lower == "visiblefill") style.pointer_events = clever::css::PointerEvents::VisibleFill;
+            else if (val_lower == "visiblestroke") style.pointer_events = clever::css::PointerEvents::VisibleStroke;
+            else if (val_lower == "visible") style.pointer_events = clever::css::PointerEvents::Visible;
+            else if (val_lower == "painted") style.pointer_events = clever::css::PointerEvents::Painted;
+            else if (val_lower == "fill") style.pointer_events = clever::css::PointerEvents::Fill;
+            else if (val_lower == "stroke") style.pointer_events = clever::css::PointerEvents::Stroke;
+            else if (val_lower == "all") style.pointer_events = clever::css::PointerEvents::All;
             else style.pointer_events = clever::css::PointerEvents::Auto;
         } else if (d.property == "user-select" || d.property == "-webkit-user-select") {
             if (val_lower == "none") style.user_select = clever::css::UserSelect::None;
@@ -6450,7 +6632,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->text_decoration_color = color_to_argb(parent_style.text_decoration_color);
         layout_node->text_decoration_style = static_cast<int>(parent_style.text_decoration_style);
         layout_node->text_decoration_thickness = parent_style.text_decoration_thickness;
-        layout_node->pointer_events = (parent_style.pointer_events == clever::css::PointerEvents::None) ? 1 : 0;
+        layout_node->pointer_events = static_cast<int>(parent_style.pointer_events);
         layout_node->user_select = static_cast<int>(parent_style.user_select);
         layout_node->tab_size = parent_style.tab_size;
         layout_node->line_clamp = parent_style.line_clamp;
@@ -7121,7 +7303,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->quotes = style.quotes;
     layout_node->list_style_position = (style.list_style_position == clever::css::ListStylePosition::Inside) ? 1 : 0;
     layout_node->list_style_image = style.list_style_image;
-    layout_node->pointer_events = (style.pointer_events == clever::css::PointerEvents::None) ? 1 : 0;
+    layout_node->pointer_events = static_cast<int>(style.pointer_events);
     layout_node->user_select = static_cast<int>(style.user_select);
     layout_node->tab_size = style.tab_size;
     layout_node->filters = style.filters;
@@ -7373,6 +7555,65 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     }
     layout_node->color = color_to_argb(style.color);
     layout_node->background_color = color_to_argb(style.background_color);
+
+    if (g_transition_runtime_enabled) {
+        const std::string style_key = build_style_key_for_node(node);
+        if (!style_key.empty()) {
+            g_current_style_keys.insert(style_key);
+            g_current_layout_nodes_by_key[style_key] = layout_node.get();
+
+            if (!g_transition_animation_controller) {
+                g_transition_animation_controller = std::make_unique<AnimationController>();
+            }
+
+            auto prev_it = g_previous_styles_by_key.find(style_key);
+            if (prev_it != g_previous_styles_by_key.end() && g_transition_animation_controller) {
+                auto changed_properties = detect_changed_transition_properties(prev_it->second, style);
+                if (!changed_properties.empty()) {
+                    auto* runtime_node = get_or_create_transition_runtime_node(style_key);
+                    if (runtime_node && !g_transition_animation_controller->is_animating(runtime_node)) {
+                        for (const auto& property : changed_properties) {
+                            auto transition_def_opt = transition_def_for_property(style, property);
+                            if (!transition_def_opt.has_value()) continue;
+                            const auto& transition_def = *transition_def_opt;
+                            if (transition_def.duration_ms <= 0.0f) continue;
+
+                            if (property == "opacity") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property, prev_it->second.opacity, style.opacity, transition_def);
+                            } else if (property == "font-size") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.font_size.to_px(),
+                                    style.font_size.to_px(),
+                                    transition_def);
+                            } else if (property == "border-radius") {
+                                g_transition_animation_controller->start_transition(
+                                    runtime_node, property,
+                                    prev_it->second.border_radius,
+                                    style.border_radius,
+                                    transition_def);
+                            } else if (property == "background-color") {
+                                g_transition_animation_controller->start_color_transition(
+                                    runtime_node, property,
+                                    prev_it->second.background_color,
+                                    style.background_color,
+                                    transition_def);
+                            } else if (property == "color") {
+                                g_transition_animation_controller->start_color_transition(
+                                    runtime_node, property,
+                                    prev_it->second.color,
+                                    style.color,
+                                    transition_def);
+                            }
+                        }
+                    }
+                }
+            }
+
+            g_previous_styles_by_key[style_key] = style;
+        }
+    }
 
     // Gradient
     if (!style.gradient_stops.empty()) {
@@ -10857,7 +11098,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         target.text_decoration_color = color_to_argb(text_style.text_decoration_color);
         target.text_decoration_style = static_cast<int>(text_style.text_decoration_style);
         target.text_decoration_thickness = text_style.text_decoration_thickness;
-        target.pointer_events = (text_style.pointer_events == clever::css::PointerEvents::None) ? 1 : 0;
+        target.pointer_events = static_cast<int>(text_style.pointer_events);
         target.user_select = static_cast<int>(text_style.user_select);
         target.tab_size = text_style.tab_size;
         target.line_clamp = text_style.line_clamp;
@@ -12908,6 +13149,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 // Run preliminary layout so getBoundingClientRect/dimension properties work
                 {
                     ElementViewTree pre_view_tree;
+                    g_transition_runtime_enabled = false;
                     auto pre_root = build_layout_tree_styled(
                         *doc, root_style, resolver, pre_view_tree, nullptr, effective_base_url);
                     if (pre_root) {
@@ -13137,8 +13379,16 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         }
 
         ElementViewTree view_tree;
+        if (!g_transition_animation_controller) {
+            g_transition_animation_controller = std::make_unique<AnimationController>();
+        }
+        g_transition_runtime_enabled = true;
+        g_current_layout_nodes_by_key.clear();
+        g_current_style_keys.clear();
         auto layout_root = build_layout_tree_styled(
             *doc, root_style, resolver, view_tree, nullptr, effective_base_url);
+        g_transition_runtime_enabled = false;
+        prune_transition_runtime_state();
 
         if (!layout_root) {
             result.error = "Failed to build layout tree";
@@ -13239,6 +13489,55 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     }
                 };
             detect_overflow(*layout_root);
+        }
+
+        if (g_transition_animation_controller) {
+            auto tick_now = std::chrono::steady_clock::now();
+            double delta_ms = 0.0;
+            if (g_transition_has_last_tick) {
+                delta_ms = std::chrono::duration<double, std::milli>(
+                    tick_now - g_transition_last_tick_time).count();
+                if (!std::isfinite(delta_ms) || delta_ms < 0.0) delta_ms = 0.0;
+                if (delta_ms > 200.0) delta_ms = 200.0;
+            }
+            g_transition_last_tick_time = tick_now;
+            g_transition_has_last_tick = true;
+
+            g_transition_animation_controller->tick(delta_ms);
+            const auto& active_updates = g_transition_animation_controller->get_active_property_updates();
+            for (const auto& update : active_updates) {
+                if (!update.element) continue;
+                auto runtime_key_it = g_transition_runtime_node_to_key.find(update.element);
+                if (runtime_key_it == g_transition_runtime_node_to_key.end()) continue;
+                auto node_it = g_current_layout_nodes_by_key.find(runtime_key_it->second);
+                if (node_it == g_current_layout_nodes_by_key.end() || !node_it->second) continue;
+
+                auto* target = node_it->second;
+                if (update.has_float) {
+                    if (update.property_name == "opacity") {
+                        target->opacity = std::clamp(update.float_value, 0.0f, 1.0f);
+                    } else if (update.property_name == "font-size") {
+                        target->font_size = update.float_value;
+                    } else if (update.property_name == "border-radius") {
+                        target->border_radius = update.float_value;
+                        target->border_radius_tl = update.float_value;
+                        target->border_radius_tr = update.float_value;
+                        target->border_radius_bl = update.float_value;
+                        target->border_radius_br = update.float_value;
+                    }
+                } else if (update.has_color) {
+                    uint32_t argb = (static_cast<uint32_t>(update.color_value.a) << 24) |
+                                    (static_cast<uint32_t>(update.color_value.r) << 16) |
+                                    (static_cast<uint32_t>(update.color_value.g) << 8) |
+                                    static_cast<uint32_t>(update.color_value.b);
+                    if (update.property_name == "background-color") {
+                        target->background_color = argb;
+                    } else if (update.property_name == "color") {
+                        target->color = argb;
+                    }
+                }
+            }
+            g_transition_animation_controller->clear_updates();
         }
 
         // Step 5: Compute render height from laid out content.

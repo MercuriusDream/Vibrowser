@@ -28,7 +28,11 @@ enum class TextAlign { Left, Right, Center, Justify, WebkitCenter };
 enum class TextDecoration { None, Underline, Overline, LineThrough };
 enum class TextDecorationStyle { Solid, Dashed, Dotted, Wavy, Double };
 enum class UserSelect { Auto, None, Text, All };
-enum class PointerEvents { Auto, None };
+enum class PointerEvents {
+    Auto = 0, None = 1, VisiblePainted = 2, VisibleFill = 3,
+    VisibleStroke = 4, Visible = 5, Painted = 6, Fill = 7,
+    Stroke = 8, All = 9
+};
 enum class ListStylePosition { Outside, Inside };
 enum class TextTransform { None, Capitalize, Uppercase, Lowercase };
 enum class FontStyle { Normal, Italic, Oblique };

@@ -21,6 +21,14 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     // Skip display:none nodes entirely (no space, no painting)
     if (node.display == clever::layout::DisplayType::None) return;
 
+    // visibility:collapse fully collapses table rows/columns
+    if (node.visibility_collapse &&
+        (node.tag_name == "tr" || node.tag_name == "TR" ||
+         node.tag_name == "col" || node.tag_name == "COL" ||
+         node.tag_name == "colgroup" || node.tag_name == "COLGROUP")) {
+        return;
+    }
+
     // content-visibility: auto — skip painting if entirely off-screen
     if (node.content_visibility == 2) {
         float abs_y = offset_y + node.geometry.y;
@@ -2472,7 +2480,9 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
             db = static_cast<uint8_t>(node.text_decoration_color & 0xFF);
         }
 
-        const float thickness = 1.0f;
+        const float thickness = node.text_decoration_thickness > 0.0f
+                                    ? node.text_decoration_thickness
+                                    : 1.0f;
         const float deco_x = text_x;
         float deco_w = geom.width;
         if (deco_w <= 0) {
@@ -2483,27 +2493,32 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
             auto draw_deco_line = [&](float line_y) {
                 const int style = node.text_decoration_style;
                 if (style == 1) { // double
+                    const float line_gap = thickness + 1.0f;
                     list.fill_rect({deco_x, line_y, deco_w, thickness}, {dr, dg, db, da});
-                    list.fill_rect({deco_x, line_y + 2.0f, deco_w, thickness}, {dr, dg, db, da});
+                    list.fill_rect({deco_x, line_y + line_gap, deco_w, thickness}, {dr, dg, db, da});
                 } else if (style == 2) { // dotted
                     float x_pos = deco_x;
                     const float end_x = deco_x + deco_w;
+                    const float dot_size = thickness;
+                    const float dot_step = thickness * 3.0f;
                     while (x_pos < end_x) {
-                        list.fill_rect({x_pos, line_y, thickness, thickness}, {dr, dg, db, da});
-                        x_pos += 3.0f;
+                        list.fill_rect({x_pos, line_y, dot_size, dot_size}, {dr, dg, db, da});
+                        x_pos += dot_step;
                     }
                 } else if (style == 3) { // dashed
                     float x_pos = deco_x;
                     const float end_x = deco_x + deco_w;
+                    const float dash_base_w = thickness * 4.0f;
+                    const float dash_gap = thickness * 2.0f;
                     while (x_pos < end_x) {
-                        float dash_w = std::min(6.0f, end_x - x_pos);
+                        float dash_w = std::min(dash_base_w, end_x - x_pos);
                         list.fill_rect({x_pos, line_y, dash_w, thickness}, {dr, dg, db, da});
-                        x_pos += 9.0f;
+                        x_pos += dash_base_w + dash_gap;
                     }
                 } else if (style == 4) { // wavy
-                    constexpr float amplitude = 1.5f;
-                    constexpr float wavelength = 8.0f;
-                    constexpr float step = 1.0f;
+                    const float amplitude = 1.5f * thickness;
+                    const float wavelength = 8.0f * thickness;
+                    const float step = 1.0f;
                     float prev_x = deco_x;
                     float prev_y = line_y;
                     for (float dx = step; dx <= deco_w; dx += step) {

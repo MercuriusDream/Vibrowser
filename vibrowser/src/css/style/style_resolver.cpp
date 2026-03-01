@@ -3741,6 +3741,14 @@ void PropertyCascade::apply_declaration(
     // ---- Pointer events ----
     if (prop == "pointer-events") {
         if (value_lower == "none") style.pointer_events = PointerEvents::None;
+        else if (value_lower == "visiblepainted") style.pointer_events = PointerEvents::VisiblePainted;
+        else if (value_lower == "visiblefill") style.pointer_events = PointerEvents::VisibleFill;
+        else if (value_lower == "visiblestroke") style.pointer_events = PointerEvents::VisibleStroke;
+        else if (value_lower == "visible") style.pointer_events = PointerEvents::Visible;
+        else if (value_lower == "painted") style.pointer_events = PointerEvents::Painted;
+        else if (value_lower == "fill") style.pointer_events = PointerEvents::Fill;
+        else if (value_lower == "stroke") style.pointer_events = PointerEvents::Stroke;
+        else if (value_lower == "all") style.pointer_events = PointerEvents::All;
         else style.pointer_events = PointerEvents::Auto;
         return;
     }

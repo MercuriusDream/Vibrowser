@@ -310,7 +310,7 @@ struct LayoutNode {
     // List style position: 0=outside, 1=inside
     int list_style_position = 0;
 
-    // Pointer events: 0=auto, 1=none
+    // Pointer events: 0=auto, 1=none, 2=visible-painted, 3=visible-fill, 4=visible-stroke, 5=visible, 6=painted, 7=fill, 8=stroke, 9=all
     int pointer_events = 0;
 
     // User select: 0=auto, 1=none, 2=text, 3=all

@@ -144,4 +144,13 @@ clever::css::Color interpolate_color(const clever::css::Color& from,
 clever::css::Transform interpolate_transform(const clever::css::Transform& from,
                                               const clever::css::Transform& to, float t);
 
+// Build a transition definition from ComputedStyle scalar transition fields.
+clever::css::TransitionDef build_transition_def_from_style(
+    const clever::css::ComputedStyle& style);
+
+// Compare old vs new styles and return changed transitionable properties.
+std::vector<std::string> detect_changed_transition_properties(
+    const clever::css::ComputedStyle& old_style,
+    const clever::css::ComputedStyle& new_style);
+
 } // namespace clever::paint

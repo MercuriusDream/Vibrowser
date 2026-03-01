@@ -1,7 +1,10 @@
 #include <clever/paint/text_renderer.h>
 #include <algorithm>
+#include <cctype>
+#include <climits>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <mutex>
 
 #import <CoreFoundation/CoreFoundation.h>
@@ -10,27 +13,29 @@
 
 namespace clever::paint {
 
+namespace {
+
 // ---- Web font registry ----
-// Maps CSS font-family name to a CoreText font descriptor created from downloaded font data.
-// Key format: "family_name" or "family_name:weight:italic" for weight/style-specific variants.
+// Maps normalized CSS font-family to registered CoreGraphics fonts, preserving
+// variant metadata for weight/style matching.
 struct RegisteredWebFont {
-    CTFontDescriptorRef descriptor = nullptr;
+    CGFontRef graphics_font = nullptr;
     int weight = 0;
     bool italic = false;
 };
 
-static std::unordered_map<std::string, std::vector<RegisteredWebFont>>& registered_fonts() {
+std::unordered_map<std::string, std::vector<RegisteredWebFont>>& registered_fonts() {
     static std::unordered_map<std::string, std::vector<RegisteredWebFont>> fonts;
     return fonts;
 }
 
-static std::mutex& font_registry_mutex() {
+std::mutex& font_registry_mutex() {
     static std::mutex mtx;
     return mtx;
 }
 
 // Normalize family name for lookup (lowercase, strip quotes)
-static std::string normalize_family(const std::string& family) {
+std::string normalize_family(const std::string& family) {
     std::string result;
     result.reserve(family.size());
     for (char c : family) {
@@ -40,6 +45,8 @@ static std::string normalize_family(const std::string& family) {
     return result;
 }
 
+} // namespace
+
 TextRenderer::TextRenderer() = default;
 TextRenderer::~TextRenderer() = default;
 
@@ -48,19 +55,67 @@ bool TextRenderer::register_font(const std::string& family_name,
                                   int weight, bool italic) {
     if (family_name.empty() || font_data.empty()) return false;
 
-    CFDataRef data = CFDataCreate(nullptr, font_data.data(),
-                                   static_cast<CFIndex>(font_data.size()));
-    if (!data) return false;
-
-    CTFontDescriptorRef descriptor = CTFontManagerCreateFontDescriptorFromData(data);
-    CFRelease(data);
-
-    if (!descriptor) return false;
-
     std::string key = normalize_family(family_name);
+    {
+        std::lock_guard<std::mutex> lock(font_registry_mutex());
+        auto it = registered_fonts().find(key);
+        if (it != registered_fonts().end()) {
+            for (const auto& v : it->second) {
+                if (v.weight == weight && v.italic == italic) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    size_t byte_count = font_data.size();
+    UInt8* owned_bytes = static_cast<UInt8*>(std::malloc(byte_count));
+    if (!owned_bytes) return false;
+    std::memcpy(owned_bytes, font_data.data(), byte_count);
+
+    CFDataRef data = CFDataCreateWithBytesNoCopy(
+        kCFAllocatorDefault,
+        owned_bytes,
+        static_cast<CFIndex>(byte_count),
+        kCFAllocatorMalloc
+    );
+    if (!data) {
+        std::free(owned_bytes);
+        return false;
+    }
+
+    CGDataProviderRef provider = CGDataProviderCreateWithCFData(data);
+    CFRelease(data);
+    if (!provider) return false;
+
+    CGFontRef graphics_font = CGFontCreateWithDataProvider(provider);
+    CGDataProviderRelease(provider);
+    if (!graphics_font) return false;
+
+    CFErrorRef error = nullptr;
+    bool ok = CTFontManagerRegisterGraphicsFont(graphics_font, &error);
+    bool already_registered = false;
+    if (!ok && error) {
+        if (CFEqual(CFErrorGetDomain(error), kCTFontManagerErrorDomain) &&
+            CFErrorGetCode(error) == kCTFontManagerErrorAlreadyRegistered) {
+            already_registered = true;
+        }
+        CFRelease(error);
+    }
+    if (!ok && !already_registered) {
+        CFRelease(graphics_font);
+        return false;
+    }
 
     std::lock_guard<std::mutex> lock(font_registry_mutex());
-    registered_fonts()[key].push_back({descriptor, weight, italic});
+    auto& variants = registered_fonts()[key];
+    for (const auto& v : variants) {
+        if (v.weight == weight && v.italic == italic) {
+            CFRelease(graphics_font);
+            return true;
+        }
+    }
+    variants.push_back({graphics_font, weight, italic});
     return true;
 }
 
@@ -75,7 +130,11 @@ void TextRenderer::clear_registered_fonts() {
     std::lock_guard<std::mutex> lock(font_registry_mutex());
     for (auto& [name, variants] : registered_fonts()) {
         for (auto& v : variants) {
-            if (v.descriptor) CFRelease(v.descriptor);
+            if (!v.graphics_font) continue;
+            CFErrorRef error = nullptr;
+            CTFontManagerUnregisterGraphicsFont(v.graphics_font, &error);
+            if (error) CFRelease(error);
+            CFRelease(v.graphics_font);
         }
     }
     registered_fonts().clear();
@@ -106,9 +165,10 @@ static CTFontRef create_web_font(const std::string& family, CGFloat font_size,
     if (it == registered_fonts().end() || it->second.empty()) return nullptr;
 
     // Find the best matching variant
-    CTFontDescriptorRef best = nullptr;
+    CGFontRef best = nullptr;
     int best_score = INT_MAX;
     for (auto& v : it->second) {
+        if (!v.graphics_font) continue;
         int score = 0;
         // Weight distance (if variant has a specified weight)
         if (v.weight > 0) {
@@ -120,12 +180,20 @@ static CTFontRef create_web_font(const std::string& family, CGFloat font_size,
         }
         if (score < best_score) {
             best_score = score;
-            best = v.descriptor;
+            best = v.graphics_font;
         }
     }
-    if (!best) best = it->second[0].descriptor;
+    if (!best) {
+        for (auto& v : it->second) {
+            if (v.graphics_font) {
+                best = v.graphics_font;
+                break;
+            }
+        }
+    }
+    if (!best) return nullptr;
 
-    CTFontRef font = CTFontCreateWithFontDescriptor(best, font_size, nullptr);
+    CTFontRef font = CTFontCreateWithGraphicsFont(best, font_size, nullptr, nullptr);
     return font;
 }
 

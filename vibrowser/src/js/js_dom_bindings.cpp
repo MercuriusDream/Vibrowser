@@ -42,6 +42,8 @@ static JSClassID canvas2d_class_id = 0;
 static JSClassID url_class_id = 0;
 static JSClassID text_encoder_class_id = 0;
 static JSClassID text_decoder_class_id = 0;
+static JSClassID range_class_id = 0;
+static JSClassID selection_class_id = 0;
 
 // =========================================================================
 // Per-context state for DOM bindings
@@ -146,6 +148,21 @@ struct TextEncoderState {
 
 struct TextDecoderState {
     std::string encoding = "utf-8";
+};
+
+struct RangeState {
+    JSValue startContainer = JS_UNDEFINED;
+    int startOffset = 0;
+    JSValue endContainer = JS_UNDEFINED;
+    int endOffset = 0;
+};
+
+struct SelectionState {
+    RangeState range;
+    JSValue anchorNode = JS_NULL;
+    int anchorOffset = 0;
+    JSValue focusNode = JS_NULL;
+    int focusOffset = 0;
 };
 
 // Forward declaration for MutationObserver notification (defined later)
@@ -11656,6 +11673,48 @@ void install_dom_bindings(JSContext* ctx,
             if (tag !== 'img') return;
             var parsed = parseInt(v, 10);
             this.setAttribute('height', String(isNaN(parsed) ? 0 : parsed));
+        },
+        configurable: true
+    });
+
+    // .src (get/set string) — iframe
+    var __imgSrcDesc = Object.getOwnPropertyDescriptor(proto, 'src');
+    Object.defineProperty(proto, 'src', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'iframe') {
+                if (__imgSrcDesc && __imgSrcDesc.get) return __imgSrcDesc.get.call(this);
+                return '';
+            }
+            return this.getAttribute('src') || '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'iframe') {
+                if (__imgSrcDesc && __imgSrcDesc.set) __imgSrcDesc.set.call(this, v);
+                return;
+            }
+            this.setAttribute('src', String(v));
+        },
+        configurable: true
+    });
+
+    // .contentWindow (get) — iframe
+    Object.defineProperty(proto, 'contentWindow', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'iframe') return null;
+            return null;
+        },
+        configurable: true
+    });
+
+    // .contentDocument (get) — iframe
+    Object.defineProperty(proto, 'contentDocument', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'iframe') return null;
+            return null;
         },
         configurable: true
     });
