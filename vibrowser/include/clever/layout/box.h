@@ -140,6 +140,7 @@ struct LayoutNode {
     // Iframe element placeholder (nested browsing context not yet supported)
     bool is_iframe = false;
     std::string iframe_src;
+    std::string lazy_iframe_url = "";  // deferred src for loading="lazy"
 
     // Noscript element — always rendered (no JS engine)
     bool is_noscript = false;
@@ -265,6 +266,9 @@ struct LayoutNode {
 
     // Alt text for broken/missing images (non-empty when image failed to load)
     std::string img_alt_text;
+
+    // Deferred image URL for loading="lazy" (cleared once fetched)
+    std::string lazy_img_url = "";
 
     // Background image data (for CSS background-image: url())
     std::shared_ptr<std::vector<uint8_t>> bg_image_pixels; // RGBA, row-major

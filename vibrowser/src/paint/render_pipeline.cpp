@@ -8917,64 +8917,74 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             if (!best_url.empty()) src = best_url;
         }
         std::string img_url = resolve_url(src, base_url);
-        auto decoded = fetch_and_decode_image(img_url);
 
-        if (decoded.pixels && !decoded.pixels->empty()) {
-            // Successfully decoded — use real image data
-            layout_node->image_pixels = decoded.pixels;
-            layout_node->image_width = decoded.width;
-            layout_node->image_height = decoded.height;
-
-            // Determine display size: CSS > HTML attrs > intrinsic
-            if (layout_node->specified_width < 0 && attr_w > 0)
-                layout_node->specified_width = attr_w;
-            if (layout_node->specified_height < 0 && attr_h > 0)
-                layout_node->specified_height = attr_h;
-
-            // If only one dimension specified, compute the other from aspect ratio
-            if (decoded.height > 0 && decoded.width > 0) {
-                float aspect = static_cast<float>(decoded.width) / static_cast<float>(decoded.height);
-                if (layout_node->specified_width > 0 && layout_node->specified_height < 0) {
-                    layout_node->specified_height = layout_node->specified_width / aspect;
-                } else if (layout_node->specified_height > 0 && layout_node->specified_width < 0) {
-                    layout_node->specified_width = layout_node->specified_height * aspect;
-                } else if (layout_node->specified_width < 0 && layout_node->specified_height < 0) {
-                    layout_node->specified_width = static_cast<float>(decoded.width);
-                    layout_node->specified_height = static_cast<float>(decoded.height);
-                }
-            } else if (layout_node->specified_width < 0 && layout_node->specified_height < 0) {
-                layout_node->specified_width = static_cast<float>(decoded.width > 0 ? decoded.width : 150);
-                layout_node->specified_height = static_cast<float>(decoded.height > 0 ? decoded.height : 150);
-            }
-        } else {
-            // Fallback to placeholder — broken image indicator with alt text
+        // Handle lazy loading
+        if (layout_node->loading_lazy) {
+            layout_node->lazy_img_url = img_url;
             if (layout_node->specified_width < 0)
                 layout_node->specified_width = (attr_w > 0) ? attr_w : 150;
             if (layout_node->specified_height < 0)
                 layout_node->specified_height = (attr_h > 0) ? attr_h : 150;
+        } else {
+            auto decoded = fetch_and_decode_image(img_url);
 
-            // Light gray background with 1px border (broken image style)
-            layout_node->background_color = 0xFFF0F0F0;
-            layout_node->geometry.border = {1, 1, 1, 1};
-            layout_node->border_color = 0xFFCCCCCC;
-            layout_node->border_color_top = 0xFFCCCCCC;
-            layout_node->border_color_right = 0xFFCCCCCC;
-            layout_node->border_color_bottom = 0xFFCCCCCC;
-            layout_node->border_color_left = 0xFFCCCCCC;
-            layout_node->geometry.padding = {4, 4, 4, 4};
+            if (decoded.pixels && !decoded.pixels->empty()) {
+                // Successfully decoded — use real image data
+                layout_node->image_pixels = decoded.pixels;
+                layout_node->image_width = decoded.width;
+                layout_node->image_height = decoded.height;
 
-            std::string alt = get_attr(node, "alt");
-            // Store alt text on the node for painter to render broken image indicator
-            layout_node->img_alt_text = alt.empty() ? "[image]" : alt;
+                // Determine display size: CSS > HTML attrs > intrinsic
+                if (layout_node->specified_width < 0 && attr_w > 0)
+                    layout_node->specified_width = attr_w;
+                if (layout_node->specified_height < 0 && attr_h > 0)
+                    layout_node->specified_height = attr_h;
 
-            auto text_child = std::make_unique<clever::layout::LayoutNode>();
-            text_child->is_text = true;
-            text_child->text_content = layout_node->img_alt_text;
-            text_child->mode = clever::layout::LayoutMode::Inline;
-            text_child->display = clever::layout::DisplayType::Inline;
-            text_child->font_size = 12.0f;
-            text_child->color = 0xFF666666;
-            layout_node->append_child(std::move(text_child));
+                // If only one dimension specified, compute the other from aspect ratio
+                if (decoded.height > 0 && decoded.width > 0) {
+                    float aspect = static_cast<float>(decoded.width) / static_cast<float>(decoded.height);
+                    if (layout_node->specified_width > 0 && layout_node->specified_height < 0) {
+                        layout_node->specified_height = layout_node->specified_width / aspect;
+                    } else if (layout_node->specified_height > 0 && layout_node->specified_width < 0) {
+                        layout_node->specified_width = layout_node->specified_height * aspect;
+                    } else if (layout_node->specified_width < 0 && layout_node->specified_height < 0) {
+                        layout_node->specified_width = static_cast<float>(decoded.width);
+                        layout_node->specified_height = static_cast<float>(decoded.height);
+                    }
+                } else if (layout_node->specified_width < 0 && layout_node->specified_height < 0) {
+                    layout_node->specified_width = static_cast<float>(decoded.width > 0 ? decoded.width : 150);
+                    layout_node->specified_height = static_cast<float>(decoded.height > 0 ? decoded.height : 150);
+                }
+            } else {
+                // Fallback to placeholder — broken image indicator with alt text
+                if (layout_node->specified_width < 0)
+                    layout_node->specified_width = (attr_w > 0) ? attr_w : 150;
+                if (layout_node->specified_height < 0)
+                    layout_node->specified_height = (attr_h > 0) ? attr_h : 150;
+
+                // Light gray background with 1px border (broken image style)
+                layout_node->background_color = 0xFFF0F0F0;
+                layout_node->geometry.border = {1, 1, 1, 1};
+                layout_node->border_color = 0xFFCCCCCC;
+                layout_node->border_color_top = 0xFFCCCCCC;
+                layout_node->border_color_right = 0xFFCCCCCC;
+                layout_node->border_color_bottom = 0xFFCCCCCC;
+                layout_node->border_color_left = 0xFFCCCCCC;
+                layout_node->geometry.padding = {4, 4, 4, 4};
+
+                std::string alt = get_attr(node, "alt");
+                // Store alt text on the node for painter to render broken image indicator
+                layout_node->img_alt_text = alt.empty() ? "[image]" : alt;
+
+                auto text_child = std::make_unique<clever::layout::LayoutNode>();
+                text_child->is_text = true;
+                text_child->text_content = layout_node->img_alt_text;
+                text_child->mode = clever::layout::LayoutMode::Inline;
+                text_child->display = clever::layout::DisplayType::Inline;
+                text_child->font_size = 12.0f;
+                text_child->color = 0xFF666666;
+                layout_node->append_child(std::move(text_child));
+            }
         }
 
         layout_node->mode = clever::layout::LayoutMode::Block;
@@ -10158,6 +10168,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (layout_node->specified_height < 0) layout_node->specified_height = ih;
 
         layout_node->iframe_src = get_attr(node, "src");
+        if (layout_node->loading_lazy && !layout_node->iframe_src.empty()) {
+            layout_node->lazy_iframe_url = layout_node->iframe_src;
+            layout_node->iframe_src.clear();
+        }
 
         // Light gray background (#F0F0F0) with thin #CCC border
         layout_node->background_color = 0xFFF0F0F0;
@@ -14184,6 +14198,31 @@ std::unordered_map<std::string, std::string> prefetch_scripts_parallel(
     return results;
 }
 
+void trigger_lazy_loading_if_near_viewport(clever::layout::LayoutNode* layout_node,
+                                           float viewport_scroll_y,
+                                           float viewport_height) {
+    if (!layout_node || !layout_node->loading_lazy || layout_node->lazy_img_url.empty())
+        return;
+    (void)viewport_height;
+
+    float abs_y = layout_node->geometry.y;
+    auto* current = layout_node->parent;
+    while (current) {
+        abs_y += current->geometry.y + current->geometry.border.top + current->geometry.padding.top;
+        current = current->parent;
+    }
+
+    if ((abs_y + layout_node->geometry.border_box_height()) > (viewport_scroll_y - 200.0f)) {
+        auto decoded = fetch_and_decode_image(layout_node->lazy_img_url);
+        if (decoded.pixels && !decoded.pixels->empty()) {
+            layout_node->image_pixels = decoded.pixels;
+            layout_node->image_width = decoded.width;
+            layout_node->image_height = decoded.height;
+        }
+        layout_node->lazy_img_url.clear();
+    }
+}
+
 } // anonymous namespace
 
 RenderResult render_html(const std::string& html, int viewport_width, int viewport_height) {
@@ -15150,6 +15189,24 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     }
                 };
             detect_overflow(*layout_root);
+        }
+
+        // Trigger lazy loading for images/iframes near viewport
+        {
+            const float viewport_scroll_y = 0.0f;
+            std::function<void(clever::layout::LayoutNode&)> trigger_lazy_loads;
+            trigger_lazy_loads = [&](clever::layout::LayoutNode& node) {
+                trigger_lazy_loading_if_near_viewport(
+                    &node,
+                    viewport_scroll_y,
+                    static_cast<float>(layout_viewport_height));
+                for (auto& child : node.children) {
+                    if (child) trigger_lazy_loads(*child);
+                }
+            };
+            if (layout_root) {
+                trigger_lazy_loads(*layout_root);
+            }
         }
 
         if (g_transition_animation_controller) {

@@ -16767,6 +16767,266 @@ void install_dom_bindings(JSContext* ctx,
     }
 
     // ------------------------------------------------------------------
+    // DOMPoint / DOMPointReadOnly — 4D point for geometry APIs
+    // ------------------------------------------------------------------
+    {
+        const char* dompoint_src = R"JS(
+(function() {
+    function DOMPoint(x, y, z, w) {
+        this.x = Number(x) || 0;
+        this.y = Number(y) || 0;
+        this.z = Number(z) || 0;
+        this.w = (w !== undefined) ? Number(w) : 1;
+    }
+    DOMPoint.fromPoint = function(p) {
+        return new DOMPoint(p.x, p.y, p.z, p.w);
+    };
+    DOMPoint.prototype.matrixTransform = function(m) {
+        if (!m) return new DOMPoint(this.x, this.y, this.z, this.w);
+        return new DOMPoint(
+            m.m11 * this.x + m.m21 * this.y + m.m31 * this.z + m.m41 * this.w,
+            m.m12 * this.x + m.m22 * this.y + m.m32 * this.z + m.m42 * this.w,
+            m.m13 * this.x + m.m23 * this.y + m.m33 * this.z + m.m43 * this.w,
+            m.m14 * this.x + m.m24 * this.y + m.m34 * this.z + m.m44 * this.w
+        );
+    };
+    DOMPoint.prototype.toJSON = function() {
+        return { x: this.x, y: this.y, z: this.z, w: this.w };
+    };
+    globalThis.DOMPoint = DOMPoint;
+    globalThis.DOMPointReadOnly = DOMPoint;
+})();
+)JS";
+        JSValue dr = JS_Eval(ctx, dompoint_src, std::strlen(dompoint_src),
+                              "<dompoint-setup>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(dr)) { JSValue e = JS_GetException(ctx); JS_FreeValue(ctx, e); }
+        JS_FreeValue(ctx, dr);
+    }
+
+    // ------------------------------------------------------------------
+    // DOMMatrix / DOMMatrixReadOnly — 4x4 matrix for CSS transforms
+    // ------------------------------------------------------------------
+    {
+        const char* dommatrix_src = R"JS(
+(function() {
+    function DOMMatrix(init) {
+        this.m11 = 1; this.m12 = 0; this.m13 = 0; this.m14 = 0;
+        this.m21 = 0; this.m22 = 1; this.m23 = 0; this.m24 = 0;
+        this.m31 = 0; this.m32 = 0; this.m33 = 1; this.m34 = 0;
+        this.m41 = 0; this.m42 = 0; this.m43 = 0; this.m44 = 1;
+        this.is2D = true;
+        if (Array.isArray(init)) {
+            if (init.length === 6) {
+                this.m11 = init[0]; this.m12 = init[1];
+                this.m21 = init[2]; this.m22 = init[3];
+                this.m41 = init[4]; this.m42 = init[5];
+            } else if (init.length === 16) {
+                this.m11 = init[0]; this.m12 = init[1]; this.m13 = init[2]; this.m14 = init[3];
+                this.m21 = init[4]; this.m22 = init[5]; this.m23 = init[6]; this.m24 = init[7];
+                this.m31 = init[8]; this.m32 = init[9]; this.m33 = init[10]; this.m34 = init[11];
+                this.m41 = init[12]; this.m42 = init[13]; this.m43 = init[14]; this.m44 = init[15];
+                this.is2D = false;
+            }
+        } else if (typeof init === 'string' && init.length > 0) {
+            var m = init.match(/matrix\(([^)]+)\)/);
+            if (m) {
+                var v = m[1].split(',').map(Number);
+                if (v.length === 6) {
+                    this.m11 = v[0]; this.m12 = v[1];
+                    this.m21 = v[2]; this.m22 = v[3];
+                    this.m41 = v[4]; this.m42 = v[5];
+                }
+            }
+            var m3 = init.match(/matrix3d\(([^)]+)\)/);
+            if (m3) {
+                var v3 = m3[1].split(',').map(Number);
+                if (v3.length === 16) {
+                    this.m11=v3[0]; this.m12=v3[1]; this.m13=v3[2]; this.m14=v3[3];
+                    this.m21=v3[4]; this.m22=v3[5]; this.m23=v3[6]; this.m24=v3[7];
+                    this.m31=v3[8]; this.m32=v3[9]; this.m33=v3[10]; this.m34=v3[11];
+                    this.m41=v3[12]; this.m42=v3[13]; this.m43=v3[14]; this.m44=v3[15];
+                    this.is2D = false;
+                }
+            }
+        }
+        Object.defineProperties(this, {
+            a: { get: function() { return this.m11; }, set: function(v) { this.m11 = v; } },
+            b: { get: function() { return this.m12; }, set: function(v) { this.m12 = v; } },
+            c: { get: function() { return this.m21; }, set: function(v) { this.m21 = v; } },
+            d: { get: function() { return this.m22; }, set: function(v) { this.m22 = v; } },
+            e: { get: function() { return this.m41; }, set: function(v) { this.m41 = v; } },
+            f: { get: function() { return this.m42; }, set: function(v) { this.m42 = v; } }
+        });
+    }
+    DOMMatrix.fromMatrix = function(other) {
+        var m = new DOMMatrix();
+        if (other) {
+            m.m11=other.m11||1; m.m12=other.m12||0; m.m13=other.m13||0; m.m14=other.m14||0;
+            m.m21=other.m21||0; m.m22=other.m22||1; m.m23=other.m23||0; m.m24=other.m24||0;
+            m.m31=other.m31||0; m.m32=other.m32||0; m.m33=other.m33||1; m.m34=other.m34||0;
+            m.m41=other.m41||0; m.m42=other.m42||0; m.m43=other.m43||0; m.m44=other.m44||1;
+            m.is2D = (other.is2D !== false);
+        }
+        return m;
+    };
+    DOMMatrix.fromFloat32Array = function(arr) { return new DOMMatrix(Array.from(arr)); };
+    DOMMatrix.fromFloat64Array = function(arr) { return new DOMMatrix(Array.from(arr)); };
+    function mul(a, b) {
+        var r = new DOMMatrix();
+        r.m11 = a.m11*b.m11 + a.m12*b.m21 + a.m13*b.m31 + a.m14*b.m41;
+        r.m12 = a.m11*b.m12 + a.m12*b.m22 + a.m13*b.m32 + a.m14*b.m42;
+        r.m13 = a.m11*b.m13 + a.m12*b.m23 + a.m13*b.m33 + a.m14*b.m43;
+        r.m14 = a.m11*b.m14 + a.m12*b.m24 + a.m13*b.m34 + a.m14*b.m44;
+        r.m21 = a.m21*b.m11 + a.m22*b.m21 + a.m23*b.m31 + a.m24*b.m41;
+        r.m22 = a.m21*b.m12 + a.m22*b.m22 + a.m23*b.m32 + a.m24*b.m42;
+        r.m23 = a.m21*b.m13 + a.m22*b.m23 + a.m23*b.m33 + a.m24*b.m43;
+        r.m24 = a.m21*b.m14 + a.m22*b.m24 + a.m23*b.m34 + a.m24*b.m44;
+        r.m31 = a.m31*b.m11 + a.m32*b.m21 + a.m33*b.m31 + a.m34*b.m41;
+        r.m32 = a.m31*b.m12 + a.m32*b.m22 + a.m33*b.m32 + a.m34*b.m42;
+        r.m33 = a.m31*b.m13 + a.m32*b.m23 + a.m33*b.m33 + a.m34*b.m43;
+        r.m34 = a.m31*b.m14 + a.m32*b.m24 + a.m33*b.m34 + a.m34*b.m44;
+        r.m41 = a.m41*b.m11 + a.m42*b.m21 + a.m43*b.m31 + a.m44*b.m41;
+        r.m42 = a.m41*b.m12 + a.m42*b.m22 + a.m43*b.m32 + a.m44*b.m42;
+        r.m43 = a.m41*b.m13 + a.m42*b.m23 + a.m43*b.m33 + a.m44*b.m43;
+        r.m44 = a.m41*b.m14 + a.m42*b.m24 + a.m43*b.m34 + a.m44*b.m44;
+        r.is2D = a.is2D && b.is2D;
+        return r;
+    }
+    DOMMatrix.prototype.multiply = function(other) { return mul(this, DOMMatrix.fromMatrix(other)); };
+    DOMMatrix.prototype.multiplySelf = function(other) {
+        var r = mul(this, DOMMatrix.fromMatrix(other));
+        this.m11=r.m11; this.m12=r.m12; this.m13=r.m13; this.m14=r.m14;
+        this.m21=r.m21; this.m22=r.m22; this.m23=r.m23; this.m24=r.m24;
+        this.m31=r.m31; this.m32=r.m32; this.m33=r.m33; this.m34=r.m34;
+        this.m41=r.m41; this.m42=r.m42; this.m43=r.m43; this.m44=r.m44;
+        this.is2D = r.is2D; return this;
+    };
+    DOMMatrix.prototype.translate = function(tx, ty, tz) {
+        var t = new DOMMatrix(); t.m41 = tx||0; t.m42 = ty||0; t.m43 = tz||0;
+        if (tz) t.is2D = false;
+        return mul(this, t);
+    };
+    DOMMatrix.prototype.translateSelf = function(tx, ty, tz) {
+        var r = this.translate(tx, ty, tz);
+        this.m11=r.m11; this.m12=r.m12; this.m13=r.m13; this.m14=r.m14;
+        this.m21=r.m21; this.m22=r.m22; this.m23=r.m23; this.m24=r.m24;
+        this.m31=r.m31; this.m32=r.m32; this.m33=r.m33; this.m34=r.m34;
+        this.m41=r.m41; this.m42=r.m42; this.m43=r.m43; this.m44=r.m44;
+        return this;
+    };
+    DOMMatrix.prototype.scale = function(sx, sy, sz) {
+        if (sy === undefined) sy = sx;
+        var s = new DOMMatrix(); s.m11 = sx; s.m22 = sy; s.m33 = sz||1;
+        if (sz !== undefined && sz !== 1) s.is2D = false;
+        return mul(this, s);
+    };
+    DOMMatrix.prototype.scaleSelf = function(sx, sy, sz) {
+        var r = this.scale(sx, sy, sz);
+        this.m11=r.m11; this.m12=r.m12; this.m13=r.m13; this.m14=r.m14;
+        this.m21=r.m21; this.m22=r.m22; this.m23=r.m23; this.m24=r.m24;
+        this.m31=r.m31; this.m32=r.m32; this.m33=r.m33; this.m34=r.m34;
+        this.m41=r.m41; this.m42=r.m42; this.m43=r.m43; this.m44=r.m44;
+        return this;
+    };
+    DOMMatrix.prototype.rotate = function(rx, ry, rz) {
+        if (ry === undefined && rz === undefined) { rz = rx; rx = 0; ry = 0; }
+        var rad = (rz||0) * Math.PI / 180;
+        var c = Math.cos(rad), s = Math.sin(rad);
+        var rot = new DOMMatrix();
+        rot.m11 = c; rot.m12 = s; rot.m21 = -s; rot.m22 = c;
+        return mul(this, rot);
+    };
+    DOMMatrix.prototype.rotateSelf = function(rx, ry, rz) {
+        var r = this.rotate(rx, ry, rz);
+        this.m11=r.m11; this.m12=r.m12; this.m13=r.m13; this.m14=r.m14;
+        this.m21=r.m21; this.m22=r.m22; this.m23=r.m23; this.m24=r.m24;
+        this.m31=r.m31; this.m32=r.m32; this.m33=r.m33; this.m34=r.m34;
+        this.m41=r.m41; this.m42=r.m42; this.m43=r.m43; this.m44=r.m44;
+        return this;
+    };
+    DOMMatrix.prototype.skewX = function(sx) {
+        var sk = new DOMMatrix(); sk.m21 = Math.tan((sx||0)*Math.PI/180);
+        return mul(this, sk);
+    };
+    DOMMatrix.prototype.skewY = function(sy) {
+        var sk = new DOMMatrix(); sk.m12 = Math.tan((sy||0)*Math.PI/180);
+        return mul(this, sk);
+    };
+    DOMMatrix.prototype.inverse = function() {
+        if (this.is2D) {
+            var d = this.m11*this.m22 - this.m12*this.m21;
+            if (Math.abs(d) < 1e-10) {
+                var nan = new DOMMatrix(); nan.m11=NaN; nan.m12=NaN; nan.m21=NaN; nan.m22=NaN;
+                nan.m41=NaN; nan.m42=NaN; return nan;
+            }
+            var inv = new DOMMatrix();
+            inv.m11 = this.m22/d; inv.m12 = -this.m12/d;
+            inv.m21 = -this.m21/d; inv.m22 = this.m11/d;
+            inv.m41 = (this.m21*this.m42 - this.m22*this.m41)/d;
+            inv.m42 = (this.m12*this.m41 - this.m11*this.m42)/d;
+            return inv;
+        }
+        return new DOMMatrix();
+    };
+    DOMMatrix.prototype.invertSelf = function() {
+        var inv = this.inverse();
+        this.m11=inv.m11; this.m12=inv.m12; this.m13=inv.m13; this.m14=inv.m14;
+        this.m21=inv.m21; this.m22=inv.m22; this.m23=inv.m23; this.m24=inv.m24;
+        this.m31=inv.m31; this.m32=inv.m32; this.m33=inv.m33; this.m34=inv.m34;
+        this.m41=inv.m41; this.m42=inv.m42; this.m43=inv.m43; this.m44=inv.m44;
+        return this;
+    };
+    DOMMatrix.prototype.transformPoint = function(p) {
+        p = p || {};
+        var x=p.x||0, y=p.y||0, z=p.z||0, w=(p.w!==undefined)?p.w:1;
+        return new (globalThis.DOMPoint)(
+            this.m11*x + this.m21*y + this.m31*z + this.m41*w,
+            this.m12*x + this.m22*y + this.m32*z + this.m42*w,
+            this.m13*x + this.m23*y + this.m33*z + this.m43*w,
+            this.m14*x + this.m24*y + this.m34*z + this.m44*w
+        );
+    };
+    DOMMatrix.prototype.toFloat32Array = function() {
+        return new Float32Array([this.m11,this.m12,this.m13,this.m14,this.m21,this.m22,this.m23,this.m24,
+                                 this.m31,this.m32,this.m33,this.m34,this.m41,this.m42,this.m43,this.m44]);
+    };
+    DOMMatrix.prototype.toFloat64Array = function() {
+        return new Float64Array([this.m11,this.m12,this.m13,this.m14,this.m21,this.m22,this.m23,this.m24,
+                                 this.m31,this.m32,this.m33,this.m34,this.m41,this.m42,this.m43,this.m44]);
+    };
+    DOMMatrix.prototype.toJSON = function() {
+        return { m11:this.m11, m12:this.m12, m13:this.m13, m14:this.m14,
+                 m21:this.m21, m22:this.m22, m23:this.m23, m24:this.m24,
+                 m31:this.m31, m32:this.m32, m33:this.m33, m34:this.m34,
+                 m41:this.m41, m42:this.m42, m43:this.m43, m44:this.m44,
+                 is2D:this.is2D, isIdentity:this.isIdentity };
+    };
+    Object.defineProperty(DOMMatrix.prototype, 'isIdentity', {
+        get: function() {
+            return this.m11===1 && this.m12===0 && this.m13===0 && this.m14===0 &&
+                   this.m21===0 && this.m22===1 && this.m23===0 && this.m24===0 &&
+                   this.m31===0 && this.m32===0 && this.m33===1 && this.m34===0 &&
+                   this.m41===0 && this.m42===0 && this.m43===0 && this.m44===1;
+        }
+    });
+    DOMMatrix.prototype.toString = function() {
+        if (this.is2D) return 'matrix(' + this.m11+', '+this.m12+', '+this.m21+', '+this.m22+', '+this.m41+', '+this.m42+')';
+        return 'matrix3d(' + [this.m11,this.m12,this.m13,this.m14,this.m21,this.m22,this.m23,this.m24,
+                              this.m31,this.m32,this.m33,this.m34,this.m41,this.m42,this.m43,this.m44].join(', ') + ')';
+    };
+    globalThis.DOMMatrix = DOMMatrix;
+    globalThis.DOMMatrixReadOnly = DOMMatrix;
+    globalThis.WebKitCSSMatrix = DOMMatrix;
+    globalThis.CSSMatrix = DOMMatrix;
+})();
+)JS";
+        JSValue dm = JS_Eval(ctx, dommatrix_src, std::strlen(dommatrix_src),
+                              "<dommatrix-setup>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(dm)) { JSValue e = JS_GetException(ctx); JS_FreeValue(ctx, e); }
+        JS_FreeValue(ctx, dm);
+    }
+
+    // ------------------------------------------------------------------
     // Window geometry defaults (do not override values already provided by
     // install_window_bindings for the active viewport).
     // ------------------------------------------------------------------
@@ -16894,26 +17154,92 @@ void install_dom_bindings(JSContext* ctx,
     }
 
     // ------------------------------------------------------------------
-    // performance object (basic stub)
+    // performance object — functional marks/measures implementation
     // ------------------------------------------------------------------
     {
         JSValue perf = JS_NewObject(ctx);
-        // performance.now() — high-resolution timer
         const char* perf_now_src = R"JS(
 (function() {
     var start = Date.now();
+    var _marks = [];
+    var _measures = [];
     globalThis.performance.now = function() { return Date.now() - start; };
     globalThis.performance.timeOrigin = start;
     globalThis.performance.toJSON = function() {
         return { timeOrigin: this.timeOrigin };
     };
-    globalThis.performance.getEntries = function() { return []; };
-    globalThis.performance.getEntriesByName = function() { return []; };
-    globalThis.performance.getEntriesByType = function() { return []; };
-    globalThis.performance.mark = function() {};
-    globalThis.performance.measure = function() {};
-    globalThis.performance.clearMarks = function() {};
-    globalThis.performance.clearMeasures = function() {};
+    globalThis.performance.mark = function(name, options) {
+        var entry = {
+            name: name,
+            entryType: 'mark',
+            startTime: (options && typeof options.startTime === 'number') ? options.startTime : performance.now(),
+            duration: 0
+        };
+        if (options && options.detail !== undefined) entry.detail = options.detail;
+        entry.toJSON = function() { return { name: this.name, entryType: this.entryType, startTime: this.startTime, duration: this.duration }; };
+        _marks.push(entry);
+        return entry;
+    };
+    globalThis.performance.measure = function(name, startOrOptions, endMark) {
+        var startTime = 0, endTime = performance.now(), detail;
+        if (typeof startOrOptions === 'string') {
+            for (var i = _marks.length - 1; i >= 0; i--) {
+                if (_marks[i].name === startOrOptions) { startTime = _marks[i].startTime; break; }
+            }
+            if (typeof endMark === 'string') {
+                for (var j = _marks.length - 1; j >= 0; j--) {
+                    if (_marks[j].name === endMark) { endTime = _marks[j].startTime; break; }
+                }
+            }
+        } else if (startOrOptions && typeof startOrOptions === 'object') {
+            if (typeof startOrOptions.start === 'number') startTime = startOrOptions.start;
+            else if (typeof startOrOptions.start === 'string') {
+                for (var k = _marks.length - 1; k >= 0; k--) {
+                    if (_marks[k].name === startOrOptions.start) { startTime = _marks[k].startTime; break; }
+                }
+            }
+            if (typeof startOrOptions.end === 'number') endTime = startOrOptions.end;
+            else if (typeof startOrOptions.end === 'string') {
+                for (var l = _marks.length - 1; l >= 0; l--) {
+                    if (_marks[l].name === startOrOptions.end) { endTime = _marks[l].startTime; break; }
+                }
+            }
+            if (typeof startOrOptions.duration === 'number') endTime = startTime + startOrOptions.duration;
+            detail = startOrOptions.detail;
+        }
+        var entry = {
+            name: name,
+            entryType: 'measure',
+            startTime: startTime,
+            duration: endTime - startTime
+        };
+        if (detail !== undefined) entry.detail = detail;
+        entry.toJSON = function() { return { name: this.name, entryType: this.entryType, startTime: this.startTime, duration: this.duration }; };
+        _measures.push(entry);
+        return entry;
+    };
+    globalThis.performance.getEntries = function() {
+        return _marks.concat(_measures).sort(function(a, b) { return a.startTime - b.startTime; });
+    };
+    globalThis.performance.getEntriesByName = function(name, type) {
+        var all = _marks.concat(_measures);
+        return all.filter(function(e) { return e.name === name && (!type || e.entryType === type); });
+    };
+    globalThis.performance.getEntriesByType = function(type) {
+        if (type === 'mark') return _marks.slice();
+        if (type === 'measure') return _measures.slice();
+        return _marks.concat(_measures).filter(function(e) { return e.entryType === type; });
+    };
+    globalThis.performance.clearMarks = function(name) {
+        if (name) _marks = _marks.filter(function(e) { return e.name !== name; });
+        else _marks = [];
+    };
+    globalThis.performance.clearMeasures = function(name) {
+        if (name) _measures = _measures.filter(function(e) { return e.name !== name; });
+        else _measures = [];
+    };
+    globalThis.performance.clearResourceTimings = function() {};
+    globalThis.performance.setResourceTimingBufferSize = function() {};
     globalThis.performance.timing = {};
     globalThis.performance.navigation = { type: 0, redirectCount: 0 };
 })();
