@@ -764,6 +764,77 @@ std::string Tokenizer::try_consume_entity() {
         {"Yfr", "\xF0\x9D\x94\x9C"},  // U+1D51C Fraktur Y
         {"zfr", "\xF0\x9D\x94\xB7"},  // U+1D537 Fraktur z
         {"Zfr", "\xE2\x84\x98"},      // U+2128 Fraktur Z
+
+        // === ASCII Punctuation and Symbols (U+0021-U+007E) ===
+        {"excl", "!"},                // U+0021 exclamation mark
+        {"num", "#"},                 // U+0023 number sign
+        {"dollar", "$"},              // U+0024 dollar sign
+        {"percnt", "%"},              // U+0025 percent sign
+        {"lpar", "("},                // U+0028 left parenthesis
+        {"rpar", ")"},                // U+0029 right parenthesis
+        {"ast", "*"},                 // U+002A asterisk
+        {"plus", "+"},                // U+002B plus sign
+        {"comma", ","},               // U+002C comma
+        {"period", "."},              // U+002E full stop
+        {"sol", "/"},                 // U+002F solidus (forward slash)
+        {"colon", ":"},               // U+003A colon
+        {"semi", ";"},                // U+003B semicolon
+        {"quest", "?"},               // U+003F question mark
+        {"commat", "@"},              // U+0040 commercial at sign
+        {"lsqb", "["},                // U+005B left square bracket
+        {"rsqb", "]"},                // U+005D right square bracket
+        {"lcub", "{"},                // U+007B left curly bracket
+        {"rcub", "}"},                // U+007D right curly bracket
+        {"verbar", "|"},              // U+007C vertical bar
+
+        // === Symbol Aliases ===
+        {"VerticalBar", "|"},         // U+007C vertical bar (alias)
+        {"thinspace", "\xE2\x80\x89"}, // U+2009 thin space (alias for thinsp)
+        {"enspace", "\xE2\x80\x82"},  // U+2002 en space (alias for ensp)
+        {"emspace", "\xE2\x80\x83"},  // U+2003 em space (alias for emsp)
+        {"NoBreakSpace", "\xC2\xA0"}, // U+00A0 non-breaking space (alias for nbsp)
+        {"NBSP", "\xC2\xA0"},         // U+00A0 non-breaking space (uppercase alias)
+
+        // === Additional Temperature Symbols ===
+        {"celsius", "\xE2\x84\x83"},  // U+2103 degree Celsius
+        {"fahrenheit", "\xE2\x84\x89"}, // U+2109 degree Fahrenheit
+
+        // === Additional Greek Letters and Variants ===
+        {"digamma", "\xCF\x9C"},      // U+03DC Greek letter digamma
+        {"koppa", "\xCF\x9A"},        // U+03DA Greek letter koppa
+
+        // === Additional Arrows ===
+        {"swarrow", "\xE2\x86\x99"},  // U+2199 southwest arrow
+        {"nwarrow", "\xE2\x86\x96"},  // U+2196 northwest arrow
+        {"searrow", "\xE2\x86\x98"},  // U+2198 southeast arrow
+        {"nearrow", "\xE2\x86\x97"},  // U+2197 northeast arrow
+
+        // === Additional Bracket and Delimiter Symbols ===
+        {"lbrace", "{"},              // U+007B left curly bracket (alias for lcub)
+        {"rbrace", "}"},              // U+007D right curly bracket (alias for rcub)
+        {"DoubleLeftArrow", "\xE2\x87\x90"}, // U+21D0 leftwards double arrow (alias for lArr)
+        {"DoubleRightArrow", "\xE2\x87\x92"}, // U+21D2 rightwards double arrow (alias for rArr)
+        {"DoubleUpArrow", "\xE2\x87\x91"},    // U+21D1 upwards double arrow (alias for uArr)
+        {"DoubleDownArrow", "\xE2\x87\x93"},  // U+21D3 downwards double arrow (alias for dArr)
+
+        // === Additional Logical and Relational Operators ===
+        {"equivalent", "\xE2\x89\xA1"}, // U+2261 identical to (alias for equiv)
+        {"implies", "\xE2\x87\x92"},    // U+21D2 rightwards double arrow (alias for rArr)
+        {"notequal", "\xE2\x89\xA0"},   // U+2260 not equal to (alias for ne)
+        {"approximately", "\xE2\x89\x88"}, // U+2248 almost equal to (alias for asymp)
+
+        // === Additional Diacritical Marks ===
+        {"caron", "\xCB\x87"},        // U+02C7 caron
+        {"breve", "\xCB\x98"},        // U+02D8 breve
+        {"overline", "\xE2\x80\xBE"},  // U+203E overline
+        {"dot", "\xCB\x99"},          // U+02D9 dot above
+
+        // === Additional Typography Aliases ===
+        {"pilcrow", "\xC2\xB6"},       // U+00B6 pilcrow (alias for para)
+        {"section", "\xC2\xA7"},       // U+00A7 section sign (alias for sect)
+        {"doubledagger", "\xE2\x80\xA1"}, // U+2021 double dagger (alias for Dagger)
+        {"bullet", "\xE2\x80\xA2"},    // U+2022 bullet (alias for bull)
+        {"ellipsis", "\xE2\x80\xA6"},  // U+2026 horizontal ellipsis (alias for hellip)
     };
 
     auto it = entities.find(lookup);
