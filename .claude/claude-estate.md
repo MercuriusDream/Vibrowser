@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1975 — R40-R42 complete. CSS @layer, loading=lazy, DOMMatrix/DOMPoint, Performance API, matchMedia, History API, scroll-behavior, @font-face, accent-color, Canvas getTransform, CSS.registerProperty, userAgentData.
-**Momentum**: Cycle 1975 — 70+ commits pushed. 14/14 tests passing. 17/19 priority gaps DONE.
-**Cycle**: 1975
+**Current Focus**: Cycle 1976 — R43-R45 complete. Container queries, color-mix, form validation, table layout, z-index stacking, position sticky, overflow clipping, writing-mode, Intl APIs, Scheduler API, Navigation API, HTML file open support.
+**Momentum**: Cycle 1976 — 80+ commits pushed. 14/14 tests passing. All major layout and JS API gaps closing.
+**Cycle**: 1976
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
@@ -1572,6 +1572,32 @@ Generated: 2026-03-01
 *Claude Estate — no end condition. Only more work.*
 
 ## Session Log
+
+### Cycle 1976 (R43-R45 Feature Implementation) — 2026-03-02
+
+- **Theme**: Container queries, form validation, table layout, z-index, sticky, overflow, writing-mode, Intl APIs, Scheduler/Navigation APIs, HTML file open
+- **Commits**: f917df1, 60399d2, fe6cf94, 05ac8e2, fe74775, 833d251, 20c2d6f, 23b0f60, 70a7bae
+- **Features Implemented**:
+  - Container query units (cqw/cqh/cqi/cqb/cqmin/cqmax) with Length factory methods and viewport fallback
+  - Container query aspect-ratio and orientation condition evaluation
+  - CSS color-mix() with oklch, oklab, lab, hsl color space interpolation
+  - element.replaceChildren() DOM API
+  - navigator.userAgentData (User-Agent Client Hints)
+  - CSS.registerProperty() with initialValue support
+  - Intl.ListFormat — conjunction/disjunction with long/short/narrow styles
+  - Intl.RelativeTimeFormat — "3 days ago", "tomorrow" with numeric/auto modes
+  - Intl.DisplayNames — language, region, currency, script lookups
+  - Intl.Segmenter — grapheme/word/sentence text segmentation
+  - HTML Form Validation API — checkValidity, ValidityState, setCustomValidity, willValidate
+  - Comprehensive table layout — column width distribution, colspan, border-collapse, vertical alignment, captions
+  - CSS position: sticky — improved clamping, constraint caching, stacking context
+  - CSS overflow clipping — recursive descendant bounds, text-overflow for scroll/auto
+  - CSS writing-mode — sideways-rl/lr parsing, dimension swapping for vertical flow
+  - Scheduler API — postTask() with priority/delay, yield() via microtask
+  - Navigation API stubs — navigate, back, forward, currentEntry, entries
+  - HTML file open support — Info.plist document types, application:openFile: delegate
+- **Build Fixes**: Container query optional<Length>, form validation forward declarations, browser_window.mm block capture
+- **Validation**: 14/14 suites pass, 0 failures
 
 ### Cycle 1974 (R40-R41 Feature Implementation) — 2026-03-02
 

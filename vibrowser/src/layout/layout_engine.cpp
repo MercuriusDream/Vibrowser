@@ -1931,7 +1931,6 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                     commit_line();
                     lc = 0;
                     words_on_line = 0;
-                    if (r.is_space) continue;
                 }
                 lc += r.width;
                 if (!r.is_space) words_on_line++;
@@ -2430,7 +2429,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                             }
                         }
                         TextWrapMetrics candidate_metrics = compute_text_wrap_metrics_at_width(hi);
-                        if (candidate_metrics.line_count <= greedy_lines &&
+                        if (candidate_metrics.line_count == greedy_lines &&
                             hi < containing_width &&
                             (candidate_metrics.last_line_word_count > greedy_metrics.last_line_word_count ||
                              candidate_metrics.last_line_width > greedy_metrics.last_line_width + 0.5f)) {
