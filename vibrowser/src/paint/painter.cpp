@@ -3253,8 +3253,8 @@ void Painter::paint_outline(const clever::layout::LayoutNode& node, DisplayList&
 
     // Helper to draw a dashed edge
     auto draw_dashed_edge = [&](float ex, float ey, float ew, float eh, bool horizontal) {
-        float dash_len = std::max(ow * 3.0f, 1.0f);
-        float gap_len = std::max(ow * 2.0f, 1.0f);
+        float dash_len = std::max(ow * 2.5f, 1.0f);
+        float gap_len = std::max(ow * 1.5f, 1.0f);
         float pos = 0;
         float total = horizontal ? ew : eh;
         while (pos < total) {
@@ -3269,8 +3269,8 @@ void Painter::paint_outline(const clever::layout::LayoutNode& node, DisplayList&
 
     // Helper to draw a dotted edge
     auto draw_dotted_edge = [&](float ex, float ey, float ew, float eh, bool horizontal) {
-        float dot = std::max(ow, 1.0f);
-        float gap = std::max(ow, 1.0f);
+        float dot = std::max(ow * 1.2f, 1.0f);
+        float gap = std::max(ow * 0.8f, 1.0f);
         float pos = 0;
         float total = horizontal ? ew : eh;
         while (pos < total) {
@@ -3319,9 +3319,9 @@ void Painter::paint_outline(const clever::layout::LayoutNode& node, DisplayList&
         list.fill_rect({iox, ioy + band, band, ioh - 2.0f * band}, color); // left
         list.fill_rect({iox + iow - band, ioy + band, band, ioh - 2.0f * band}, color); // right
     } else if (node.outline_style == 5 || node.outline_style == 6) {
-        // Groove (5) or Ridge (6) — 3D effect with dark/light halves
-        // Groove: outer half darker, inner half lighter
-        // Ridge: outer half lighter, inner half darker
+        // Groove (5) or Ridge (6) — 3D effect simulating beveled edges
+        // Groove: appears recessed (top/left darker, bottom/right lighter)
+        // Ridge: appears raised (top/left lighter, bottom/right darker)
         float half = ow / 2.0f;
         float inner_half = ow - half;
         uint8_t dark_r = static_cast<uint8_t>(r * 0.4f);
@@ -3333,24 +3333,27 @@ void Painter::paint_outline(const clever::layout::LayoutNode& node, DisplayList&
         Color dark = {dark_r, dark_g, dark_b, a};
         Color light = {light_r, light_g, light_b, a};
 
-        Color outer_color = (node.outline_style == 5) ? dark : light;  // groove=dark outer
-        Color inner_color = (node.outline_style == 5) ? light : dark;  // groove=light inner
+        // For groove: darker edges create inset appearance; for ridge: lighter edges create raised appearance
+        Color tl_outer = (node.outline_style == 5) ? dark : light;   // top/left outer (groove=dark, ridge=light)
+        Color br_outer = (node.outline_style == 5) ? light : dark;   // bottom/right outer (groove=light, ridge=dark)
+        Color tl_inner = (node.outline_style == 5) ? light : dark;   // top/left inner (groove=light, ridge=dark)
+        Color br_inner = (node.outline_style == 5) ? dark : light;   // bottom/right inner (groove=dark, ridge=light)
 
-        // Outer half
-        list.fill_rect({ox, oy, outer_w, half}, outer_color);                  // top
-        list.fill_rect({ox, oy + outer_h - half, outer_w, half}, inner_color);  // bottom
-        list.fill_rect({ox, oy + half, half, outer_h - 2.0f * half}, outer_color);       // left
-        list.fill_rect({ox + outer_w - half, oy + half, half, outer_h - 2.0f * half}, inner_color); // right
+        // Outer half: creates outer beveled edge
+        list.fill_rect({ox, oy, outer_w, half}, tl_outer);                  // top
+        list.fill_rect({ox, oy + outer_h - half, outer_w, half}, br_outer); // bottom
+        list.fill_rect({ox, oy + half, half, outer_h - 2.0f * half}, tl_outer);       // left
+        list.fill_rect({ox + outer_w - half, oy + half, half, outer_h - 2.0f * half}, br_outer); // right
 
-        // Inner half
+        // Inner half: creates inner beveled edge
         float iox = ix - inner_half;
         float ioy = iy - inner_half;
         float iow = inner_w + 2.0f * inner_half;
         float ioh = inner_h + 2.0f * inner_half;
-        list.fill_rect({iox, ioy, iow, inner_half}, inner_color);  // top
-        list.fill_rect({iox, ioy + ioh - inner_half, iow, inner_half}, outer_color); // bottom
-        list.fill_rect({iox, ioy + inner_half, inner_half, ioh - 2.0f * inner_half}, inner_color);          // left
-        list.fill_rect({iox + iow - inner_half, ioy + inner_half, inner_half, ioh - 2.0f * inner_half}, outer_color);       // right
+        list.fill_rect({iox, ioy, iow, inner_half}, tl_inner);  // top
+        list.fill_rect({iox, ioy + ioh - inner_half, iow, inner_half}, br_inner); // bottom
+        list.fill_rect({iox, ioy + inner_half, inner_half, ioh - 2.0f * inner_half}, tl_inner);          // left
+        list.fill_rect({iox + iow - inner_half, ioy + inner_half, inner_half, ioh - 2.0f * inner_half}, br_inner);       // right
     } else if (node.outline_style == 7 || node.outline_style == 8) {
         // Inset (7) or Outset (8) — uniform 3D-like effect
         uint8_t dark_r = static_cast<uint8_t>(r * 0.5f);
