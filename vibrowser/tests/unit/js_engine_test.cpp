@@ -3420,6 +3420,36 @@ TEST(JSDom, DispatchEventPreventDefault) {
 }
 
 // ============================================================================
+// Default action: click on reset control dispatches form reset event
+// ============================================================================
+TEST(JSDom, ResetButtonClickDispatchesResetEvent) {
+    auto doc = clever::html::parse(R"(
+        <html><body>
+            <form id="f">
+                <input name="q" value="hello">
+                <button id="r" type="reset">Reset</button>
+            </form>
+        </body></html>
+    )");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto result = engine.evaluate(R"(
+        var f = document.getElementById('f');
+        var r = document.getElementById('r');
+        var seen = 0;
+        f.addEventListener('reset', function() { seen++; });
+        r.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
+        seen === 1
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
 // classList.add with multiple arguments
 // ============================================================================
 TEST(JSDom, ClassListAddMultiple) {

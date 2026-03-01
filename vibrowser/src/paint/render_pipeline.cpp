@@ -4476,7 +4476,21 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                     else if (fn == "invert") { type = 5; try { fval = std::stof(arg); } catch (...) { fval = 1; } }
                     else if (fn == "saturate") { type = 6; try { fval = std::stof(arg); } catch (...) { fval = 1; } }
                     else if (fn == "opacity") { type = 7; try { fval = std::stof(arg); } catch (...) { fval = 1; } }
-                    else if (fn == "hue-rotate") { type = 8; try { fval = std::stof(arg); } catch (...) { fval = 0; } }
+                    else if (fn == "hue-rotate") {
+                        type = 8;
+                        try {
+                            auto arg_lower = to_lower(arg);
+                            if (arg_lower.size() >= 4 && arg_lower.substr(arg_lower.size() - 4) == "turn") {
+                                fval = std::stof(trim(arg_lower.substr(0, arg_lower.size() - 4))) * 360.0f;
+                            } else if (arg_lower.size() >= 3 && arg_lower.substr(arg_lower.size() - 3) == "rad") {
+                                fval = std::stof(trim(arg_lower.substr(0, arg_lower.size() - 3))) * (180.0f / 3.14159265f);
+                            } else if (arg_lower.size() >= 3 && arg_lower.substr(arg_lower.size() - 3) == "deg") {
+                                fval = std::stof(trim(arg_lower.substr(0, arg_lower.size() - 3)));
+                            } else {
+                                fval = std::stof(trim(arg_lower));
+                            }
+                        } catch (...) { fval = 0; }
+                    }
                     else if (fn == "blur") {
                         type = 9;
                         auto l = clever::css::parse_length(arg);

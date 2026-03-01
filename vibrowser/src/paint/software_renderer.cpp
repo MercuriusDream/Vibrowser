@@ -1999,8 +1999,7 @@ void SoftwareRenderer::apply_backdrop_filter_to_region(const Rect& bounds, int f
     //   1. Save a snapshot of the current backdrop pixels in the region
     //   2. Apply the filter (blur, grayscale, etc.) to those pixels in-place
     //   3. The element then paints on top in subsequent commands
-    //
-    // Step 1: Save backdrop snapshot (for potential future compositing needs)
+
     int x0 = std::max(0, static_cast<int>(bounds.x));
     int y0 = std::max(0, static_cast<int>(bounds.y));
     int x1 = std::min(width_, static_cast<int>(bounds.x + bounds.width));
@@ -2009,17 +2008,7 @@ void SoftwareRenderer::apply_backdrop_filter_to_region(const Rect& bounds, int f
     int rh = y1 - y0;
     if (rw <= 0 || rh <= 0) return;
 
-    // Save backdrop pixels before filtering (snapshot for compositing)
-    std::vector<uint8_t> backdrop_snapshot(rw * rh * 4);
-    for (int py = y0; py < y1; py++) {
-        int src_offset = (py * width_ + x0) * 4;
-        int dst_offset = ((py - y0) * rw) * 4;
-        std::copy(pixels_.begin() + src_offset,
-                  pixels_.begin() + src_offset + rw * 4,
-                  backdrop_snapshot.begin() + dst_offset);
-    }
-
-    // Step 2: Apply the filter to the backdrop region in-place
+    // Apply the filter to the backdrop region in-place
     apply_filter_to_region(bounds, filter_type, filter_value);
 
     // Step 3: The element paints on top in subsequent display list commands

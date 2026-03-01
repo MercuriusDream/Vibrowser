@@ -98,3 +98,18 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cors_policy_test.cpp")
     target_link_libraries(vibrowser_js_cors_tests PRIVATE vibrowser_js GTest::gtest_main)
     add_test(NAME js_cors_tests COMMAND vibrowser_js_cors_tests)
 endif()
+
+# Audit reconciliation matrix tooling test (Milestone M0 gate)
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/tools/audit_matrix.py")
+    add_test(
+        NAME audit_matrix_tool_tests
+        COMMAND ${Python3_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/tools/audit_matrix.py
+                --audit ${PROJECT_SOURCE_DIR}/AUDIT_FULL.md
+                --repo-root ${PROJECT_SOURCE_DIR}
+                --json-out ${CMAKE_CURRENT_BINARY_DIR}/audit-matrix.json
+                --md-out ${CMAKE_CURRENT_BINARY_DIR}/audit-matrix.md
+                --verify
+    )
+endif()

@@ -337,6 +337,12 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
             }
         }
 
+        // Apply clip-path clipping before painting shadows/background
+        if (node.clip_path_type != 0) {
+            Rect clip_bounds = {abs_x, abs_y, geom.border_box_width(), geom.border_box_height()};
+            list.apply_clip_path(clip_bounds, node.clip_path_type, node.clip_path_values);
+        }
+
         // Paint outer box shadows before background (render in reverse: last shadow first)
         if (!node.box_shadows.empty()) {
             for (int si = static_cast<int>(node.box_shadows.size()) - 1; si >= 0; --si) {
@@ -666,7 +672,28 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
                 }
             }
 
+            bool clip_image = false;
+            if (node.object_fit == 2) {
+                clip_image = true;
+            } else if ((node.object_fit == 3 || node.object_fit == 4) &&
+                       (dest.width > geom.width || dest.height > geom.height)) {
+                clip_image = true;
+            }
+
+            if (clip_image) {
+                list.push_clip({
+                    abs_x + geom.border.left + geom.padding.left,
+                    abs_y + geom.border.top + geom.padding.top,
+                    geom.width,
+                    geom.height
+                });
+            }
+
             list.draw_image(dest, std::move(img), node.image_rendering);
+
+            if (clip_image) {
+                list.pop_clip();
+            }
         }
 
         // Paint broken image indicator when img has no image data but has alt text
@@ -1466,6 +1493,11 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     // Paint overflow scroll indicators after children (on top of content)
     if (node.overflow >= 2 && (node.overflow_indicator_bottom || node.overflow_indicator_right)) {
         paint_overflow_indicator(node, list, abs_x, abs_y);
+    }
+
+    // Paint scrollbars for scroll containers (overlaid on top of content)
+    if (node.is_scroll_container && node.overflow >= 2) {
+        paint_scrollbar(node, list, abs_x, abs_y);
     }
 
     if (clipping) {
@@ -4971,6 +5003,108 @@ void Painter::paint_overflow_indicator(const clever::layout::LayoutNode& node, D
         float thumb_radius = sb_width * 0.3f;
         list.fill_rounded_rect({thumb_x, sb_y + 2.0f, thumb_w, sb_width - 4.0f},
                                thumb_color, thumb_radius);
+    }
+}
+
+void Painter::paint_scrollbar(const clever::layout::LayoutNode& node, DisplayList& list,
+                              float abs_x, float abs_y) {
+    if (!node.is_scroll_container || node.overflow < 2) return;
+    if (node.scrollbar_width == 2) return; // scrollbar-width: none
+
+    const auto& geom = node.geometry;
+
+    // Determine scrollbar colors (CSS scrollbar-color)
+    Color thumb_color = {0x88, 0x88, 0x88, 0xCC}; // default gray thumb, semi-transparent
+    Color track_color = {0xEE, 0xEE, 0xEE, 0xFF}; // default light track, opaque
+    if (node.scrollbar_thumb_color != 0) {
+        uint32_t tc = node.scrollbar_thumb_color;
+        thumb_color = {
+            static_cast<uint8_t>((tc >> 16) & 0xFF),
+            static_cast<uint8_t>((tc >> 8) & 0xFF),
+            static_cast<uint8_t>(tc & 0xFF),
+            static_cast<uint8_t>((tc >> 24) & 0xFF)
+        };
+    }
+    if (node.scrollbar_track_color != 0) {
+        uint32_t tc = node.scrollbar_track_color;
+        track_color = {
+            static_cast<uint8_t>((tc >> 16) & 0xFF),
+            static_cast<uint8_t>((tc >> 8) & 0xFF),
+            static_cast<uint8_t>(tc & 0xFF),
+            static_cast<uint8_t>((tc >> 24) & 0xFF)
+        };
+    }
+
+    // Scrollbar dimensions: 0=auto (12px), 1=thin (8px), 2=none (no scrollbar)
+    float sb_width = 12.0f;
+    if (node.scrollbar_width == 1) sb_width = 8.0f;
+
+    float content_x = abs_x + geom.border.left;
+    float content_y = abs_y + geom.border.top;
+    float box_w = geom.width + geom.padding.left + geom.padding.right;
+    float box_h = geom.height + geom.padding.top + geom.padding.bottom;
+
+    // Vertical scrollbar (right edge)
+    bool has_v_scrollbar = false;
+    float viewport_h = geom.height;
+    float content_h = node.scroll_content_height;
+    if (content_h > viewport_h && content_h > 0) {
+        has_v_scrollbar = true;
+        float sb_x = content_x + box_w - sb_width;
+        float sb_y = content_y;
+        float sb_h = box_h;
+
+        // Track
+        list.fill_rect({sb_x, sb_y, sb_width, sb_h}, track_color);
+
+        // Thumb height proportional to viewport/content ratio
+        float ratio = viewport_h / content_h;
+        float thumb_h = std::max(20.0f, (sb_h - 4.0f) * ratio);
+        // Thumb position based on scroll_top
+        float max_scroll = content_h - viewport_h;
+        float scroll_frac = (max_scroll > 0) ? (node.scroll_top / max_scroll) : 0.0f;
+        float track_range = sb_h - 4.0f - thumb_h;
+        float thumb_y = sb_y + 2.0f + scroll_frac * track_range;
+
+        // Thumb with rounded corners
+        float thumb_radius = sb_width * 0.3f;
+        list.fill_rounded_rect({sb_x + 2.0f, thumb_y, sb_width - 4.0f, thumb_h},
+                               thumb_color, thumb_radius);
+    }
+
+    // Horizontal scrollbar (bottom edge)
+    bool has_h_scrollbar = false;
+    float viewport_w = geom.width;
+    float content_w = node.scroll_content_width;
+    if (content_w > viewport_w && content_w > 0) {
+        has_h_scrollbar = true;
+        float sb_x = content_x;
+        float sb_w = box_w;
+        float sb_y = content_y + box_h - sb_width;
+
+        // Track
+        list.fill_rect({sb_x, sb_y, sb_w, sb_width}, track_color);
+
+        // Thumb width proportional to viewport/content ratio
+        float ratio = viewport_w / content_w;
+        float thumb_w = std::max(20.0f, (sb_w - 4.0f) * ratio);
+        // Thumb position based on scroll_left
+        float max_scroll = content_w - viewport_w;
+        float scroll_frac = (max_scroll > 0) ? (node.scroll_left / max_scroll) : 0.0f;
+        float track_range = sb_w - 4.0f - thumb_w;
+        float thumb_x = sb_x + 2.0f + scroll_frac * track_range;
+
+        // Thumb with rounded corners
+        float thumb_radius = sb_width * 0.3f;
+        list.fill_rounded_rect({thumb_x, sb_y + 2.0f, thumb_w, sb_width - 4.0f},
+                               thumb_color, thumb_radius);
+    }
+
+    // Scrollbar corner (bottom-right intersection)
+    if (has_v_scrollbar && has_h_scrollbar) {
+        float corner_x = content_x + box_w - sb_width;
+        float corner_y = content_y + box_h - sb_width;
+        list.fill_rect({corner_x, corner_y, sb_width, sb_width}, track_color);
     }
 }
 

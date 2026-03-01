@@ -60,6 +60,8 @@ private:
                            float abs_x, float abs_y);
     void paint_overflow_indicator(const clever::layout::LayoutNode& node, DisplayList& list,
                                   float abs_x, float abs_y);
+    void paint_scrollbar(const clever::layout::LayoutNode& node, DisplayList& list,
+                         float abs_x, float abs_y);
     void paint_caret(const clever::layout::LayoutNode& node, DisplayList& list,
                      float abs_x, float abs_y);
 };

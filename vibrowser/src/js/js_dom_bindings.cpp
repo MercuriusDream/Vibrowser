@@ -588,6 +588,131 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
     return JS_UNDEFINED;
 }
 
+// --- element.innerText (getter) ---
+// innerText is layout-aware: skips hidden elements, inserts newlines for blocks
+static void collect_inner_text(const clever::html::SimpleNode* node, std::string& out) {
+    if (!node) return;
+    // Skip script, style, template elements entirely
+    if (node->type == clever::html::SimpleNode::Element) {
+        std::string tag = node->tag_name;
+        for (auto& c : tag) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (tag == "script" || tag == "style" || tag == "template" ||
+            tag == "noscript" || tag == "textarea") {
+            if (tag == "textarea") {
+                // For textarea, return the raw text content
+                for (auto& child : node->children) {
+                    if (child->type == clever::html::SimpleNode::Text)
+                        out += child->data;
+                }
+            }
+            return;
+        }
+        // Check for hidden attribute
+        for (auto& attr : node->attributes) {
+            if (attr.name == "hidden") return;
+        }
+        // Block-level elements insert newlines
+        bool is_block = (tag == "div" || tag == "p" || tag == "h1" || tag == "h2" ||
+                         tag == "h3" || tag == "h4" || tag == "h5" || tag == "h6" ||
+                         tag == "section" || tag == "article" || tag == "aside" ||
+                         tag == "header" || tag == "footer" || tag == "nav" ||
+                         tag == "main" || tag == "blockquote" || tag == "figure" ||
+                         tag == "figcaption" || tag == "details" || tag == "summary" ||
+                         tag == "ul" || tag == "ol" || tag == "li" || tag == "dl" ||
+                         tag == "dt" || tag == "dd" || tag == "pre" || tag == "hr" ||
+                         tag == "table" || tag == "tr" || tag == "form" || tag == "fieldset" ||
+                         tag == "address" || tag == "hgroup");
+        if (is_block && !out.empty() && out.back() != '\n') out += '\n';
+        if (tag == "br") { out += '\n'; return; }
+        for (auto& child : node->children) {
+            collect_inner_text(child.get(), out);
+        }
+        if (is_block && !out.empty() && out.back() != '\n') out += '\n';
+    } else if (node->type == clever::html::SimpleNode::Text) {
+        // Collapse whitespace (like CSS normal white-space)
+        const std::string& data = node->data;
+        for (size_t i = 0; i < data.size(); i++) {
+            char c = data[i];
+            if (c == '\n' || c == '\r' || c == '\t' || c == ' ') {
+                if (!out.empty() && out.back() != ' ' && out.back() != '\n')
+                    out += ' ';
+            } else {
+                out += c;
+            }
+        }
+    } else {
+        // Comment or other nodes — skip
+    }
+}
+
+static JSValue js_element_get_inner_text(JSContext* ctx, JSValueConst this_val,
+                                          int /*argc*/, JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node) return JS_UNDEFINED;
+    std::string result;
+    collect_inner_text(node, result);
+    // Trim trailing whitespace/newlines
+    while (!result.empty() && (result.back() == ' ' || result.back() == '\n'))
+        result.pop_back();
+    return JS_NewString(ctx, result.c_str());
+}
+
+// --- element.innerText (setter) ---
+// Setting innerText replaces children with text, converting \n to <br>
+static JSValue js_element_set_inner_text(JSContext* ctx, JSValueConst this_val,
+                                          int argc, JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node || argc < 1) return JS_UNDEFINED;
+    const char* str = JS_ToCString(ctx, argv[0]);
+    if (!str) return JS_UNDEFINED;
+
+    auto* state = get_dom_state(ctx);
+    std::vector<clever::html::SimpleNode*> removed_children;
+    for (auto& child : node->children)
+        removed_children.push_back(child.get());
+
+    node->children.clear();
+
+    // Split by newlines and insert <br> elements between segments
+    std::string text(str);
+    JS_FreeCString(ctx, str);
+    size_t pos = 0;
+    bool first = true;
+    while (pos <= text.size()) {
+        size_t nl = text.find('\n', pos);
+        if (nl == std::string::npos) nl = text.size();
+        if (!first) {
+            // Insert <br> element
+            auto br = std::make_unique<clever::html::SimpleNode>();
+            br->type = clever::html::SimpleNode::Element;
+            br->tag_name = "br";
+            br->parent = node;
+            node->children.push_back(std::move(br));
+        }
+        std::string segment = text.substr(pos, nl - pos);
+        if (!segment.empty()) {
+            auto text_node = std::make_unique<clever::html::SimpleNode>();
+            text_node->type = clever::html::SimpleNode::Text;
+            text_node->data = segment;
+            text_node->parent = node;
+            node->children.push_back(std::move(text_node));
+        }
+        pos = nl + 1;
+        first = false;
+    }
+
+    if (state) {
+        state->modified = true;
+        std::vector<clever::html::SimpleNode*> added;
+        for (auto& child : node->children)
+            added.push_back(child.get());
+        notify_mutation_observers(ctx, state, "childList", node,
+                                  added, removed_children, nullptr, nullptr);
+        flush_mutation_observers(ctx, state);
+    }
+    return JS_UNDEFINED;
+}
+
 // Forward-declare serialize_node (defined later near outerHTML getter)
 static std::string serialize_node(const clever::html::SimpleNode* node);
 
@@ -8110,7 +8235,71 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
         }
 
         // ------------------------------------------------------------------
-        // 3. Click on <input type="checkbox"> → toggle checked attribute
+        // 3. Click on <input type="reset"> or <button type="reset">
+        //    -> dispatch 'reset' event on closest parent <form>.
+        //    NOTE: Full form-control value restoration is not implemented yet;
+        //    this currently guarantees reset event semantics for JS listeners.
+        // ------------------------------------------------------------------
+        if ((tag == "input" &&
+             tag_lower(get_attr(*target, "type")) == "reset") ||
+            (tag == "button" &&
+             tag_lower(get_attr(*target, "type")) == "reset")) {
+            clever::html::SimpleNode* form = target->parent;
+            while (form) {
+                if (form->type == clever::html::SimpleNode::Element &&
+                    tag_lower(form->tag_name) == "form") {
+                    JSValue reset_evt = JS_NewObject(ctx);
+                    JS_SetPropertyStr(ctx, reset_evt, "type",
+                        JS_NewString(ctx, "reset"));
+                    JS_SetPropertyStr(ctx, reset_evt, "bubbles", JS_TRUE);
+                    JS_SetPropertyStr(ctx, reset_evt, "cancelable", JS_TRUE);
+                    JS_SetPropertyStr(ctx, reset_evt, "defaultPrevented", JS_FALSE);
+                    JS_SetPropertyStr(ctx, reset_evt, "eventPhase",
+                        JS_NewInt32(ctx, 0));
+                    JS_SetPropertyStr(ctx, reset_evt, "target", JS_NULL);
+                    JS_SetPropertyStr(ctx, reset_evt, "currentTarget", JS_NULL);
+                    JS_SetPropertyStr(ctx, reset_evt, "__stopped", JS_FALSE);
+                    JS_SetPropertyStr(ctx, reset_evt, "__immediate_stopped", JS_FALSE);
+
+                    const char* method_code = R"JS(
+                        (function() {
+                            var evt = this;
+                            evt.preventDefault = function() { evt.defaultPrevented = true; };
+                            evt.stopPropagation = function() { evt.__stopped = true; };
+                            evt.stopImmediatePropagation = function() {
+                                evt.__stopped = true;
+                                evt.__immediate_stopped = true;
+                            };
+                        })
+                    )JS";
+                    JSValue setup_fn = JS_Eval(ctx, method_code,
+                        std::strlen(method_code), "<reset-evt>", JS_EVAL_TYPE_GLOBAL);
+                    if (JS_IsFunction(ctx, setup_fn)) {
+                        JSValue setup_ret = JS_Call(ctx, setup_fn, reset_evt,
+                                                     0, nullptr);
+                        JS_FreeValue(ctx, setup_ret);
+                    }
+                    JS_FreeValue(ctx, setup_fn);
+
+                    dispatch_event_propagated(ctx, state, form, reset_evt,
+                                              "reset", true);
+
+                    JSValue prevented_val = JS_GetPropertyStr(ctx, reset_evt, "defaultPrevented");
+                    bool reset_prevented = JS_ToBool(ctx, prevented_val) != 0;
+                    JS_FreeValue(ctx, prevented_val);
+                    if (!reset_prevented) {
+                        state->modified = true;
+                    }
+
+                    JS_FreeValue(ctx, reset_evt);
+                    break;
+                }
+                form = form->parent;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 4. Click on <input type="checkbox"> -> toggle checked attribute
         // ------------------------------------------------------------------
         if (tag == "input" &&
             tag_lower(get_attr(*target, "type")) == "checkbox") {
@@ -8123,7 +8312,7 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
         }
 
         // ------------------------------------------------------------------
-        // 4. Click on <summary> inside <details> → toggle open attribute
+        // 5. Click on <summary> inside <details> -> toggle open attribute
         // ------------------------------------------------------------------
         if (tag == "summary" && target->parent &&
             target->parent->type == clever::html::SimpleNode::Element &&
@@ -13558,6 +13747,12 @@ void install_dom_bindings(JSContext* ctx,
     JS_SetPropertyStr(ctx, element_proto, "__setTextContent",
         JS_NewCFunction(ctx, js_element_set_text_content,
                         "__setTextContent", 1));
+    JS_SetPropertyStr(ctx, element_proto, "__getInnerText",
+        JS_NewCFunction(ctx, js_element_get_inner_text,
+                        "__getInnerText", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__setInnerText",
+        JS_NewCFunction(ctx, js_element_set_inner_text,
+                        "__setInnerText", 1));
     JS_SetPropertyStr(ctx, element_proto, "__getInnerHTML",
         JS_NewCFunction(ctx, js_element_get_inner_html,
                         "__getInnerHTML", 0));
