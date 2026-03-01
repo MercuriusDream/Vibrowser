@@ -3106,7 +3106,9 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
     // Draw text decoration (underline / overline / line-through).
     // Bits: 1=underline, 2=overline, 4=line-through.
     int deco_bits = node.text_decoration_bits;
-    if (deco_bits == 0 && node.text_decoration != 0) {
+    if (node.text_decoration == 0) {
+        deco_bits = 0;
+    } else if (deco_bits == 0) {
         // text_decoration value mapping:
         // 0=none, 1=underline, 2=overline, 3=line-through.
         // Values >3 are treated as a bitmask combination.
@@ -3185,11 +3187,12 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
             };
 
             const float baseline_y = text_y + node.font_size;
-            if (deco_bits & 1) {
-                float underline_y = baseline_y + 2.0f + node.text_underline_offset;
-                // text_underline_position: 0=auto, 1=under (below descenders)
-                if (node.text_underline_position == 1) {
-                    underline_y = baseline_y + node.font_size * 0.25f + node.text_underline_offset;
+        if (deco_bits & 1) {
+                float underline_y = node.text_underline_position == 1
+                    ? baseline_y + node.font_size * 0.25f
+                    : baseline_y + 2.0f;
+                if (node.text_underline_offset != 0.0f) {
+                    underline_y += node.text_underline_offset;
                 }
                 draw_deco_line(underline_y);
             }
