@@ -1895,42 +1895,157 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
         };
         std::vector<ChildPlacement> placements(visible.size());
 
-        // text-wrap: balance — narrow effective_width to distribute lines evenly.
-        // Uses the same binary-search approach as the pure-text-node path (Path B).
-        float effective_cw = containing_width;
-        if (node.text_wrap == 2 && !runs.empty()) {
-            // Compute total text width
-            float total_run_w = 0;
+        struct RunWrapMetrics {
+            int line_count = 0;
+            float avg_line_width = 0;
+            float max_line_width = 0;
+            float variance = 0;
+            float last_line_width = 0;
+            int last_line_word_count = 0;
+        };
+        auto compute_run_wrap_metrics = [&](float w) -> RunWrapMetrics {
+            RunWrapMetrics metrics;
+            if (runs.empty() || w <= 0) return metrics;
+
+            float lc = cursor_x;
+            int words_on_line = 0;
+            std::vector<float> line_widths;
+            std::vector<int> words_per_line;
+            line_widths.reserve(8);
+            words_per_line.reserve(8);
+
+            auto commit_line = [&]() {
+                line_widths.push_back(std::max(0.0f, lc));
+                words_per_line.push_back(words_on_line);
+            };
+
             for (auto& r : runs) {
-                if (r.word != "\n") total_run_w += r.width;
+                if (r.word == "\n") {
+                    commit_line();
+                    lc = 0;
+                    words_on_line = 0;
+                    continue;
+                }
+                if (r.is_space && lc == 0) continue;
+                if (lc > 0 && lc + r.width > w && !r.is_space) {
+                    commit_line();
+                    lc = 0;
+                    words_on_line = 0;
+                    if (r.is_space) continue;
+                }
+                lc += r.width;
+                if (!r.is_space) words_on_line++;
             }
-            if (total_run_w > containing_width) {
-                // Count lines at a given width using greedy wrapping
-                auto count_lines = [&](float w) -> int {
-                    int lines_c = 1;
-                    float lc = cursor_x;
-                    for (auto& r : runs) {
-                        if (r.word == "\n") { lines_c++; lc = 0; continue; }
-                        if (r.is_space && lc == 0) continue;
-                        if (lc > 0 && lc + r.width > w && !r.is_space) {
-                            lines_c++; lc = 0;
-                            if (r.is_space) continue;
+            commit_line();
+
+            metrics.line_count = static_cast<int>(line_widths.size());
+            if (metrics.line_count == 0) return metrics;
+
+            float sum = 0;
+            for (float line_w : line_widths) {
+                sum += line_w;
+                metrics.max_line_width = std::max(metrics.max_line_width, line_w);
+            }
+            metrics.avg_line_width = sum / static_cast<float>(metrics.line_count);
+            if (metrics.avg_line_width > 0) {
+                float var_sum = 0;
+                for (float line_w : line_widths) {
+                    float d = line_w - metrics.avg_line_width;
+                    var_sum += d * d;
+                }
+                metrics.variance = var_sum / static_cast<float>(metrics.line_count);
+            }
+            metrics.last_line_width = line_widths.back();
+            metrics.last_line_word_count = words_per_line.back();
+            return metrics;
+        };
+        auto count_lines = [&](float w) -> int {
+            return compute_run_wrap_metrics(w).line_count;
+        };
+
+        // text-wrap: balance — narrow effective_width to distribute lines evenly,
+        // then reduce line-width variance while keeping the same line count.
+        float effective_cw = containing_width;
+        float total_run_w = 0;
+        float widest_run = 0;
+        for (auto& r : runs) {
+            if (r.word == "\n") continue;
+            total_run_w += r.width;
+            if (!r.is_space) widest_run = std::max(widest_run, r.width);
+        }
+        if (node.text_wrap == 2 && !runs.empty() && total_run_w > containing_width) {
+            int greedy_lines = count_lines(containing_width);
+            if (greedy_lines > 1) {
+                float lo = std::max(widest_run, total_run_w / static_cast<float>(greedy_lines));
+                float hi = containing_width;
+                if (lo < 1.0f) lo = 1.0f;
+                for (int iter = 0; iter < 24; iter++) {
+                    float mid = (lo + hi) / 2.0f;
+                    if (count_lines(mid) <= greedy_lines) hi = mid;
+                    else lo = mid;
+                }
+                effective_cw = hi;
+                if (effective_cw > containing_width) effective_cw = containing_width;
+
+                RunWrapMetrics initial_metrics = compute_run_wrap_metrics(effective_cw);
+                if (initial_metrics.line_count == greedy_lines &&
+                    initial_metrics.avg_line_width > 0 &&
+                    initial_metrics.max_line_width > initial_metrics.avg_line_width * 1.1f) {
+                    float var_lo = effective_cw;
+                    float var_hi = containing_width;
+                    float best_w = effective_cw;
+                    float best_var = initial_metrics.variance;
+                    for (int iter = 0; iter < 24; iter++) {
+                        float mid = (var_lo + var_hi) / 2.0f;
+                        RunWrapMetrics mid_metrics = compute_run_wrap_metrics(mid);
+                        if (mid_metrics.line_count > greedy_lines) {
+                            var_lo = mid;
+                            continue;
                         }
-                        lc += r.width;
+                        if (mid_metrics.line_count < greedy_lines) {
+                            var_hi = mid;
+                            continue;
+                        }
+                        if (mid_metrics.variance < best_var) {
+                            best_var = mid_metrics.variance;
+                            best_w = mid;
+                        }
+                        if (mid_metrics.avg_line_width > 0 &&
+                            mid_metrics.max_line_width > mid_metrics.avg_line_width * 1.1f) {
+                            var_lo = mid;
+                        } else {
+                            var_hi = mid;
+                        }
                     }
-                    return lines_c;
-                };
-                int greedy_lines = count_lines(containing_width);
-                if (greedy_lines > 1) {
-                    float lo = total_run_w / static_cast<float>(greedy_lines);
+                    effective_cw = std::min(best_w, containing_width);
+                }
+            }
+        }
+
+        // text-wrap: pretty — avoid orphaned final lines in flattened inline flow.
+        if (node.text_wrap == 3 && !runs.empty()) {
+            RunWrapMetrics greedy_metrics = compute_run_wrap_metrics(containing_width);
+            if (greedy_metrics.line_count >= 2) {
+                bool orphan_last_line =
+                    greedy_metrics.last_line_word_count <= 1 ||
+                    (greedy_metrics.last_line_width > 0 &&
+                     greedy_metrics.last_line_width < containing_width * 0.15f);
+                if (orphan_last_line) {
+                    float lo = std::max(widest_run, total_run_w / static_cast<float>(greedy_metrics.line_count));
                     float hi = containing_width;
-                    for (int iter = 0; iter < 20; iter++) {
+                    if (lo < 1.0f) lo = 1.0f;
+                    for (int iter = 0; iter < 24; iter++) {
                         float mid = (lo + hi) / 2.0f;
-                        if (count_lines(mid) <= greedy_lines) hi = mid;
+                        if (count_lines(mid) <= greedy_metrics.line_count) hi = mid;
                         else lo = mid;
                     }
-                    effective_cw = hi;
-                    if (effective_cw > containing_width) effective_cw = containing_width;
+                    RunWrapMetrics candidate_metrics = compute_run_wrap_metrics(hi);
+                    if (candidate_metrics.line_count == greedy_metrics.line_count &&
+                        hi < containing_width &&
+                        (candidate_metrics.last_line_word_count > greedy_metrics.last_line_word_count ||
+                         candidate_metrics.last_line_width > greedy_metrics.last_line_width + 0.5f)) {
+                        effective_cw = std::min(hi, containing_width);
+                    }
                 }
             }
         }
@@ -2208,10 +2323,18 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 }
             }
 
-            // Lambda: count how many lines the words take at a given width
-            auto count_lines_at_width = [&](float w) -> int {
-                int lines = 1;
+            struct TextWrapMetrics {
+                int line_count = 0;
+                float last_line_width = 0;
+                int last_line_word_count = 0;
+            };
+            auto compute_text_wrap_metrics_at_width = [&](float w) -> TextWrapMetrics {
+                TextWrapMetrics metrics;
+                if (w <= 0) return metrics;
+
+                metrics.line_count = 1;
                 float lc = cursor_x;
+                int words_on_line = 0;
                 for (size_t wi = 0; wi < words.size(); wi++) {
                     float word_w = static_cast<float>(words[wi].length()) * char_w;
                     bool split_for_overflow_wrap = false;
@@ -2226,27 +2349,36 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                         int cf = std::max(1, static_cast<int>(avail / char_w));
                         int rem = static_cast<int>(words[wi].length()) - cf;
                         int cpf = std::max(1, static_cast<int>(w / char_w));
-                        if (rem > 0) lines += (rem + cpf - 1) / cpf;
+                        if (rem > 0) metrics.line_count += (rem + cpf - 1) / cpf;
                         int llc = rem % cpf;
                         lc = (llc == 0 && rem > 0) ? w : static_cast<float>(llc) * char_w;
+                        if (!words[wi].empty()) words_on_line = 1;
                     } else if (word_w > w && words[wi].length() > 1) {
                         float avail = w - lc;
                         int cf = std::max(1, static_cast<int>(avail / char_w));
                         int rem = static_cast<int>(words[wi].length()) - cf;
                         int cpf = std::max(1, static_cast<int>(w / char_w));
-                        if (rem > 0) lines += (rem + cpf - 1) / cpf;
+                        if (rem > 0) metrics.line_count += (rem + cpf - 1) / cpf;
                         int llc = rem % cpf;
                         lc = (llc == 0 && rem > 0) ? w : static_cast<float>(llc) * char_w;
+                        if (!words[wi].empty()) words_on_line = 1;
                     } else {
                         if (lc + word_w > w && lc > 0) {
-                            lines++;
+                            metrics.line_count++;
                             lc = 0;
+                            words_on_line = 0;
                         }
                         lc += word_w;
+                        if (!words[wi].empty()) words_on_line++;
                     }
                     if (wi + 1 < words.size()) lc += char_w;
                 }
-                return lines;
+                metrics.last_line_width = lc;
+                metrics.last_line_word_count = words_on_line;
+                return metrics;
+            };
+            auto count_lines_at_width = [&](float w) -> int {
+                return compute_text_wrap_metrics_at_width(w).line_count;
             };
 
             // For text-wrap: balance, use binary search to find the narrowest
@@ -2261,7 +2393,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                     float hi = containing_width;
                     // Ensure lo is at least char_w
                     if (lo < char_w) lo = char_w;
-                    for (int iter = 0; iter < 20; iter++) {
+                    for (int iter = 0; iter < 24; iter++) {
                         float mid = (lo + hi) / 2.0f;
                         if (count_lines_at_width(mid) <= greedy_lines) {
                             hi = mid;
@@ -2274,36 +2406,22 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 }
             }
 
-            // For text-wrap: pretty, avoid orphans (short last lines).
-            // If the last line is < 25% of container width, try a slightly narrower
+            // For text-wrap: pretty, avoid orphans (short or single-word last lines).
+            // If the last line is very short or only one word, try a slightly narrower
             // effective width that pulls a word from the previous line down.
             if (child->text_wrap == 3 && total_text_width > containing_width) {
-                int greedy_lines = count_lines_at_width(containing_width);
+                TextWrapMetrics greedy_metrics = compute_text_wrap_metrics_at_width(containing_width);
+                int greedy_lines = greedy_metrics.line_count;
                 if (greedy_lines >= 2) {
-                    // Estimate last line width by simulating greedy wrapping
-                    float last_line_w = 0;
-                    {
-                        float lc = cursor_x;
-                        for (size_t wi = 0; wi < words.size(); wi++) {
-                            float word_w = static_cast<float>(words[wi].length()) * char_w;
-                            if (lc + word_w > containing_width && lc > 0) {
-                                lc = 0;
-                            }
-                            lc += word_w;
-                            if (wi + 1 < words.size()) lc += char_w;
-                        }
-                        last_line_w = lc;
-                    }
-                    // If last line is less than 25% of container width, try to
-                    // redistribute by narrowing the effective width slightly.
-                    // This pushes a word from the penultimate line to the last line.
-                    if (last_line_w < containing_width * 0.25f && last_line_w > 0) {
-                        // Binary search: find narrowest width that keeps same line count
-                        // but allows one more line (greedy_lines + 1) to redistribute.
-                        float lo = total_text_width / static_cast<float>(greedy_lines + 1);
+                    bool orphan_last_line =
+                        greedy_metrics.last_line_word_count <= 1 ||
+                        (greedy_metrics.last_line_width > 0 &&
+                         greedy_metrics.last_line_width < containing_width * 0.25f);
+                    if (orphan_last_line) {
+                        float lo = total_text_width / static_cast<float>(greedy_lines);
                         float hi = containing_width;
                         if (lo < char_w) lo = char_w;
-                        for (int iter = 0; iter < 20; iter++) {
+                        for (int iter = 0; iter < 24; iter++) {
                             float mid = (lo + hi) / 2.0f;
                             if (count_lines_at_width(mid) <= greedy_lines) {
                                 hi = mid;
@@ -2311,8 +2429,11 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                                 lo = mid;
                             }
                         }
-                        // Only use narrower width if it doesn't increase line count
-                        if (count_lines_at_width(hi) <= greedy_lines) {
+                        TextWrapMetrics candidate_metrics = compute_text_wrap_metrics_at_width(hi);
+                        if (candidate_metrics.line_count <= greedy_lines &&
+                            hi < containing_width &&
+                            (candidate_metrics.last_line_word_count > greedy_metrics.last_line_word_count ||
+                             candidate_metrics.last_line_width > greedy_metrics.last_line_width + 0.5f)) {
                             effective_width = hi;
                             if (effective_width > containing_width) effective_width = containing_width;
                         }
