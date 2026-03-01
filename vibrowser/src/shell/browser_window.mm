@@ -1237,6 +1237,7 @@ static std::string build_shell_message_html(const std::string& page_title,
 
     // Auto-add http:// if no scheme
     if (![url hasPrefix:@"http://"] && ![url hasPrefix:@"https://"] &&
+        ![url hasPrefix:@"file://"] && ![url hasPrefix:@"data:"] &&
         ![url hasPrefix:@"<"]) {
         if ([url containsString:@"<"] && [url containsString:@">"]) {
             [self renderHTML:url];
@@ -1287,6 +1288,54 @@ static std::string build_shell_message_html(const std::string& page_title,
 }
 
 - (void)fetchAndRender:(const std::string&)urlStr {
+    // Handle file:// URLs by reading from local filesystem
+    if (urlStr.size() > 7 && urlStr.substr(0, 7) == "file://") {
+        std::string filePath = urlStr.substr(7);
+        // Percent-decode the path
+        std::string decoded;
+        for (size_t i = 0; i < filePath.size(); ++i) {
+            if (filePath[i] == '%' && i + 2 < filePath.size()) {
+                int hi = 0, lo = 0;
+                char c1 = filePath[i+1], c2 = filePath[i+2];
+                if (c1 >= '0' && c1 <= '9') hi = c1 - '0';
+                else if (c1 >= 'A' && c1 <= 'F') hi = c1 - 'A' + 10;
+                else if (c1 >= 'a' && c1 <= 'f') hi = c1 - 'a' + 10;
+                else { decoded += filePath[i]; continue; }
+                if (c2 >= '0' && c2 <= '9') lo = c2 - '0';
+                else if (c2 >= 'A' && c2 <= 'F') lo = c2 - 'A' + 10;
+                else if (c2 >= 'a' && c2 <= 'f') lo = c2 - 'a' + 10;
+                else { decoded += filePath[i]; continue; }
+                decoded += static_cast<char>((hi << 4) | lo);
+                i += 2;
+            } else {
+                decoded += filePath[i];
+            }
+        }
+        std::string fileUrl = urlStr;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [_spinner stopAnimation:nil];
+            BrowserTab* tab = [self activeTab];
+            if (!tab) return;
+            [self setProgress:0.7 animated:YES];
+            NSData* data = [NSData dataWithContentsOfFile:
+                [NSString stringWithUTF8String:decoded.c_str()]];
+            if (!data) {
+                std::string err = build_shell_message_html("File Not Found",
+                    "File Not Found", "Could not read: " + decoded);
+                [self renderHTML:[NSString stringWithUTF8String:err.c_str()]];
+                [self finishProgress];
+                return;
+            }
+            std::string html(static_cast<const char*>(data.bytes), data.length);
+            [tab currentHTML] = html;
+            [tab currentBaseURL] = fileUrl;
+            [self setProgress:0.9 animated:YES];
+            [self doRender:html];
+            [self finishProgress];
+        });
+        return;
+    }
+
     clever::net::HttpClient client;
     client.set_timeout(std::chrono::seconds(10));
     client.set_max_redirects(0);
