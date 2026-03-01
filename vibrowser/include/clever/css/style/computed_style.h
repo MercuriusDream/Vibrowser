@@ -219,9 +219,10 @@ struct ComputedStyle {
     bool is_flow_root = false; // display: flow-root — always establishes BFC
 
     // Sizing
-    // width_keyword/height_keyword: 0=normal, -2=min-content, -3=max-content, -4=fit-content
+    // width_keyword/height_keyword: 0=normal, -2=min-content, -3=max-content, -4=fit-content, -5=fit-content(N)
     int width_keyword = 0;
     int height_keyword = 0;
+    Length fit_content_value = Length::auto_val();
     Length width = Length::auto_val();
     Length height = Length::auto_val();
     Length min_width = Length::zero();
@@ -270,11 +271,25 @@ struct ComputedStyle {
     Length text_indent = Length::zero();
 
     // Border radius
+    struct RadiusPair {
+        float x = 0.0f;
+        float y = 0.0f;
+    };
+
     float border_radius = 0;
-    float border_radius_tl = 0; // top-left
-    float border_radius_tr = 0; // top-right
-    float border_radius_bl = 0; // bottom-left
-    float border_radius_br = 0; // bottom-right
+    float border_radius_tl_x = 0; // top-left x radius
+    float border_radius_tl_y = 0; // top-left y radius
+    float border_radius_tr_x = 0; // top-right x radius
+    float border_radius_tr_y = 0; // top-right y radius
+    float border_radius_bl_x = 0; // bottom-left x radius
+    float border_radius_bl_y = 0; // bottom-left y radius
+    float border_radius_br_x = 0; // bottom-right x radius
+    float border_radius_br_y = 0; // bottom-right y radius
+    // Legacy per-corner aliases for compatibility with existing renderer state flow.
+    float border_radius_tl = 0;
+    float border_radius_tr = 0;
+    float border_radius_bl = 0;
+    float border_radius_br = 0;
 
     // Box shadow (legacy single shadow fields kept for backward compat)
     float shadow_offset_x = 0, shadow_offset_y = 0, shadow_blur = 0;

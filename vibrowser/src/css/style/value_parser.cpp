@@ -2242,6 +2242,13 @@ std::optional<Length> parse_length(const std::string& input, const std::string& 
             if (inner) return parse_math_func("clamp", *inner);
             return std::nullopt;
         }
+        if (lower.size() >= 13 && lower.substr(0, 11) == "fit-content(") {
+            auto inner = extract_func_inner(11);
+            if (!inner) return std::nullopt;
+            auto inner_len = parse_length(trim(*inner));
+            if (!inner_len) return std::nullopt;
+            return inner_len;
+        }
         // CSS abs() function
         if (lower.size() >= 5 && lower.substr(0, 4) == "abs(") {
             auto inner = extract_func_inner(3);

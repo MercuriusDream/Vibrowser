@@ -488,7 +488,22 @@ void PropertyCascade::apply_declaration(
         if (prop == "border-bottom-width") { style.border_bottom.width = parent.border_bottom.width; return; }
         if (prop == "border-left-width") { style.border_left.width = parent.border_left.width; return; }
         if (prop == "border-style") { style.border_top.style = parent.border_top.style; style.border_right.style = parent.border_right.style; style.border_bottom.style = parent.border_bottom.style; style.border_left.style = parent.border_left.style; return; }
-        if (prop == "border-radius") { style.border_radius = parent.border_radius; style.border_radius_tl = parent.border_radius_tl; style.border_radius_tr = parent.border_radius_tr; style.border_radius_bl = parent.border_radius_bl; style.border_radius_br = parent.border_radius_br; return; }
+        if (prop == "border-radius") {
+            style.border_radius = parent.border_radius;
+            style.border_radius_tl = parent.border_radius_tl;
+            style.border_radius_tr = parent.border_radius_tr;
+            style.border_radius_bl = parent.border_radius_bl;
+            style.border_radius_br = parent.border_radius_br;
+            style.border_radius_tl_x = parent.border_radius_tl_x;
+            style.border_radius_tl_y = parent.border_radius_tl_y;
+            style.border_radius_tr_x = parent.border_radius_tr_x;
+            style.border_radius_tr_y = parent.border_radius_tr_y;
+            style.border_radius_bl_x = parent.border_radius_bl_x;
+            style.border_radius_bl_y = parent.border_radius_bl_y;
+            style.border_radius_br_x = parent.border_radius_br_x;
+            style.border_radius_br_y = parent.border_radius_br_y;
+            return;
+        }
         if (prop == "text-decoration") {
             style.text_decoration = parent.text_decoration;
             style.text_decoration_bits = parent.text_decoration_bits;
@@ -585,7 +600,22 @@ void PropertyCascade::apply_declaration(
             if (prop == "padding" || prop == "padding-left") style.padding.left = Length::zero();
             return;
         }
-        if (prop == "border-radius") { style.border_radius = 0; style.border_radius_tl = 0; style.border_radius_tr = 0; style.border_radius_bl = 0; style.border_radius_br = 0; return; }
+        if (prop == "border-radius") {
+            style.border_radius = 0;
+            style.border_radius_tl = 0;
+            style.border_radius_tr = 0;
+            style.border_radius_bl = 0;
+            style.border_radius_br = 0;
+            style.border_radius_tl_x = 0;
+            style.border_radius_tl_y = 0;
+            style.border_radius_tr_x = 0;
+            style.border_radius_tr_y = 0;
+            style.border_radius_bl_x = 0;
+            style.border_radius_bl_y = 0;
+            style.border_radius_br_x = 0;
+            style.border_radius_br_y = 0;
+            return;
+        }
         if (prop == "box-sizing") { style.box_sizing = BoxSizing::ContentBox; return; }
         if (prop == "text-decoration") {
             style.text_decoration = TextDecoration::None;
@@ -750,13 +780,94 @@ void PropertyCascade::apply_declaration(
         return;
     }
 
+    auto parse_fit_content_argument = [&](const std::string& value, std::string& inner) -> std::optional<Length> {
+        if (value_lower.size() < 12 || value_lower.rfind("fit-content(", 0) != 0) return std::nullopt;
+
+        int depth = 0;
+        size_t close = std::string::npos;
+        for (size_t i = 11; i < value.size(); ++i) {
+            if (value[i] == '(') ++depth;
+            else if (value[i] == ')') {
+                --depth;
+                if (depth == 0) {
+                    close = i;
+                    break;
+                }
+            }
+        }
+        if (close == std::string::npos) return std::nullopt;
+
+        inner = trim(value.substr(12, close - 12));
+        return parse_length(inner);
+    };
+
     // ---- Width, Height, Min/Max ----
     if (prop == "width") {
+        if (value_lower == "min-content") {
+            style.width_keyword = -2;
+            style.fit_content_value = Length::auto_val();
+            style.custom_properties.erase("--vibrowser-fit-content-width");
+            return;
+        }
+        if (value_lower == "max-content") {
+            style.width_keyword = -3;
+            style.fit_content_value = Length::auto_val();
+            style.custom_properties.erase("--vibrowser-fit-content-width");
+            return;
+        }
+        if (value_lower == "fit-content") {
+            style.width_keyword = -4;
+            style.fit_content_value = Length::auto_val();
+            style.custom_properties.erase("--vibrowser-fit-content-width");
+            return;
+        }
+
+        std::string fit_content_inner;
+        if (auto l = parse_fit_content_argument(value_str, fit_content_inner)) {
+            style.width_keyword = -5;
+            style.fit_content_value = *l;
+            style.custom_properties["--vibrowser-fit-content-width"] = fit_content_inner;
+            return;
+        }
+
+        style.width_keyword = 0;
+        style.fit_content_value = Length::auto_val();
+        style.custom_properties.erase("--vibrowser-fit-content-width");
         auto l = parse_length(value_str);
         if (l) style.width = *l;
         return;
     }
     if (prop == "height") {
+        if (value_lower == "min-content") {
+            style.height_keyword = -2;
+            style.fit_content_value = Length::auto_val();
+            style.custom_properties.erase("--vibrowser-fit-content-height");
+            return;
+        }
+        if (value_lower == "max-content") {
+            style.height_keyword = -3;
+            style.fit_content_value = Length::auto_val();
+            style.custom_properties.erase("--vibrowser-fit-content-height");
+            return;
+        }
+        if (value_lower == "fit-content") {
+            style.height_keyword = -4;
+            style.fit_content_value = Length::auto_val();
+            style.custom_properties.erase("--vibrowser-fit-content-height");
+            return;
+        }
+
+        std::string fit_content_inner;
+        if (auto l = parse_fit_content_argument(value_str, fit_content_inner)) {
+            style.height_keyword = -5;
+            style.fit_content_value = *l;
+            style.custom_properties["--vibrowser-fit-content-height"] = fit_content_inner;
+            return;
+        }
+
+        style.height_keyword = 0;
+        style.fit_content_value = Length::auto_val();
+        style.custom_properties.erase("--vibrowser-fit-content-height");
         auto l = parse_length(value_str);
         if (l) style.height = *l;
         return;
@@ -1567,61 +1678,159 @@ void PropertyCascade::apply_declaration(
 
     // ---- Border radius ----
     if (prop == "border-radius") {
-        auto parts = split_whitespace(value_str);
-        // Separate horizontal and vertical radii (split on '/')
-        std::vector<float> h_radii, v_radii;
-        bool after_slash = false;
-        for (auto& p : parts) {
-            if (p == "/") { after_slash = true; continue; }
-            auto l = parse_length(p);
-            if (l) {
-                if (after_slash) v_radii.push_back(l->to_px(0));
-                else h_radii.push_back(l->to_px(0));
+        auto parse_pair = [](const std::string& token, std::vector<float>& target, bool& parse_error) {
+            auto parsed = parse_length(token);
+            if (parsed) {
+                target.push_back(parsed->to_px(0));
+                return;
             }
-        }
-        // Expand 1-4 values to per-corner using CSS shorthand rules
-        // Order: TL=0, TR=1, BR=2, BL=3
-        auto expand = [](const std::vector<float>& r, size_t i) -> float {
-            if (r.empty()) return 0;
-            if (r.size() == 1) return r[0];
-            if (r.size() == 2) return r[(i == 0 || i == 2) ? 0 : 1];
-            if (r.size() == 3) { const size_t m[] = {0,1,2,1}; return r[m[i]]; }
-            return r[i < r.size() ? i : 0];
+            parse_error = true;
         };
-        if (!h_radii.empty()) {
-            // If elliptical (has '/'), average h and v per corner since renderer
-            // doesn't support separate x/y radii; otherwise use h values directly
-            bool elliptical = !v_radii.empty();
-            float tl = elliptical ? (expand(h_radii, 0) + expand(v_radii, 0)) / 2.0f : expand(h_radii, 0);
-            float tr = elliptical ? (expand(h_radii, 1) + expand(v_radii, 1)) / 2.0f : expand(h_radii, 1);
-            float br = elliptical ? (expand(h_radii, 2) + expand(v_radii, 2)) / 2.0f : expand(h_radii, 2);
-            float bl = elliptical ? (expand(h_radii, 3) + expand(v_radii, 3)) / 2.0f : expand(h_radii, 3);
-            style.border_radius_tl = tl;
-            style.border_radius_tr = tr;
-            style.border_radius_br = br;
-            style.border_radius_bl = bl;
-            style.border_radius = tl;
+        auto expand_radius = [](const std::vector<float>& values, size_t i) -> float {
+            if (values.empty()) return 0.0f;
+            if (values.size() == 1) return values[0];
+            if (values.size() == 2) return (i == 0 || i == 2) ? values[0] : values[1];
+            if (values.size() == 3) { const size_t idx[] = {0, 1, 2, 1}; return values[idx[i]]; }
+            return values[i < 4 ? i : 0];
+        };
+
+        std::vector<float> h_radii, v_radii;
+        bool vertical = false;
+        bool parse_error = false;
+        auto parts = split_whitespace(value_str);
+        for (auto& part : parts) {
+            auto slash_pos = part.find('/');
+            if (slash_pos != std::string::npos) {
+                if (!part.empty() && slash_pos > 0) {
+                    parse_pair(part.substr(0, slash_pos), vertical ? v_radii : h_radii, parse_error);
+                } else if (slash_pos == 0) {
+                    parse_error = true;
+                }
+                vertical = true;
+                if (slash_pos + 1 < part.size()) {
+                    parse_pair(part.substr(slash_pos + 1), v_radii, parse_error);
+                }
+                continue;
+            }
+            if (part == "/") {
+                vertical = true;
+                continue;
+            }
+            parse_pair(part, vertical ? v_radii : h_radii, parse_error);
+        }
+
+        if (!h_radii.empty() && !parse_error) {
+            float h_tl = expand_radius(h_radii, 0);
+            float h_tr = expand_radius(h_radii, 1);
+            float h_br = expand_radius(h_radii, 2);
+            float h_bl = expand_radius(h_radii, 3);
+
+            float v_tl = v_radii.empty() ? h_tl : expand_radius(v_radii, 0);
+            float v_tr = v_radii.empty() ? h_tr : expand_radius(v_radii, 1);
+            float v_br = v_radii.empty() ? h_br : expand_radius(v_radii, 2);
+            float v_bl = v_radii.empty() ? h_bl : expand_radius(v_radii, 3);
+
+            style.border_radius_tl_x = h_tl;
+            style.border_radius_tl_y = v_tl;
+            style.border_radius_tr_x = h_tr;
+            style.border_radius_tr_y = v_tr;
+            style.border_radius_br_x = h_br;
+            style.border_radius_br_y = v_br;
+            style.border_radius_bl_x = h_bl;
+            style.border_radius_bl_y = v_bl;
+
+            style.border_radius_tl = h_tl;
+            style.border_radius_tr = h_tr;
+            style.border_radius_bl = h_bl;
+            style.border_radius_br = h_br;
+            style.border_radius = h_tl;
+        } else if (!parse_error) {
+            style.border_radius = 0;
+            style.border_radius_tl = 0;
+            style.border_radius_tr = 0;
+            style.border_radius_bl = 0;
+            style.border_radius_br = 0;
+            style.border_radius_tl_x = 0;
+            style.border_radius_tl_y = 0;
+            style.border_radius_tr_x = 0;
+            style.border_radius_tr_y = 0;
+            style.border_radius_br_x = 0;
+            style.border_radius_br_y = 0;
+            style.border_radius_bl_x = 0;
+            style.border_radius_bl_y = 0;
         }
         return;
     }
     if (prop == "border-top-left-radius") {
-        auto l = parse_length(value_str);
-        if (l) style.border_radius_tl = l->to_px(0);
+        auto parts = split_whitespace(value_str);
+        if (!parts.empty()) {
+            auto x = parse_length(parts[0]);
+            if (!x) return;
+            float x_radius = x->to_px(0);
+            float y_radius = x_radius;
+            if (parts.size() > 1) {
+                auto y = parse_length(parts[1]);
+                if (!y) return;
+                y_radius = y->to_px(0);
+            }
+            style.border_radius_tl_x = x_radius;
+            style.border_radius_tl_y = y_radius;
+            style.border_radius_tl = x_radius;
+        }
         return;
     }
     if (prop == "border-top-right-radius") {
-        auto l = parse_length(value_str);
-        if (l) style.border_radius_tr = l->to_px(0);
+        auto parts = split_whitespace(value_str);
+        if (!parts.empty()) {
+            auto x = parse_length(parts[0]);
+            if (!x) return;
+            float x_radius = x->to_px(0);
+            float y_radius = x_radius;
+            if (parts.size() > 1) {
+                auto y = parse_length(parts[1]);
+                if (!y) return;
+                y_radius = y->to_px(0);
+            }
+            style.border_radius_tr_x = x_radius;
+            style.border_radius_tr_y = y_radius;
+            style.border_radius_tr = x_radius;
+        }
         return;
     }
     if (prop == "border-bottom-left-radius") {
-        auto l = parse_length(value_str);
-        if (l) style.border_radius_bl = l->to_px(0);
+        auto parts = split_whitespace(value_str);
+        if (!parts.empty()) {
+            auto x = parse_length(parts[0]);
+            if (!x) return;
+            float x_radius = x->to_px(0);
+            float y_radius = x_radius;
+            if (parts.size() > 1) {
+                auto y = parse_length(parts[1]);
+                if (!y) return;
+                y_radius = y->to_px(0);
+            }
+            style.border_radius_bl_x = x_radius;
+            style.border_radius_bl_y = y_radius;
+            style.border_radius_bl = x_radius;
+        }
         return;
     }
     if (prop == "border-bottom-right-radius") {
-        auto l = parse_length(value_str);
-        if (l) style.border_radius_br = l->to_px(0);
+        auto parts = split_whitespace(value_str);
+        if (!parts.empty()) {
+            auto x = parse_length(parts[0]);
+            if (!x) return;
+            float x_radius = x->to_px(0);
+            float y_radius = x_radius;
+            if (parts.size() > 1) {
+                auto y = parse_length(parts[1]);
+                if (!y) return;
+                y_radius = y->to_px(0);
+            }
+            style.border_radius_br_x = x_radius;
+            style.border_radius_br_y = y_radius;
+            style.border_radius_br = x_radius;
+        }
         return;
     }
     if (prop == "border-start-start-radius") {

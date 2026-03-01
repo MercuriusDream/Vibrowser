@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <sstream>
+#include <clever/css/style/style_resolver.h>
 
 namespace clever::layout {
 
@@ -113,6 +114,14 @@ inline void apply_min_max_constraints(LayoutNode& node) {
     if (node.max_height < std::numeric_limits<float>::max()) {
         node.geometry.height = std::min(node.geometry.height, node.max_height);
     }
+}
+
+float fit_content_limit_from_style(const LayoutNode& node, const std::string& name, float containing_size) {
+    auto it = node.custom_properties.find(name);
+    if (it == node.custom_properties.end()) return 0.0f;
+    auto parsed = clever::css::parse_length(it->second);
+    if (!parsed) return 0.0f;
+    return parsed->to_px(containing_size);
 }
 
 } // namespace
@@ -303,8 +312,8 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
     root.geometry.x = 0;
     root.geometry.y = 0;
 
-    // Resolve intrinsic sizing keywords for root: -2=min-content, -3=max-content, -4=fit-content
-    if (root.specified_width <= -2 && root.specified_width >= -4) {
+    // Resolve intrinsic sizing keywords for root: -2=min-content, -3=max-content, -4=fit-content, -5=fit-content(N)
+    if (root.specified_width <= -2 && root.specified_width >= -5) {
         int kw = static_cast<int>(root.specified_width);
         const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
         float min_w = measure_intrinsic_width(root, false, mp);
@@ -313,8 +322,11 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
             root.specified_width = min_w;
         } else if (kw == -3) {
             root.specified_width = max_w;
-        } else { // -4 = fit-content
+        } else if (kw == -4) { // -4 = fit-content
             root.specified_width = std::max(min_w, std::min(viewport_width, max_w));
+        } else { // -5 = fit-content(N)
+            float fit_limit = fit_content_limit_from_style(root, "--vibrowser-fit-content-width", viewport_width);
+            root.specified_width = std::min(std::max(min_w, fit_limit), max_w);
         }
     }
 
@@ -414,8 +426,8 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
         node.specified_width = node.contain_intrinsic_width;
     }
 
-    // Resolve intrinsic sizing keywords: -2=min-content, -3=max-content, -4=fit-content
-    if (node.specified_width <= -2 && node.specified_width >= -4) {
+    // Resolve intrinsic sizing keywords: -2=min-content, -3=max-content, -4=fit-content, -5=fit-content(N)
+    if (node.specified_width <= -2 && node.specified_width >= -5) {
         int kw = static_cast<int>(node.specified_width);
         const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
         float min_w = measure_intrinsic_width(node, false, mp);
@@ -424,8 +436,11 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
             node.specified_width = min_w;
         } else if (kw == -3) {
             node.specified_width = max_w;
-        } else { // -4 = fit-content
+        } else if (kw == -4) { // -4 = fit-content
             node.specified_width = std::max(min_w, std::min(containing_width, max_w));
+        } else { // -5 = fit-content(N)
+            float fit_limit = fit_content_limit_from_style(node, "--vibrowser-fit-content-width", containing_width);
+            node.specified_width = std::min(std::max(min_w, fit_limit), max_w);
         }
     }
 
@@ -499,8 +514,8 @@ float LayoutEngine::compute_height(LayoutNode& node, float containing_height) {
         node.max_height = node.css_max_height->to_px(cb_height);
     }
 
-    // Resolve intrinsic sizing keywords: -2=min-content, -3=max-content, -4=fit-content
-    if (node.specified_height <= -2 && node.specified_height >= -4) {
+    // Resolve intrinsic sizing keywords: -2=min-content, -3=max-content, -4=fit-content, -5=fit-content(N)
+    if (node.specified_height <= -2 && node.specified_height >= -5) {
         int kw = static_cast<int>(node.specified_height);
         const TextMeasureFn* mhp = text_measurer_ ? &text_measurer_ : nullptr;
         float min_h = measure_intrinsic_height(node, false, mhp);
@@ -509,10 +524,13 @@ float LayoutEngine::compute_height(LayoutNode& node, float containing_height) {
             node.specified_height = min_h;
         } else if (kw == -3) {
             node.specified_height = max_h;
-        } else { // -4 = fit-content
+        } else if (kw == -4) { // -4 = fit-content
             // For height, fit-content is essentially max-content since
             // height doesn't have an "available space" constraint like width does
             node.specified_height = max_h;
+        } else { // -5 = fit-content(N)
+            float fit_limit = fit_content_limit_from_style(node, "--vibrowser-fit-content-height", cb_height);
+            node.specified_height = std::min(std::max(min_h, fit_limit), max_h);
         }
     }
 

@@ -1236,13 +1236,98 @@ void StyleSheetParser::parse_counter_style_rule(StyleSheet& sheet) {
         if (current().type == CSSToken::Semicolon) { advance(); continue; }
         auto decl = parse_declaration();
         if (!decl.property.empty()) {
+            auto norm_key = [](const std::string& key) -> std::string {
+                std::string out = key;
+                for (auto& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                size_t start = 0;
+                while (start < out.size() && std::isspace(static_cast<unsigned char>(out[start]))) start++;
+                size_t end = out.size();
+                while (end > start && std::isspace(static_cast<unsigned char>(out[end - 1]))) end--;
+                return out.substr(start, end - start);
+            };
+
+            auto norm_value = [](const std::vector<ComponentValue>& values) -> std::string {
+                std::string val;
+                for (const auto& cv : values) {
+                    if (!val.empty()) val += " ";
+                    val += cv.value;
+                }
+                size_t start = 0;
+                while (start < val.size() && std::isspace(static_cast<unsigned char>(val[start]))) start++;
+                size_t end = val.size();
+                while (end > start && std::isspace(static_cast<unsigned char>(val[end - 1]))) end--;
+                return val.substr(start, end - start);
+            };
+
+            auto parse_symbols = [](const std::string& raw) -> std::string {
+                std::vector<std::string> symbols;
+                std::string token;
+                bool in_single = false;
+                bool in_double = false;
+                for (size_t i = 0; i < raw.size(); ++i) {
+                    char c = raw[i];
+                    if (!in_single && c == '"') {
+                        if (!in_double) {
+                            in_double = true;
+                        } else if (in_double) {
+                            in_double = false;
+                        }
+                    } else if (!in_double && c == '\'') {
+                        if (!in_single) in_single = true;
+                        else in_single = false;
+                    }
+
+                    if (!in_single && !in_double && (c == ',' || std::isspace(static_cast<unsigned char>(c)))) {
+                        if (!token.empty()) {
+                            size_t t_start = 0;
+                            while (t_start < token.size() && std::isspace(static_cast<unsigned char>(token[t_start]))) t_start++;
+                            size_t t_end = token.size();
+                            while (t_end > t_start && std::isspace(static_cast<unsigned char>(token[t_end - 1]))) t_end--;
+                            std::string normalized = token.substr(t_start, t_end - t_start);
+                            if (normalized.size() >= 2) {
+                                if ((normalized.front() == '"' && normalized.back() == '"') ||
+                                    (normalized.front() == '\'' && normalized.back() == '\'')) {
+                                    normalized = normalized.substr(1, normalized.size() - 2);
+                                }
+                            }
+                            if (!normalized.empty()) symbols.push_back(normalized);
+                            token.clear();
+                        }
+                    } else {
+                        token += c;
+                    }
+                }
+
+                if (!token.empty()) {
+                    size_t t_start = 0;
+                    while (t_start < token.size() && std::isspace(static_cast<unsigned char>(token[t_start]))) t_start++;
+                    size_t t_end = token.size();
+                    while (t_end > t_start && std::isspace(static_cast<unsigned char>(token[t_end - 1]))) t_end--;
+                    std::string normalized = token.substr(t_start, t_end - t_start);
+                    if (normalized.size() >= 2) {
+                        if ((normalized.front() == '"' && normalized.back() == '"') ||
+                            (normalized.front() == '\'' && normalized.back() == '\'')) {
+                            normalized = normalized.substr(1, normalized.size() - 2);
+                        }
+                    }
+                    if (!normalized.empty()) symbols.push_back(normalized);
+                }
+
+                std::string result;
+                for (size_t i = 0; i < symbols.size(); ++i) {
+                    if (!result.empty()) result += ' ';
+                    result += symbols[i];
+                }
+                return result;
+            };
+
+            std::string key = norm_key(decl.property);
+            std::string val = norm_value(decl.values);
             // Convert component values to string
-            std::string val;
-            for (const auto& cv : decl.values) {
-                if (!val.empty()) val += " ";
-                val += cv.value;
+            if (key == "symbols") {
+                val = parse_symbols(val);
             }
-            rule.descriptors[decl.property] = val;
+            rule.descriptors[key] = val;
         }
     }
     if (!at_end() && current().type == CSSToken::RightBrace) {

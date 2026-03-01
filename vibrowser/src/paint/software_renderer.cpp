@@ -308,23 +308,31 @@ void SoftwareRenderer::render(const DisplayList& list) {
 
                 // Resolve per-corner radii for borders (per-corner takes precedence over uniform)
                 auto resolve_border_radii = [&](float r_unif,
-                                                float& r_tl, float& r_tr, float& r_bl, float& r_br) {
+                                                float& r_tl_x, float& r_tl_y,
+                                                float& r_tr_x, float& r_tr_y,
+                                                float& r_bl_x, float& r_bl_y,
+                                                float& r_br_x, float& r_br_y) {
                     bool has_per = (cmd.border_radius_tl > 0 || cmd.border_radius_tr > 0 ||
                                     cmd.border_radius_bl > 0 || cmd.border_radius_br > 0);
                     if (has_per) {
-                        r_tl = cmd.border_radius_tl;
-                        r_tr = cmd.border_radius_tr;
-                        r_bl = cmd.border_radius_bl;
-                        r_br = cmd.border_radius_br;
+                        r_tl_x = cmd.border_radius_tl;
+                        r_tl_y = cmd.border_radius_tl;
+                        r_tr_x = cmd.border_radius_tr;
+                        r_tr_y = cmd.border_radius_tr;
+                        r_bl_x = cmd.border_radius_bl;
+                        r_bl_y = cmd.border_radius_bl;
+                        r_br_x = cmd.border_radius_br;
+                        r_br_y = cmd.border_radius_br;
                     } else {
-                        r_tl = r_tr = r_bl = r_br = r_unif;
+                        r_tl_x = r_tr_x = r_bl_x = r_br_x = r_unif;
+                        r_tl_y = r_tr_y = r_bl_y = r_br_y = r_unif;
                     }
                     // Clamp each corner radius to half-dimensions
                     float half_w = w / 2.0f, half_h = h / 2.0f;
-                    r_tl = std::min(r_tl, std::min(half_w, half_h));
-                    r_tr = std::min(r_tr, std::min(half_w, half_h));
-                    r_bl = std::min(r_bl, std::min(half_w, half_h));
-                    r_br = std::min(r_br, std::min(half_w, half_h));
+                    r_tl_x = std::min(r_tl_x, half_w); r_tl_y = std::min(r_tl_y, half_h);
+                    r_tr_x = std::min(r_tr_x, half_w); r_tr_y = std::min(r_tr_y, half_h);
+                    r_bl_x = std::min(r_bl_x, half_w); r_bl_y = std::min(r_bl_y, half_h);
+                    r_br_x = std::min(r_br_x, half_w); r_br_y = std::min(r_br_y, half_h);
                 };
 
                 if (cmd.border_style == 1) {
@@ -334,36 +342,46 @@ void SoftwareRenderer::render(const DisplayList& list) {
                                            cmd.border_radius_br > 0);
                     if (has_any_radius) {
                         // Per-corner SDF for rounded border
-                        float r_tl, r_tr, r_bl, r_br;
-                        resolve_border_radii(cmd.border_radius, r_tl, r_tr, r_bl, r_br);
+                        float r_tl_x, r_tl_y, r_tr_x, r_tr_y, r_bl_x, r_bl_y, r_br_x, r_br_y;
+                        float ri_tl_x, ri_tl_y, ri_tr_x, ri_tr_y, ri_bl_x, ri_bl_y, ri_br_x, ri_br_y;
+                        resolve_border_radii(cmd.border_radius,
+                                            r_tl_x, r_tl_y, r_tr_x, r_tr_y,
+                                            r_bl_x, r_bl_y, r_br_x, r_br_y);
 
                         // Outer SDF: per-corner
                         auto sdf_per_corner = [](float fx, float fy, float rx, float ry,
                                                   float rw, float rh,
-                                                  float rtl, float rtr, float rbl, float rbr) -> float {
+                                                  float rtl_x, float rtl_y,
+                                                  float rtr_x, float rtr_y,
+                                                  float rbl_x, float rbl_y,
+                                                  float rbr_x, float rbr_y) -> float {
                             // Determine which corner quadrant the point is in
                             float mid_x = rx + rw / 2.0f;
                             float mid_y = ry + rh / 2.0f;
-                            float r;
+                            float rxr = 0, ryr = 0;
                             float ccx, ccy;
                             if (fx <= mid_x && fy <= mid_y) {
                                 // top-left
-                                r = rtl; ccx = rx + rtl; ccy = ry + rtl;
+                                rxr = rtl_x; ryr = rtl_y; ccx = rx + rtl_x; ccy = ry + rtl_y;
                             } else if (fx > mid_x && fy <= mid_y) {
                                 // top-right
-                                r = rtr; ccx = rx + rw - rtr; ccy = ry + rtr;
+                                rxr = rtr_x; ryr = rtr_y; ccx = rx + rw - rtr_x; ccy = ry + rtr_y;
                             } else if (fx <= mid_x && fy > mid_y) {
                                 // bottom-left
-                                r = rbl; ccx = rx + rbl; ccy = ry + rh - rbl;
+                                rxr = rbl_x; ryr = rbl_y; ccx = rx + rbl_x; ccy = ry + rh - rbl_y;
                             } else {
                                 // bottom-right
-                                r = rbr; ccx = rx + rw - rbr; ccy = ry + rh - rbr;
+                                rxr = rbr_x; ryr = rbr_y; ccx = rx + rw - rbr_x; ccy = ry + rh - rbr_y;
                             }
-                            if (r > 0) {
-                                bool in_corner = (fx < rx + r || fx > rx + rw - r) &&
-                                                 (fy < ry + r || fy > ry + rh - r);
+                            float rxr_safe = std::max(rxr, 0.0f);
+                            float ryr_safe = std::max(ryr, 0.0f);
+                            if (rxr_safe > 0 && ryr_safe > 0) {
+                                bool in_corner = (fx < rx + rxr_safe || fx > rx + rw - rxr_safe) &&
+                                                 (fy < ry + ryr_safe || fy > ry + rh - ryr_safe);
                                 if (in_corner) {
-                                    return std::sqrt((fx - ccx) * (fx - ccx) + (fy - ccy) * (fy - ccy)) - r;
+                                    float dx = (fx - ccx) / rxr_safe;
+                                    float dy = (fy - ccy) / ryr_safe;
+                                    return std::sqrt(dx * dx + dy * dy) - 1.0f;
                                 }
                             }
                             float dl = rx - fx, dr = fx - (rx + rw);
@@ -371,20 +389,21 @@ void SoftwareRenderer::render(const DisplayList& list) {
                             return std::max({dl, dr, dt, db});
                         };
 
-                        float bw_avg = (bt + br + bb + bl) / 4.0f;
                         float bw_min_val = (bt > 0 || br > 0 || bb > 0 || bl > 0)
                             ? std::max(0.0f, std::min({bt > 0 ? bt : 1e9f,
                                                        br > 0 ? br : 1e9f,
                                                        bb > 0 ? bb : 1e9f,
                                                        bl > 0 ? bl : 1e9f}))
                             : 0.0f;
-                        (void)bw_avg;
-
                         // Inner radii (shrink by min border width on each corner)
-                        float ri_tl = std::max(0.0f, r_tl - bw_min_val);
-                        float ri_tr = std::max(0.0f, r_tr - bw_min_val);
-                        float ri_bl = std::max(0.0f, r_bl - bw_min_val);
-                        float ri_br = std::max(0.0f, r_br - bw_min_val);
+                        ri_tl_x = std::max(0.0f, r_tl_x - bw_min_val);
+                        ri_tl_y = std::max(0.0f, r_tl_y - bw_min_val);
+                        ri_tr_x = std::max(0.0f, r_tr_x - bw_min_val);
+                        ri_tr_y = std::max(0.0f, r_tr_y - bw_min_val);
+                        ri_bl_x = std::max(0.0f, r_bl_x - bw_min_val);
+                        ri_bl_y = std::max(0.0f, r_bl_y - bw_min_val);
+                        ri_br_x = std::max(0.0f, r_br_x - bw_min_val);
+                        ri_br_y = std::max(0.0f, r_br_y - bw_min_val);
 
                         int x0 = std::max(0, static_cast<int>(std::floor(x)));
                         int y0 = std::max(0, static_cast<int>(std::floor(y)));
@@ -398,10 +417,18 @@ void SoftwareRenderer::render(const DisplayList& list) {
                             float fy = static_cast<float>(py) + 0.5f;
                             for (int px = x0; px < x1; px++) {
                                 float fx = static_cast<float>(px) + 0.5f;
-                                float d_outer = sdf_per_corner(fx, fy, x, y, w, h, r_tl, r_tr, r_bl, r_br);
+                                float d_outer = sdf_per_corner(fx, fy, x, y, w, h,
+                                                               r_tl_x, r_tl_y,
+                                                               r_tr_x, r_tr_y,
+                                                               r_bl_x, r_bl_y,
+                                                               r_br_x, r_br_y);
                                 if (d_outer > 0.5f) continue;
                                 float d_inner = (iw > 0 && ih > 0)
-                                    ? sdf_per_corner(fx, fy, ix, iy, iw, ih, ri_tl, ri_tr, ri_bl, ri_br)
+                                    ? sdf_per_corner(fx, fy, ix, iy, iw, ih,
+                                                    ri_tl_x, ri_tl_y,
+                                                    ri_tr_x, ri_tr_y,
+                                                    ri_bl_x, ri_bl_y,
+                                                    ri_br_x, ri_br_y)
                                     : 1.0f;
                                 if (d_inner < -0.5f) continue;
                                 float ao = std::min(1.0f, 0.5f - d_outer);

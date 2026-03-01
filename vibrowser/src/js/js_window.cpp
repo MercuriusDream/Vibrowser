@@ -5764,6 +5764,164 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_FreeValue(ctx, polyfill_promise_any);
     }
 
+    // ---- ES2021-2023 polyfills ----
+    {
+        const char* polyfill_es2023_src = R"JS(
+// String.prototype.replaceAll (ES2021)
+if (!String.prototype.replaceAll) {
+    String.prototype.replaceAll = function(search, replacement) {
+        if (search instanceof RegExp) {
+            if (!search.global) throw new TypeError('replaceAll requires a global regexp');
+            return this.replace(search, replacement);
+        }
+        return this.split(String(search)).join(
+            typeof replacement === 'function'
+                ? replacement(search, 0, this)
+                : String(replacement)
+        );
+    };
+}
+
+// Array.prototype.flat (ES2019)
+if (!Array.prototype.flat) {
+    Array.prototype.flat = function(depth) {
+        var d = depth === undefined ? 1 : Math.floor(depth);
+        if (d < 1) return Array.prototype.slice.call(this);
+        return (function flat(arr, d) {
+            var result = [];
+            arr.forEach(function(item) {
+                if (Array.isArray(item) && d > 0) {
+                    result.push.apply(result, flat(item, d - 1));
+                } else {
+                    result.push(item);
+                }
+            });
+            return result;
+        })(this, d);
+    };
+}
+
+// Array.prototype.flatMap (ES2019)
+if (!Array.prototype.flatMap) {
+    Array.prototype.flatMap = function(fn, thisArg) {
+        return Array.prototype.flat.call(
+            Array.prototype.map.call(this, fn, thisArg), 1
+        );
+    };
+}
+
+// Array.prototype.toReversed (ES2023)
+if (!Array.prototype.toReversed) {
+    Array.prototype.toReversed = function() {
+        return Array.prototype.slice.call(this).reverse();
+    };
+}
+
+// Array.prototype.toSorted (ES2023)
+if (!Array.prototype.toSorted) {
+    Array.prototype.toSorted = function(compareFn) {
+        return Array.prototype.slice.call(this).sort(compareFn);
+    };
+}
+
+// Array.prototype.toSpliced (ES2023)
+if (!Array.prototype.toSpliced) {
+    Array.prototype.toSpliced = function(start, deleteCount) {
+        var copy = Array.prototype.slice.call(this);
+        var args = [start, deleteCount].concat(Array.prototype.slice.call(arguments, 2));
+        Array.prototype.splice.apply(copy, args);
+        return copy;
+    };
+}
+
+// Array.prototype.with (ES2023)
+if (!Array.prototype.with) {
+    Array.prototype.with = function(index, value) {
+        var copy = Array.prototype.slice.call(this);
+        var len = copy.length;
+        var i = index < 0 ? len + index : index;
+        if (i < 0 || i >= len) throw new RangeError('Invalid index');
+        copy[i] = value;
+        return copy;
+    };
+}
+
+// Object.groupBy (ES2024)
+if (!Object.groupBy) {
+    Object.groupBy = function(iterable, keyFn) {
+        var result = Object.create(null);
+        var i = 0;
+        for (var item of iterable) {
+            var key = keyFn(item, i++);
+            key = String(key);
+            if (!Object.prototype.hasOwnProperty.call(result, key)) result[key] = [];
+            result[key].push(item);
+        }
+        return result;
+    };
+}
+
+// Map.groupBy (ES2024)
+if (!Map.groupBy) {
+    Map.groupBy = function(iterable, keyFn) {
+        var result = new Map();
+        var i = 0;
+        for (var item of iterable) {
+            var key = keyFn(item, i++);
+            if (!result.has(key)) result.set(key, []);
+            result.get(key).push(item);
+        }
+        return result;
+    };
+}
+
+// String.prototype.padStart (ES2017 - some older environments lack it)
+if (!String.prototype.padStart) {
+    String.prototype.padStart = function(targetLength, padString) {
+        var str = String(this);
+        targetLength = Math.floor(targetLength) || 0;
+        padString = padString !== undefined ? String(padString) : ' ';
+        if (str.length >= targetLength || !padString.length) return str;
+        var pad = '';
+        var need = targetLength - str.length;
+        while (pad.length < need) pad += padString;
+        return pad.slice(0, need) + str;
+    };
+}
+
+// String.prototype.padEnd (ES2017)
+if (!String.prototype.padEnd) {
+    String.prototype.padEnd = function(targetLength, padString) {
+        var str = String(this);
+        targetLength = Math.floor(targetLength) || 0;
+        padString = padString !== undefined ? String(padString) : ' ';
+        if (str.length >= targetLength || !padString.length) return str;
+        var pad = '';
+        var need = targetLength - str.length;
+        while (pad.length < need) pad += padString;
+        return str + pad.slice(0, need);
+    };
+}
+
+// String.prototype.trimStart / trimEnd (ES2019)
+if (!String.prototype.trimStart) {
+    String.prototype.trimStart = function() { return this.replace(/^\s+/, ''); };
+    String.prototype.trimLeft = String.prototype.trimStart;
+}
+if (!String.prototype.trimEnd) {
+    String.prototype.trimEnd = function() { return this.replace(/\s+$/, ''); };
+    String.prototype.trimRight = String.prototype.trimEnd;
+}
+)JS";
+        JSValue polyfill_es2023 = JS_Eval(ctx, polyfill_es2023_src, std::strlen(polyfill_es2023_src),
+                                         "<polyfill-es2023>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_es2023)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_es2023);
+    }
+
     // ---- window.localStorage and window.sessionStorage ----
     ParsedURL parsed_url = parse_url(url);
     install_web_storage_bindings(ctx, parsed_url.origin);
