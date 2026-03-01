@@ -504,7 +504,7 @@ void PropertyCascade::apply_declaration(
         if (prop == "border-collapse") { style.border_collapse = parent.border_collapse; return; }
         if (prop == "border-spacing") { style.border_spacing = parent.border_spacing; style.border_spacing_v = parent.border_spacing_v; return; }
         if (prop == "table-layout") { style.table_layout = parent.table_layout; return; }
-        if (prop == "text-overflow") { style.text_overflow = parent.text_overflow; return; }
+        if (prop == "text-overflow") { style.text_overflow = parent.text_overflow; style.text_overflow_string = parent.text_overflow_string; return; }
         if (prop == "flex-direction") { style.flex_direction = parent.flex_direction; return; }
         if (prop == "flex-wrap") { style.flex_wrap = parent.flex_wrap; return; }
         if (prop == "flex-flow") { style.flex_direction = parent.flex_direction; style.flex_wrap = parent.flex_wrap; return; }
@@ -2030,7 +2030,18 @@ void PropertyCascade::apply_declaration(
     if (prop == "text-overflow") {
         if (value_lower == "ellipsis") style.text_overflow = TextOverflow::Ellipsis;
         else if (value_lower == "fade") style.text_overflow = TextOverflow::Fade;
-        else style.text_overflow = TextOverflow::Clip;
+        else if (value_str.length() > 0 && value_str[0] == '"') {
+            // Custom ellipsis string: text-overflow: "→"
+            auto end_quote = value_str.find('"', 1);
+            if (end_quote != std::string::npos) {
+                style.text_overflow_string = value_str.substr(1, end_quote - 1);
+                style.text_overflow = TextOverflow::Ellipsis;
+            } else {
+                style.text_overflow = TextOverflow::Clip;
+            }
+        } else {
+            style.text_overflow = TextOverflow::Clip;
+        }
         return;
     }
     if (prop == "word-break") {
@@ -3524,6 +3535,54 @@ void PropertyCascade::apply_declaration(
         }
         // Parse transform functions: translate(x, y), rotate(deg), scale(x[, y])
         style.transforms.clear();
+        auto parse_angle_deg = [](const std::string& raw) -> float {
+            std::string sl = to_lower(trim(raw));
+            if (sl.empty()) return 0.0f;
+            try {
+                if (sl.size() > 3 && sl.substr(sl.size() - 3) == "deg") {
+                    return std::stof(sl.substr(0, sl.size() - 3));
+                }
+                if (sl.size() > 3 && sl.substr(sl.size() - 3) == "rad") {
+                    return std::stof(sl.substr(0, sl.size() - 3)) * 180.0f / 3.14159265f;
+                }
+                if (sl.size() > 4 && sl.substr(sl.size() - 4) == "turn") {
+                    return std::stof(sl.substr(0, sl.size() - 4)) * 360.0f;
+                }
+                if (sl.size() > 4 && sl.substr(sl.size() - 4) == "grad") {
+                    return std::stof(sl.substr(0, sl.size() - 4)) * 0.9f;
+                }
+                return std::stof(sl);
+            } catch (...) {
+                return 0.0f;
+            }
+        };
+
+        auto split_transform_parts = [](const std::string& args, size_t max_parts) -> std::vector<std::string> {
+            std::vector<std::string> parts;
+            std::string s = args;
+            size_t p = 0;
+            while (p < s.size() && parts.size() < max_parts) {
+                while (p < s.size() && (s[p] == ' ' || s[p] == ',' || s[p] == '\t')) p++;
+                if (p >= s.size()) break;
+                size_t start_p = p;
+                while (p < s.size() && s[p] != ' ' && s[p] != ',' && s[p] != '\t') p++;
+                parts.push_back(s.substr(start_p, p - start_p));
+            }
+            return parts;
+        };
+
+        auto parse_float = [](const std::string& raw, float fallback = 0.0f) -> float {
+            std::string s = trim(raw);
+            if (s.empty()) return fallback;
+            try { return std::stof(s); } catch (...) { return fallback; }
+        };
+
+        auto parse_length_px = [&](const std::string& raw, float fallback = 0.0f) -> float {
+            auto value = parse_length(trim(raw));
+            if (!value) return fallback;
+            return value->to_px();
+        };
+
         std::string v = value_str;
         size_t pos = 0;
         while (pos < v.size()) {
@@ -3555,104 +3614,77 @@ void PropertyCascade::apply_declaration(
                 t.type = TransformType::Translate;
                 auto comma = args.find(',');
                 if (comma != std::string::npos) {
-                    auto lx = parse_length(trim(args.substr(0, comma)));
-                    auto ly = parse_length(trim(args.substr(comma + 1)));
-                    if (lx) t.x = lx->to_px();
-                    if (ly) t.y = ly->to_px();
+                    t.x = parse_length_px(args.substr(0, comma));
+                    t.y = parse_length_px(args.substr(comma + 1));
                 } else {
-                    auto lx = parse_length(trim(args));
-                    if (lx) t.x = lx->to_px();
+                    t.x = parse_length_px(args);
                     t.y = 0;
                 }
                 style.transforms.push_back(t);
             } else if (fn_name == "translatex") {
                 Transform t;
                 t.type = TransformType::Translate;
-                auto lx = parse_length(trim(args));
-                if (lx) t.x = lx->to_px();
+                t.x = parse_length_px(args);
                 t.y = 0;
                 style.transforms.push_back(t);
             } else if (fn_name == "translatey") {
                 Transform t;
                 t.type = TransformType::Translate;
                 t.x = 0;
-                auto ly = parse_length(trim(args));
-                if (ly) t.y = ly->to_px();
+                t.y = parse_length_px(args);
+                style.transforms.push_back(t);
+            } else if (fn_name == "translatez") {
+                // translateZ(z) — keep z for 2D fallback
+                Transform t;
+                t.type = TransformType::Translate;
+                t.z = parse_length_px(args);
+                if (t.z != 0.0f) t.is_3d = true;
                 style.transforms.push_back(t);
             } else if (fn_name == "rotate") {
                 Transform t;
                 t.type = TransformType::Rotate;
-                std::string arg_lower_val = to_lower(trim(args));
-                if (arg_lower_val.find("deg") != std::string::npos) {
-                    try { t.angle = std::stof(arg_lower_val); } catch (...) {}
-                } else if (arg_lower_val.find("rad") != std::string::npos) {
-                    try {
-                        float rad = std::stof(arg_lower_val);
-                        t.angle = rad * 180.0f / 3.14159265f;
-                    } catch (...) {}
-                } else if (arg_lower_val.find("turn") != std::string::npos) {
-                    try {
-                        float turns = std::stof(arg_lower_val);
-                        t.angle = turns * 360.0f;
-                    } catch (...) {}
-                } else {
-                    try { t.angle = std::stof(arg_lower_val); } catch (...) {}
-                }
+                t.angle = parse_angle_deg(args);
                 style.transforms.push_back(t);
             } else if (fn_name == "scale") {
                 Transform t;
                 t.type = TransformType::Scale;
                 auto comma = args.find(',');
                 if (comma != std::string::npos) {
-                    try { t.x = std::stof(trim(args.substr(0, comma))); } catch (...) {}
-                    try { t.y = std::stof(trim(args.substr(comma + 1))); } catch (...) {}
+                    t.x = parse_float(args.substr(0, comma));
+                    t.y = parse_float(args.substr(comma + 1));
                 } else {
-                    try {
-                        float s = std::stof(trim(args));
-                        t.x = s;
-                        t.y = s;
-                    } catch (...) {}
+                    float s = parse_float(args, 1.0f);
+                    t.x = s;
+                    t.y = s;
                 }
                 style.transforms.push_back(t);
             } else if (fn_name == "scalex") {
                 Transform t;
                 t.type = TransformType::Scale;
-                try { t.x = std::stof(trim(args)); } catch (...) {}
+                t.x = parse_float(args, 1.0f);
                 t.y = 1;
                 style.transforms.push_back(t);
             } else if (fn_name == "scaley") {
                 Transform t;
                 t.type = TransformType::Scale;
                 t.x = 1;
-                try { t.y = std::stof(trim(args)); } catch (...) {}
+                t.y = parse_float(args, 1.0f);
                 style.transforms.push_back(t);
             } else if (fn_name == "skew") {
                 Transform t;
                 t.type = TransformType::Skew;
-                auto parse_angle_val = [](const std::string& s) -> float {
-                    std::string sl = to_lower(trim(s));
-                    if (sl.find("rad") != std::string::npos) {
-                        try { return std::stof(sl) * 180.0f / 3.14159265f; } catch (...) { return 0; }
-                    } else if (sl.find("turn") != std::string::npos) {
-                        try { return std::stof(sl) * 360.0f; } catch (...) { return 0; }
-                    } else if (sl.find("grad") != std::string::npos) {
-                        try { return std::stof(sl) * 0.9f; } catch (...) { return 0; }
-                    } else {
-                        try { return std::stof(sl); } catch (...) { return 0; }
-                    }
-                };
                 auto comma = args.find(',');
                 if (comma != std::string::npos) {
-                    t.x = parse_angle_val(args.substr(0, comma));
-                    t.y = parse_angle_val(args.substr(comma + 1));
+                    t.x = parse_angle_deg(args.substr(0, comma));
+                    t.y = parse_angle_deg(args.substr(comma + 1));
                 } else {
                     // Cascade tokenizer strips commas — try space-separated
                     auto parts = split_whitespace(args);
                     if (parts.size() >= 2) {
-                        t.x = parse_angle_val(parts[0]);
-                        t.y = parse_angle_val(parts[1]);
+                        t.x = parse_angle_deg(parts[0]);
+                        t.y = parse_angle_deg(parts[1]);
                     } else {
-                        t.x = parse_angle_val(args);
+                        t.x = parse_angle_deg(args);
                         t.y = 0;
                     }
                 }
@@ -3660,16 +3692,14 @@ void PropertyCascade::apply_declaration(
             } else if (fn_name == "skewx") {
                 Transform t;
                 t.type = TransformType::Skew;
-                std::string sl = to_lower(trim(args));
-                try { t.x = std::stof(sl); } catch (...) {}
+                t.x = parse_angle_deg(args);
                 t.y = 0;
                 style.transforms.push_back(t);
             } else if (fn_name == "skewy") {
                 Transform t;
                 t.type = TransformType::Skew;
                 t.x = 0;
-                std::string sl = to_lower(trim(args));
-                try { t.y = std::stof(sl); } catch (...) {}
+                t.y = parse_angle_deg(args);
                 style.transforms.push_back(t);
             } else if (fn_name == "matrix") {
                 // matrix(a, b, c, d, e, f)
@@ -3689,105 +3719,86 @@ void PropertyCascade::apply_declaration(
                 for (size_t i = 0; i < 6 && i < vals.size(); i++) t.m[i] = vals[i];
                 style.transforms.push_back(t);
             } else if (fn_name == "translate3d") {
-                // translate3d(x, y, z) — apply as translate(x, y), ignore z
+                // translate3d(x, y, z) — project z and keep for 2D fallback
                 Transform t;
                 t.type = TransformType::Translate;
-                std::vector<std::string> parts3d;
-                {
-                    std::string s = args;
-                    size_t p = 0;
-                    while (p < s.size() && parts3d.size() < 3) {
-                        while (p < s.size() && (s[p] == ' ' || s[p] == ',' || s[p] == '\t')) p++;
-                        if (p >= s.size()) break;
-                        size_t start_p = p;
-                        while (p < s.size() && s[p] != ' ' && s[p] != ',' && s[p] != '\t') p++;
-                        parts3d.push_back(s.substr(start_p, p - start_p));
-                    }
-                }
-                if (parts3d.size() >= 1) { auto lx = parse_length(trim(parts3d[0])); if (lx) t.x = lx->to_px(); }
-                if (parts3d.size() >= 2) { auto ly = parse_length(trim(parts3d[1])); if (ly) t.y = ly->to_px(); }
-                style.transforms.push_back(t);
-            } else if (fn_name == "translatez") {
-                // translateZ(z) — no visual effect in 2D
-                Transform t;
-                t.type = TransformType::Translate;
-                t.x = 0;
-                t.y = 0;
+                auto parts = split_transform_parts(args, 3);
+                t.x = parts.size() > 0 ? parse_length_px(parts[0]) : 0.0f;
+                t.y = parts.size() > 1 ? parse_length_px(parts[1]) : 0.0f;
+                t.z = parts.size() > 2 ? parse_length_px(parts[2]) : 0.0f;
+                if (t.z != 0.0f) t.is_3d = true;
                 style.transforms.push_back(t);
             } else if (fn_name == "scale3d") {
-                // scale3d(x, y, z) — apply as scale(x, y), ignore z
+                // scale3d(x, y, z) — keep z scale for 2D fallback
                 Transform t;
                 t.type = TransformType::Scale;
-                std::vector<float> vals3d;
-                {
-                    std::string s = args;
-                    size_t p = 0;
-                    while (p < s.size() && vals3d.size() < 3) {
-                        while (p < s.size() && (s[p] == ' ' || s[p] == ',' || s[p] == '\t')) p++;
-                        if (p >= s.size()) break;
-                        size_t start_p = p;
-                        while (p < s.size() && s[p] != ' ' && s[p] != ',' && s[p] != '\t') p++;
-                        try { vals3d.push_back(std::stof(s.substr(start_p, p - start_p))); } catch (...) { vals3d.push_back(1); }
-                    }
-                }
-                t.x = vals3d.size() >= 1 ? vals3d[0] : 1;
-                t.y = vals3d.size() >= 2 ? vals3d[1] : 1;
+                auto parts = split_transform_parts(args, 3);
+                t.x = parts.size() > 0 ? parse_float(parts[0], 1.0f) : 1.0f;
+                t.y = parts.size() > 1 ? parse_float(parts[1], 1.0f) : 1.0f;
+                t.z_scale = parts.size() > 2 ? parse_float(parts[2], 1.0f) : 1.0f;
+                if (t.z_scale != 1.0f) t.is_3d = true;
                 style.transforms.push_back(t);
             } else if (fn_name == "scalez") {
-                // scaleZ(z) — no visual effect in 2D (no-op)
+                // scaleZ(z)
+                Transform t;
+                t.type = TransformType::Scale;
+                t.z_scale = parse_float(args, 1.0f);
+                if (t.z_scale != 1.0f) t.is_3d = true;
+                style.transforms.push_back(t);
             } else if (fn_name == "rotate3d") {
-                // rotate3d(x, y, z, angle) — apply as rotate(angle)
+                // rotate3d(x, y, z, angle) — keep axis for 2D fallback
+                auto parts = split_transform_parts(args, 4);
+                if (parts.size() >= 4) {
+                    Transform t;
+                    t.type = TransformType::Rotate;
+                    t.axis_x = parse_float(parts[0]);
+                    t.axis_y = parse_float(parts[1]);
+                    t.axis_z = parse_float(parts[2]);
+                    t.angle = parse_angle_deg(parts[3]);
+                    t.is_3d = true;
+                    style.transforms.push_back(t);
+                }
+            } else if (fn_name == "rotatex" || fn_name == "rotatey") {
+                // rotateX/rotateY
                 Transform t;
                 t.type = TransformType::Rotate;
-                std::vector<std::string> rparts;
-                {
-                    std::string s = args;
-                    size_t p = 0;
-                    while (p < s.size() && rparts.size() < 4) {
-                        while (p < s.size() && (s[p] == ' ' || s[p] == ',' || s[p] == '\t')) p++;
-                        if (p >= s.size()) break;
-                        size_t start_p = p;
-                        while (p < s.size() && s[p] != ' ' && s[p] != ',' && s[p] != '\t') p++;
-                        rparts.push_back(s.substr(start_p, p - start_p));
-                    }
-                }
-                if (rparts.size() >= 4) {
-                    std::string angle_str = to_lower(trim(rparts[3]));
-                    if (angle_str.find("deg") != std::string::npos) {
-                        try { t.angle = std::stof(angle_str); } catch (...) {}
-                    } else if (angle_str.find("rad") != std::string::npos) {
-                        try { t.angle = std::stof(angle_str) * 180.0f / 3.14159265f; } catch (...) {}
-                    } else if (angle_str.find("turn") != std::string::npos) {
-                        try { t.angle = std::stof(angle_str) * 360.0f; } catch (...) {}
-                    } else {
-                        try { t.angle = std::stof(angle_str); } catch (...) {}
-                    }
+                t.angle = parse_angle_deg(args);
+                t.is_3d = true;
+                if (fn_name == "rotatex") {
+                    t.axis_x = 1.0f;
+                } else {
+                    t.axis_y = 1.0f;
                 }
                 style.transforms.push_back(t);
-            } else if (fn_name == "rotatex" || fn_name == "rotatey") {
-                // rotateX/rotateY — no visual effect in 2D (no-op)
             } else if (fn_name == "rotatez") {
                 // rotateZ(angle) — equivalent to rotate(angle) in 2D
                 Transform t;
                 t.type = TransformType::Rotate;
-                std::string angle_str = to_lower(trim(args));
-                if (angle_str.find("deg") != std::string::npos) {
-                    try { t.angle = std::stof(angle_str); } catch (...) {}
-                } else if (angle_str.find("rad") != std::string::npos) {
-                    try { t.angle = std::stof(angle_str) * 180.0f / 3.14159265f; } catch (...) {}
-                } else if (angle_str.find("turn") != std::string::npos) {
-                    try { t.angle = std::stof(angle_str) * 360.0f; } catch (...) {}
-                } else {
-                    try { t.angle = std::stof(angle_str); } catch (...) {}
-                }
+                t.angle = parse_angle_deg(args);
+                t.axis_z = 1.0f;
+                t.is_3d = true;
                 style.transforms.push_back(t);
             } else if (fn_name == "perspective") {
-                // perspective(d) — no-op for 2D rendering
+                // perspective(d) — store as perspective matrix transform
+                auto depth = parse_length(trim(args));
+                if (depth) {
+                    float depth_px = depth->to_px();
+                    if (depth_px > 0) {
+                        Transform t;
+                        t.type = TransformType::Matrix;
+                        t.is_3d = true;
+                        t.m4[11] = -1.0f / depth_px;
+                        style.transforms.push_back(t);
+                    }
+                }
             } else if (fn_name == "matrix3d") {
-                // matrix3d(a1..a16) — extract 2D affine from 4x4 column-major
+                // matrix3d(a1..a16) — store full 4x4 row-major matrix
                 Transform t;
                 t.type = TransformType::Matrix;
                 std::vector<float> vals16;
+                for (size_t i = 0; i < 16; ++i) {
+                    t.m4[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+                }
                 {
                     std::string s = args;
                     size_t p = 0;
@@ -3796,16 +3807,14 @@ void PropertyCascade::apply_declaration(
                         if (p >= s.size()) break;
                         size_t start_p = p;
                         while (p < s.size() && s[p] != ' ' && s[p] != ',' && s[p] != '\t') p++;
-                        try { vals16.push_back(std::stof(s.substr(start_p, p - start_p))); } catch (...) { vals16.push_back(0); }
+                        try { vals16.push_back(std::stof(s.substr(start_p, p - start_p))); } catch (...) { vals16.push_back(0.0f); }
                     }
                 }
                 if (vals16.size() >= 16) {
-                    t.m[0] = vals16[0];  // a
-                    t.m[1] = vals16[1];  // b
-                    t.m[2] = vals16[4];  // c
-                    t.m[3] = vals16[5];  // d
-                    t.m[4] = vals16[12]; // e (tx)
-                    t.m[5] = vals16[13]; // f (ty)
+                    for (size_t i = 0; i < 16; ++i) {
+                        t.m4[i] = vals16[i];
+                    }
+                    t.is_3d = true;
                 }
                 style.transforms.push_back(t);
             }

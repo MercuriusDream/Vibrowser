@@ -209,6 +209,8 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     bool has_css_rotate = (!node.css_rotate.empty() && node.css_rotate != "none");
     bool has_css_scale = (!node.css_scale.empty() && node.css_scale != "none");
     bool has_individual_transforms = has_css_translate || has_css_rotate || has_css_scale;
+    float active_perspective = (node.parent ? node.parent->perspective : 0.0f);
+    float perspective_z_offset = 0.0f;
 
     int transform_count = 0;
     // Resolve CSS transform-origin against the element's border-box.
@@ -344,17 +346,45 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
 
     if (has_transforms) {
         for (const auto& t : node.transforms) {
+            const float eps = 0.00001f;
             switch (t.type) {
                 case clever::css::TransformType::Translate:
+                    if (t.is_3d && t.z != 0.0f) perspective_z_offset += t.z;
                     list.push_translate(t.x, t.y);
                     transform_count++;
                     break;
                 case clever::css::TransformType::Rotate:
-                    list.push_rotate(t.angle, origin_x, origin_y);
+                    if (!t.is_3d || ((std::fabs(t.axis_x - 0.0f) <= eps) && (std::fabs(t.axis_y - 0.0f) <= eps) && (std::fabs(t.axis_z - 1.0f) <= eps))) {
+                        list.push_rotate(t.angle, origin_x, origin_y);
+                        break;
+                    }
+                    if (std::fabs(t.axis_z) <= eps) {
+                        list.push_rotate(t.angle, origin_x, origin_y);
+                        break;
+                    }
+                    if (std::fabs(t.axis_x) > std::fabs(t.axis_y)) {
+                        float ry = 1.0f - (1.0f - std::fabs(std::cos(t.angle * 3.14159265f / 180.0f))) * 0.2f;
+                        list.push_scale(1.0f, ry, origin_x, origin_y);
+                    } else {
+                        float rx = 1.0f - (1.0f - std::fabs(std::cos(t.angle * 3.14159265f / 180.0f))) * 0.2f;
+                        list.push_scale(rx, 1.0f, origin_x, origin_y);
+                    }
+                    if (t.axis_z != 0.0f) {
+                        float nz = t.axis_z / std::sqrt(t.axis_x * t.axis_x + t.axis_y * t.axis_y + t.axis_z * t.axis_z);
+                        if (std::fabs(nz) > eps) {
+                            list.push_rotate(t.angle * nz, origin_x, origin_y);
+                        }
+                    }
                     transform_count++;
                     break;
                 case clever::css::TransformType::Scale:
-                    list.push_scale(t.x, t.y, origin_x, origin_y);
+                    if (!t.is_3d || t.z_scale == 1.0f) {
+                        list.push_scale(t.x, t.y, origin_x, origin_y);
+                    } else {
+                        float z_factor = 1.0f + (t.z_scale - 1.0f) * 0.08f;
+                        perspective_z_offset += (t.z_scale - 1.0f) * 20.0f;
+                        list.push_scale(t.x * z_factor, t.y * z_factor, origin_x, origin_y);
+                    }
                     transform_count++;
                     break;
                 case clever::css::TransformType::Skew:
@@ -362,13 +392,28 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
                     transform_count++;
                     break;
                 case clever::css::TransformType::Matrix: {
+                    if (t.is_3d && std::fabs(t.m4[11]) > 1e-6f &&
+                        std::fabs(t.m4[0] - 1.0f) <= 1e-5f && std::fabs(t.m4[1]) <= 1e-5f &&
+                        std::fabs(t.m4[2]) <= 1e-5f && std::fabs(t.m4[3]) <= 1e-5f &&
+                        std::fabs(t.m4[4]) <= 1e-5f && std::fabs(t.m4[5] - 1.0f) <= 1e-5f &&
+                        std::fabs(t.m4[6]) <= 1e-5f && std::fabs(t.m4[7]) <= 1e-5f &&
+                        std::fabs(t.m4[8]) <= 1e-5f && std::fabs(t.m4[9]) <= 1e-5f &&
+                        std::fabs(t.m4[10] - 1.0f) <= 1e-5f && std::fabs(t.m4[12]) <= 1e-5f &&
+                        std::fabs(t.m4[13]) <= 1e-5f && std::fabs(t.m4[15] - 1.0f) <= 1e-5f) {
+                        float local_perspective = -1.0f / t.m4[11];
+                        if (local_perspective > 0.0f) active_perspective = local_perspective;
+                        break;
+                    }
                     // CSS matrix(a,b,c,d,e,f) with transform-origin (ox,oy):
                     // Effective = T(ox,oy) * M * T(-ox,-oy)
                     // Adjusted e' = e + ox*(1 - a) - c*oy
                     // Adjusted f' = f - b*ox + oy*(1 - d)
-                    float a = t.m[0], b = t.m[1], c = t.m[2], d = t.m[3];
-                    float e = t.m[4] + origin_x * (1.0f - a) - c * origin_y;
-                    float f = t.m[5] - b * origin_x + origin_y * (1.0f - d);
+                    float a = t.m4[0];
+                    float b = t.m4[1];
+                    float c = t.m4[4];
+                    float d = t.m4[5];
+                    float e = t.m4[12] + origin_x * (1.0f - a) - c * origin_y;
+                    float f = t.m4[13] - b * origin_x + origin_y * (1.0f - d);
                     list.push_matrix(a, b, c, d, e, f);
                     transform_count++;
                     break;
@@ -380,26 +425,15 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     }
 
     // CSS perspective: parent's perspective creates foreshortening on transformed children
-    // In 2D rendering, we approximate by scaling based on the dominant rotation angle
-    if (node.parent && node.parent->perspective > 0 && transform_count > 0) {
-        float persp = node.parent->perspective;
-        // Sum up rotation angles to estimate foreshortening
-        float total_angle_rad = 0;
-        for (const auto& t : node.transforms) {
-            if (t.type == clever::css::TransformType::Rotate) {
-                total_angle_rad += t.angle * 3.14159265f / 180.0f;
-            }
-        }
-        if (total_angle_rad != 0) {
-            // Perspective foreshortening: scale_x ~= cos(angle) as objects rotate away
-            float cos_val = std::cos(total_angle_rad);
-            // Depth factor: closer perspective = more dramatic effect
-            float factor = 1.0f - (1.0f - std::abs(cos_val)) * (500.0f / persp);
-            if (factor < 0.1f) factor = 0.1f;
-            if (factor > 1.0f) factor = 1.0f;
-            list.push_scale(factor, 1.0f, origin_x, origin_y);
-            transform_count++;
-        }
+    // Use perspective depth where available to derive projected scale.
+    if (active_perspective > 0.0f && transform_count > 0 && perspective_z_offset != 0.0f) {
+        float perspective = active_perspective + perspective_z_offset;
+        if (perspective < 1.0f) perspective = 1.0f;
+        float factor = active_perspective / perspective;
+        if (factor < 0.1f) factor = 0.1f;
+        if (factor > 1.6f) factor = 1.6f;
+        list.push_scale(factor, factor, origin_x, origin_y);
+        transform_count++;
     }
 
     // Save backdrop for mix-blend-mode before any painting of this node

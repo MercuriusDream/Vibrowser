@@ -64,9 +64,20 @@ struct Transform {
     TransformType type = TransformType::None;
     float x = 0;    // translate: x offset (px), scale: x factor, skew: x angle (deg)
     float y = 0;    // translate: y offset (px), scale: y factor, skew: y angle (deg)
+    float z = 0;    // translate: z offset (px)
+    float z_scale = 1; // scale: z factor
     float angle = 0; // rotate: angle in degrees
     // matrix(a, b, c, d, e, f) parameters
     float m[6] = {1, 0, 0, 1, 0, 0}; // a, b, c, d, e(tx), f(ty)
+    // matrix3d: full 4x4 transform matrix (row-major).
+    float m4[16] = {1, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0, 0, 1, 0,
+                    0, 0, 0, 1};
+    bool is_3d = false;
+    float axis_x = 0;
+    float axis_y = 0;
+    float axis_z = 0;
 };
 
 struct Color {

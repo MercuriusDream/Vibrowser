@@ -688,6 +688,7 @@ void TreeBuilder::process_token(const Token& token) {
         case InsertionMode::InTableBody:     handle_in_table_body(token); break;
         case InsertionMode::InRow:           handle_in_row(token); break;
         case InsertionMode::InCell:          handle_in_cell(token); break;
+        case InsertionMode::InTemplate:      handle_in_template(token); break;
         case InsertionMode::AfterBody:       handle_after_body(token); break;
         case InsertionMode::AfterAfterBody:  handle_after_after_body(token); break;
         default:
@@ -798,6 +799,19 @@ void TreeBuilder::handle_in_head(const Token& token) {
         return;
     }
     if (token.type == Token::StartTag) {
+        // Implicit head close: non-head elements should close head
+        const std::string& tag = token.name;
+        if (tag != "html" && tag != "head" && tag != "base" && tag != "basefont" &&
+            tag != "bgsound" && tag != "link" && tag != "meta" && tag != "title" &&
+            tag != "noframes" && tag != "style" && tag != "script" && tag != "noscript") {
+            // Implicit head close
+            if (!open_elements_.empty() && current_node()->tag_name == "head") {
+                open_elements_.pop_back();
+                mode_ = InsertionMode::AfterHead;
+                process_token(token);
+                return;
+            }
+        }
         if (token.name == "html") {
             return;
         }
@@ -805,6 +819,15 @@ void TreeBuilder::handle_in_head(const Token& token) {
             || token.name == "bgsound" || token.name == "link"
             || token.name == "meta") {
             insert_element(token);
+            // Extract href from base element for base URL tracking
+            if (token.name == "base") {
+                for (const auto& attr : token.attributes) {
+                    if (attr.name == "href") {
+                        base_url_ = attr.value;
+                        break;
+                    }
+                }
+            }
             // Void elements -- already not pushed to open_elements
             return;
         }
@@ -822,6 +845,27 @@ void TreeBuilder::handle_in_head(const Token& token) {
             return;
         }
         if (token.name == "script") {
+            insert_element(token);
+            original_mode_ = mode_;
+            mode_ = InsertionMode::Text;
+            return;
+        }
+        if (token.name == "template") {
+            insert_element(token);
+            // Create template_content as DocumentFragment
+            SimpleNode* template_elem = current_node();
+            if (template_elem) {
+                template_elem->template_content = std::make_unique<SimpleNode>();
+                template_elem->template_content->type = SimpleNode::DocumentFragment;
+                // Push the template_content fragment onto open_elements to capture content
+                open_elements_.push_back(template_elem->template_content.get());
+                // Save current mode and switch to InTemplate
+                original_mode_ = mode_;
+                mode_ = InsertionMode::InTemplate;
+            }
+            return;
+        }
+        if (token.name == "noscript") {
             insert_element(token);
             original_mode_ = mode_;
             mode_ = InsertionMode::Text;
@@ -1615,6 +1659,52 @@ void TreeBuilder::handle_after_after_body(const Token& token) {
     // Parse error
     mode_ = InsertionMode::InBody;
     process_token(token);
+}
+
+void TreeBuilder::handle_in_template(const Token& token) {
+    // Handle tokens while inside a <template> element
+    if (token.type == Token::Character) {
+        if (current_node() && current_node()->type == SimpleNode::DocumentFragment) {
+            insert_text(token.data);
+        }
+        return;
+    }
+    if (token.type == Token::Comment) {
+        if (current_node() && current_node()->type == SimpleNode::DocumentFragment) {
+            insert_comment(token.data);
+        }
+        return;
+    }
+    if (token.type == Token::StartTag) {
+        if (token.name == "template") {
+            // Nested template: handle like in head
+            handle_in_head(token);
+            return;
+        }
+        // Other tags go into template content
+        if (current_node() && current_node()->type == SimpleNode::DocumentFragment) {
+            insert_element(token);
+        }
+        return;
+    }
+    if (token.type == Token::EndTag && token.name == "template") {
+        // End of template: pop the template_content fragment
+        if (!open_elements_.empty() && open_elements_.back()->type == SimpleNode::DocumentFragment) {
+            open_elements_.pop_back();
+            // Restore the previous mode
+            if (!open_elements_.empty()) {
+                mode_ = original_mode_;
+            }
+        }
+        return;
+    }
+    if (token.type == Token::EndTag) {
+        // Any other end tag inside template goes into content
+        if (current_node() && current_node()->type == SimpleNode::DocumentFragment) {
+            insert_element(token);
+        }
+        return;
+    }
 }
 
 // ============================================================================

@@ -5165,6 +5165,17 @@ clone_node_impl(const clever::html::SimpleNode* source, bool deep) {
             child_clone->parent = clone.get();
             clone->children.push_back(std::move(child_clone));
         }
+        // Clone template_content if present
+        if (source->template_content) {
+            auto content_clone = std::make_unique<clever::html::SimpleNode>();
+            content_clone->type = source->template_content->type;
+            for (auto& child : source->template_content->children) {
+                auto child_clone = clone_node_impl(child.get(), true);
+                child_clone->parent = content_clone.get();
+                content_clone->children.push_back(std::move(child_clone));
+            }
+            clone->template_content = std::move(content_clone);
+        }
     }
     return clone;
 }

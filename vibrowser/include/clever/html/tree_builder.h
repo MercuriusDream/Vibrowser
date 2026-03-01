@@ -65,6 +65,7 @@ public:
     std::unique_ptr<SimpleNode> take_document() { return std::move(document_); }
 
     InsertionMode mode() const { return mode_; }
+    std::string get_base_url() const { return base_url_; }
 
 private:
     std::unique_ptr<SimpleNode> document_;
@@ -73,6 +74,7 @@ private:
     std::vector<SimpleNode*> open_elements_;
     InsertionMode mode_ = InsertionMode::Initial;
     InsertionMode original_mode_ = InsertionMode::Initial;
+    std::string base_url_;
     // Tokenizer* tokenizer_ = nullptr;  // Reserved for future spec-compliant re-entry
 
     // Insertion mode handlers
@@ -87,6 +89,7 @@ private:
     void handle_in_table_body(const Token& token);
     void handle_in_row(const Token& token);
     void handle_in_cell(const Token& token);
+    void handle_in_template(const Token& token);
     void handle_after_body(const Token& token);
     void handle_after_after_body(const Token& token);
 
