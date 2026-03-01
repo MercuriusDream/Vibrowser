@@ -7,10 +7,10 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
-**Current Focus**: Round 25 feature implementation
-**Momentum**: Cycle 1963 — 23 commits pushed across sessions. 13/13 tests passing.
-**Cycle**: 1963
-**Workflow**: Multi-phase feature implementation. Use 4-6 Sonnet subagents in parallel. Commit and push after each round.
+**Current Focus**: Round 28 complete, starting Round 29
+**Momentum**: Cycle 1966 — 30+ commits pushed across sessions. 14/14 tests passing.
+**Cycle**: 1966
+**Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
 **User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
 
 **IMPORTANT**: When running parallel agents, always do a `rm -rf build && cmake -S . -B build` clean rebuild after agents finish, since concurrent file modifications can create stale .o files that link incorrectly. `/screenshot 2` to see the current state after build.
@@ -1547,6 +1547,29 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 1966 (Round 28 Feature Implementation) — 2026-03-01
+
+- **Theme**: 6 codex-spark haiku agents — column-rule styles, RTL layout, Intl API, ruby annotations, SVG fix, self/reportError
+- **Commits**: 983ed75, a9a66ae, e12f4a4, 24049b9, 24f8767, 7dffec9
+- **Features Implemented**:
+  - Fix inline SVG rasterization: only use nanosvg for SVG containers with no child layout nodes (image-sourced), preserving native shape painting for inline DOM SVGs
+  - CSS column-rule: extended styles (double, groove, ridge) with 3D shading effects
+  - JavaScript Intl API: NumberFormat, DateTimeFormat, Collator, PluralRules with locale-aware formatting
+  - CSS direction: rtl layout — flex row RTL, text-align RTL flipping, inline item reordering
+  - Ruby annotation rendering: `<ruby>/<rt>/<rp>` with post-layout positioning pass, 4 alignment modes, 50% scaled annotation text
+  - globalThis.self alias + reportError() native function
+- **Validation**: 14/14 suites pass, 0 failures
+- **Notes**: Entity table (638 entries) already covers all common categories. Multi-column layout already fully implemented in layout_engine.cpp. WeakRef intrinsic (JS_AddIntrinsicWeakRef) causes GC assertion failure on engine teardown — DO NOT enable. JS_Eval-based globals can cause GC leaks — use native C functions instead.
+
+### Cycle 1965 (Rounds 26-27 Feature Implementation) — 2026-03-01
+
+- **Theme**: 12 codex-spark agents across 2 rounds — visual CSS features, DOM APIs, network, SVG
+- **Commits**: 7119753, b015fda, 2da182f, 177b7cd, 6d83799, db4305a, f7beb11, 3e96a36, f41d01e, c71b731
+- **Features Implemented**:
+  - Round 26: clip-path, backdrop-filter, scrollbar rendering, innerText, PointerEvent, object-fit, entity expansion
+  - Round 27: CSS counter rendering, @supports 118+ properties, HTTP POST form submission, perspective 3D, inline SVG with nanosvg, CSS scroll-snap, navigator API stubs
+- **Validation**: 14/14 suites pass
+
 ### Cycle 1963 (Round 24 Feature Implementation) — 2026-03-01
 
 - **Theme**: 6 Sonnet subagent feature round — CSS transitions runtime, min/max constraints, background-size, event bubbling, opacity, meta/link tags
@@ -1856,9 +1879,13 @@ Generated: 2026-03-01
 
 ### Tell The Next Claude
 
-- The root-level `/Users/seong-useog/vibrowser/build` cache currently points at a different source tree and fails `cmake -S . -B build` from repo root unless cleaned.
-- For the browser engine work, run the required full command from `/Users/seong-useog/vibrowser/vibrowser`.
-- High-value next target: continue request/response hardening around malformed header token parsing and fail-closed behavior with focused net tests.
+- Build from `/Users/seong-useog/vibrowser/vibrowser` (NOT repo root). Clean rebuild: `rm -rf build && cmake -S . -B build && cmake --build build -j$(sysctl -n hw.ncpu)`
+- 14/14 tests passing. Entity table at 638/2231 entries.
+- **DO NOT** call JS_AddIntrinsicWeakRef() — causes GC assertion on teardown
+- **DO NOT** use JS_Eval for global function definitions — use native JS_NewCFunction to avoid GC leaks
+- Multi-column layout, details/summary, dialog, canvas 2D, localStorage, WebSocket, AbortController, fetch, CSS grid, flexbox, animations, transitions — ALL implemented
+- `codex-spark` haiku agents are the primary subagent type. 6 per round. They commit+push directly.
+- High-value next targets: CSS container query EVALUATION (parsing done, eval incomplete), HTTP/2, Service Worker actual implementation, Web Workers, improved error pages
 
 ### Tell The Next Codex
 
