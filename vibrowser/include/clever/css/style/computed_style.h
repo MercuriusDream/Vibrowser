@@ -475,7 +475,7 @@ struct ComputedStyle {
 
     // Caret & accent colors
     Color caret_color = {0, 0, 0, 0};  // {0,0,0,0} = auto (use currentColor)
-    Color accent_color = {0, 0, 0, 0}; // {0,0,0,0} = auto (browser default)
+    uint32_t accent_color = 0; // ARGB, 0 = auto (browser default)
 
     // Scroll behavior: 0=auto, 1=smooth
     int scroll_behavior = 0;

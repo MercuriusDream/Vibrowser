@@ -1059,7 +1059,22 @@ static bool parse_px_clause_value(const std::string& text, int* out) {
     return true;
 }
 
-static bool evaluate_media_clause(const std::string& clause,
+static int read_prefers_color_scheme_hint(JSContext* ctx) {
+    int scheme = 1; // Default to light
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue scheme_value = JS_GetPropertyStr(ctx, global, "__vibrowser_prefers_color_scheme");
+    if (JS_IsNumber(scheme_value)) {
+        int32_t parsed = 1;
+        if (JS_ToInt32(ctx, &parsed, scheme_value) == 0) {
+            if (parsed == 2) scheme = 2;
+        }
+    }
+    JS_FreeValue(ctx, scheme_value);
+    JS_FreeValue(ctx, global);
+    return scheme;
+}
+
+static bool evaluate_media_clause(const std::string& clause, JSContext* ctx,
                                   int viewport_width, int viewport_height,
                                   bool* known_clause) {
     std::string lower = to_lower_ascii(trim_ascii(clause));
@@ -1075,8 +1090,9 @@ static bool evaluate_media_clause(const std::string& clause,
     std::string value = trim_ascii(lower.substr(colon_pos + 1));
 
     if (feature == "prefers-color-scheme") {
-        if (value == "dark") return false;   // assume light mode
-        if (value == "light") return true;
+        int scheme = read_prefers_color_scheme_hint(ctx);
+        if (value == "dark") return scheme == 2;
+        if (value == "light") return scheme == 1;
         *known_clause = false;
         return false;
     }
@@ -1288,7 +1304,7 @@ static bool evaluate_media_clause(const std::string& clause,
     return false;
 }
 
-static bool evaluate_media_group(const std::string& group,
+static bool evaluate_media_group(const std::string& group, JSContext* ctx,
                                  int viewport_width, int viewport_height,
                                  bool* known_group) {
     *known_group = false;
@@ -1303,7 +1319,7 @@ static bool evaluate_media_group(const std::string& group,
         std::string clause = group.substr(open + 1, close - open - 1);
         bool known_clause = false;
         bool clause_match = evaluate_media_clause(
-            clause, viewport_width, viewport_height, &known_clause);
+            clause, ctx, viewport_width, viewport_height, &known_clause);
         if (!known_clause) {
             *known_group = true;
             return false;
@@ -1317,7 +1333,7 @@ static bool evaluate_media_group(const std::string& group,
     if (!*known_group) {
         bool known_clause = false;
         bool clause_match = evaluate_media_clause(
-            group, viewport_width, viewport_height, &known_clause);
+            group, ctx, viewport_width, viewport_height, &known_clause);
         *known_group = known_clause;
         return known_clause ? clause_match : false;
     }
@@ -1354,7 +1370,7 @@ static JSValue js_window_match_media(JSContext* ctx, JSValueConst /*this_val*/,
             : query.substr(pos, comma - pos);
         bool known_group = false;
         bool group_match = evaluate_media_group(
-            group, viewport_width, viewport_height, &known_group);
+            group, ctx, viewport_width, viewport_height, &known_group);
         if (known_group) {
             found_known_group = true;
             if (group_match) {

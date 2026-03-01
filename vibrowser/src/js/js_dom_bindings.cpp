@@ -15159,11 +15159,35 @@ void install_dom_bindings(JSContext* ctx,
     Object.defineProperty(proto, 'value', {
         get: function() {
             var tag = this.tagName.toLowerCase();
+            if (tag === 'select') {
+                var selectedIdx = this.selectedIndex;
+                if (selectedIdx < 0 || isNaN(selectedIdx)) return '';
+                var options = this.querySelectorAll('option');
+                if (selectedIdx < options.length) {
+                    var selectedOption = options[selectedIdx];
+                    var val = selectedOption.getAttribute('value');
+                    if (val !== null) return val;
+                    return selectedOption.textContent || '';
+                }
+                return '';
+            }
             if (!isInputLikeTag(tag)) return '';
             return this.getAttribute('value') || '';
         },
         set: function(v) {
             var tag = this.tagName.toLowerCase();
+            if (tag === 'select') {
+                var options = this.querySelectorAll('option');
+                for (var i = 0; i < options.length; i++) {
+                    var val = options[i].getAttribute('value');
+                    if (val === null) val = options[i].textContent || '';
+                    if (val === String(v)) {
+                        this.selectedIndex = i;
+                        return;
+                    }
+                }
+                return;
+            }
             if (!isInputLikeTag(tag)) return;
             this.setAttribute('value', String(v));
         },
@@ -15491,6 +15515,16 @@ void install_dom_bindings(JSContext* ctx,
         },
         set: function(v) {
             this.setAttribute('data-selected-index', String(parseInt(v, 10)));
+        },
+        configurable: true
+    });
+
+    // .options (read-only array-like) — select elements
+    Object.defineProperty(proto, 'options', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'select') return this.querySelectorAll('option');
+            return [];
         },
         configurable: true
     });
@@ -16702,6 +16736,202 @@ void install_dom_bindings(JSContext* ctx,
             JS_FreeValue(ctx, exc);
         }
         JS_FreeValue(ctx, ret4);
+    }
+
+    // ------------------------------------------------------------------
+    // Modern JS built-in polyfills (ES2022-2024)
+    // ------------------------------------------------------------------
+    {
+        const char* modern_builtins_src = R"JS(
+(function() {
+    // Array.prototype.at() — ES2022
+    if (!Array.prototype.at) {
+        Array.prototype.at = function(index) {
+            var len = this.length;
+            var i = Math.trunc(index) || 0;
+            if (i < 0) i += len;
+            if (i < 0 || i >= len) return undefined;
+            return this[i];
+        };
+    }
+    // String.prototype.at() — ES2022
+    if (!String.prototype.at) {
+        String.prototype.at = function(index) {
+            var len = this.length;
+            var i = Math.trunc(index) || 0;
+            if (i < 0) i += len;
+            if (i < 0 || i >= len) return undefined;
+            return this[i];
+        };
+    }
+    // Array.prototype.findLast() / findLastIndex() — ES2023
+    if (!Array.prototype.findLast) {
+        Array.prototype.findLast = function(fn, thisArg) {
+            for (var i = this.length - 1; i >= 0; i--) {
+                if (fn.call(thisArg, this[i], i, this)) return this[i];
+            }
+            return undefined;
+        };
+    }
+    if (!Array.prototype.findLastIndex) {
+        Array.prototype.findLastIndex = function(fn, thisArg) {
+            for (var i = this.length - 1; i >= 0; i--) {
+                if (fn.call(thisArg, this[i], i, this)) return i;
+            }
+            return -1;
+        };
+    }
+    // String.prototype.replaceAll() — ES2021
+    if (!String.prototype.replaceAll) {
+        String.prototype.replaceAll = function(search, replacement) {
+            if (search instanceof RegExp) {
+                if (!search.global) throw new TypeError('String.prototype.replaceAll called with a non-global RegExp argument');
+                return this.replace(search, replacement);
+            }
+            return this.split(search).join(replacement);
+        };
+    }
+    // Object.hasOwn() — ES2022
+    if (!Object.hasOwn) {
+        Object.hasOwn = function(obj, prop) {
+            return Object.prototype.hasOwnProperty.call(obj, prop);
+        };
+    }
+    // Object.groupBy() — ES2024
+    if (!Object.groupBy) {
+        Object.groupBy = function(iterable, callback) {
+            var result = Object.create(null);
+            var index = 0;
+            for (var item of iterable) {
+                var key = callback(item, index++);
+                if (!(key in result)) result[key] = [];
+                result[key].push(item);
+            }
+            return result;
+        };
+    }
+    // Array.prototype.toReversed() — ES2023
+    if (!Array.prototype.toReversed) {
+        Array.prototype.toReversed = function() {
+            return this.slice().reverse();
+        };
+    }
+    // Array.prototype.toSorted() — ES2023
+    if (!Array.prototype.toSorted) {
+        Array.prototype.toSorted = function(compareFn) {
+            return this.slice().sort(compareFn);
+        };
+    }
+    // Array.prototype.toSpliced() — ES2023
+    if (!Array.prototype.toSpliced) {
+        Array.prototype.toSpliced = function(start, deleteCount) {
+            var copy = this.slice();
+            var args = [start, deleteCount];
+            for (var i = 2; i < arguments.length; i++) args.push(arguments[i]);
+            Array.prototype.splice.apply(copy, args);
+            return copy;
+        };
+    }
+    // Array.prototype.with() — ES2023
+    if (!Array.prototype.with) {
+        Object.defineProperty(Array.prototype, 'with', {
+            value: function(index, value) {
+                var copy = this.slice();
+                var i = Math.trunc(index) || 0;
+                if (i < 0) i += copy.length;
+                if (i < 0 || i >= copy.length) throw new RangeError('Invalid index');
+                copy[i] = value;
+                return copy;
+            },
+            writable: true, configurable: true
+        });
+    }
+    // Promise.allSettled() — ES2020
+    if (!Promise.allSettled) {
+        Promise.allSettled = function(promises) {
+            return Promise.all(Array.from(promises).map(function(p) {
+                return Promise.resolve(p).then(
+                    function(v) { return {status:'fulfilled', value: v}; },
+                    function(e) { return {status:'rejected', reason: e}; }
+                );
+            }));
+        };
+    }
+    // Promise.any() — ES2021
+    if (!Promise.any) {
+        Promise.any = function(promises) {
+            var arr = Array.from(promises);
+            return new Promise(function(resolve, reject) {
+                if (arr.length === 0) {
+                    reject(new (typeof AggregateError!=='undefined'?AggregateError:Error)([], 'All promises were rejected'));
+                    return;
+                }
+                var errors = [];
+                var count = 0;
+                arr.forEach(function(p, i) {
+                    Promise.resolve(p).then(resolve, function(e) {
+                        errors[i] = e;
+                        count++;
+                        if (count === arr.length) {
+                            reject(new (typeof AggregateError!=='undefined'?AggregateError:Error)(errors, 'All promises were rejected'));
+                        }
+                    });
+                });
+            });
+        };
+    }
+    // URL.canParse() — 2023 addition
+    if (typeof URL !== 'undefined' && !URL.canParse) {
+        URL.canParse = function(url, base) {
+            try {
+                new URL(url, base);
+                return true;
+            } catch(e) {
+                return false;
+            }
+        };
+    }
+    // String.prototype.trimStart / trimEnd aliases
+    if (!String.prototype.trimStart) String.prototype.trimStart = String.prototype.trimLeft;
+    if (!String.prototype.trimEnd) String.prototype.trimEnd = String.prototype.trimRight;
+    // Array.prototype.flat / flatMap — ES2019
+    if (!Array.prototype.flat) {
+        Array.prototype.flat = function(depth) {
+            var d = depth === undefined ? 1 : Math.floor(depth);
+            if (d < 1) return this.slice();
+            return this.reduce(function(acc, val) {
+                if (Array.isArray(val)) {
+                    acc.push.apply(acc, val.flat(d - 1));
+                } else {
+                    acc.push(val);
+                }
+                return acc;
+            }, []);
+        };
+    }
+    if (!Array.prototype.flatMap) {
+        Array.prototype.flatMap = function(fn, thisArg) {
+            return this.map(fn, thisArg).flat(1);
+        };
+    }
+    // globalThis.AggregateError
+    if (typeof AggregateError === 'undefined') {
+        globalThis.AggregateError = function AggregateError(errors, message) {
+            var err = new Error(message);
+            err.name = 'AggregateError';
+            err.errors = Array.from(errors);
+            return err;
+        };
+    }
+})();
+)JS";
+        JSValue ret_builtins = JS_Eval(ctx, modern_builtins_src, std::strlen(modern_builtins_src),
+                                        "<modern-builtins>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(ret_builtins)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, ret_builtins);
     }
 
     // ------------------------------------------------------------------

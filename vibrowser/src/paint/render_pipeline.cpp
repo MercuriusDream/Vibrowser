@@ -1238,6 +1238,54 @@ MetaViewportInfo parse_meta_viewport_from_head(const clever::html::SimpleNode& d
     return info;
 }
 
+int parse_color_scheme_content(const std::string& content) {
+    std::string normalized = to_lower(trim(content));
+    if (normalized.empty()) return 0;
+
+    for (auto& c : normalized) {
+        if (c == ',') c = ' ';
+    }
+
+    auto tokens = split_whitespace(normalized);
+    bool has_light = false;
+    bool has_dark = false;
+    bool normal_only = false;
+    for (const auto& token : tokens) {
+        if (token == "normal") normal_only = true;
+        if (token == "light") has_light = true;
+        else if (token == "dark") has_dark = true;
+    }
+
+    if (normal_only) return 0;
+    if (has_light && has_dark) return 3;
+    if (has_light) return 1;
+    if (has_dark) return 2;
+    return 0;
+}
+
+int resolve_color_scheme_from_layout_tag(const clever::layout::LayoutNode& node,
+                                        const std::string& target_tag) {
+    if (to_lower(node.tag_name) == target_tag) {
+        return node.color_scheme;
+    }
+    for (const auto& child : node.children) {
+        if (!child) continue;
+        int found = resolve_color_scheme_from_layout_tag(*child, target_tag);
+        if (found != -1) return found;
+    }
+    return -1;
+}
+
+int resolve_prefers_color_scheme(int root_scheme, int meta_scheme) {
+    if (root_scheme == 1 || root_scheme == 2) return root_scheme;
+    if (root_scheme == 3) return 1;
+
+    if (meta_scheme == 1 || meta_scheme == 2) return meta_scheme;
+    if (meta_scheme == 3) return 1;
+
+    return 1;
+}
+
 // Parse an HTML color attribute value: supports #RRGGBB, RRGGBB, and named colors
 // Returns 0 on failure, ARGB uint32_t on success
 uint32_t parse_html_color_attr(const std::string& value) {
@@ -4843,7 +4891,12 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
         } else if (d.property == "accent-color") {
             if (val_lower != "auto") {
                 auto c = clever::css::parse_color(val_lower);
-                if (c) style.accent_color = *c;
+                if (c) {
+                    style.accent_color = (static_cast<uint32_t>(c->a) << 24) |
+                                         (static_cast<uint32_t>(c->r) << 16) |
+                                         (static_cast<uint32_t>(c->g) << 8) |
+                                         static_cast<uint32_t>(c->b);
+                }
             }
         } else if (d.property == "color-interpolation") {
             if (val_lower == "auto") style.color_interpolation = 0;
@@ -7374,7 +7427,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->font_smooth = parent_style.font_smooth;
         layout_node->text_size_adjust = parent_style.text_size_adjust;
         layout_node->caret_color = color_to_argb(parent_style.caret_color);
-        layout_node->accent_color = color_to_argb(parent_style.accent_color);
+        layout_node->accent_color = parent_style.accent_color;
         layout_node->color_interpolation = parent_style.color_interpolation;
         // Text shadow from parent (inherited for text nodes)
         layout_node->text_shadow_offset_x = parent_style.text_shadow_offset_x;
@@ -8010,7 +8063,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->column_rule_color = color_to_argb(style.column_rule_color);
     layout_node->column_rule_style = style.column_rule_style;
     layout_node->caret_color = color_to_argb(style.caret_color);
-    layout_node->accent_color = color_to_argb(style.accent_color);
+    layout_node->accent_color = style.accent_color;
     layout_node->color_interpolation = style.color_interpolation;
     layout_node->mask_composite = style.mask_composite;
     layout_node->mask_mode = style.mask_mode;
@@ -9115,7 +9168,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             layout_node->is_checkbox = (type == "checkbox");
             layout_node->is_radio = (type == "radio");
             layout_node->is_checked = has_attr(node, "checked");
-            layout_node->accent_color = color_to_argb(style.accent_color);
+            layout_node->accent_color = style.accent_color;
             // No default border/padding — painter handles all rendering
             layout_node->geometry.padding = {0, 0, 0, 0};
             layout_node->geometry.border = {0, 0, 0, 0};
@@ -9321,7 +9374,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
         // Determine fill color: use accent-color if set, else default blue
         uint32_t fill_color = 0xFF4299E1; // default blue
-        uint32_t ac = color_to_argb(style.accent_color);
+        uint32_t ac = style.accent_color;
         if (ac != 0 && ac != 0xFF000000) fill_color = ac;
 
         if (indeterminate) {
@@ -11878,7 +11931,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->column_rule_color = color_to_argb(style.column_rule_color);
     layout_node->column_rule_style = style.column_rule_style;
     layout_node->caret_color = color_to_argb(style.caret_color);
-    layout_node->accent_color = color_to_argb(style.accent_color);
+    layout_node->accent_color = style.accent_color;
     layout_node->color_interpolation = style.color_interpolation;
     layout_node->mask_composite = style.mask_composite;
     layout_node->mask_mode = style.mask_mode;
@@ -12121,7 +12174,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         target.font_smooth = text_style.font_smooth;
         target.text_size_adjust = text_style.text_size_adjust;
         target.caret_color = color_to_argb(text_style.caret_color);
-        target.accent_color = color_to_argb(text_style.accent_color);
+        target.accent_color = text_style.accent_color;
         target.color_interpolation = text_style.color_interpolation;
         target.text_shadow_offset_x = text_style.text_shadow_offset_x;
         target.text_shadow_offset_y = text_style.text_shadow_offset_y;
@@ -13404,6 +13457,9 @@ static void apply_style_to_layout_node(
     node.display = display_to_type(style.display);
     node.direction = static_cast<int>(style.direction);
     node.writing_mode = style.writing_mode;
+    node.container_type = style.container_type;
+    node.container_name = style.container_name;
+    node.color_scheme = style.color_scheme;
 }
 
 // Post-layout container query evaluation.
@@ -14067,6 +14123,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         // Extract <meta> tag information: charset, http-equiv, description, theme-color
         auto meta_nodes = doc->find_all_elements("meta");
         bool refresh_found = false;
+        int document_color_scheme = 0;
         for (const auto* meta : meta_nodes) {
             if (!meta) continue;
 
@@ -14145,6 +14202,10 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             // --- name="theme-color" ---
             if (result.theme_color.empty() && name_attr == "theme-color") {
                 result.theme_color = trim(content);
+            }
+
+            if (name_attr == "color-scheme" && !content.empty()) {
+                document_color_scheme = parse_color_scheme_content(content);
             }
         }
 
@@ -14595,6 +14656,17 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                         pre_engine.compute(*pre_root, static_cast<float>(layout_viewport_width),
                                            static_cast<float>(layout_viewport_height));
                         clever::js::populate_layout_geometry(js_engine.context(), pre_root.get());
+
+                        int html_color_scheme = resolve_color_scheme_from_layout_tag(*pre_root, "html");
+                        if (html_color_scheme == -1) {
+                            html_color_scheme = resolve_color_scheme_from_layout_tag(*pre_root, "body");
+                        }
+                        int resolved_color_scheme = resolve_prefers_color_scheme(
+                            html_color_scheme, document_color_scheme);
+                        js_engine.evaluate(
+                            "globalThis.__vibrowser_prefers_color_scheme = " +
+                            std::to_string(resolved_color_scheme) + ";",
+                            "<vibrowser-color-scheme>");
                     }
                 }
 

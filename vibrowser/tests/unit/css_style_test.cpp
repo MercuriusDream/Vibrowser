@@ -9829,10 +9829,7 @@ TEST(PropertyCascadeTest, CaretColorAndAccentColor) {
     EXPECT_EQ(style.caret_color.a, 255);
 
     cascade.apply_declaration(style, make_decl("accent-color", "blue"), parent);
-    EXPECT_EQ(style.accent_color.r, 0);
-    EXPECT_EQ(style.accent_color.g, 0);
-    EXPECT_EQ(style.accent_color.b, 255);
-    EXPECT_EQ(style.accent_color.a, 255);
+    EXPECT_EQ(style.accent_color, 0xFF0000FFu);
 }
 
 TEST(PropertyCascadeTest, ColorInterpolationValues) {
@@ -25095,10 +25092,7 @@ TEST(PropertyCascadeTest, AccentColorAppliedV129) {
     ComputedStyle parent;
 
     cascade.apply_declaration(style, make_decl("accent-color", "#00ff00"), parent);
-    EXPECT_EQ(style.accent_color.r, 0);
-    EXPECT_EQ(style.accent_color.g, 255);
-    EXPECT_EQ(style.accent_color.b, 0);
-    EXPECT_EQ(style.accent_color.a, 255);
+    EXPECT_EQ(style.accent_color, 0xFF00FF00u);
 }
 
 TEST(CSSStyleTest, CssV129_8_OpacityAndVisibilityCombo) {

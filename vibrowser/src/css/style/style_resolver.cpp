@@ -4461,9 +4461,17 @@ void PropertyCascade::apply_declaration(
 
     // ---- Accent color ----
     if (prop == "accent-color") {
-        if (value_lower != "auto") {
-            auto c = parse_color(value_lower);
-            if (c) style.accent_color = *c;
+        if (value_lower == "auto") {
+            style.accent_color = 0;
+            return;
+        }
+        auto c = parse_color(value_lower);
+        if (c) {
+            style.accent_color =
+                (static_cast<uint32_t>(c->a) << 24) |
+                (static_cast<uint32_t>(c->r) << 16) |
+                (static_cast<uint32_t>(c->g) << 8) |
+                static_cast<uint32_t>(c->b);
         }
         return;
     }
