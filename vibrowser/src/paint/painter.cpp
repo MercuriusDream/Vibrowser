@@ -2265,10 +2265,14 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         (overflow_parent->overflow == 1 || overflow_parent->overflow_indicator_right || overflow_parent->overflow_indicator_bottom)) {
         static TextRenderer s_text_measurer;
         const std::string ellipsis_str = "\xE2\x80\xA6"; // U+2026 HORIZONTAL ELLIPSIS
-        const float container_width = std::max(
-            0.0f,
-            node.geometry.width - node.geometry.padding.left - node.geometry.padding.right -
-                node.geometry.border.left - node.geometry.border.right);
+        // The clip width is the overflow container's content width.
+        // overflow_parent->geometry.width is the border-box; subtract padding+border for content width.
+        // This works for block, flex, and grid children alike since each gets their own geometry.width
+        // from the respective layout algorithm.
+        const float container_width = std::max(0.0f,
+            overflow_parent->geometry.width
+            - overflow_parent->geometry.padding.left - overflow_parent->geometry.padding.right
+            - overflow_parent->geometry.border.left - overflow_parent->geometry.border.right);
         const int text_overflow_mode = overflow_parent->text_overflow;
 
         auto utf8_char_len = [](unsigned char lead) -> size_t {
@@ -2329,8 +2333,9 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
 
                 // The fade region starts at container_end - fade_len.
                 float parent_abs_x = abs_x - node.geometry.x; // approximate parent's abs_x
-                fade_region_x = parent_abs_x + node.geometry.padding.left + node.geometry.border.left +
-                               container_width - fade_len;
+                fade_region_x = parent_abs_x + overflow_parent->geometry.padding.left
+                              + overflow_parent->geometry.border.left
+                              + container_width - fade_len;
                 fade_region_y = abs_y;
                 fade_region_w = fade_len;
                 fade_region_h = effective_font_size * node.line_height;
