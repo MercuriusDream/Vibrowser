@@ -20,6 +20,7 @@ extern "C" {
 #include <functional>
 #include <map>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -553,6 +554,30 @@ static JSValue js_element_get_tag_name(JSContext* ctx, JSValueConst this_val,
     std::string tag = node->tag_name;
     std::transform(tag.begin(), tag.end(), tag.begin(), ::toupper);
     return JS_NewString(ctx, tag.c_str());
+}
+
+// --- element.namespaceURI (getter) ---
+static JSValue js_element_get_namespace_uri(JSContext* ctx, JSValueConst this_val,
+                                            int /*argc*/, JSValueConst* /*argv*/) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node) return JS_UNDEFINED;
+
+    static const char* kSvgNamespace = "http://www.w3.org/2000/svg";
+    static const char* kHtmlNamespace = "http://www.w3.org/1999/xhtml";
+    static const std::set<std::string> kSvgTags = {
+        "svg", "circle", "rect", "path", "line", "text", "g", "use", "defs",
+        "symbol", "polygon", "polyline", "ellipse", "image", "foreignObject",
+        "clipPath", "mask", "filter", "pattern", "marker", "linearGradient",
+        "radialGradient"};
+
+    std::string tag = node->tag_name;
+    std::transform(tag.begin(), tag.end(), tag.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    return JS_NewString(ctx,
+                        (kSvgTags.find(tag) != kSvgTags.end())
+                            ? kSvgNamespace
+                            : kHtmlNamespace);
 }
 
 // --- element.className (getter) ---
