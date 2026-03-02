@@ -576,7 +576,7 @@ struct LayoutNode {
     int scroll_snap_stop = 0;
 
     // Placeholder styling (::placeholder pseudo-element)
-    uint32_t placeholder_color = 0xFF757575; // ARGB, default gray (#757575)
+    uint32_t placeholder_color = 0xFF8a8a8a; // ARGB, default gray (#8a8a8a, rgba(0,0,0,0.54))
     float placeholder_font_size = 0;         // 0 = inherit from parent
     bool placeholder_italic = false;
 

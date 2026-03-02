@@ -9651,6 +9651,21 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
     }
 
+    // Resolve ::selection pseudo-element styling for all elements
+    if (elem_view) {
+        auto sel_style = resolver.resolve_pseudo(*elem_view, "selection", style);
+        if (sel_style) {
+            uint32_t sel_color = color_to_argb(sel_style->color);
+            if (sel_color != 0) layout_node->selection_color = sel_color;
+            uint32_t sel_bg = color_to_argb(sel_style->background_color);
+            if (sel_bg != 0) layout_node->selection_bg_color = sel_bg;
+        }
+    }
+
+    // Apply caret-color CSS property to layout node
+    uint32_t caret_color = color_to_argb(style.caret_color);
+    if (caret_color != 0) layout_node->caret_color = caret_color;
+
     // Handle <input> as replaced inline element
     if (tag_lower == "input") {
         std::string type = to_lower(get_attr(node, "type"));
