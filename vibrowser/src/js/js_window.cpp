@@ -4387,6 +4387,42 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // ---- matchMedia ----
     JS_SetPropertyStr(ctx, global, "matchMedia",
         JS_NewCFunction(ctx, js_window_match_media, "matchMedia", 1));
+    const char* polyfill_match_media_onchange = R"JS(
+(function() {
+    const _origMatchMedia = window.matchMedia;
+    window.matchMedia = function(query) {
+        const mql = _origMatchMedia(query);
+        let _onchangeHandler = null;
+        Object.defineProperty(mql, 'onchange', {
+            get() {
+                return _onchangeHandler;
+            },
+            set(fn) {
+                if (_onchangeHandler) {
+                    mql.removeEventListener('change', _onchangeHandler);
+                }
+                _onchangeHandler = fn;
+                if (fn) {
+                    mql.addEventListener('change', fn);
+                }
+            },
+            enumerable: true,
+            configurable: true
+        });
+        return mql;
+    };
+})();
+)JS";
+    JSValue polyfill_match_media_eval = JS_Eval(ctx,
+                                                polyfill_match_media_onchange,
+                                                std::strlen(polyfill_match_media_onchange),
+                                                "<matchMedia-onchange-polyfill>",
+                                                JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsException(polyfill_match_media_eval)) {
+        JSValue exc = JS_GetException(ctx);
+        JS_FreeValue(ctx, exc);
+    }
+    JS_FreeValue(ctx, polyfill_match_media_eval);
 
     // getComputedStyle is installed by install_dom_bindings (js_dom_bindings.cpp) where
     // it has access to the full DOMState/LayoutRect cache for accurate CSS values.
