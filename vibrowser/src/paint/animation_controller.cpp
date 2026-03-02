@@ -120,10 +120,6 @@ void AnimationController::tick(double delta_ms) {
     for (size_t i = 0; i < animations_.size(); ++i) {
         AnimationInstance& anim = animations_[i];
 
-        if (anim.is_paused) {
-            continue;
-        }
-
         // Advance start time if this is the first tick
         if (anim.start_time_ms < 0) {
             anim.start_time_ms = 0;  // First tick initializes
@@ -131,25 +127,41 @@ void AnimationController::tick(double delta_ms) {
 
         // Calculate current elapsed time (accounting for delay)
         double total_elapsed = anim.start_time_ms + delta_ms;
-        double delay_elapsed = std::max(0.0, total_elapsed - anim.delay_ms);
+        double delay_elapsed = total_elapsed - anim.delay_ms;
 
-        // Check if animation is finished
+        // Handle paused state: freeze animation at last progress
+        if (anim.is_paused) {
+            // Interpolate at the same frozen progress to maintain visual state
+            if (delay_elapsed >= 0 && anim.duration_ms > 0) {
+                double frozen_elapsed = std::min(delay_elapsed, anim.duration_ms);
+                interpolate_animation(anim, frozen_elapsed);
+            }
+            anim.start_time_ms = anim.start_time_ms + delta_ms;
+            continue;
+        }
+
+        // Check if animation is finished (excluding infinite animations)
         if (delay_elapsed >= anim.duration_ms && anim.iteration_count > 0) {
-            // Animation complete — check fill mode
+            // Animation complete — apply fill mode
             if (anim.fill_mode == 1 || anim.fill_mode == 3) {  // forwards or both
+                // Interpolate at final position to keep applying the style
                 interpolate_animation(anim, anim.duration_ms);
             }
             to_remove.push_back(i);
             continue;
         }
 
-        // Still within delay period
+        // Handle delay period: apply backwards fill if specified
         if (delay_elapsed < 0) {
+            if (anim.fill_mode == 2 || anim.fill_mode == 3) {  // backwards or both
+                // Apply first keyframe during delay (progress = 0.0)
+                interpolate_animation(anim, 0.0);
+            }
             anim.start_time_ms = anim.start_time_ms + delta_ms;
             continue;
         }
 
-        // Interpolate animation
+        // Interpolate animation at current elapsed time
         interpolate_animation(anim, delay_elapsed);
         anim.start_time_ms = anim.start_time_ms + delta_ms;
     }
