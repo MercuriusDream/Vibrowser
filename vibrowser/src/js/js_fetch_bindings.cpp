@@ -3776,11 +3776,18 @@ static JSValue js_formdata_constructor(JSContext* ctx, JSValueConst new_target,
             result.push([name, el.value || el.textContent || '']);
         } else if (tag === 'select') {
             var opts = el.options || el.querySelectorAll('option');
+            var opt = null;
             for (var j = 0; j < (opts ? opts.length : 0); j++) {
                 if (opts[j].selected) {
-                    result.push([name, opts[j].value || opts[j].textContent || '']);
+                    opt = opts[j];
                     break;
                 }
+            }
+            if (!opt && opts && opts.length > 0) {
+                opt = opts[0];
+            }
+            if (opt) {
+                result.push([name, opt.value || opt.textContent || '']);
             }
         }
     }

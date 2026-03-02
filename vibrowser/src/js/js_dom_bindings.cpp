@@ -9108,16 +9108,54 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
                                 } else if (node_tag == "select") {
                                     std::string select_name = get_attr(*node, "name");
                                     if (!select_name.empty() && !has_attr(*node, "disabled")) {
-                                        for (auto& child : node->children) {
-                                            if (child->type == clever::html::SimpleNode::Element &&
-                                                tag_lower(child->tag_name) == "option" &&
-                                                has_attr(*child, "selected")) {
-                                                std::string opt_value = get_attr(*child, "value");
-                                                if (opt_value.empty()) {
-                                                    opt_value = child->text_content();
+                                        std::function<std::vector<clever::html::SimpleNode*>(clever::html::SimpleNode*)> collect_option_nodes =
+                                            [&](clever::html::SimpleNode* current) -> std::vector<clever::html::SimpleNode*> {
+                                            std::vector<clever::html::SimpleNode*> options;
+                                            if (!current) return options;
+                                            for (auto& child : current->children) {
+                                                if (child->type != clever::html::SimpleNode::Element) continue;
+                                                if (tag_lower(child->tag_name) == "option") {
+                                                    options.push_back(child.get());
                                                 }
-                                                form_data.push_back({select_name, opt_value});
+                                                std::vector<clever::html::SimpleNode*> nested_options =
+                                                    collect_option_nodes(child.get());
+                                                options.insert(options.end(),
+                                                               nested_options.begin(),
+                                                               nested_options.end());
+                                            }
+                                            return options;
+                                        };
+                                        std::vector<clever::html::SimpleNode*> options =
+                                            collect_option_nodes(node);
+
+                                        bool has_selected = false;
+                                        bool has_first_option = false;
+                                        std::string selected_value;
+                                        std::string first_option_value;
+                                        for (auto* option : options) {
+                                            if (!has_first_option) {
+                                                std::string opt_value = get_attr(*option, "value");
+                                                if (opt_value.empty()) {
+                                                    opt_value = option->text_content();
+                                                }
+                                                first_option_value = opt_value;
+                                                has_first_option = true;
+                                            }
+                                            if (!has_selected && has_attr(*option, "selected")) {
+                                                std::string opt_value = get_attr(*option, "value");
+                                                if (opt_value.empty()) {
+                                                    opt_value = option->text_content();
+                                                }
+                                                selected_value = opt_value;
+                                                has_selected = true;
                                                 break;
+                                            }
+                                        }
+                                        if (has_first_option) {
+                                            if (has_selected) {
+                                                form_data.push_back({select_name, selected_value});
+                                            } else {
+                                                form_data.push_back({select_name, first_option_value});
                                             }
                                         }
                                     }
