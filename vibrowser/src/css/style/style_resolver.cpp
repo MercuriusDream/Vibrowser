@@ -49,6 +49,88 @@ std::string decl_value_string(const Declaration& decl) {
     return component_values_to_string(decl.values);
 }
 
+std::string unescape_css_string(const std::string& s) {
+    std::string out;
+    size_t start = 0;
+    size_t end = s.size();
+
+    if (s.size() >= 2) {
+        if ((s.front() == '"' && s.back() == '"') ||
+            (s.front() == '\'' && s.back() == '\'')) {
+            start = 1;
+            end = s.size() - 1;
+        }
+    }
+
+    auto append_utf8 = [](std::string& out, unsigned long codepoint) {
+        if (codepoint <= 0x7F) {
+            out.push_back(static_cast<char>(codepoint));
+        } else if (codepoint <= 0x7FF) {
+            out.push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
+            out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        } else if (codepoint <= 0xFFFF) {
+            out.push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        } else if (codepoint <= 0x10FFFF) {
+            out.push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        }
+    };
+
+    out.reserve(end - start);
+    for (size_t i = start; i < end; ++i) {
+        char ch = s[i];
+        if (ch != '\\') {
+            out.push_back(ch);
+            continue;
+        }
+
+        if (i + 1 >= end) {
+            out.push_back('\\');
+            continue;
+        }
+
+        char next = s[i + 1];
+        if (std::isxdigit(static_cast<unsigned char>(next))) {
+            size_t hex_end = i + 1;
+            int count = 0;
+            while (hex_end < end && count < 6 && std::isxdigit(static_cast<unsigned char>(s[hex_end]))) {
+                ++hex_end;
+                ++count;
+            }
+            if (count > 0) {
+                unsigned long codepoint = std::stoul(s.substr(i + 1, hex_end - (i + 1)), nullptr, 16);
+                append_utf8(out, codepoint);
+                i = hex_end - 1;
+                if (i + 1 < end && std::isspace(static_cast<unsigned char>(s[i + 1]))) {
+                    ++i;
+                }
+                continue;
+            }
+        }
+
+        ++i;
+        switch (next) {
+            case 'n':
+                out.push_back('\n');
+                break;
+            case 'r':
+                out.push_back('\r');
+                break;
+            case 't':
+                out.push_back(' ');
+                break;
+            default:
+                out.push_back(next);
+                break;
+        }
+    }
+    return out;
+}
+
 // Split a string by whitespace
 std::vector<std::string> split_whitespace(const std::string& s) {
     std::vector<std::string> result;
@@ -3766,7 +3848,7 @@ void PropertyCascade::apply_declaration(
             bool tokenized_ok = false;
             auto tokens = tokenize_content(content_value, tokenized_ok);
             if (!tokenized_ok || tokens.empty()) {
-                style.content = strip_quotes(content_value);
+                style.content = unescape_css_string(content_value);
                 return;
             }
 
@@ -3794,7 +3876,7 @@ void PropertyCascade::apply_declaration(
                         (token.front() == '\'' && token.back() == '\''))) {
                 // Preserve quoted strings verbatim so runtime token parsing can
                 // distinguish literal strings from keyword tokens.
-                style.content = token;
+                style.content = unescape_css_string(token);
             } else {
                 style.content = strip_quotes(token);
             }
