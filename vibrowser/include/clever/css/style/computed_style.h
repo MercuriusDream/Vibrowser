@@ -432,6 +432,8 @@ struct ComputedStyle {
     TextOverflow text_overflow = TextOverflow::Clip;
     // Custom text-overflow string (e.g., "→" from text-overflow: "→")
     std::string text_overflow_string;
+    // Webkit line clamp: number of lines to display (-1 = none, >0 = line count)
+    int webkit_line_clamp = -1;
     // Webkit line clamp ellipsis string (defaults to "...")
     std::string webkit_line_clamp_string;
 

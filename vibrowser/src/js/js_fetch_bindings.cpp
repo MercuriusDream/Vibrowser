@@ -3578,12 +3578,91 @@ static JSValue js_formdata_append(JSContext* ctx, JSValueConst this_val,
 
     const char* name = JS_ToCString(ctx, argv[0]);
     if (!name) return JS_EXCEPTION;
-    const char* value = JS_ToCString(ctx, argv[1]);
-    if (!value) { JS_FreeCString(ctx, name); return JS_EXCEPTION; }
+
+    std::string value;
+    if (!JS_IsObject(argv[1])) {
+        const char* value_cstr = JS_ToCString(ctx, argv[1]);
+        if (!value_cstr) {
+            JS_FreeCString(ctx, name);
+            return JS_EXCEPTION;
+        }
+        value.assign(value_cstr);
+        JS_FreeCString(ctx, value_cstr);
+    } else {
+        JSValue size_val = JS_GetPropertyStr(ctx, argv[1], "size");
+        if (JS_IsException(size_val)) {
+            JS_FreeCString(ctx, name);
+            return JS_EXCEPTION;
+        }
+        JSValue type_val = JS_GetPropertyStr(ctx, argv[1], "type");
+        if (JS_IsException(type_val)) {
+            JS_FreeValue(ctx, size_val);
+            JS_FreeCString(ctx, name);
+            return JS_EXCEPTION;
+        }
+
+        bool has_size = !JS_IsUndefined(size_val) && !JS_IsNull(size_val);
+        bool has_type = !JS_IsUndefined(type_val) && !JS_IsNull(type_val);
+        if (!has_size || !has_type) {
+            JS_FreeValue(ctx, size_val);
+            JS_FreeValue(ctx, type_val);
+            JS_FreeCString(ctx, name);
+            return JS_ThrowTypeError(ctx, "append value must be a string or a Blob/File");
+        }
+
+        int64_t size = 0;
+        if (JS_ToInt64(ctx, &size, size_val) != 0) {
+            JS_FreeValue(ctx, size_val);
+            JS_FreeValue(ctx, type_val);
+            JS_FreeCString(ctx, name);
+            return JS_EXCEPTION;
+        }
+
+        const char* type_cstr = JS_ToCString(ctx, type_val);
+        if (!type_cstr) {
+            JS_FreeValue(ctx, size_val);
+            JS_FreeValue(ctx, type_val);
+            JS_FreeCString(ctx, name);
+            return JS_EXCEPTION;
+        }
+        std::string type(type_cstr);
+        JS_FreeCString(ctx, type_cstr);
+
+        std::string blob_name;
+        if (argc >= 3 && !JS_IsUndefined(argv[2])) {
+            const char* filename = JS_ToCString(ctx, argv[2]);
+            if (!filename) {
+                JS_FreeValue(ctx, size_val);
+                JS_FreeValue(ctx, type_val);
+                JS_FreeCString(ctx, name);
+                return JS_EXCEPTION;
+            }
+            blob_name.assign(filename);
+            JS_FreeCString(ctx, filename);
+        }
+
+        if (blob_name.empty()) {
+            JSValue blob_name_val = JS_GetPropertyStr(ctx, argv[1], "name");
+            if (!JS_IsException(blob_name_val) && !JS_IsUndefined(blob_name_val) &&
+                !JS_IsNull(blob_name_val)) {
+                const char* file_name = JS_ToCString(ctx, blob_name_val);
+                if (file_name) {
+                    blob_name.assign(file_name);
+                    JS_FreeCString(ctx, file_name);
+                }
+            }
+            JS_FreeValue(ctx, blob_name_val);
+        }
+        JS_FreeValue(ctx, size_val);
+        JS_FreeValue(ctx, type_val);
+
+        if (blob_name.empty()) blob_name = "blob";
+        value = "[Blob/File: " + blob_name + ", type=" + type + ", size=" +
+                std::to_string(size) + "]";
+    }
 
     state->entries.emplace_back(name, value);
     JS_FreeCString(ctx, name);
-    JS_FreeCString(ctx, value);
     return JS_UNDEFINED;
 }
 
@@ -3668,6 +3747,16 @@ static JSValue js_formdata_delete(JSContext* ctx, JSValueConst this_val,
         }
     }
     JS_FreeCString(ctx, name);
+    return JS_UNDEFINED;
+}
+
+// FormData.prototype.clear()
+static JSValue js_formdata_clear(JSContext* ctx, JSValueConst this_val,
+                                int /*argc*/, JSValueConst* /*argv*/) {
+    auto* state = get_formdata_state(this_val);
+    if (!state) return JS_ThrowTypeError(ctx, "not a FormData");
+
+    state->entries.clear();
     return JS_UNDEFINED;
 }
 
@@ -3889,6 +3978,7 @@ static const JSCFunctionListEntry formdata_proto_funcs[] = {
     JS_CFUNC_DEF("entries", 0, js_formdata_entries),
     JS_CFUNC_DEF("keys", 0, js_formdata_keys),
     JS_CFUNC_DEF("values", 0, js_formdata_values),
+    JS_CFUNC_DEF("clear", 0, js_formdata_clear),
     JS_CFUNC_DEF("forEach", 1, js_formdata_forEach),
 };
 

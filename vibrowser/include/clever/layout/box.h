@@ -420,6 +420,8 @@ struct LayoutNode {
 
     // Text overflow: 0=clip, 1=ellipsis, 2=fade
     int text_overflow = 0;
+    // Custom text-overflow string (e.g., "→" from text-overflow: "→")
+    std::string text_overflow_string;
 
     // Word break: 0=normal, 1=break-all, 2=keep-all
     int word_break = 0;
