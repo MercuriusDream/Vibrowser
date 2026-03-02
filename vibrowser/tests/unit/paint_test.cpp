@@ -14164,7 +14164,7 @@ TEST_F(PaintTest, FontVariantLigaturesInherits) {
     };
     find(*result.root);
     ASSERT_NE(span_node, nullptr) << "Should find a span node";
-    EXPECT_EQ(span_node->font_variant_ligatures, 3) << "font-variant-ligatures should inherit no-common-ligatures (3) to child";
+    EXPECT_EQ(span_node->font_variant_ligatures, "no-common-ligatures") << "font-variant-ligatures should inherit no-common-ligatures to child";
 }
 
 // ============================================================================
@@ -24706,7 +24706,7 @@ TEST_F(PaintTest, FontVariantCapsCascadeTitlingCaps) {
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
         if (n.tag_name == "div" && !found) {
-            EXPECT_EQ(n.font_variant_caps, 6) << "font-variant-caps: titling-caps should be "titling-caps"";
+            EXPECT_EQ(n.font_variant_caps, "titling-caps") << "font-variant-caps: titling-caps should be titling-caps";
             found = true;
         }
         for (auto& c : n.children) check(*c);
@@ -24729,7 +24729,7 @@ TEST_F(PaintTest, FontVariantCapsInherited) {
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
         if (n.is_text && n.text_content == "Child" && !found) {
-            EXPECT_EQ(n.font_variant_caps, 2) << "font-variant-caps should be inherited (all-small-caps="all-small-caps")";
+            EXPECT_EQ(n.font_variant_caps, "all-small-caps") << "font-variant-caps should be inherited (all-small-caps=all-small-caps)";
             found = true;
         }
         for (auto& c : n.children) check(*c);
@@ -32012,7 +32012,7 @@ TEST_F(PaintTest, FontVariantNumericTabularNumsRendering) {
     };
     auto* node = find_node(result.root.get());
     ASSERT_NE(node, nullptr);
-    EXPECT_EQ(node->font_variant_numeric, 6);
+    EXPECT_EQ(node->font_variant_numeric, "tabular-nums");
 }
 
 // Test: font-variant-numeric: slashed-zero OpenType zero rendering
@@ -32035,7 +32035,7 @@ TEST_F(PaintTest, FontVariantNumericSlashedZeroRendering) {
     };
     auto* node = find_node(result.root.get());
     ASSERT_NE(node, nullptr);
-    EXPECT_EQ(node->font_variant_numeric, 2);
+    EXPECT_EQ(node->font_variant_numeric, "slashed-zero");
     // Verify rendering didn't crash and text is visible
     bool has_content = false;
     for (int y = 0; y < 30 && !has_content; y++) {
@@ -34409,7 +34409,7 @@ TEST_F(PaintTest, FontVariantLigaturesNoneFeatures) {
     };
     auto* text = find_text(result.root.get());
     ASSERT_NE(text, nullptr);
-    EXPECT_EQ(text->font_variant_ligatures, 1); // none
+    EXPECT_EQ(text->font_variant_ligatures, "none"); // none
 }
 
 // Cycle 170: font-variant-ligatures: common-ligatures
@@ -34430,7 +34430,7 @@ TEST_F(PaintTest, FontVariantLigaturesCommon) {
     };
     auto* text = find_text(result.root.get());
     ASSERT_NE(text, nullptr);
-    EXPECT_EQ(text->font_variant_ligatures, 2); // common-ligatures
+    EXPECT_EQ(text->font_variant_ligatures, "common-ligatures"); // common-ligatures
 }
 
 // Cycle 171: HTML cellpadding attribute
