@@ -2419,20 +2419,24 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
     bool needs_fade = false;
     float fade_region_x = 0, fade_region_y = 0, fade_region_w = 0, fade_region_h = 0;
     const auto* overflow_parent = node.parent;
+    const bool parent_text_overflow_ellipsis = overflow_parent && overflow_parent->text_overflow == 1;
+    const bool node_text_overflow_ellipsis = node.text_overflow == 1;
     if (overflow_parent && (overflow_parent->overflow == 1 || overflow_parent->overflow == 2 || overflow_parent->overflow == 3) &&
         overflow_parent->white_space_nowrap &&
-        (overflow_parent->overflow == 1 || overflow_parent->overflow_indicator_right || overflow_parent->overflow_indicator_bottom)) {
+        (overflow_parent->overflow == 1 || overflow_parent->overflow_indicator_right || overflow_parent->overflow_indicator_bottom || node_text_overflow_ellipsis)) {
         static TextRenderer s_text_measurer;
         const std::string ellipsis_str = "\xE2\x80\xA6"; // U+2026 HORIZONTAL ELLIPSIS
-        // The clip width is the overflow container's content width.
-        // overflow_parent->geometry.width is the border-box; subtract padding+border for content width.
-        // This works for block, flex, and grid children alike since each gets their own geometry.width
-        // from the respective layout algorithm.
+        // Dual-mode support:
+        // 1) legacy behavior: text-overflow set on the overflow container (parent)
+        // 2) modern behavior: text-overflow set on the text node itself (child)
+        const int text_overflow_mode = node_text_overflow_ellipsis ? node.text_overflow : overflow_parent->text_overflow;
+        const bool use_parent_text_overflow = !node_text_overflow_ellipsis && overflow_parent->text_overflow != 0;
         const float container_width = std::max(0.0f,
-            overflow_parent->geometry.width
-            - overflow_parent->geometry.padding.left - overflow_parent->geometry.padding.right
-            - overflow_parent->geometry.border.left - overflow_parent->geometry.border.right);
-        const int text_overflow_mode = overflow_parent->text_overflow;
+            use_parent_text_overflow
+                ? overflow_parent->geometry.width - overflow_parent->geometry.padding.left - overflow_parent->geometry.padding.right
+                    - overflow_parent->geometry.border.left - overflow_parent->geometry.border.right
+                : node.geometry.width - node.geometry.padding.left - node.geometry.padding.right
+                    - node.geometry.border.left - node.geometry.border.right);
 
         auto utf8_char_len = [](unsigned char lead) -> size_t {
             if ((lead & 0x80) == 0) return 1;
