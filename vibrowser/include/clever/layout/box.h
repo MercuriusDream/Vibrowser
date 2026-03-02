@@ -1079,6 +1079,9 @@ struct LayoutNode {
     // CSS transition-behavior: 0=normal, 1=allow-discrete
     int transition_behavior = 0;
 
+    // CSS interpolate-size: 0=numeric-only, 1=allow-keywords
+    int interpolate_size = 0;
+
     // CSS animation-range: "normal", "entry", "exit", etc.
     std::string animation_range = "normal";
 

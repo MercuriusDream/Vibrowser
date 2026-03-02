@@ -1599,6 +1599,53 @@ static JSValue create_response_object(JSContext* ctx,
     return obj;
 }
 
+// =========================================================================
+// Response static methods
+// =========================================================================
+
+static JSValue js_response_error(JSContext* ctx, JSValueConst /*this_val*/,
+                                 int /*argc*/, JSValueConst* /*argv*/) {
+    clever::net::Response resp;
+    resp.status = 0;
+    resp.status_text = "";
+    resp.url = "";
+    resp.was_redirected = false;
+    return create_response_object(ctx, resp, "", "error");
+}
+
+static JSValue js_response_redirect(JSContext* ctx, JSValueConst /*this_val*/,
+                                   int argc, JSValueConst* argv) {
+    if (argc < 1) return JS_ThrowTypeError(ctx, "Response.redirect requires a URL");
+
+    const char* url = JS_ToCString(ctx, argv[0]);
+    if (!url) return JS_EXCEPTION;
+    std::string location = url;
+    JS_FreeCString(ctx, url);
+
+    int32_t status = 302;
+    if (argc >= 2) {
+        if (!JS_IsNumber(argv[1])) {
+            return JS_ThrowTypeError(ctx, "Response.redirect status must be a number");
+        }
+        if (JS_ToInt32(ctx, &status, argv[1]) != 0) {
+            return JS_EXCEPTION;
+        }
+    }
+
+    if (status < 300 || status > 399) {
+        return JS_ThrowTypeError(ctx,
+            "Response.redirect status must be between 300 and 399");
+    }
+
+    clever::net::Response resp;
+    resp.status = static_cast<uint16_t>(status);
+    resp.status_text = "";
+    resp.url = "";
+    resp.was_redirected = false;
+    resp.headers.set("Location", location);
+    return create_response_object(ctx, resp, "", "default");
+}
+
 // Helper: URL-encode a string (application/x-www-form-urlencoded style)
 static std::string url_encode_value(const std::string& s, bool encode_space_as_plus = true) {
     std::string out;
@@ -2186,6 +2233,10 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
             if (mode_cstr) { fetch_mode = mode_cstr; JS_FreeCString(ctx, mode_cstr); }
         }
         JS_FreeValue(ctx, mode_val);
+
+        // keepalive (currently ignored)
+        JSValue keepalive_val = JS_GetPropertyStr(ctx, argv[1], "keepalive");
+        JS_FreeValue(ctx, keepalive_val);
 
         // signal (AbortSignal) -- check if already aborted before making request
         JSValue signal_val = JS_GetPropertyStr(ctx, argv[1], "signal");
@@ -3900,6 +3951,37 @@ void install_fetch_bindings(JSContext* ctx) {
     JS_SetConstructor(ctx, headers_ctor, headers_proto);
     JS_SetClassProto(ctx, headers_class_id, headers_proto);
 
+    // ---- Add Headers.prototype[Symbol.iterator] ----
+    {
+        const char* headers_iter_src = R"JS(
+(function() {
+    if (typeof Headers !== 'undefined' && Headers.prototype) {
+        Headers.prototype[Symbol.iterator] = function() {
+            var entries = this.entries();
+            var idx = 0;
+            return {
+                next: function() {
+                    if (idx < entries.length) {
+                        return { value: entries[idx++], done: false };
+                    }
+                    return { value: undefined, done: true };
+                },
+                [Symbol.iterator]: function() { return this; }
+            };
+        };
+    }
+})();
+)JS";
+        JSValue headers_iter_ret = JS_Eval(ctx, headers_iter_src,
+                                          std::strlen(headers_iter_src),
+                                          "<headers-iterator>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(headers_iter_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, headers_iter_ret);
+    }
+
     // ---- Register Request class ----
     if (request_class_id == 0) {
         JS_NewClassID(&request_class_id);
@@ -3933,6 +4015,10 @@ void install_fetch_bindings(JSContext* ctx) {
     JSValue response_ctor = JS_NewCFunction2(ctx, js_response_constructor,
                                               "Response", 0,
                                               JS_CFUNC_constructor, 0);
+    JS_SetPropertyStr(ctx, response_ctor, "error",
+                      JS_NewCFunction(ctx, js_response_error, "error", 0));
+    JS_SetPropertyStr(ctx, response_ctor, "redirect",
+                      JS_NewCFunction(ctx, js_response_redirect, "redirect", 2));
     JS_SetConstructor(ctx, response_ctor, response_proto);
     JS_SetClassProto(ctx, response_class_id, response_proto);
 

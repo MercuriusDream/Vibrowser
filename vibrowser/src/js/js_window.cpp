@@ -18,6 +18,7 @@ extern "C" {
 #include <map>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -1427,9 +1428,64 @@ static bool evaluate_media_group(const std::string& group, JSContext* ctx,
     return all_match;
 }
 
+struct MQLRegistry {
+    std::unordered_map<std::string, bool> last_match;
+    std::unordered_map<std::string, std::vector<JSValue>> listeners;
+};
+
+static thread_local MQLRegistry g_mql_registry;
+
 static JSValue js_media_query_noop(JSContext* /*ctx*/, JSValueConst /*this_val*/,
                                    int /*argc*/, JSValueConst* /*argv*/) {
     return JS_UNDEFINED;
+}
+
+static JSValue js_mql_add_event_listener(JSContext* ctx, JSValueConst this_val,
+                                       int argc, JSValueConst* argv) {
+    std::string event_type;
+    if (argc > 0) event_type = js_value_to_string(ctx, argv[0]);
+    if (event_type != "change" || argc < 2 || !JS_IsFunction(ctx, argv[1])) {
+        return JS_UNDEFINED;
+    }
+
+    JSValue media_value = JS_GetPropertyStr(ctx, this_val, "media");
+    std::string query = js_value_to_string(ctx, media_value);
+    JS_FreeValue(ctx, media_value);
+
+    g_mql_registry.listeners[query].push_back(JS_DupValue(ctx, argv[1]));
+    return JS_UNDEFINED;
+}
+
+static void fire_mql_change_events(JSContext* ctx, int width, int height) {
+    for (const auto& entry : g_mql_registry.listeners) {
+        const auto& query = entry.first;
+        const char* query_cstr = query.c_str();
+
+        bool known_group = false;
+        bool matches = evaluate_media_group(std::string(query_cstr), ctx, width,
+                                           height, &known_group);
+        if (!known_group) continue;
+
+        bool& previous = g_mql_registry.last_match[query];
+        if (matches == previous) continue;
+        previous = matches;
+
+        JSValue event_obj = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "change"));
+        JS_SetPropertyStr(ctx, event_obj, "matches", matches ? JS_TRUE : JS_FALSE);
+        JS_SetPropertyStr(ctx, event_obj, "media", JS_NewString(ctx, query_cstr));
+
+        auto callbacks = entry.second;
+        for (auto& callback : callbacks) {
+            JSValue result = JS_Call(ctx, callback, JS_NULL, 1, &event_obj);
+            if (JS_IsException(result)) {
+                JSValue exc = JS_GetException(ctx);
+                JS_FreeValue(ctx, exc);
+            }
+            JS_FreeValue(ctx, result);
+        }
+        JS_FreeValue(ctx, event_obj);
+    }
 }
 
 // =========================================================================
@@ -1468,6 +1524,7 @@ static JSValue js_window_match_media(JSContext* ctx, JSValueConst /*this_val*/,
         pos = comma + 1;
     }
     if (!found_known_group) matches = false;
+    g_mql_registry.last_match[query] = matches;
 
     JSValue result = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, result, "matches", matches ? JS_TRUE : JS_FALSE);
@@ -1478,7 +1535,7 @@ static JSValue js_window_match_media(JSContext* ctx, JSValueConst /*this_val*/,
     JS_SetPropertyStr(ctx, result, "removeListener",
         JS_NewCFunction(ctx, js_media_query_noop, "removeListener", 1));
     JS_SetPropertyStr(ctx, result, "addEventListener",
-        JS_NewCFunction(ctx, js_media_query_noop, "addEventListener", 2));
+        JS_NewCFunction(ctx, js_mql_add_event_listener, "addEventListener", 2));
     JS_SetPropertyStr(ctx, result, "removeEventListener",
         JS_NewCFunction(ctx, js_media_query_noop, "removeEventListener", 2));
     JS_SetPropertyStr(ctx, result, "dispatchEvent",
@@ -4214,6 +4271,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // ---- window.innerWidth / window.innerHeight ----
     JS_SetPropertyStr(ctx, global, "innerWidth", JS_NewInt32(ctx, width));
     JS_SetPropertyStr(ctx, global, "innerHeight", JS_NewInt32(ctx, height));
+    fire_mql_change_events(ctx, width, height);
     JS_SetPropertyStr(ctx, global, "outerWidth", JS_NewInt32(ctx, width));
     JS_SetPropertyStr(ctx, global, "outerHeight", JS_NewInt32(ctx, height));
 

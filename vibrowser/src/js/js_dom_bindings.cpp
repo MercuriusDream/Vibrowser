@@ -14989,6 +14989,65 @@ static JSValue js_img_fetch_sync(JSContext* ctx, JSValueConst /*this_val*/,
 // Public API
 // =========================================================================
 
+// =========================================================================
+// dispatch_window_listeners — called from js_window.cpp to dispatch events
+// (e.g. popstate) directly to window.addEventListener listeners stored in
+// DOMState without going through a JS eval or the no-op dispatchEvent stub.
+// =========================================================================
+
+void dispatch_window_listeners(JSContext* ctx, const std::string& event_type,
+                                JSValue event_obj) {
+    if (!ctx) return;
+    auto* state = get_dom_state(ctx);
+    if (!state) return;
+
+    // Window-level listeners are keyed by nullptr (window_sentinel).
+    static constexpr clever::html::SimpleNode* win_sentinel = nullptr;
+    auto node_it = state->listeners.find(win_sentinel);
+    if (node_it == state->listeners.end()) return;
+    auto type_it = node_it->second.find(event_type);
+    if (type_it == node_it->second.end()) return;
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, event_obj, "eventPhase", JS_NewInt32(ctx, 2)); // AT_TARGET
+
+    // Snapshot the list so mutations during dispatch don't invalidate iterators.
+    auto entries = type_it->second;
+    for (auto& entry : entries) {
+        // Honor stopImmediatePropagation if the event carries a flag.
+        JSValue stopped = JS_GetPropertyStr(ctx, event_obj, "__stopImmediate");
+        bool is_stopped = JS_ToBool(ctx, stopped) != 0;
+        JS_FreeValue(ctx, stopped);
+        if (is_stopped) break;
+
+        JSValue result = JS_Call(ctx, entry.handler, global, 1, &event_obj);
+        if (JS_IsException(result)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, result);
+    }
+    JS_FreeValue(ctx, global);
+}
+
+void dispatch_visibility_change(JSContext* ctx) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue doc = JS_GetPropertyStr(ctx, global, "document");
+
+    // Create event object
+    JSValue event = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "visibilitychange"));
+    JS_SetPropertyStr(ctx, event, "bubbles", JS_TRUE);
+    JS_SetPropertyStr(ctx, event, "cancelable", JS_FALSE);
+
+    // Dispatch to window listeners
+    dispatch_window_listeners(ctx, "visibilitychange", event);
+    JS_FreeValue(ctx, event);
+    JS_FreeValue(ctx, doc);
+    JS_FreeValue(ctx, global);
+}
+
 void install_dom_bindings(JSContext* ctx,
                           clever::html::SimpleNode* document_root) {
     JSRuntime* rt = JS_GetRuntime(ctx);
@@ -15689,6 +15748,7 @@ void install_dom_bindings(JSContext* ctx,
     // ---- document.hasFocus() ----
     JS_SetPropertyStr(ctx, doc_obj, "hasFocus",
         JS_NewCFunction(ctx, js_document_has_focus, "hasFocus", 0));
+    dispatch_visibility_change(ctx);
 
     // ---- document.activeElement (internal getter) ----
     JS_SetPropertyStr(ctx, doc_obj, "__getActiveElement",
@@ -23095,48 +23155,6 @@ const std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*>*
     auto* state = get_dom_state(ctx);
     if (!state) return nullptr;
     return &state->shadow_roots;
-}
-
-// =========================================================================
-// dispatch_window_listeners — called from js_window.cpp to dispatch events
-// (e.g. popstate) directly to window.addEventListener listeners stored in
-// DOMState without going through a JS eval or the no-op dispatchEvent stub.
-// =========================================================================
-
-void dispatch_window_listeners(JSContext* ctx, const std::string& event_type,
-                                JSValue event_obj) {
-    if (!ctx) return;
-    auto* state = get_dom_state(ctx);
-    if (!state) return;
-
-    // Window-level listeners are keyed by nullptr (window_sentinel).
-    static constexpr clever::html::SimpleNode* win_sentinel = nullptr;
-    auto node_it = state->listeners.find(win_sentinel);
-    if (node_it == state->listeners.end()) return;
-    auto type_it = node_it->second.find(event_type);
-    if (type_it == node_it->second.end()) return;
-
-    JSValue global = JS_GetGlobalObject(ctx);
-    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_DupValue(ctx, global));
-    JS_SetPropertyStr(ctx, event_obj, "eventPhase", JS_NewInt32(ctx, 2)); // AT_TARGET
-
-    // Snapshot the list so mutations during dispatch don't invalidate iterators.
-    auto entries = type_it->second;
-    for (auto& entry : entries) {
-        // Honor stopImmediatePropagation if the event carries a flag.
-        JSValue stopped = JS_GetPropertyStr(ctx, event_obj, "__stopImmediate");
-        bool is_stopped = JS_ToBool(ctx, stopped) != 0;
-        JS_FreeValue(ctx, stopped);
-        if (is_stopped) break;
-
-        JSValue result = JS_Call(ctx, entry.handler, global, 1, &event_obj);
-        if (JS_IsException(result)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        }
-        JS_FreeValue(ctx, result);
-    }
-    JS_FreeValue(ctx, global);
 }
 
 void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h, float scroll_y) {
