@@ -7973,6 +7973,123 @@ static JSValue js_resize_observer_constructor(JSContext* ctx,
 }
 
 // =========================================================================
+// StorageEvent constructor
+// =========================================================================
+
+static JSValue js_storage_event_constructor(JSContext* ctx,
+                                             JSValueConst /*new_target*/,
+                                             int argc,
+                                             JSValueConst* argv) {
+    JSValue event_obj = JS_NewObject(ctx);
+
+    // type argument (required)
+    if (argc > 0) {
+        const char* type_cstr = JS_ToCString(ctx, argv[0]);
+        if (type_cstr) {
+            JS_SetPropertyStr(ctx, event_obj, "type",
+                JS_NewString(ctx, type_cstr));
+            JS_FreeCString(ctx, type_cstr);
+        } else {
+            JS_SetPropertyStr(ctx, event_obj, "type",
+                JS_NewString(ctx, ""));
+        }
+    } else {
+        JS_SetPropertyStr(ctx, event_obj, "type",
+            JS_NewString(ctx, ""));
+    }
+
+    // StorageEvent properties with defaults
+    JS_SetPropertyStr(ctx, event_obj, "key", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "oldValue", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "newValue", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "storageArea", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "url", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "bubbles", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "cancelable", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
+
+    // options argument (optional)
+    if (argc > 1 && JS_IsObject(argv[1])) {
+        // key
+        JSValue key = JS_GetPropertyStr(ctx, argv[1], "key");
+        if (!JS_IsUndefined(key)) {
+            JS_SetPropertyStr(ctx, event_obj, "key", JS_DupValue(ctx, key));
+            JS_FreeValue(ctx, key);
+        } else {
+            JS_FreeValue(ctx, key);
+        }
+
+        // oldValue
+        JSValue old_value = JS_GetPropertyStr(ctx, argv[1], "oldValue");
+        if (!JS_IsUndefined(old_value)) {
+            JS_SetPropertyStr(ctx, event_obj, "oldValue", JS_DupValue(ctx, old_value));
+            JS_FreeValue(ctx, old_value);
+        } else {
+            JS_FreeValue(ctx, old_value);
+        }
+
+        // newValue
+        JSValue new_value = JS_GetPropertyStr(ctx, argv[1], "newValue");
+        if (!JS_IsUndefined(new_value)) {
+            JS_SetPropertyStr(ctx, event_obj, "newValue", JS_DupValue(ctx, new_value));
+            JS_FreeValue(ctx, new_value);
+        } else {
+            JS_FreeValue(ctx, new_value);
+        }
+
+        // storageArea
+        JSValue storage_area = JS_GetPropertyStr(ctx, argv[1], "storageArea");
+        if (!JS_IsUndefined(storage_area)) {
+            JS_SetPropertyStr(ctx, event_obj, "storageArea", JS_DupValue(ctx, storage_area));
+            JS_FreeValue(ctx, storage_area);
+        } else {
+            JS_FreeValue(ctx, storage_area);
+        }
+
+        // url
+        JSValue url = JS_GetPropertyStr(ctx, argv[1], "url");
+        if (!JS_IsUndefined(url)) {
+            JS_SetPropertyStr(ctx, event_obj, "url", JS_DupValue(ctx, url));
+            JS_FreeValue(ctx, url);
+        } else {
+            JS_FreeValue(ctx, url);
+        }
+    }
+
+    // Add event methods
+    const char* evt_methods = R"JS(
+        (function() {
+            var evt = this;
+            evt.preventDefault = function() { evt.defaultPrevented = true; };
+            evt.stopPropagation = function() { evt.__stopped = true; };
+            evt.stopImmediatePropagation = function() {
+                evt.__stopped = true;
+                evt.__immediate_stopped = true;
+            };
+            evt.composedPath = function() {
+                var arr = evt.__composedPathArray;
+                if (!arr) return [];
+                var result = [];
+                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
+                return result;
+            };
+        })
+    )JS";
+    JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "eventPhase", JS_NewInt32(ctx, 0));
+    JSValue setup_fn = JS_Eval(ctx, evt_methods, std::strlen(evt_methods),
+                               "<storage-event-setup>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsFunction(ctx, setup_fn)) {
+        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
+        JS_FreeValue(ctx, setup_ret);
+    }
+    JS_FreeValue(ctx, setup_fn);
+
+    return event_obj;
+}
+
+// =========================================================================
 // CustomEvent constructor
 // =========================================================================
 
@@ -15695,6 +15812,14 @@ void install_dom_bindings(JSContext* ctx,
     JS_SetPropertyStr(ctx, global, "CustomEvent",
         JS_NewCFunction2(ctx, js_custom_event_constructor,
                          "CustomEvent", 1,
+                         JS_CFUNC_constructor, 0));
+
+    // ------------------------------------------------------------------
+    // StorageEvent constructor
+    // ------------------------------------------------------------------
+    JS_SetPropertyStr(ctx, global, "StorageEvent",
+        JS_NewCFunction2(ctx, js_storage_event_constructor,
+                         "StorageEvent", 1,
                          JS_CFUNC_constructor, 0));
 
     // ------------------------------------------------------------------
