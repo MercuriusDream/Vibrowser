@@ -18546,6 +18546,16 @@ void install_dom_bindings(JSContext* ctx,
             if (exW) return viewportWidth === parseLen(exW[1] + (exW[2]||''));
             var exH = q.match(/\(height:\s*([\d.]+)(px|em|rem)?\)/);
             if (exH) return viewportHeight === parseLen(exH[1] + (exH[2]||''));
+            // CSS Level 4 range syntax: (width > Npx), (width >= Npx), (width < Npx), (width <= Npx)
+            var rgw = q.match(/\(\s*width\s*(>=?|<=?)\s*([\d.]+)(px|em|rem)?\s*\)/);
+            if (rgw) { var rv = parseLen(rgw[2]+(rgw[3]||'')); if (rgw[1]==='>')return viewportWidth>rv; if (rgw[1]==='>=')return viewportWidth>=rv; if (rgw[1]==='<')return viewportWidth<rv; return viewportWidth<=rv; }
+            var rgh = q.match(/\(\s*height\s*(>=?|<=?)\s*([\d.]+)(px|em|rem)?\s*\)/);
+            if (rgh) { var rhv = parseLen(rgh[2]+(rgh[3]||'')); if (rgh[1]==='>')return viewportHeight>rhv; if (rgh[1]==='>=')return viewportHeight>=rhv; if (rgh[1]==='<')return viewportHeight<rhv; return viewportHeight<=rhv; }
+            // Range form: (Npx <= width <= Mpx)
+            var rangew = q.match(/\(\s*([\d.]+)(px|em|rem)?\s*(<=?)\s*width\s*(<=?)\s*([\d.]+)(px|em|rem)?\s*\)/);
+            if (rangew) { var rlo=parseLen(rangew[1]+(rangew[2]||'')),rhi=parseLen(rangew[5]+(rangew[6]||'')); return (rangew[3]==='<='?viewportWidth>=rlo:viewportWidth>rlo)&&(rangew[4]==='<='?viewportWidth<=rhi:viewportWidth<rhi); }
+            var rangeh = q.match(/\(\s*([\d.]+)(px|em|rem)?\s*(<=?)\s*height\s*(<=?)\s*([\d.]+)(px|em|rem)?\s*\)/);
+            if (rangeh) { var rhlo=parseLen(rangeh[1]+(rangeh[2]||'')),rhhi=parseLen(rangeh[5]+(rangeh[6]||'')); return (rangeh[3]==='<='?viewportHeight>=rhlo:viewportHeight>rhlo)&&(rangeh[4]==='<='?viewportHeight<=rhhi:viewportHeight<rhhi); }
             // color / monochrome
             if (q.indexOf('(color)') !== -1) return true;
             if (q.indexOf('(monochrome)') !== -1) return false;
