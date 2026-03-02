@@ -1009,6 +1009,8 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
         if (node.is_range_input && node.appearance != 1) {
             paint_range_input(node, list, abs_x, abs_y);
         }
+        if (node.is_progress) { paint_progress(node, list, abs_x, abs_y); }
+        if (node.is_meter) { paint_meter(node, list, abs_x, abs_y); }
 
         // Paint color input swatch if this is <input type="color">
         if (node.is_color_input) {
@@ -5151,8 +5153,84 @@ void Painter::paint_select_element(const clever::layout::LayoutNode& node, Displ
     }
 }
 
-void Painter::paint_marquee(const clever::layout::LayoutNode& node, DisplayList& list,
+void Painter::paint_progress(const clever::layout::LayoutNode& node, DisplayList& list,
                             float abs_x, float abs_y) {
+    if (!node.is_progress) return;
+    if (node.appearance == 1) return;
+
+    const auto& geom = node.geometry;
+    float box_w = geom.border_box_width();
+    float box_h = geom.border_box_height();
+    Rect box_rect = {abs_x, abs_y, box_w, box_h};
+
+    bool dark = (node.color_scheme == 2);
+
+    float radius = node.border_radius > 0 ? node.border_radius : 4.0f;
+    Color track_color = dark ? Color{0x2A, 0x2A, 0x2A, 0xFF} : Color{0xEE, 0xEE, 0xEE, 0xFF};
+    if (node.background_color != 0) {
+        track_color = Color::from_argb(node.background_color);
+    }
+    list.fill_rounded_rect(box_rect, track_color, radius);
+
+    if (node.progress_indeterminate) {
+        float stripe_w = box_w / 3.0f;
+        if (stripe_w > 0.0f) {
+            Color stripe_dark = dark ? Color{0x33, 0x33, 0x33, 0xFF} : Color{0xDE, 0xDE, 0xDE, 0xFF};
+            Color stripe_light = dark ? Color{0x55, 0x55, 0x55, 0xFF} : Color{0xF5, 0xF5, 0xF5, 0xFF};
+            for (int i = 0; i < 3; ++i) {
+                float x = abs_x + stripe_w * static_cast<float>(i);
+                float w = std::min(stripe_w, std::max(0.0f, box_w - stripe_w * static_cast<float>(i)));
+                if (w > 0.0f) {
+                    list.fill_rect({x, abs_y, w, box_h}, (i % 2 == 0) ? stripe_dark : stripe_light);
+                }
+            }
+        }
+        return;
+    }
+
+    float fill_ratio = node.progress_value;
+    fill_ratio = std::max(0.0f, std::min(1.0f, fill_ratio));
+    float fill_w = box_w * fill_ratio;
+    if (fill_w <= 0.0f) return;
+
+    Color fill_color = dark ? Color{0x4D, 0xC3, 0xFF, 0xFF} : Color{0x4C, 0xAF, 0x50, 0xFF};
+    list.fill_rounded_rect({abs_x, abs_y, fill_w, box_h}, fill_color, radius);
+}
+
+void Painter::paint_meter(const clever::layout::LayoutNode& node, DisplayList& list,
+                         float abs_x, float abs_y) {
+    if (!node.is_meter) return;
+    if (node.appearance == 1) return;
+
+    const auto& geom = node.geometry;
+    float box_w = geom.border_box_width();
+    float box_h = geom.border_box_height();
+    Rect box_rect = {abs_x, abs_y, box_w, box_h};
+
+    bool dark = (node.color_scheme == 2);
+    (void)dark;
+
+    float radius = node.border_radius > 0 ? node.border_radius : 4.0f;
+    Color track_color = dark ? Color{0x26, 0x26, 0x26, 0xFF} : Color{0xEA, 0xEA, 0xEA, 0xFF};
+    if (node.background_color != 0) {
+        track_color = Color::from_argb(node.background_color);
+    }
+    list.fill_rounded_rect(box_rect, track_color, radius);
+
+    float range = node.meter_max - node.meter_min;
+    if (range <= 0.0f) return;
+
+    float fill_ratio = (node.meter_value - node.meter_min) / range;
+    fill_ratio = std::max(0.0f, std::min(1.0f, fill_ratio));
+    float fill_w = box_w * fill_ratio;
+    if (fill_w <= 0.0f) return;
+
+    Color bar_color = Color::from_argb(node.meter_bar_color);
+    list.fill_rounded_rect({abs_x, abs_y, fill_w, box_h}, bar_color, radius);
+}
+
+void Painter::paint_marquee(const clever::layout::LayoutNode& node, DisplayList& list,
+                           float abs_x, float abs_y) {
     if (!node.is_marquee) return;
 
     const auto& geom = node.geometry;
