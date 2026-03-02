@@ -6870,6 +6870,9 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
         } else if (d.property == "transition-behavior") {
             if (val_lower == "allow-discrete") style.transition_behavior = 1;
             else style.transition_behavior = 0;
+        } else if (d.property == "interpolate-size") {
+            if (val_lower == "allow-keywords") style.interpolate_size = 1;
+            else style.interpolate_size = 0; // numeric-only (default)
         } else if (d.property == "animation-range") {
             style.animation_range = d.value;
         } else if (d.property == "rotate") {
@@ -8846,6 +8849,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->offset_anchor = style.offset_anchor;
     layout_node->offset_position = style.offset_position;
     layout_node->transition_behavior = style.transition_behavior;
+    layout_node->interpolate_size = style.interpolate_size;
     layout_node->animation_range = style.animation_range;
     layout_node->css_rotate = style.css_rotate;
     layout_node->css_scale = style.css_scale;
@@ -12805,6 +12809,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->offset_anchor = style.offset_anchor;
     layout_node->offset_position = style.offset_position;
     layout_node->transition_behavior = style.transition_behavior;
+    layout_node->interpolate_size = style.interpolate_size;
     layout_node->animation_range = style.animation_range;
     layout_node->css_rotate = style.css_rotate;
     layout_node->css_scale = style.css_scale;

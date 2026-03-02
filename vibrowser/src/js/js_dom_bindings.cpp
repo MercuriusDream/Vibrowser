@@ -20179,6 +20179,72 @@ if (typeof queueMicrotask === 'undefined') {
                 this.readable = new ReadableStream();
                 this.writable = new WritableStream();
             };
+
+            // CompressionStream stub — passes data through uncompressed
+            globalThis.CompressionStream = function CompressionStream(format) {
+                this.format = format;
+                var controller;
+                this.readable = new ReadableStream({
+                    start: function(c) { controller = c; }
+                });
+                this.writable = new WritableStream({
+                    write: function(chunk) {
+                        if (controller) controller.enqueue(chunk);
+                    },
+                    close: function() {
+                        if (controller) controller.close();
+                    },
+                    abort: function(reason) {
+                        if (controller) controller.error(reason);
+                    }
+                });
+            };
+
+            // DecompressionStream stub — passes data through as-is
+            globalThis.DecompressionStream = function DecompressionStream(format) {
+                this.format = format;
+                var controller;
+                this.readable = new ReadableStream({
+                    start: function(c) { controller = c; }
+                });
+                this.writable = new WritableStream({
+                    write: function(chunk) {
+                        if (controller) controller.enqueue(chunk);
+                    },
+                    close: function() {
+                        if (controller) controller.close();
+                    },
+                    abort: function(reason) {
+                        if (controller) controller.error(reason);
+                    }
+                });
+            };
+
+            // TextEncoderStream stub
+            globalThis.TextEncoderStream = function TextEncoderStream() {
+                var enc = new TextEncoder();
+                var controller;
+                this.readable = new ReadableStream({ start: function(c) { controller = c; } });
+                this.writable = new WritableStream({
+                    write: function(chunk) { if (controller) controller.enqueue(enc.encode(chunk)); },
+                    close: function() { if (controller) controller.close(); }
+                });
+                this.encoding = 'utf-8';
+            };
+
+            // TextDecoderStream stub
+            globalThis.TextDecoderStream = function TextDecoderStream(encoding, options) {
+                var dec = new TextDecoder(encoding || 'utf-8', options);
+                var controller;
+                this.readable = new ReadableStream({ start: function(c) { controller = c; } });
+                this.writable = new WritableStream({
+                    write: function(chunk) { if (controller) controller.enqueue(dec.decode(chunk, { stream: true })); },
+                    close: function() { if (controller) controller.close(); }
+                });
+                this.encoding = dec.encoding;
+                this.fatal = dec.fatal;
+                this.ignoreBOM = dec.ignoreBOM;
+            };
         })();
 )JS";
         JSValue streams_ret = JS_Eval(ctx, streams_src, std::strlen(streams_src),

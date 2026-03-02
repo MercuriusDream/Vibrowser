@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1986 — Fixed IntersectionObserver GC leak (QuickJS assert), implemented dispatch_scroll_event, fixed CSS individual transforms pipeline, @media Level 4 range syntax (CSS+JS), CSS image-set(), CSS text-emphasis-position, window.history pushState (partial). 14/14 tests passing.
-**Momentum**: Cycle 1986 — 130+ commits. 14/14 tests at 100%. Running agents: text-emphasis, overscroll-behavior, line-clamp, accent-color, print media. IMPORTANT: After concurrent agents finish, do a clean `rm -rf build && cmake -S . -B build && cmake --build build` to avoid ranlib conflicts.
-**Cycle**: 1986
+**Current Focus**: Cycle 1988 — Added window frame refs (top/parent/opener/self), PerformanceNavigationTiming entry, ES2024+ built-ins (Promise.withResolvers, Array.fromAsync, Set operations, BroadcastChannel), animation-fill-mode improvements, StorageEvent dispatch, @supports selector()/font-tech(), CSS revert-layer. 14/14 tests passing.
+**Momentum**: Cycle 1988 — 135+ commits. 14/14 tests at 100%. Next: visibilitychange events, matchMedia live listeners, CompressionStream stubs, CSS interpolate-size.
+**Cycle**: 1988
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -2017,7 +2017,8 @@ Generated: 2026-03-01
 - system-ui/ui-serif/ui-sans-serif/ui-monospace font stacks mapped (cycle 1979)
 - prefers-color-scheme, prefers-reduced-motion, prefers-contrast media queries — ALL implemented (cycle 1979)
 - `codex-spark` haiku agents are the primary subagent type. 4-6 per round. They commit+push directly.
-- High-value next targets: CSS `paint()` Houdini worklets, improved form submission (multipart), HTTP/2 connection wiring, more HTML entities (1485 still missing), `<picture>` srcset (in progress), CSS `min-content`/`max-content` track sizing verification, CSS `gap` in grid rows, text-overflow ellipsis in grid/flex children, SVG animation
+- Cycle 1987 done: window.top/parent/opener/self/frames, PerformanceNavigationTiming, ES2024+ (Promise.withResolvers, Array.fromAsync, Set.union/intersection/difference), BroadcastChannel stub, animation-fill-mode forwards/backwards/both/paused, StorageEvent dispatch, @supports selector()/font-tech(), CSS revert-layer
+- High-value next targets: CompressionStream/DecompressionStream stubs, matchMedia live change event dispatch (store callbacks, fire on resize), visibilitychange event on page load, CSS interpolate-size:allow-keywords for auto transitions, HTMLDialogElement close event, more fetch() improvements, CSS `paint()` Houdini stubs
 
 ### Tell The Next Codex
 
