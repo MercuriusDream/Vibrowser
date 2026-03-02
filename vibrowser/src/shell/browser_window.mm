@@ -2547,6 +2547,24 @@ static std::string build_shell_message_html(const std::string& page_title,
     }
 }
 
+- (void)renderView:(RenderView*)renderView
+      didScrollToX:(CGFloat)scrollX
+                 y:(CGFloat)scrollY
+            deltaX:(CGFloat)deltaX
+            deltaY:(CGFloat)deltaY
+        isMomentum:(BOOL)isMomentum {
+    (void)renderView; (void)scrollX; (void)deltaX; (void)deltaY; (void)isMomentum;
+    // Update window.scrollY and fire scroll event in the JS engine.
+    BrowserTab* tab = [self activeTab];
+    if (!tab) return;
+    auto& jsEngine = [tab jsEngine];
+    if (!jsEngine || !jsEngine->context()) return;
+    JSContext* ctx = jsEngine->context();
+    int vpW = static_cast<int>(renderView.bounds.size.width);
+    int vpH = static_cast<int>(renderView.bounds.size.height);
+    clever::js::dispatch_scroll_event(ctx, vpW, vpH, static_cast<float>(scrollY));
+}
+
 - (void)renderView:(RenderView*)view didSubmitForm:(const clever::paint::FormData&)formData {
     (void)view;
     [self submitForm:formData];
