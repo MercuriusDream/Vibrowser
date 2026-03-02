@@ -3397,20 +3397,8 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         if (deco_w > 0) {
             auto draw_deco_line = [&](float line_y) {
                 const int style = node.text_decoration_style;
-                if (style == 1) { // double
-                    const float line_gap = thickness + 1.0f;
-                    list.fill_rect({deco_x, line_y, deco_w, thickness}, {dr, dg, db, da});
-                    list.fill_rect({deco_x, line_y + line_gap, deco_w, thickness}, {dr, dg, db, da});
-                } else if (style == 2) { // dotted
-                    float x_pos = deco_x;
-                    const float end_x = deco_x + deco_w;
-                    const float dot_size = thickness;
-                    const float dot_step = thickness * 3.0f;
-                    while (x_pos < end_x) {
-                        list.fill_rect({x_pos, line_y, dot_size, dot_size}, {dr, dg, db, da});
-                        x_pos += dot_step;
-                    }
-                } else if (style == 3) { // dashed
+                // text_decoration_style: 0=solid, 1=dashed, 2=dotted, 3=wavy, 4=double
+                if (style == 1) { // dashed
                     float x_pos = deco_x;
                     const float end_x = deco_x + deco_w;
                     const float dash_base_w = thickness * 4.0f;
@@ -3420,7 +3408,16 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
                         list.fill_rect({x_pos, line_y, dash_w, thickness}, {dr, dg, db, da});
                         x_pos += dash_base_w + dash_gap;
                     }
-                } else if (style == 4) { // wavy
+                } else if (style == 2) { // dotted
+                    float x_pos = deco_x;
+                    const float end_x = deco_x + deco_w;
+                    const float dot_size = thickness;
+                    const float dot_step = thickness * 3.0f;
+                    while (x_pos < end_x) {
+                        list.fill_rect({x_pos, line_y, dot_size, dot_size}, {dr, dg, db, da});
+                        x_pos += dot_step;
+                    }
+                } else if (style == 3) { // wavy
                     const float amplitude = 1.5f * thickness;
                     const float wavelength = 8.0f * thickness;
                     const float step = 1.0f;
@@ -3434,7 +3431,11 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
                         prev_x = cur_x;
                         prev_y = cur_y;
                     }
-                } else { // solid
+                } else if (style == 4) { // double
+                    const float line_gap = thickness + 1.0f;
+                    list.fill_rect({deco_x, line_y, deco_w, thickness}, {dr, dg, db, da});
+                    list.fill_rect({deco_x, line_y + line_gap, deco_w, thickness}, {dr, dg, db, da});
+                } else { // solid (0)
                     list.fill_rect({deco_x, line_y, deco_w, thickness}, {dr, dg, db, da});
                 }
             };

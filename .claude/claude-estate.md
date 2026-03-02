@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1984 — Fixed thead/tbody/tfoot background painting, fixed select multiple listbox (all options now visible), fixed CSS grid gap persistence, fixed text-overflow ellipsis (was using text node width instead of container width). 14/14 tests passing.
-**Momentum**: Cycle 1984 — 111+ commits. 14/14 tests at 100%. Key fixes: table section backgrounds, form listbox rendering, text-overflow ellipsis in all contexts.
-**Cycle**: 1984
+**Current Focus**: Cycle 1985 — Fixed word-spacing/tab-size intrinsic width measurement (2 tests restored), added window.scrollY scroll event wiring, Wikipedia dark-mode fix (color-scheme guard), SVG SMIL animation (<animate>/<animateTransform>/<set>), HTML entities 746→1922, text-overflow in grid/flex, ::selection/::placeholder/caret-color, border-color transitions, picture/srcset fallback fix. 14/14 tests passing.
+**Momentum**: Cycle 1985 — 120+ commits. 14/14 tests at 100%. Running 5 agents: CSS rotate/scale/translate, text-decoration-style wavy/dotted, scrollbar-width/color, multipart forms, Selection API.
+**Cycle**: 1985
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png

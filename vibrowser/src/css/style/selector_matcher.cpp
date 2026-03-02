@@ -773,6 +773,81 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "in-range" || name == "out-of-range") {
                 // Range pseudo-classes for number/range inputs
                 return name == "in-range"; // all in-range by default
+            } else if (name == "open") {
+                // :open — matches <details> when open attribute is set, <dialog> when shown
+                const std::string& tag = element.tag_name;
+                if (tag == "details") {
+                    for (const auto& [n, v] : element.attributes)
+                        if (n == "open") return true;
+                    return false;
+                }
+                if (tag == "dialog") {
+                    for (const auto& [n, v] : element.attributes)
+                        if (n == "open" || n == "data-dialog-open") return true;
+                    return false;
+                }
+                // <select> is open when it has open dropdown state
+                if (tag == "select") {
+                    for (const auto& [n, v] : element.attributes)
+                        if (n == "data-select-open") return true;
+                    return false;
+                }
+                return false;
+            } else if (name == "closed") {
+                // :closed — inverse of :open for details/dialog
+                const std::string& tag = element.tag_name;
+                if (tag == "details") {
+                    for (const auto& [n, v] : element.attributes)
+                        if (n == "open") return false;
+                    return true;
+                }
+                if (tag == "dialog") {
+                    for (const auto& [n, v] : element.attributes)
+                        if (n == "open" || n == "data-dialog-open") return false;
+                    return true;
+                }
+                return false;
+            } else if (name == "modal") {
+                // :modal — matches <dialog> opened via showModal()
+                if (element.tag_name == "dialog") {
+                    for (const auto& [n, v] : element.attributes)
+                        if (n == "data-dialog-modal") return true;
+                }
+                return false;
+            } else if (name == "fullscreen") {
+                // :fullscreen — matches element in fullscreen mode
+                for (const auto& [n, v] : element.attributes)
+                    if (n == "data-fullscreen") return true;
+                return false;
+            } else if (name == "user-valid") {
+                // :user-valid — matches valid form field after user interaction
+                if (element.tag_name != "input" && element.tag_name != "select" &&
+                    element.tag_name != "textarea") return false;
+                for (const auto& [n, v] : element.attributes)
+                    if (n == "data-user-interacted") return true;
+                return false;
+            } else if (name == "user-invalid") {
+                // :user-invalid — matches invalid form field after user interaction
+                if (element.tag_name != "input" && element.tag_name != "select" &&
+                    element.tag_name != "textarea") return false;
+                for (const auto& [n, v] : element.attributes)
+                    if (n == "data-user-interacted" && v == "invalid") return true;
+                return false;
+            } else if (name == "paused") {
+                // :paused — matches paused media elements
+                for (const auto& [n, v] : element.attributes)
+                    if (n == "data-media-paused") return true;
+                return false;
+            } else if (name == "playing") {
+                // :playing — matches playing media elements
+                for (const auto& [n, v] : element.attributes)
+                    if (n == "data-media-playing") return true;
+                return false;
+            } else if (name == "picture-in-picture") {
+                // :picture-in-picture — matches elements in PIP mode
+                for (const auto& [n, v] : element.attributes)
+                    if (n == "data-pip") return true;
+                return false;
             }
             // Other pseudo-classes (hover, focus, etc.) require state, return false for now
             return false;
