@@ -8587,7 +8587,7 @@ TEST(LayoutNodeProps, LightingColorDefaultWhite) {
 
 TEST(LayoutNodeProps, PlaceholderColorDefaultGray) {
     LayoutNode n;
-    EXPECT_EQ(n.placeholder_color, 0xFF757575u);
+    EXPECT_EQ(n.placeholder_color, 0xFF8a8a8au);
 }
 
 // --- Cycle 1136: 8 more LayoutNode property defaults ---
@@ -9246,7 +9246,7 @@ TEST(LayoutNodeProps, TabSizeDefaultV20) {
 
 TEST(LayoutNodeProps, PlaceholderColorDefaultV20) {
     LayoutNode n;
-    EXPECT_EQ(n.placeholder_color, 0xFF757575u);
+    EXPECT_EQ(n.placeholder_color, 0xFF8a8a8au);
 }
 
 TEST(LayoutNodeProps, TextUnderlineOffsetDefaultV20) {
@@ -24742,7 +24742,7 @@ TEST(LayoutNodeProps, OverflowIndicatorBottomDefaultFalseV128) {
 
 TEST(LayoutNodeProps, PlaceholderColorDefaultGrayV128) {
     auto n = make_block();
-    EXPECT_EQ(n->placeholder_color, 0xFF757575u);
+    EXPECT_EQ(n->placeholder_color, 0xFF8a8a8au);
 }
 
 TEST(LayoutNodeProps, SvgStrokeDashoffsetDefault0V128) {

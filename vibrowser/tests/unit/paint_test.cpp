@@ -9296,7 +9296,7 @@ TEST(PaintImageRendering, AutoDefault) {
 // ============================================================================
 
 TEST(PaintPlaceholder, PaintPlaceholderDefaultColor) {
-    // Input with placeholder attribute should have default gray color (0xFF757575)
+    // Input with placeholder attribute should have default gray color (0xFF8a8a8a)
     auto result = render_html(
         "<html><body>"
         "<input type=\"text\" placeholder=\"Enter name\">"
@@ -9310,10 +9310,10 @@ TEST(PaintPlaceholder, PaintPlaceholderDefaultColor) {
     bool found = false;
     std::function<void(const LayoutNode&)> find_input =
         [&](const LayoutNode& node) {
-        if (node.tag_name == "input" || node.placeholder_color == 0xFF757575) {
+        if (node.tag_name == "input" || node.placeholder_color == 0xFF8a8a8a) {
             // Check that the placeholder_color is the default gray
-            EXPECT_EQ(node.placeholder_color, 0xFF757575u)
-                << "Default placeholder_color should be 0xFF757575 (gray)";
+            EXPECT_EQ(node.placeholder_color, 0xFF8a8a8au)
+                << "Default placeholder_color should be 0xFF8a8a8a (gray)";
             found = true;
         }
         for (auto& child : node.children) find_input(*child);
@@ -40151,7 +40151,7 @@ TEST(RenderPipeline, InputPlaceholderRendered) {
     for (auto& cmd : result.text_commands) {
         if (cmd.type == PaintCommand::DrawText && cmd.text == "Enter name") {
             found_placeholder = true;
-            // Placeholder color should be grayish (default #757575 -> r=117, g=117, b=117)
+            // Placeholder color should be grayish (default #8a8a8a -> r=138, g=138, b=138)
             EXPECT_LE(cmd.color.r, 150) << "Placeholder color should be grayish (r)";
             EXPECT_LE(cmd.color.g, 150) << "Placeholder color should be grayish (g)";
             EXPECT_LE(cmd.color.b, 150) << "Placeholder color should be grayish (b)";
