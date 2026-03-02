@@ -9375,8 +9375,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (selected_src.empty() && fallback_img) {
             std::string fb_srcset = get_attr(*fallback_img, "srcset");
             if (!fb_srcset.empty()) {
-                auto sp = fb_srcset.find(' ');
-                selected_src = (sp != std::string::npos) ? fb_srcset.substr(0, sp) : fb_srcset;
+                std::string fb_sizes = get_attr(*fallback_img, "sizes");
+                float fb_effective_size = parse_sizes_attribute(fb_sizes, vw, 2.0f);
+                float fb_dpr = 2.0f;
+                selected_src = select_best_srcset_url(fb_srcset, vw, fb_effective_size, fb_dpr);
             }
             if (selected_src.empty()) selected_src = get_attr(*fallback_img, "src");
         }
