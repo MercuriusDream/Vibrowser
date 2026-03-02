@@ -1560,79 +1560,64 @@ uint32_t parse_html_color_attr(const std::string& value) {
 }
 
 // Process counter-reset and counter-increment from a ComputedStyle
+std::vector<std::pair<std::string, int>> parse_counter_decl_list(
+    const std::string& value,
+    int default_value) {
+    if (value.empty()) return {};
+    if (to_lower(trim(value)) == "none") return {};
+
+    std::vector<std::pair<std::string, int>> result;
+    std::istringstream iss(value);
+    std::string name;
+    while (iss >> name) {
+        if (to_lower(name) == "none") continue;
+
+        int resolved_value = default_value;
+        std::streampos pos = iss.tellg();
+        std::string maybe_num;
+        if (iss >> maybe_num) {
+            try {
+                resolved_value = std::stoi(maybe_num);
+            } catch (...) {
+                iss.seekg(pos);
+            }
+        }
+        result.push_back({name, resolved_value});
+    }
+    return result;
+}
+
 void process_css_counters(const clever::css::ComputedStyle& style) {
-    // Handle counter-reset: "name [value]"
-    // When counter-reset occurs, push current value to scope stack to support counters() nesting
-    if (!style.counter_reset.empty()) {
-        std::istringstream iss(style.counter_reset);
-        std::string name;
-        while (iss >> name) {
-            int val = 0;
-            // Check if next token is a number
-            std::streampos pos = iss.tellg();
-            std::string maybe_num;
-            if (iss >> maybe_num) {
-                try {
-                    val = std::stoi(maybe_num);
-                } catch (...) {
-                    // Not a number, it's another counter name — put it back
-                    iss.seekg(pos);
-                }
-            }
-            // Push current value to scope stack before resetting
-            // This allows counters() function to build a scope chain for nested contexts
-            int current_val = 0;
-            auto it = css_counters.find(name);
-            if (it != css_counters.end()) {
-                current_val = it->second;
-            }
-            css_counter_scopes[name].push_back(current_val);
-            css_counters[name] = val;
+    for (const auto& decl : parse_counter_decl_list(style.counter_reset, 0)) {
+        const auto& name = decl.first;
+        int val = decl.second;
+        // Push current value to scope stack before resetting
+        // This allows counters() function to build a scope chain for nested contexts
+        int current_val = 0;
+        auto it = css_counters.find(name);
+        if (it != css_counters.end()) {
+            current_val = it->second;
         }
+        css_counter_scopes[name].push_back(current_val);
+        css_counters[name] = val;
     }
 
-    // Handle counter-set: same as counter-reset (both establish a new scope level)
-    if (!style.counter_set.empty()) {
-        std::istringstream iss(style.counter_set);
-        std::string name;
-        while (iss >> name) {
-            int val = 0;
-            std::streampos pos = iss.tellg();
-            std::string maybe_num;
-            if (iss >> maybe_num) {
-                try {
-                    val = std::stoi(maybe_num);
-                } catch (...) {
-                    iss.seekg(pos);
-                }
-            }
-            int current_val = 0;
-            auto it = css_counters.find(name);
-            if (it != css_counters.end()) {
-                current_val = it->second;
-            }
-            css_counter_scopes[name].push_back(current_val);
-            css_counters[name] = val;
+    for (const auto& decl : parse_counter_decl_list(style.counter_set, 0)) {
+        const auto& name = decl.first;
+        int val = decl.second;
+        int current_val = 0;
+        auto it = css_counters.find(name);
+        if (it != css_counters.end()) {
+            current_val = it->second;
         }
+        css_counter_scopes[name].push_back(current_val);
+        css_counters[name] = val;
     }
 
-    // Handle counter-increment: "name [value]"
-    if (!style.counter_increment.empty()) {
-        std::istringstream iss(style.counter_increment);
-        std::string name;
-        while (iss >> name) {
-            int inc = 1;
-            std::streampos pos = iss.tellg();
-            std::string maybe_num;
-            if (iss >> maybe_num) {
-                try {
-                    inc = std::stoi(maybe_num);
-                } catch (...) {
-                    iss.seekg(pos);
-                }
-            }
-            css_counters[name] += inc;
-        }
+    for (const auto& decl : parse_counter_decl_list(style.counter_increment, 1)) {
+        const auto& name = decl.first;
+        int inc = decl.second;
+        css_counters[name] += inc;
     }
 }
 
@@ -1640,51 +1625,26 @@ void process_css_counters(const clever::css::ComputedStyle& style) {
 // This is called after processing an element's descendants to restore parent scope
 void pop_css_counter_scopes(const clever::css::ComputedStyle& style) {
     // Pop scope for each counter that was reset
-    if (!style.counter_reset.empty()) {
-        std::istringstream iss(style.counter_reset);
-        std::string name;
-        while (iss >> name) {
-            // Skip any number that follows the counter name
-            std::streampos pos = iss.tellg();
-            std::string maybe_num;
-            if (iss >> maybe_num) {
-                try {
-                    std::stoi(maybe_num);
-                } catch (...) {
-                    iss.seekg(pos);
-                }
-            }
-            // Pop the scope level
-            auto scope_it = css_counter_scopes.find(name);
-            if (scope_it != css_counter_scopes.end() && !scope_it->second.empty()) {
-                int prev_val = scope_it->second.back();
-                scope_it->second.pop_back();
-                // Restore previous counter value
-                css_counters[name] = prev_val;
-            }
+    for (const auto& decl : parse_counter_decl_list(style.counter_reset, 0)) {
+        const auto& name = decl.first;
+        // Pop the scope level
+        auto scope_it = css_counter_scopes.find(name);
+        if (scope_it != css_counter_scopes.end() && !scope_it->second.empty()) {
+            int prev_val = scope_it->second.back();
+            scope_it->second.pop_back();
+            // Restore previous counter value
+            css_counters[name] = prev_val;
         }
     }
 
     // Pop scope for each counter that was set
-    if (!style.counter_set.empty()) {
-        std::istringstream iss(style.counter_set);
-        std::string name;
-        while (iss >> name) {
-            std::streampos pos = iss.tellg();
-            std::string maybe_num;
-            if (iss >> maybe_num) {
-                try {
-                    std::stoi(maybe_num);
-                } catch (...) {
-                    iss.seekg(pos);
-                }
-            }
-            auto scope_it = css_counter_scopes.find(name);
-            if (scope_it != css_counter_scopes.end() && !scope_it->second.empty()) {
-                int prev_val = scope_it->second.back();
-                scope_it->second.pop_back();
-                css_counters[name] = prev_val;
-            }
+    for (const auto& decl : parse_counter_decl_list(style.counter_set, 0)) {
+        const auto& name = decl.first;
+        auto scope_it = css_counter_scopes.find(name);
+        if (scope_it != css_counter_scopes.end() && !scope_it->second.empty()) {
+            int prev_val = scope_it->second.back();
+            scope_it->second.pop_back();
+            css_counters[name] = prev_val;
         }
     }
 }
@@ -8484,6 +8444,21 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
     // Process CSS counter-reset and counter-increment
     process_css_counters(style);
+    struct CounterScopeGuard {
+        const clever::css::ComputedStyle* style;
+        bool active = true;
+
+        explicit CounterScopeGuard(const clever::css::ComputedStyle& style_ref)
+            : style(&style_ref) {}
+
+        ~CounterScopeGuard() {
+            if (active) {
+                pop_css_counter_scopes(*style);
+            }
+        }
+
+        void release() { active = false; }
+    } counter_scope_guard(style);
 
     if (style.display == clever::css::Display::None) {
         return nullptr;
@@ -14388,7 +14363,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     }
 
     // Pop counter scopes after processing element and its descendants
-    pop_css_counter_scopes(style);
+    counter_scope_guard.release();
 
     return layout_node;
 }

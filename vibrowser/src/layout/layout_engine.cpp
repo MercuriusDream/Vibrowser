@@ -456,8 +456,10 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
     } else if (node.specified_width < 0 && node.specified_height >= 0 && effective_aspect_ratio(node) > 0) {
         // Width is auto, height is set, and aspect-ratio exists: compute width from height
         w = node.specified_height * effective_aspect_ratio(node);
-    } else if (node.float_type != 0) {
-        // CSS spec §9.5: floats with width:auto use shrink-to-fit sizing.
+    } else if (node.float_type != 0
+               || node.display == DisplayType::InlineBlock
+               || node.mode == LayoutMode::InlineBlock) {
+        // CSS spec §9.5: floats and inline-block elements with width:auto use shrink-to-fit sizing.
         // shrink-to-fit = min(max-content-width, available-width).
         // We compute max-content intrinsic width and clamp to containing width.
         const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;

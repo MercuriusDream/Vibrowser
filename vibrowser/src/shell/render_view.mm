@@ -708,7 +708,7 @@ struct TextRegion {
         if (std::abs(scrollAmountY) > kScrollDeltaEpsilon) {
             float maxScrollY = std::max(0.0f, scrollTarget->scroll_content_height - scrollTarget->geometry.height);
             float prevScroll = scrollTarget->scroll_top;
-            scrollTarget->scroll_top = std::max(0.0f, std::min(scrollTarget->scroll_top + scrollAmountY, maxScrollY));
+            scrollTarget->scroll_top = std::max(0.0f, std::min(static_cast<float>(scrollTarget->scroll_top + scrollAmountY), static_cast<float>(maxScrollY)));
             appliedDeltaY = scrollTarget->scroll_top - prevScroll;
         }
 
@@ -716,7 +716,7 @@ struct TextRegion {
         if (std::abs(scrollAmountX) > kScrollDeltaEpsilon) {
             float maxScrollX = std::max(0.0f, scrollTarget->scroll_content_width - scrollTarget->geometry.width);
             float prevScroll = scrollTarget->scroll_left;
-            scrollTarget->scroll_left = std::max(0.0f, std::min(scrollTarget->scroll_left + scrollAmountX, maxScrollX));
+            scrollTarget->scroll_left = std::max(0.0f, std::min(static_cast<float>(scrollTarget->scroll_left + scrollAmountX), static_cast<float>(maxScrollX)));
             appliedDeltaX = scrollTarget->scroll_left - prevScroll;
         }
 
