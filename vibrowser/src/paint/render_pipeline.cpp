@@ -3,6 +3,7 @@
 #include <clever/paint/software_renderer.h>
 #include <clever/paint/painter.h>
 #include <clever/paint/text_renderer.h>
+#include <clever/paint/animation_controller.h>
 #include <clever/html/tree_builder.h>
 #include <clever/css/style/computed_style.h>
 #include <clever/css/style/style_resolver.h>

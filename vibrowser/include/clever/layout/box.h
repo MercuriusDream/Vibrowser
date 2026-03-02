@@ -9,6 +9,10 @@
 #include <string>
 #include <vector>
 
+namespace clever::paint {
+struct SVGAnimationDef;
+}
+
 namespace clever::layout {
 
 // Sentinel value for "auto" margins. The layout engine resolves auto margins
