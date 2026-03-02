@@ -13,6 +13,9 @@ extern "C" {
 #include <unistd.h>
 
 namespace clever::js {
+// Forward declaration: dispatch_window_listeners is defined in js_dom_bindings.cpp.
+void dispatch_window_listeners(JSContext* ctx, const std::string& event_type,
+                                JSValue event_obj);
 
 namespace {
 
@@ -227,11 +230,30 @@ static JSValue storage_set_item(JSContext* ctx, JSValueConst this_val,
     JS_FreeCString(ctx, key_cstr);
     JS_FreeCString(ctx, value_cstr);
 
+    auto it = state->data.find(key);
+    const bool has_old = (it != state->data.end());
+    const std::string old_value_str = has_old ? it->second : "";
+
     state->data[key] = value;
 
     if (state->is_local_storage) {
         save_storage_to_file(state->origin, state->data);
     }
+
+    JSValue event_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "storage"));
+    JS_SetPropertyStr(ctx, event_obj, "key", JS_NewString(ctx, key.c_str()));
+    if (has_old) {
+        JS_SetPropertyStr(ctx, event_obj, "oldValue",
+            JS_NewString(ctx, old_value_str.c_str()));
+    } else {
+        JS_SetPropertyStr(ctx, event_obj, "oldValue", JS_NULL);
+    }
+    JS_SetPropertyStr(ctx, event_obj, "newValue", JS_NewString(ctx, value.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "storageArea", JS_DupValue(ctx, this_val));
+    JS_SetPropertyStr(ctx, event_obj, "url", JS_NULL);
+    dispatch_window_listeners(ctx, "storage", event_obj);
+    JS_FreeValue(ctx, event_obj);
 
     return JS_UNDEFINED;
 }
@@ -255,11 +277,29 @@ static JSValue storage_remove_item(JSContext* ctx, JSValueConst this_val,
     std::string key_str(key);
     JS_FreeCString(ctx, key);
 
+    auto it = state->data.find(key_str);
+    const bool has_old = (it != state->data.end());
+    const std::string old_value_str = has_old ? it->second : "";
     state->data.erase(key_str);
 
     if (state->is_local_storage) {
         save_storage_to_file(state->origin, state->data);
     }
+
+    JSValue event_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "storage"));
+    JS_SetPropertyStr(ctx, event_obj, "key", JS_NewString(ctx, key_str.c_str()));
+    if (has_old) {
+        JS_SetPropertyStr(ctx, event_obj, "oldValue",
+            JS_NewString(ctx, old_value_str.c_str()));
+    } else {
+        JS_SetPropertyStr(ctx, event_obj, "oldValue", JS_NULL);
+    }
+    JS_SetPropertyStr(ctx, event_obj, "newValue", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "storageArea", JS_DupValue(ctx, this_val));
+    JS_SetPropertyStr(ctx, event_obj, "url", JS_NULL);
+    dispatch_window_listeners(ctx, "storage", event_obj);
+    JS_FreeValue(ctx, event_obj);
 
     return JS_UNDEFINED;
 }
@@ -280,6 +320,16 @@ static JSValue storage_clear(JSContext* ctx, JSValueConst this_val,
     if (state->is_local_storage) {
         save_storage_to_file(state->origin, state->data);
     }
+
+    JSValue event_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "storage"));
+    JS_SetPropertyStr(ctx, event_obj, "key", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "oldValue", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "newValue", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "storageArea", JS_DupValue(ctx, this_val));
+    JS_SetPropertyStr(ctx, event_obj, "url", JS_NULL);
+    dispatch_window_listeners(ctx, "storage", event_obj);
+    JS_FreeValue(ctx, event_obj);
 
     return JS_UNDEFINED;
 }
