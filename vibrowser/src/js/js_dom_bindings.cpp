@@ -19119,6 +19119,19 @@ void install_dom_bindings(JSContext* ctx,
             return this[i];
         };
     }
+    // Object.fromEntries() — ES2019
+    if (!Object.fromEntries) {
+        Object.fromEntries = function(iterable) {
+            var result = Object.create(null);
+            for (var entry of iterable) {
+                if (!entry || entry.length < 2) {
+                    throw new TypeError('Object.fromEntries requires iterable entries');
+                }
+                result[entry[0]] = entry[1];
+            }
+            return result;
+        };
+    }
     // Array.prototype.findLast() / findLastIndex() — ES2023
     if (!Array.prototype.findLast) {
         Array.prototype.findLast = function(fn, thisArg) {
@@ -19379,6 +19392,12 @@ void install_dom_bindings(JSContext* ctx,
             return true;
         };
     }
+    var typedArrayTypes = [Int8Array, Uint8Array, Int16Array, Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array, Uint8ClampedArray];
+    typedArrayTypes.forEach(function(TA) {
+        if (TA && TA.prototype && !TA.prototype.at) {
+            TA.prototype.at = Array.prototype.at;
+        }
+    });
     // Iterator.from() stub — ES2024
     if (typeof Iterator === 'undefined') {
         globalThis.Iterator = {

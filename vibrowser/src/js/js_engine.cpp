@@ -287,6 +287,10 @@ JSEngine::JSEngine() {
     // Stash `this` so C callbacks can find the engine via context
     JS_SetContextOpaque(ctx_, this);
     setup_console();
+    JS_AddIntrinsicProxy(ctx_);
+#ifdef JS_AddIntrinsicReflect
+    JS_AddIntrinsicReflect(ctx_);
+#endif
 }
 
 JSEngine::~JSEngine() {
