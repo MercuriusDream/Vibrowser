@@ -4471,6 +4471,92 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             } else {
                 parse_aspect_ratio(val_lower, style.aspect_ratio);
             }
+        } else if (d.property == "translate") {
+            // CSS Transforms Level 2: translate property
+            // Values: none | <length-percentage> [<length-percentage>]?
+            style.individual_translate_x = 0;
+            style.individual_translate_y = 0;
+            if (val_lower != "none") {
+                style.has_individual_transforms = true;
+                auto parts = split_whitespace(val_lower);
+                if (parts.size() >= 1) {
+                    auto lx = clever::css::parse_length(parts[0]);
+                    if (lx) {
+                        style.individual_translate_x = lx->to_px();
+                    }
+                }
+                if (parts.size() >= 2) {
+                    auto ly = clever::css::parse_length(parts[1]);
+                    if (ly) {
+                        style.individual_translate_y = ly->to_px();
+                    }
+                }
+            } else {
+                style.has_individual_transforms = false;
+            }
+        } else if (d.property == "scale") {
+            // CSS Transforms Level 2: scale property
+            // Values: none | <number> [<number>]?
+            style.individual_scale_x = 1.0f;
+            style.individual_scale_y = 1.0f;
+            if (val_lower != "none") {
+                style.has_individual_transforms = true;
+                auto parts = split_whitespace(val_lower);
+                if (parts.size() >= 1) {
+                    try {
+                        style.individual_scale_x = std::stof(parts[0]);
+                    } catch (...) {}
+                }
+                if (parts.size() >= 2) {
+                    try {
+                        style.individual_scale_y = std::stof(parts[1]);
+                    } catch (...) {}
+                } else if (parts.size() == 1) {
+                    // Single value applies to both X and Y
+                    style.individual_scale_y = style.individual_scale_x;
+                }
+            } else {
+                style.has_individual_transforms = false;
+            }
+        } else if (d.property == "rotate") {
+            // CSS Transforms Level 2: rotate property
+            // Values: none | <angle> | [x | y | z]? <angle>
+            // For now, handle simple angle case (no axis specification)
+            style.individual_rotate = 0.0f;
+            if (val_lower != "none") {
+                style.has_individual_transforms = true;
+                // Remove any axis keywords (x, y, z) if present
+                std::string angle_str = val_lower;
+                if (angle_str.rfind("x ", 0) == 0) angle_str = angle_str.substr(2);
+                else if (angle_str.rfind("y ", 0) == 0) angle_str = angle_str.substr(2);
+                else if (angle_str.rfind("z ", 0) == 0) angle_str = angle_str.substr(2);
+                angle_str = trim(angle_str);
+
+                // Parse angle with unit
+                if (angle_str.find("rad") != std::string::npos) {
+                    try {
+                        float rad = std::stof(angle_str);
+                        style.individual_rotate = rad * 180.0f / 3.14159265359f;
+                    } catch (...) {}
+                } else if (angle_str.find("turn") != std::string::npos) {
+                    try {
+                        float turns = std::stof(angle_str);
+                        style.individual_rotate = turns * 360.0f;
+                    } catch (...) {}
+                } else if (angle_str.find("grad") != std::string::npos) {
+                    try {
+                        float grad = std::stof(angle_str);
+                        style.individual_rotate = grad * 0.9f;
+                    } catch (...) {}
+                } else {
+                    // Default: degrees or unitless
+                    try {
+                        style.individual_rotate = std::stof(angle_str);
+                    } catch (...) {}
+                }
+            } else {
+                style.has_individual_transforms = false;
+            }
         } else if (d.property == "transform") {
             if (val_lower == "none") {
                 style.transforms.clear();

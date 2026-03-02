@@ -2419,7 +2419,6 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
     bool needs_fade = false;
     float fade_region_x = 0, fade_region_y = 0, fade_region_w = 0, fade_region_h = 0;
     const auto* overflow_parent = node.parent;
-    const bool parent_text_overflow_ellipsis = overflow_parent && overflow_parent->text_overflow == 1;
     const bool node_text_overflow_ellipsis = node.text_overflow == 1;
     if (overflow_parent && (overflow_parent->overflow == 1 || overflow_parent->overflow == 2 || overflow_parent->overflow == 3) &&
         overflow_parent->white_space_nowrap &&

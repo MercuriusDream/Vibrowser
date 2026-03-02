@@ -971,6 +971,16 @@ struct LayoutNode {
     clever::css::Length perspective_origin_x_len = clever::css::Length::percent(50.0f);
     clever::css::Length perspective_origin_y_len = clever::css::Length::percent(50.0f);
 
+    // CSS Transforms Level 2: individual transform properties (CSS Transform Module Level 2)
+    // These are per-element alternatives to the transform property
+    // Composition order: translate -> rotate -> scale -> transform
+    float individual_rotate = 0.0f;       // degrees
+    float individual_scale_x = 1.0f;      // unitless
+    float individual_scale_y = 1.0f;      // unitless
+    float individual_translate_x = 0.0f;  // pixels
+    float individual_translate_y = 0.0f;  // pixels
+    bool has_individual_transforms = false;  // true if any individual property is set
+
     // CSS scrollbar-color: 0 = auto, non-zero = explicit ARGB color
     uint32_t scrollbar_thumb_color = 0;
     uint32_t scrollbar_track_color = 0;

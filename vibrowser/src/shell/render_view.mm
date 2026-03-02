@@ -689,7 +689,8 @@ struct TextRegion {
     // Try to find a scrollable child container under the cursor first
     // Get the current mouse position in page coordinates
     NSPoint mouseLocation = [NSEvent mouseLocation];
-    NSPoint viewMouseLocation = [self convertPoint:[self.window convertScreenToBase:mouseLocation] fromView:nil];
+    NSPoint screenPoint = [self.window convertPointFromScreen:mouseLocation];
+    NSPoint viewMouseLocation = [self convertPoint:screenPoint fromView:nil];
     CGFloat pageX = viewMouseLocation.x / _pageScale / _backingScale;
     CGFloat pageY = -viewMouseLocation.y / _pageScale / _backingScale; // flip Y axis
 

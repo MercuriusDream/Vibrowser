@@ -464,6 +464,16 @@ struct ComputedStyle {
     // CSS Transforms
     std::vector<Transform> transforms;
 
+    // CSS Transforms Level 2: individual transform properties
+    // These are per-element alternatives to the transform property
+    // Composition order: translate -> rotate -> scale -> transform
+    float individual_rotate = 0.0f;       // degrees
+    float individual_scale_x = 1.0f;      // unitless scale factor
+    float individual_scale_y = 1.0f;      // unitless scale factor
+    float individual_translate_x = 0.0f;  // pixels
+    float individual_translate_y = 0.0f;  // pixels
+    bool has_individual_transforms = false;  // true if any individual property is set
+
     // CSS Filters: {type, value}
     // type: 1=grayscale, 2=sepia, 3=brightness, 4=contrast, 5=invert,
     //       6=saturate, 7=opacity-filter, 8=hue-rotate, 9=blur, 10=drop-shadow
