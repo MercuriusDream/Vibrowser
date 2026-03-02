@@ -2703,6 +2703,24 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                     style.gradient_angle = angle;
                     style.gradient_stops = std::move(stops);
                 }
+            } else if (bg_value.find("image-set(") != std::string::npos ||
+                       bg_value.find("-webkit-image-set(") != std::string::npos) {
+                // background-image: image-set(url("img.png") 1x, url("img-2x.png") 2x)
+                // Extract the first url() from image-set for simplicity (1x image)
+                auto url_pos = bg_value.find("url(");
+                if (url_pos != std::string::npos) {
+                    auto inner_start = url_pos + 4;
+                    auto inner_end = bg_value.find(')', inner_start);
+                    if (inner_end != std::string::npos) {
+                        std::string img_url = trim(bg_value.substr(inner_start, inner_end - inner_start));
+                        if (img_url.size() >= 2 &&
+                            ((img_url.front() == '\'' && img_url.back() == '\'') ||
+                             (img_url.front() == '"' && img_url.back() == '"'))) {
+                            img_url = img_url.substr(1, img_url.size() - 2);
+                        }
+                        style.bg_image_url = img_url;
+                    }
+                }
             } else if (bg_value.find("url(") != std::string::npos) {
                 // background-image: url(...)
                 auto start = bg_value.find("url(");
