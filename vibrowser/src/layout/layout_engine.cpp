@@ -843,36 +843,54 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
                 col_y = 0;
             }
 
-            // Move to next column if this child would exceed target
-            if (col_y > 0 && col_y + child_h > target_col_h * 1.1f && current_col < ncols - 1) {
-                // orphans/widows check: estimate line count in this child
-                int min_orphans = (node.orphans > 0) ? node.orphans : 2;
-                int min_widows = (node.widows > 0) ? node.widows : 2;
-                float line_h = child->font_size * child->line_height;
-                if (line_h > 0 && child_h > line_h * 2) {
-                    // Approximate lines that fit before column break
-                    float remaining_space = target_col_h * 1.1f - col_y;
-                    int lines_before = static_cast<int>(remaining_space / line_h);
-                    int total_lines = static_cast<int>(child_h / line_h);
-                    int lines_after = total_lines - lines_before;
-                    // If splitting would leave too few orphans or widows, push to next column
-                    if (lines_before > 0 && lines_before < min_orphans) {
-                        // Too few lines at bottom of column — push whole element to next column
-                        if (col_y > max_col_h) max_col_h = col_y;
-                        current_col++;
-                        col_y = 0;
-                    } else if (lines_after > 0 && lines_after < min_widows) {
-                        // Too few lines would start next column — push to next column
-                        if (col_y > max_col_h) max_col_h = col_y;
-                        current_col++;
-                        col_y = 0;
+            if (node.column_fill == 1) {
+                // Sequential fill: move column-by-column once a column reaches target height.
+                if (col_y > 0 && col_y >= target_col_h && current_col < ncols - 1) {
+                    if (col_y > max_col_h) max_col_h = col_y;
+                    current_col++;
+                    col_y = 0;
+                }
+            } else {
+                // Balanced fill (default): keep current break behavior.
+                if (col_y > 0 && col_y + child_h > target_col_h * 1.1f && current_col < ncols - 1) {
+                    // orphans/widows check: estimate line count in this child
+                    int min_orphans = (node.orphans > 0) ? node.orphans : 2;
+                    int min_widows = (node.widows > 0) ? node.widows : 2;
+                    float line_h = child->font_size * child->line_height;
+                    if (line_h > 0 && child_h > line_h * 2) {
+                        // Approximate lines that fit before column break
+                        float remaining_space = target_col_h * 1.1f - col_y;
+                        int lines_before = static_cast<int>(remaining_space / line_h);
+                        int total_lines = static_cast<int>(child_h / line_h);
+                        int lines_after = total_lines - lines_before;
+                        // If splitting would leave too few orphans or widows, push to next column
+                        if (lines_before > 0 && lines_before < min_orphans) {
+                            // Too few lines at bottom of column — push whole element to next column
+                            if (col_y > max_col_h) max_col_h = col_y;
+                            current_col++;
+                            col_y = 0;
+                        } else if (lines_after > 0 && lines_after < min_widows) {
+                            // Too few lines would start next column — push to next column
+                            if (col_y > max_col_h) max_col_h = col_y;
+                            current_col++;
+                            col_y = 0;
+                        } else {
+                            if (col_y > max_col_h) max_col_h = col_y;
+                            current_col++;
+                            col_y = 0;
+                        }
                     } else {
+                        // break-inside: avoid — push entire element to next column instead of splitting
                         if (col_y > max_col_h) max_col_h = col_y;
                         current_col++;
                         col_y = 0;
                     }
-                } else {
-                    // break-inside: avoid — push entire element to next column instead of splitting
+                }
+            }
+
+            if (child->break_inside == 3 && current_col < ncols - 1) {
+                float remaining = target_col_h - col_y;
+                if (child_h > remaining && col_y > 0) {
                     if (col_y > max_col_h) max_col_h = col_y;
                     current_col++;
                     col_y = 0;
