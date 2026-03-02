@@ -22183,18 +22183,6 @@ if(typeof globalThis.AbstractRange==='undefined')
     }
 
     // ------------------------------------------------------------------
-    // Web Audio API stubs
-    // ------------------------------------------------------------------
-    {
-        const char* audio_src = R"JS(
-(function() {
-    'use strict';
-    if (typeof AudioContext !== 'undefined') return;
-
-    function toNumber(value, fallback) {
-        if (typeof value === 'number' && value === value && value !== Infinity && value !== -Infinity) return value;
-
-    // ------------------------------------------------------------------
     // OffscreenCanvas and related stubs
     // ------------------------------------------------------------------
     {
@@ -22303,107 +22291,16 @@ if(typeof globalThis.AbstractRange==='undefined')
     }
 
     // ------------------------------------------------------------------
-    // CSS Highlights stubs
+    // Web Audio API stubs
     // ------------------------------------------------------------------
     {
-        const char* css_highlights_src = R"JS(
+        const char* audio_src = R"JS(
 (function() {
-    if (typeof globalThis.CSS === 'undefined') {
-        globalThis.CSS = {};
-    }
-    if (typeof globalThis.CSS.highlights !== 'undefined') return;
+    'use strict';
+    if (typeof AudioContext !== 'undefined') return;
 
-    function Highlight(range, options) {
-        options = options || {};
-        this.priority = Number(options.priority) === Number(options.priority) ? options.priority : 0;
-        this.type = options.type || 'text';
-        this.range = range || null;
-        this.label = options.label || '';
-    }
-
-    function HighlightRegistry() {
-        this._highlights = {};
-        this.size = 0;
-    }
-
-    HighlightRegistry.prototype.set = function(name, highlight) {
-        var key = String(name);
-        if (!Object.prototype.hasOwnProperty.call(this._highlights, key)) {
-            this.size++;
-        }
-        this._highlights[key] = highlight;
-        return this;
-    };
-
-    HighlightRegistry.prototype.get = function(name) {
-        return this._highlights[String(name)];
-    };
-
-    HighlightRegistry.prototype.has = function(name) {
-        return Object.prototype.hasOwnProperty.call(this._highlights, String(name));
-    };
-
-    HighlightRegistry.prototype.delete = function(name) {
-        var key = String(name);
-        if (!this.has(key)) return false;
-        delete this._highlights[key];
-        this.size--;
-        return true;
-    };
-
-    HighlightRegistry.prototype.clear = function() {
-        this._highlights = {};
-        this.size = 0;
-    };
-
-    HighlightRegistry.prototype.forEach = function(cb, thisArg) {
-        if (typeof cb !== 'function') return;
-        for (var key in this._highlights) {
-            if (!Object.prototype.hasOwnProperty.call(this._highlights, key)) continue;
-            cb.call(thisArg, this._highlights[key], key, this);
-        }
-    };
-
-    HighlightRegistry.prototype.keys = function() {
-        return Object.keys(this._highlights);
-    };
-
-    HighlightRegistry.prototype.values = function() {
-        var out = [];
-        for (var key in this._highlights) {
-            if (!Object.prototype.hasOwnProperty.call(this._highlights, key)) continue;
-            out.push(this._highlights[key]);
-        }
-        return out;
-    };
-
-    HighlightRegistry.prototype.entries = function() {
-        var out = [];
-        for (var key in this._highlights) {
-            if (!Object.prototype.hasOwnProperty.call(this._highlights, key)) continue;
-            out.push([key, this._highlights[key]]);
-        }
-        return out;
-    };
-
-    if (typeof globalThis.Highlight === 'undefined') {
-        globalThis.Highlight = Highlight;
-    }
-    if (typeof globalThis.HighlightRegistry === 'undefined') {
-        globalThis.HighlightRegistry = HighlightRegistry;
-    }
-
-    globalThis.CSS.highlights = new HighlightRegistry();
-})();
-)JS";
-        JSValue css_highlights_ret = JS_Eval(ctx, css_highlights_src, std::strlen(css_highlights_src),
-                                 "<css-highlights>", JS_EVAL_TYPE_GLOBAL);
-        if (JS_IsException(css_highlights_ret)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        }
-        JS_FreeValue(ctx, css_highlights_ret);
-    }
+    function toNumber(value, fallback) {
+        if (typeof value === 'number' && value === value && value !== Infinity && value !== -Infinity) return value;
         if (typeof value === 'boolean') return value ? 1 : 0;
         var parsed = parseFloat(value);
         if (typeof parsed === 'number' && parsed === parsed && parsed !== Infinity && parsed !== -Infinity) return parsed;
