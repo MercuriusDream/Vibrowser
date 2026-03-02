@@ -3103,6 +3103,13 @@ static JSValue js_css_supports(JSContext* ctx, JSValueConst /*this_val*/,
             return val == "allow-keywords" || val == "numeric-only";
         }
 
+        if (prop_name == "color-scheme") {
+            std::string lower_val = to_lower_ascii(val);
+            return (lower_val == "light" || lower_val == "dark" ||
+                    lower_val == "normal" || lower_val == "light dark" ||
+                    lower_val == "dark light");
+        }
+
         // For all other known properties, accept any non-empty value.
         return !val.empty();
     };

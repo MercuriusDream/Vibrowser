@@ -156,6 +156,68 @@ std::vector<std::string> split_whitespace_paren(const std::string& s) {
     return parts;
 }
 
+// Forward declaration
+std::string to_lower(const std::string& s);
+
+static std::pair<std::string, std::string> split_css_function_arguments(const std::string& inner) {
+    int depth = 0;
+    size_t split = std::string::npos;
+    for (size_t i = 0; i < inner.size(); i++) {
+        char c = inner[i];
+        if (c == '(') depth++;
+        else if (c == ')') {
+            if (depth > 0) depth--;
+        } else if (c == ',' && depth == 0) {
+            split = i;
+            break;
+        }
+    }
+    if (split != std::string::npos) {
+        return {trim(inner.substr(0, split)), trim(inner.substr(split + 1))};
+    }
+    return {trim(inner), ""};
+}
+
+static std::string resolve_css_env(const std::string& val) {
+    std::string value = val;
+    for (int pass = 0; pass < 8; pass++) {
+        auto pos = value.find("env(");
+        if (pos == std::string::npos) break;
+
+        int depth = 1;
+        size_t end = pos + 4;
+        while (end < value.size() && depth > 0) {
+            if (value[end] == '(') depth++;
+            else if (value[end] == ')') depth--;
+            if (depth > 0) end++;
+        }
+        if (depth != 0) break;
+
+        auto env_parts = split_css_function_arguments(value.substr(pos + 4, end - pos - 4));
+        auto env_name = to_lower(env_parts.first);
+        const auto& fallback = env_parts.second;
+
+        std::string replacement;
+        if (env_name == "safe-area-inset-top" ||
+            env_name == "safe-area-inset-right" ||
+            env_name == "safe-area-inset-bottom" ||
+            env_name == "safe-area-inset-left") {
+            replacement = "0px";
+        } else if (env_name == "viewport-width") {
+            replacement = "100vw";
+        } else if (env_name == "viewport-height") {
+            replacement = "100vh";
+        } else if (!fallback.empty()) {
+            replacement = fallback;
+        } else {
+            replacement = "0px";
+        }
+
+        value = value.substr(0, pos) + replacement + value.substr(end + 1);
+    }
+    return value;
+}
+
 std::string to_lower(const std::string& s) {
     std::string result = s;
     std::transform(result.begin(), result.end(), result.begin(),
@@ -2510,25 +2572,9 @@ static std::string resolve_css_var(const std::string& val, const clever::css::Co
         }
         if (depth != 0) break;
 
-        std::string inner = value.substr(pos + 4, end - pos - 4);
-        std::string var_name;
-        std::string fallback;
-        int inner_depth = 0;
-        size_t split = std::string::npos;
-        for (size_t i = 0; i < inner.size(); i++) {
-            if (inner[i] == '(') inner_depth++;
-            else if (inner[i] == ')') inner_depth--;
-            else if (inner[i] == ',' && inner_depth == 0) {
-                split = i;
-                break;
-            }
-        }
-        if (split != std::string::npos) {
-            var_name = trim(inner.substr(0, split));
-            fallback = trim(inner.substr(split + 1));
-        } else {
-            var_name = trim(inner);
-        }
+        auto var_parts = split_css_function_arguments(value.substr(pos + 4, end - pos - 4));
+        auto var_name = var_parts.first;
+        auto fallback = var_parts.second;
 
         auto it = style.custom_properties.find(var_name);
         if (it != style.custom_properties.end()) {
@@ -2538,6 +2584,11 @@ static std::string resolve_css_var(const std::string& val, const clever::css::Co
         } else {
             break;
         }
+
+    }
+
+    if (value.find("env(") != std::string::npos) {
+        value = resolve_css_env(value);
     }
     return value;
 }
@@ -2553,7 +2604,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
     for (auto& d : decls) {
         // Store custom properties (--foo: value)
         if (d.property.size() > 2 && d.property[0] == '-' && d.property[1] == '-') {
-            style.custom_properties[d.property] = d.value;
+            style.custom_properties[d.property] = resolve_css_env(d.value);
             continue;
         }
 
@@ -8121,7 +8172,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     const std::string& base_url = "",
     const std::string& current_link = "",
     const clever::html::SimpleNode* current_form = nullptr,
-    const std::string& current_link_target = "") {
+    const std::string& current_link_target = "",
+    int meta_color_scheme = 0) {
 
     // Use the auto margin sentinel from box.h
     using clever::layout::MARGIN_AUTO;
@@ -8423,7 +8475,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
         for (auto& child : node.children) {
             auto child_layout = build_layout_tree_styled(
-                *child, parent_style, resolver, view_tree, parent_view, base_url, current_link, current_form, current_link_target);
+                *child, parent_style, resolver, view_tree, parent_view, base_url, current_link, current_form, current_link_target, meta_color_scheme);
             if (child_layout) {
                 layout_node->append_child(std::move(child_layout));
             }
@@ -8720,7 +8772,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         // Process children with parent's style as context
         for (auto& child : node.children) {
             auto child_layout = build_layout_tree_styled(
-                *child, parent_style, resolver, view_tree, parent_view, base_url, current_link, current_form, current_link_target);
+                *child, parent_style, resolver, view_tree, parent_view, base_url, current_link, current_form, current_link_target, meta_color_scheme);
             if (child_layout) {
                 wrapper->append_child(std::move(child_layout));
             }
@@ -9009,6 +9061,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->touch_action = style.touch_action;
     layout_node->will_change = style.will_change;
     layout_node->color_scheme = style.color_scheme;
+    // If no explicit CSS color-scheme on html/body, apply meta tag color-scheme
+    if (layout_node->color_scheme == 0 && meta_color_scheme != 0 &&
+        (tag_lower == "html" || tag_lower == "body")) {
+        layout_node->color_scheme = meta_color_scheme;
+    }
     layout_node->container_type = style.container_type;
     layout_node->container_name = style.container_name;
     layout_node->forced_color_adjust = style.forced_color_adjust;
@@ -17452,8 +17509,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     g_transition_runtime_enabled = false;
                     // Expose shadow roots so build_layout_tree_styled can render Web Components
                     g_shadow_roots = clever::js::get_shadow_roots_map(js_engine.context());
-                    auto pre_root = build_layout_tree_styled(
-                        *doc, root_style, resolver, pre_view_tree, nullptr, effective_base_url);
+                auto pre_root = build_layout_tree_styled(
+                        *doc, root_style, resolver, pre_view_tree, nullptr, effective_base_url,
+                        "", nullptr, "", document_color_scheme);
                     if (pre_root) {
                         clever::layout::LayoutEngine pre_engine;
                         clever::paint::TextRenderer pre_measurer;
@@ -17728,7 +17786,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             ? clever::js::get_shadow_roots_map(js_engine_ptr->context())
             : nullptr;
         auto layout_root = build_layout_tree_styled(
-            *doc, root_style, resolver, view_tree, nullptr, effective_base_url);
+            *doc, root_style, resolver, view_tree, nullptr, effective_base_url,
+            "", nullptr, "", document_color_scheme);
         g_shadow_roots = nullptr; // Clear after use
         g_transition_runtime_enabled = false;
         prune_transition_runtime_state();
