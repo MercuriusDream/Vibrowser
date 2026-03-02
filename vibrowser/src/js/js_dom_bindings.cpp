@@ -19,7 +19,6 @@ extern "C" {
 #include <cstdlib>
 #include <functional>
 #include <map>
-#include <random>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -227,12 +226,8 @@ struct DOMState {
         // Tracks previous intersection state per element for threshold crossing detection
         std::unordered_map<clever::html::SimpleNode*, float> prev_ratio;
         std::unordered_map<clever::html::SimpleNode*, bool> prev_intersecting;
-        std::vector<JSValue> pending_entries;
     };
     std::vector<IntersectionObserverEntry> intersection_observers;
-    float last_intersection_observer_scroll_y = 0.0f;
-    double current_scroll_x = 0.0;
-    double current_scroll_y = 0.0;
 
     // ResizeObserver registry
     struct ResizeObserverEntry {
@@ -7706,30 +7701,10 @@ static JSValue js_intersection_observer_disconnect(JSContext* ctx,
 }
 
 static JSValue js_intersection_observer_take_records(JSContext* ctx,
-                                                      JSValueConst this_val,
+                                                      JSValueConst /*this_val*/,
                                                       int /*argc*/,
                                                       JSValueConst* /*argv*/) {
-    auto* state = get_dom_state(ctx);
-    if (!state) return JS_NewArray(ctx);
-
-    JSValue idx_val = JS_GetPropertyStr(ctx, this_val, "_io_index");
-    int32_t idx = -1;
-    JS_ToInt32(ctx, &idx, idx_val);
-    JS_FreeValue(ctx, idx_val);
-
-    JSValue entries = JS_NewArray(ctx);
-    if (idx >= 0 && idx < static_cast<int32_t>(state->intersection_observers.size())) {
-        auto& io = state->intersection_observers[idx];
-        int entry_idx = 0;
-        for (auto& pending : io.pending_entries) {
-            JS_SetPropertyUint32(ctx, entries, entry_idx++, JS_DupValue(ctx, pending));
-        }
-        for (auto& pending : io.pending_entries) {
-            JS_FreeValue(ctx, pending);
-        }
-        io.pending_entries.clear();
-    }
-    return entries;
+    return JS_NewArray(ctx);
 }
 
 // Parse rootMargin string like "10px 20px 30px 40px" or "10px"
@@ -9102,7 +9077,6 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
 
                         // Collect form data: name=value pairs
                         std::vector<std::pair<std::string, std::string>> form_data;
-                        std::vector<bool> form_data_is_file;
 
                         std::function<void(clever::html::SimpleNode*)> collect_inputs =
                             [&](clever::html::SimpleNode* node) {
@@ -9118,13 +9092,11 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
                                                 std::string input_value = get_attr(*node, "value");
                                                 if (input_value.empty()) input_value = "on";
                                                 form_data.push_back({input_name, input_value});
-                                                form_data_is_file.push_back(false);
                                             }
                                         } else if (input_type != "submit" && input_type != "image" &&
-                                                   input_type != "button") {
+                                                   input_type != "button" && input_type != "file") {
                                             std::string input_value = get_attr(*node, "value");
                                             form_data.push_back({input_name, input_value});
-                                            form_data_is_file.push_back(input_type == "file");
                                         }
                                     }
                                 } else if (node_tag == "textarea") {
@@ -9132,7 +9104,6 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
                                     if (!textarea_name.empty() && !has_attr(*node, "disabled")) {
                                         std::string textarea_value = node->text_content();
                                         form_data.push_back({textarea_name, textarea_value});
-                                        form_data_is_file.push_back(false);
                                     }
                                 } else if (node_tag == "select") {
                                     std::string select_name = get_attr(*node, "name");
@@ -9186,7 +9157,6 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
                                             } else {
                                                 form_data.push_back({select_name, first_option_value});
                                             }
-                                            form_data_is_file.push_back(false);
                                         }
                                     }
                                 }
@@ -9204,17 +9174,6 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
                             std::string submitter_value = get_attr(*target, "value");
                             if (submitter_value.empty()) submitter_value = "Submit";
                             form_data.push_back({submitter_name, submitter_value});
-                            form_data_is_file.push_back(false);
-                        }
-
-                        // Determine encoding type
-                        std::string encoding = enctype;
-                        if (encoding.empty()) {
-                            encoding = "application/x-www-form-urlencoded";
-                        }
-                        encoding = tag_lower(encoding);
-                        if (encoding != "multipart/form-data" && encoding != "text/plain") {
-                            encoding = "application/x-www-form-urlencoded";
                         }
 
                         // URL encode form data
@@ -9230,73 +9189,17 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
                         };
 
                         std::string encoded_data;
-                        std::string content_type = "application/x-www-form-urlencoded";
-                        std::string boundary;
-
-                        if (encoding == "multipart/form-data") {
-                            // Generate unique boundary
-                            static const char hex_chars[] = "0123456789abcdef";
-                            std::random_device rd;
-                            std::mt19937 gen(rd());
-                            std::uniform_int_distribution<int> dist(0, 15);
-                            std::string suffix;
-                            suffix.reserve(16);
-                            for (int i = 0; i < 16; i++) {
-                                suffix.push_back(hex_chars[dist(gen)]);
+                        for (size_t i = 0; i < form_data.size(); i++) {
+                            if (i > 0) encoded_data += "&";
+                            for (unsigned char c : form_data[i].first) {
+                                encoded_data += url_encode_char(c);
                             }
-                            boundary = "----VibbrowserFormBoundary" + suffix;
-
-                            // Build multipart body
-                            for (size_t i = 0; i < form_data.size(); i++) {
-                                const auto& field = form_data[i];
-                                const bool is_file = form_data_is_file[i];
-                                encoded_data += "--";
-                                encoded_data += boundary;
-                                encoded_data += "\r\n";
-                                encoded_data += "Content-Disposition: form-data; name=\"";
-                                encoded_data += field.first;
-                                if (is_file) {
-                                    std::string filename = field.second;
-                                    if (filename.empty()) filename = "upload";
-                                    encoded_data += "\"; filename=\"";
-                                    encoded_data += filename;
-                                }
-                                encoded_data += "\"\r\n";
-                                if (is_file) {
-                                    encoded_data += "Content-Type: application/octet-stream\r\n";
-                                }
-                                encoded_data += "\r\n";
-                                if (!is_file) {
-                                    encoded_data += field.second;
-                                }
-                                encoded_data += "\r\n";
-                            }
-                            encoded_data += "--";
-                            encoded_data += boundary;
-                            encoded_data += "--\r\n";
-                            content_type = "multipart/form-data; boundary=" + boundary;
-                        } else if (encoding == "text/plain") {
-                            content_type = "text/plain";
-                            for (size_t i = 0; i < form_data.size(); i++) {
-                                encoded_data += form_data[i].first;
-                                encoded_data += "=";
-                                encoded_data += form_data[i].second;
-                                encoded_data += "\n";
-                            }
-                        } else {
-                            // application/x-www-form-urlencoded (default)
-                            for (size_t i = 0; i < form_data.size(); i++) {
-                                if (i > 0) encoded_data += "&";
-                                for (unsigned char c : form_data[i].first) {
+                            encoded_data += "=";
+                            for (unsigned char c : form_data[i].second) {
+                                if (c == ' ') {
+                                    encoded_data += "+";
+                                } else {
                                     encoded_data += url_encode_char(c);
-                                }
-                                encoded_data += "=";
-                                for (unsigned char c : form_data[i].second) {
-                                    if (c == ' ') {
-                                        encoded_data += "+";
-                                    } else {
-                                        encoded_data += url_encode_char(c);
-                                    }
                                 }
                             }
                         }
@@ -9344,11 +9247,7 @@ static void execute_default_action(JSContext* ctx, DOMState* state,
                                 JS_SetPropertyStr(ctx, loc, "__formMethod",
                                     JS_NewString(ctx, "POST"));
                                 JS_SetPropertyStr(ctx, loc, "__formEnctype",
-                                    JS_NewString(ctx, encoding.c_str()));
-                                JS_SetPropertyStr(ctx, loc, "__formContentType",
-                                    JS_NewString(ctx, content_type.c_str()));
-                                JS_SetPropertyStr(ctx, loc, "__formBoundary",
-                                    JS_NewString(ctx, boundary.c_str()));
+                                    JS_NewString(ctx, enctype.empty() ? "application/x-www-form-urlencoded" : enctype.c_str()));
                                 JS_SetPropertyStr(ctx, loc, "__formData",
                                     JS_NewString(ctx, encoded_data.c_str()));
                                 JS_SetPropertyStr(ctx, loc, "href",
@@ -21273,24 +21172,7 @@ Range.prototype.createContextualFragment=function(html){
         while(d.firstChild)frag.appendChild(d.firstChild);}catch(e){}
     return frag;
 };
-Range.prototype.toString=function(){
-    if(!this.startContainer||!this.endContainer)return'';
-    if(this.collapsed)return'';
-    var text='';
-    try{
-        if(this.startContainer===this.endContainer){
-            if(this.startContainer.nodeType===3){
-                var tc=this.startContainer.textContent||'';
-                return tc.substring(this.startOffset,Math.min(this.endOffset,tc.length));
-            }else if(this.startContainer.textContent){
-                return this.startContainer.textContent.substring(this.startOffset,this.endOffset);
-            }
-        }else if(this.startContainer.textContent){
-            return this.startContainer.textContent;
-        }
-    }catch(e){}
-    return'';
-};
+Range.prototype.toString=function(){return'';};
 Range.START_TO_START=0;Range.START_TO_END=1;Range.END_TO_END=2;Range.END_TO_START=3;
 globalThis.Range=Range;
 if(typeof document!=='undefined')document.createRange=function(){return new Range();};
@@ -21347,17 +21229,7 @@ Selection.prototype.selectAllChildren=function(node){
 Selection.prototype.deleteFromDocument=function(){};
 Selection.prototype.containsNode=function(){return false;};
 Selection.prototype.modify=function(){};
-Selection.prototype.toString=function(){
-    var t='';
-    if(this._ranges&&this._ranges.length>0){
-        for(var i=0;i<this._ranges.length;i++){
-            if(typeof this._ranges[i].toString==='function'){
-                t+=this._ranges[i].toString();
-            }
-        }
-    }
-    return t;
-};
+Selection.prototype.toString=function(){return'';};
 globalThis.Selection=Selection;
 var __gs=new Selection();
 if(typeof window!=='undefined')window.getSelection=function(){return __gs;};
@@ -21380,53 +21252,15 @@ if(typeof document!=='undefined')document.getSelection=function(){return __gs;};
         const char* execcmd_src = R"JS(
 (function(){
 'use strict';
-if(typeof document!=='undefined'&&typeof document.execCommand!=='function'){
-    document.execCommand=function(command,showUI,value){
-        try{
-            var cmd=(command||'').toLowerCase();
-            if(cmd==='selectall'){
-                if(typeof document.documentElement!=='undefined'&&document.documentElement){
-                    var sel=typeof window!=='undefined'&&window.getSelection?window.getSelection():null;
-                    if(sel&&typeof sel.removeAllRanges==='function'){
-                        sel.removeAllRanges();
-                        var r=new Range();
-                        if(typeof r.selectNodeContents==='function'){
-                            r.selectNodeContents(document.documentElement);
-                            if(typeof sel.addRange==='function'){sel.addRange(r);}
-                        }
-                        return true;
-                    }
-                }
-            }
-            if(cmd==='copy'){
-                var sel=typeof window!=='undefined'&&window.getSelection?window.getSelection():null;
-                if(sel&&typeof sel.toString==='function'){
-                    var txt=sel.toString();
-                    if(txt&&typeof console!=='undefined'&&console.log){console.log('Copy: '+txt);}
-                }
-                return false;
-            }
-            return false;
-        }catch(e){return false;}
-    };
-}
+if(typeof document!=='undefined'&&typeof document.execCommand!=='function')
+    document.execCommand=function(command,showUI,value){return false;};
 if(typeof document!=='undefined'){
-    if(typeof document.queryCommandSupported!=='function'){
-        document.queryCommandSupported=function(cmd){
-            var c=(cmd||'').toLowerCase();
-            return c==='copy'||c==='cut'||c==='paste'||c==='selectall';
-        };
-    }
+    if(typeof document.queryCommandSupported!=='function')
+        document.queryCommandSupported=function(cmd){return false;};
     if(typeof document.queryCommandEnabled!=='function')
         document.queryCommandEnabled=function(cmd){return false;};
-    if(typeof document.queryCommandState!=='function'){
-        document.queryCommandState=function(cmd){
-            if((cmd||'').toLowerCase()==='selectall'){
-                return typeof document.documentElement!=='undefined'&&document.documentElement?'true':'false';
-            }
-            return false;
-        };
-    }
+    if(typeof document.queryCommandState!=='function')
+        document.queryCommandState=function(cmd){return false;};
     if(typeof document.queryCommandValue!=='function')
         document.queryCommandValue=function(cmd){return'';};
     if(typeof document.queryCommandIndeterm!=='function')
@@ -22738,8 +22572,6 @@ void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h)
 
                 JS_SetPropertyUint32(ctx, entries, entry_idx++, entry);
 
-                io.pending_entries.push_back(JS_DupValue(ctx, entry));
-
                 // Update tracked state after firing
                 io.prev_ratio[elem] = ratio;
                 io.prev_intersecting[elem] = is_intersecting;
@@ -22986,19 +22818,57 @@ void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h, float
     auto* state = get_dom_state(ctx);
     if (!state) return;
 
-    bool scroll_changed = (scroll_y != state->last_intersection_observer_scroll_y);
-    state->last_intersection_observer_scroll_y = scroll_y;
-    state->current_scroll_y = scroll_y;
-
+    // Update window.scrollY
     JSValue global = JS_GetGlobalObject(ctx);
     JS_SetPropertyStr(ctx, global, "scrollY", JS_NewFloat64(ctx, scroll_y));
     JS_SetPropertyStr(ctx, global, "pageYOffset", JS_NewFloat64(ctx, scroll_y));
+
+    // Fire scroll event on window listeners (stored under nullptr sentinel)
+    auto win_it = state->listeners.find(nullptr);
+    if (win_it != state->listeners.end()) {
+        auto type_it = win_it->second.find("scroll");
+        if (type_it != win_it->second.end()) {
+            JSValue event_obj = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "scroll"));
+            JS_SetPropertyStr(ctx, event_obj, "bubbles", JS_FALSE);
+            JS_SetPropertyStr(ctx, event_obj, "cancelable", JS_FALSE);
+            JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
+            JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
+            JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+
+            auto entries = type_it->second;
+            for (auto& entry : entries) {
+                JSValue result = JS_Call(ctx, entry.handler, global, 1, &event_obj);
+                if (JS_IsException(result)) {
+                    JSValue exc = JS_GetException(ctx);
+                    JS_FreeValue(ctx, exc);
+                }
+                JS_FreeValue(ctx, result);
+            }
+            JS_FreeValue(ctx, event_obj);
+        }
+    }
     JS_FreeValue(ctx, global);
 
-    if (scroll_changed) {
-        dispatch_window_listeners(ctx, "scroll", JS_NULL);
-        fire_intersection_observers(ctx, viewport_w, viewport_h);
+    // Also fire scroll on document/window onscroll handler if set
+    JSValue global2 = JS_GetGlobalObject(ctx);
+    JSValue onscroll = JS_GetPropertyStr(ctx, global2, "onscroll");
+    if (JS_IsFunction(ctx, onscroll)) {
+        JSValue event_obj = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "scroll"));
+        JSValue result = JS_Call(ctx, onscroll, global2, 1, &event_obj);
+        if (JS_IsException(result)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, result);
+        JS_FreeValue(ctx, event_obj);
     }
+    JS_FreeValue(ctx, onscroll);
+    JS_FreeValue(ctx, global2);
+
+    // Re-evaluate IntersectionObservers since scroll position changed
+    fire_intersection_observers(ctx, viewport_w, viewport_h);
 }
 
 } // namespace clever::js
