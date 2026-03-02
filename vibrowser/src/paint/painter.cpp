@@ -5181,11 +5181,21 @@ void Painter::paint_progress(const clever::layout::LayoutNode& node, DisplayList
     }
     list.fill_rounded_rect(box_rect, track_color, radius);
 
+    bool has_accent = node.accent_color != 0;
+    uint32_t accent_argb = node.accent_color;
+
     if (node.progress_indeterminate) {
         float stripe_w = box_w / 3.0f;
         if (stripe_w > 0.0f) {
-            Color stripe_dark = dark ? Color{0x33, 0x33, 0x33, 0xFF} : Color{0xDE, 0xDE, 0xDE, 0xFF};
-            Color stripe_light = dark ? Color{0x55, 0x55, 0x55, 0xFF} : Color{0xF5, 0xF5, 0xF5, 0xFF};
+            Color stripe_dark;
+            Color stripe_light;
+            if (has_accent) {
+                stripe_dark = Color::from_argb(darken_color(accent_argb, 24));
+                stripe_light = Color::from_argb(lighten_color(accent_argb, 24));
+            } else {
+                stripe_dark = dark ? Color{0x33, 0x33, 0x33, 0xFF} : Color{0xDE, 0xDE, 0xDE, 0xFF};
+                stripe_light = dark ? Color{0x55, 0x55, 0x55, 0xFF} : Color{0xF5, 0xF5, 0xF5, 0xFF};
+            }
             for (int i = 0; i < 3; ++i) {
                 float x = abs_x + stripe_w * static_cast<float>(i);
                 float w = std::min(stripe_w, std::max(0.0f, box_w - stripe_w * static_cast<float>(i)));
@@ -5203,6 +5213,9 @@ void Painter::paint_progress(const clever::layout::LayoutNode& node, DisplayList
     if (fill_w <= 0.0f) return;
 
     Color fill_color = dark ? Color{0x4D, 0xC3, 0xFF, 0xFF} : Color{0x4C, 0xAF, 0x50, 0xFF};
+    if (has_accent) {
+        fill_color = Color::from_argb(accent_argb);
+    }
     list.fill_rounded_rect({abs_x, abs_y, fill_w, box_h}, fill_color, radius);
 }
 

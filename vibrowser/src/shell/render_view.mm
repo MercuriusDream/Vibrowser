@@ -731,17 +731,31 @@ struct TextRegion {
 
     // CSS overscroll-behavior: contain (1) or none (2) on viewport means clamp
     // and consume boundary-pushing wheel input to prevent scroll chaining/bounce.
+    bool clampOverscrollX = (_overscrollBehaviorX == 1 || _overscrollBehaviorX == 2);
     bool clampOverscrollY = (_overscrollBehaviorY == 1 || _overscrollBehaviorY == 2);
 
     CGFloat maxScroll = std::max(0.0, _contentHeight * _pageScale - self.bounds.size.height);
+    CGFloat maxScrollX = std::max(0.0, (_imageWidth / _backingScale) * _pageScale - self.bounds.size.width);
     CGFloat appliedDeltaX = 0;
     CGFloat appliedDeltaY = 0;
+
+    // Horizontal overscroll boundary check mirrors the vertical axis logic.
+    bool consumeHorizontalEvent = false;
+    if (clampOverscrollX) {
+        bool atLeft = (_scrollX <= 0.0);
+        bool atRight = (_scrollX >= maxScrollX);
+        // scrollAmountX < 0 => left, scrollAmountX > 0 => right.
+        consumeHorizontalEvent = (atLeft && scrollAmountX < 0) ||
+                                 (atRight && scrollAmountX > 0 && maxScrollX > 0);
+    }
 
     // Track horizontal wheel movement for delegate/DOM consumers.
     // Horizontal page translation is not currently rendered in this view.
     CGFloat prevScrollX = _scrollX;
-    _scrollX += scrollAmountX;
-    _scrollX = std::max(0.0, _scrollX);
+    if (!consumeHorizontalEvent) {
+        _scrollX += scrollAmountX;
+        _scrollX = std::max(0.0, std::min(_scrollX, maxScrollX));
+    }
     appliedDeltaX = _scrollX - prevScrollX;
 
     // Overscroll boundary check uses current animation target while animating.

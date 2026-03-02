@@ -8087,6 +8087,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->text_decoration_skip_ink = parent_style.text_decoration_skip_ink;
         layout_node->text_emphasis_style = parent_style.text_emphasis_style;
         layout_node->text_emphasis_color = parent_style.text_emphasis_color;
+        layout_node->text_emphasis_position = parent_style.text_emphasis_position;
         layout_node->text_stroke_width = parent_style.text_stroke_width;
         layout_node->text_stroke_color = color_to_argb(parent_style.text_stroke_color);
         if (parent_style.text_fill_color.a > 0) {
@@ -8912,6 +8913,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->initial_letter_align = style.initial_letter_align;
     layout_node->text_emphasis_style = style.text_emphasis_style;
     layout_node->text_emphasis_color = style.text_emphasis_color;
+    layout_node->text_emphasis_position = style.text_emphasis_position;
     layout_node->text_stroke_width = style.text_stroke_width;
     layout_node->text_stroke_color = color_to_argb(style.text_stroke_color);
     if (style.text_fill_color.a > 0) {
@@ -13062,6 +13064,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         target.text_decoration_skip_ink = text_style.text_decoration_skip_ink;
         target.text_emphasis_style = text_style.text_emphasis_style;
         target.text_emphasis_color = text_style.text_emphasis_color;
+        target.text_emphasis_position = text_style.text_emphasis_position;
         target.text_stroke_width = text_style.text_stroke_width;
         target.text_stroke_color = color_to_argb(text_style.text_stroke_color);
         if (text_style.text_fill_color.a > 0) {
@@ -13486,6 +13489,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 node->text_decoration_skip_ink = source.text_decoration_skip_ink;
                 node->text_emphasis_style = source.text_emphasis_style;
                 node->text_emphasis_color = source.text_emphasis_color;
+                node->text_emphasis_position = source.text_emphasis_position;
                 node->text_stroke_width = source.text_stroke_width;
                 node->text_stroke_color = source.text_stroke_color;
                 node->text_fill_color = source.text_fill_color;

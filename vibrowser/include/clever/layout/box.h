@@ -891,6 +891,7 @@ struct LayoutNode {
     // Text emphasis style: string value ("none", "filled dot", "open circle", "filled sesame", etc.)
     std::string text_emphasis_style = "none";
     uint32_t text_emphasis_color = 0; // ARGB, 0 = inherit/currentColor
+    int text_emphasis_position = 0;
 
     // -webkit-text-stroke
     float text_stroke_width = 0;
