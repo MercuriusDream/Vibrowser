@@ -1292,6 +1292,25 @@ std::vector<std::string> detect_changed_transition_properties(
         changed.push_back("outline-offset");
     }
 
+    // Border colors (top, right, bottom, left)
+    if (old_style.border_top.color != new_style.border_top.color) {
+        changed.push_back("border-top-color");
+    }
+    if (old_style.border_right.color != new_style.border_right.color) {
+        changed.push_back("border-right-color");
+    }
+    if (old_style.border_bottom.color != new_style.border_bottom.color) {
+        changed.push_back("border-bottom-color");
+    }
+    if (old_style.border_left.color != new_style.border_left.color) {
+        changed.push_back("border-left-color");
+    }
+
+    // Outline color
+    if (old_style.outline_color != new_style.outline_color) {
+        changed.push_back("outline-color");
+    }
+
     // Box shadow (detect any change, even if interpolation is limited)
     bool box_shadow_changed = false;
     if (old_style.box_shadows.size() != new_style.box_shadows.size()) {
@@ -9123,6 +9142,36 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                                     prev_it->second.outline_offset.to_px(),
                                     style.outline_offset.to_px(),
                                     transition_def);
+                            } else if (property == "border-top-color") {
+                                g_transition_animation_controller->start_color_transition(
+                                    runtime_node, property,
+                                    prev_it->second.border_top.color,
+                                    style.border_top.color,
+                                    transition_def);
+                            } else if (property == "border-right-color") {
+                                g_transition_animation_controller->start_color_transition(
+                                    runtime_node, property,
+                                    prev_it->second.border_right.color,
+                                    style.border_right.color,
+                                    transition_def);
+                            } else if (property == "border-bottom-color") {
+                                g_transition_animation_controller->start_color_transition(
+                                    runtime_node, property,
+                                    prev_it->second.border_bottom.color,
+                                    style.border_bottom.color,
+                                    transition_def);
+                            } else if (property == "border-left-color") {
+                                g_transition_animation_controller->start_color_transition(
+                                    runtime_node, property,
+                                    prev_it->second.border_left.color,
+                                    style.border_left.color,
+                                    transition_def);
+                            } else if (property == "outline-color") {
+                                g_transition_animation_controller->start_color_transition(
+                                    runtime_node, property,
+                                    prev_it->second.outline_color,
+                                    style.outline_color,
+                                    transition_def);
                             } else if (property == "box-shadow") {
                                 // For box-shadow, transition the blur radius of the first shadow
                                 // as a proxy for the overall shadow transition
@@ -16190,7 +16239,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
             if (name_attr == "color-scheme" && !content.empty()) {
                 document_color_scheme = parse_color_scheme_content(content);
-                clever::css::set_document_color_scheme(content);
+                if (clever::css::get_dark_mode_override() >= 0) {
+                    clever::css::set_document_color_scheme(content);
+                }
             }
         }
 
