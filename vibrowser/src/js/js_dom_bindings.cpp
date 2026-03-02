@@ -4714,14 +4714,17 @@ static JSValue js_get_computed_style(JSContext* ctx, JSValueConst /*this_val*/,
     JS_SetOpaque(obj, node);
 
     // Add getPropertyValue and setProperty methods
-    JS_SetPropertyStr(ctx, obj, "getPropertyValue",
-        JS_NewCFunction(ctx, js_computed_style_get_property, "getPropertyValue", 1));
+    JS_DefinePropertyValueStr(ctx, obj, "getPropertyValue",
+        JS_NewCFunction(ctx, js_computed_style_get_property, "getPropertyValue", 1),
+        JS_PROP_C_W_E);
 
     // Stub setProperty (computed styles are read-only per spec)
-    JS_SetPropertyStr(ctx, obj, "setProperty",
+    JS_DefinePropertyValueStr(
+        ctx, obj, "setProperty",
         JS_NewCFunction(ctx, [](JSContext* /*c*/, JSValueConst, int, JSValueConst*) -> JSValue {
             return JS_UNDEFINED;
-        }, "setProperty", 3));
+        }, "setProperty", 3),
+        JS_PROP_C_W_E);
 
     // Helper: kebab-to-camelCase conversion
     auto to_camel = [](const std::string& key) -> std::string {
@@ -4743,10 +4746,14 @@ static JSValue js_get_computed_style(JSContext* ctx, JSValueConst /*this_val*/,
 
     // Helper to set a property (kebab and camelCase)
     auto set_prop = [&](const char* name, const std::string& value) {
-        JS_SetPropertyStr(ctx, obj, name, JS_NewString(ctx, value.c_str()));
+        JS_DefinePropertyValueStr(ctx, obj, name,
+            JS_NewString(ctx, value.c_str()),
+            JS_PROP_C_W_E);
         std::string camel = to_camel(name);
         if (camel != name) {
-            JS_SetPropertyStr(ctx, obj, camel.c_str(), JS_NewString(ctx, value.c_str()));
+            JS_DefinePropertyValueStr(
+                ctx, obj, camel.c_str(), JS_NewString(ctx, value.c_str()),
+                JS_PROP_C_W_E);
         }
     };
 
@@ -4969,7 +4976,9 @@ static JSValue js_get_computed_style(JSContext* ctx, JSValueConst /*this_val*/,
     // Set length to count of properties (approximate)
     int prop_count = has_geometry ? static_cast<int>(layout_backed_props.size()) : 0;
     prop_count += static_cast<int>(inline_props.size());
-    JS_SetPropertyStr(ctx, obj, "length", JS_NewInt32(ctx, prop_count));
+    JS_DefinePropertyValueStr(ctx, obj, "length",
+        JS_NewInt32(ctx, prop_count),
+        JS_PROP_C_W_E);
 
     return obj;
 }
