@@ -6377,6 +6377,169 @@ if (!String.prototype.trimEnd) {
         JS_FreeValue(ctx, polyfill_es2023);
     }
 
+    {
+        const char* polyfill_compression_stream_src = R"JS(
+        if (typeof globalThis.CompressionStream === 'undefined' || typeof globalThis.DecompressionStream === 'undefined') {
+            function __createPassthroughStreamState() {
+                var queue = [];
+                var waitingReaders = [];
+                var closed = false;
+                var aborted = false;
+                var abortReason = undefined;
+                var writer;
+                var reader;
+                var closedResolve;
+                var closedReject;
+                var closedPromise = new Promise(function(resolve, reject) {
+                    closedResolve = resolve;
+                    closedReject = reject;
+                });
+
+                function drainQueue() {
+                    while (waitingReaders.length > 0 && queue.length > 0) {
+                        waitingReaders.shift()({
+                            value: queue.shift(),
+                            done: false
+                        });
+                    }
+                    if (!closed) return;
+                    while (waitingReaders.length > 0) {
+                        waitingReaders.shift()({ done: true, value: undefined });
+                    }
+                }
+
+                function createWriter() {
+                    if (writer) return writer;
+                    writer = {
+                        write: function(chunk) {
+                            if (aborted) {
+                                return Promise.reject(abortReason || new Error('Stream aborted'));
+                            }
+                            if (closed) {
+                                return Promise.reject(new Error('Stream is closed'));
+                            }
+                            queue.push(chunk);
+                            drainQueue();
+                            return Promise.resolve();
+                        },
+                        close: function() {
+                            if (!closed) {
+                                closed = true;
+                                closedResolve(undefined);
+                                drainQueue();
+                            }
+                            return writer.closed;
+                        },
+                        abort: function(reason) {
+                            aborted = true;
+                            abortReason = reason;
+                            if (!closed) {
+                                closed = true;
+                                closedReject(reason || new Error('Stream aborted'));
+                            }
+                            queue.length = 0;
+                            drainQueue();
+                            return Promise.reject(reason || new Error('Stream aborted'));
+                        },
+                        get closed() {
+                            return closedPromise;
+                        },
+                        get ready() {
+                            return Promise.resolve();
+                        },
+                        get desiredSize() {
+                            return closed ? 0 : 1;
+                        }
+                    };
+                    return writer;
+                }
+
+                function createReader() {
+                    if (reader) return reader;
+                    reader = {
+                        read: function() {
+                            if (aborted) {
+                                return Promise.reject(abortReason || new Error('Stream aborted'));
+                            }
+                            if (queue.length > 0) {
+                                return Promise.resolve({ value: queue.shift(), done: false });
+                            }
+                            if (closed) {
+                                return Promise.resolve({ done: true, value: undefined });
+                            }
+                            return new Promise(function(resolve, reject) {
+                                waitingReaders.push(resolve);
+                            });
+                        },
+                        cancel: function() {
+                            if (!closed) {
+                                closed = true;
+                                closedResolve(undefined);
+                            }
+                            queue.length = 0;
+                            drainQueue();
+                            return Promise.resolve();
+                        }
+                    };
+                    return reader;
+                }
+
+                return {
+                    createWriter: createWriter,
+                    createReader: createReader
+                };
+            }
+
+            if (typeof globalThis.CompressionStream === 'undefined') {
+                globalThis.CompressionStream = function CompressionStream(format) {
+                    if (format !== 'gzip' && format !== 'deflate' && format !== 'deflate-raw') {
+                        throw new TypeError('CompressionStream format must be gzip, deflate, or deflate-raw');
+                    }
+                    var state = __createPassthroughStreamState();
+                    this.format = format;
+                    this.writable = {
+                        getWriter: function() {
+                            return state.createWriter();
+                        }
+                    };
+                    this.readable = {
+                        getReader: function() {
+                            return state.createReader();
+                        }
+                    };
+                };
+            }
+
+            if (typeof globalThis.DecompressionStream === 'undefined') {
+                globalThis.DecompressionStream = function DecompressionStream(format) {
+                    if (format !== 'gzip' && format !== 'deflate' && format !== 'deflate-raw') {
+                        throw new TypeError('DecompressionStream format must be gzip, deflate, or deflate-raw');
+                    }
+                    var state = __createPassthroughStreamState();
+                    this.format = format;
+                    this.writable = {
+                        getWriter: function() {
+                            return state.createWriter();
+                        }
+                    };
+                    this.readable = {
+                        getReader: function() {
+                            return state.createReader();
+                        }
+                    };
+                };
+            }
+        }
+)JS";
+        JSValue polyfill_compression_stream = JS_Eval(ctx, polyfill_compression_stream_src, std::strlen(polyfill_compression_stream_src),
+                                                     "<polyfill-CompressionStream>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_compression_stream)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_compression_stream);
+    }
+
     // ---- window.localStorage and window.sessionStorage ----
     ParsedURL parsed_url = parse_url(url);
     install_web_storage_bindings(ctx, parsed_url.origin);

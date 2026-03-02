@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1991 — 5 agents running: CSS filter, position:sticky, aspect-ratio, backdrop-filter, z-index stacking context
-**Momentum**: Cycle 1991 — 14/14 tests passing. Fixed C1990 type conflicts (font_variant int→string, touch-action encoding mismatch). Agents running new features.
-**Cycle**: 1991
+**Current Focus**: Cycle 1992 — HiDPI Retina rendering DONE. 5 agents launching: CompressionStream, matchMedia live events, visibilitychange, HTMLDialogElement close, fetch improvements
+**Momentum**: C1992 — 14/14 tests passing. HiDPI fix shipped (commit 8936738): renderer now renders at physical pixel dimensions (dpr 2x) for crisp Retina output. Button CSS override bug also fixed.
+**Cycle**: 1992
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -1993,6 +1993,27 @@ Generated: 2026-03-01
 - **Bug Fixes**: 9 test failures fixed (contentEditable getter, matchMedia test, canvas width/height conflict, getComputedStyle border-box, table column expansion scope, 3 underline test Y-coordinates)
 - **Validation**: 13/13 suites pass, 0 failures
 - **P0 centering bugs added to TODO**: mixed block/inline text-align, <center> margin check, -webkit-center, negative margin sentinel
+
+### Cycle 1992 (HiDPI + Bug Fixes) — 2026-03-02
+
+- **Theme**: HiDPI/Retina rendering fix, button CSS override fix, blurry macOS rendering
+- **Agents**: 1 codex-spark agent
+- **Files**: 6 files changed, +266/-193 lines
+- **Features/Fixes**:
+  - HiDPI/Retina rendering support: SoftwareRenderer now creates pixel buffer at `width*dpr × height*dpr` physical pixels. All drawing coordinates (bounds, font_size, border_radius, stroke_width, shadow offsets, etc.) scaled by `dpr_` in `render()` dispatch via `scale_rect`/`scale_value` lambdas. CSS layout stays at logical pixel dimensions. backingScaleFactor forwarded from browser_window.mm through render_html() to SoftwareRenderer constructor. Text and graphics now crisp on Retina displays.
+  - P20 (HiDPI) added to TODO section with comprehensive fix description
+- **Validation**: 14/14 suites pass, 0 failures
+- **Commit**: 8936738 pushed to main
+
+### Cycle 1991 (Bug Fixes + Z-Index) — 2026-03-02
+
+- **Theme**: Fix C1990 build errors, button CSS override bug, z-index tests
+- **Features/Fixes**:
+  - Fixed font_variant string/int type mismatch in paint_test.cpp (4 lines)
+  - Fixed touch-action integer encoding conflict (duplicate parser block)
+  - Added 4 z-index stacking context paint tests (commit a9cd0af)
+  - Fixed button UA defaults overriding CSS background-color/padding (commit 108ddb4)
+- **Validation**: 14/14 suites pass, 0 failures
 
 ### Cycle 2422 (Feature Implementation Round 4) — 2026-03-01
 
