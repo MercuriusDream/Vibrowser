@@ -10264,18 +10264,31 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->is_button_input = true;
         if (layout_node->specified_height < 0) layout_node->specified_height = 26;
         bool dark_btn = (layout_node->color_scheme == 2);
-        layout_node->background_color = dark_btn ? 0xFF1E1E1E : 0xFFE0E0E0;
-        if (dark_btn) layout_node->color = 0xFFE0E0E0;
         layout_node->mode = clever::layout::LayoutMode::InlineBlock;
         layout_node->display = clever::layout::DisplayType::InlineBlock;
-        layout_node->geometry.padding = {2.0f, 6.0f, 2.0f, 6.0f};
-        layout_node->geometry.border = {1, 1, 1, 1};
-        if (dark_btn) {
-            layout_node->border_color = 0xFF555555;
-            layout_node->border_color_top = 0xFF555555;
-            layout_node->border_color_right = 0xFF555555;
-            layout_node->border_color_bottom = 0xFF555555;
-            layout_node->border_color_left = 0xFF555555;
+        // Only apply UA default background/border/padding if CSS hasn't styled this button.
+        // CSS-styled buttons (e.g. background: green) should not be overridden by UA defaults.
+        bool has_css_bg = (layout_node->background_color != 0 ||
+                           !style.bg_image_url.empty());
+        if (!has_css_bg) {
+            layout_node->background_color = dark_btn ? 0xFF1E1E1E : 0xFFE0E0E0;
+            if (dark_btn) layout_node->color = 0xFFE0E0E0;
+            layout_node->geometry.border = {1, 1, 1, 1};
+            if (dark_btn) {
+                layout_node->border_color = 0xFF555555;
+                layout_node->border_color_top = 0xFF555555;
+                layout_node->border_color_right = 0xFF555555;
+                layout_node->border_color_bottom = 0xFF555555;
+                layout_node->border_color_left = 0xFF555555;
+            }
+        }
+        // Only apply UA default padding if CSS hasn't set padding
+        bool has_css_padding = (layout_node->geometry.padding.top > 0 ||
+                                layout_node->geometry.padding.right > 0 ||
+                                layout_node->geometry.padding.bottom > 0 ||
+                                layout_node->geometry.padding.left > 0);
+        if (!has_css_padding) {
+            layout_node->geometry.padding = {2.0f, 6.0f, 2.0f, 6.0f};
         }
         // Fall through to render children normally (button text)
     }
