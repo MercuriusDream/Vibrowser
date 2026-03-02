@@ -1740,6 +1740,110 @@ TEST(RenderPipeline, ZIndexParsed) {
 }
 
 // ============================================================================
+// z-index paint ordering: positioned overlap with higher z-index on top
+// ============================================================================
+TEST(RenderPipeline, ZIndexPositionedHigherOnTop) {
+    std::string html = R"(
+        <html>
+        <body style="margin: 0;">
+            <div style="position: relative; left: 50px; top: 50px; width: 100px; height: 100px; background-color: #ff0000; z-index: 1;"></div>
+            <div style="position: relative; left: 75px; top: -25px; width: 100px; height: 100px; background-color: #0000ff; z-index: 2;"></div>
+        </body>
+        </html>
+    )";
+    auto result = render_html(html, 300, 300);
+    ASSERT_TRUE(result.success) << "Error: " << result.error;
+    ASSERT_NE(result.renderer, nullptr);
+
+    // Overlap point must be blue because z-index:2 paints above z-index:1.
+    auto pixel = result.renderer->get_pixel(80, 80);
+    EXPECT_EQ(pixel.r, 0);
+    EXPECT_EQ(pixel.g, 0);
+    EXPECT_EQ(pixel.b, 255);
+    EXPECT_EQ(pixel.a, 255);
+}
+
+// ============================================================================
+// z-index paint ordering: negative z-index behind normal flow
+// ============================================================================
+TEST(RenderPipeline, ZIndexNegativeBehindNormalFlow) {
+    std::string html = R"(
+        <html>
+        <body style="margin: 0;">
+            <div style="position: absolute; left: 50px; top: 50px; width: 100px; height: 100px; background-color: #ff0000; z-index: -1;"></div>
+            <div style="padding-left: 75px; padding-top: 75px;">
+                <div style="width: 100px; height: 100px; background-color: #0000ff;"></div>
+            </div>
+        </body>
+        </html>
+    )";
+    auto result = render_html(html, 300, 300);
+    ASSERT_TRUE(result.success) << "Error: " << result.error;
+    ASSERT_NE(result.renderer, nullptr);
+
+    // Overlap point must be blue because normal-flow content paints above z-index:-1.
+    auto pixel = result.renderer->get_pixel(80, 80);
+    EXPECT_EQ(pixel.r, 0);
+    EXPECT_EQ(pixel.g, 0);
+    EXPECT_EQ(pixel.b, 255);
+    EXPECT_EQ(pixel.a, 255);
+}
+
+// ============================================================================
+// z-index paint ordering: multiple levels sort ascending then paint
+// ============================================================================
+TEST(RenderPipeline, ZIndexMultipleLevelsSorted) {
+    std::string html = R"(
+        <html>
+        <body style="margin: 0;">
+            <div style="position: absolute; left: 50px; top: 50px; width: 100px; height: 100px; background-color: #ff0000; z-index: -1;"></div>
+            <div style="position: absolute; left: 50px; top: 50px; width: 100px; height: 100px; background-color: #00ff00; z-index: 0;"></div>
+            <div style="position: absolute; left: 50px; top: 50px; width: 100px; height: 100px; background-color: #0000ff; z-index: 1;"></div>
+        </body>
+        </html>
+    )";
+    auto result = render_html(html, 300, 300);
+    ASSERT_TRUE(result.success) << "Error: " << result.error;
+    ASSERT_NE(result.renderer, nullptr);
+
+    // Topmost layer should be z-index:1 (blue).
+    auto pixel = result.renderer->get_pixel(80, 80);
+    EXPECT_EQ(pixel.r, 0);
+    EXPECT_EQ(pixel.g, 0);
+    EXPECT_EQ(pixel.b, 255);
+    EXPECT_EQ(pixel.a, 255);
+}
+
+// ============================================================================
+// z-index paint ordering: stacking context is atomic across parents
+// ============================================================================
+TEST(RenderPipeline, ZIndexAtomicStackingContextOrder) {
+    std::string html = R"(
+        <html>
+        <body style="margin: 0; position: relative;">
+            <div style="position: absolute; left: 50px; top: 50px; width: 120px; height: 120px; z-index: 1;">
+                <div style="position: absolute; left: 0; top: 0; width: 100px; height: 100px; background-color: #ff0000; z-index: 100;"></div>
+            </div>
+            <div style="position: absolute; left: 75px; top: 75px; width: 120px; height: 120px; z-index: 2;">
+                <div style="position: absolute; left: 0; top: 0; width: 100px; height: 100px; background-color: #0000ff; z-index: 1;"></div>
+            </div>
+        </body>
+        </html>
+    )";
+    auto result = render_html(html, 300, 300);
+    ASSERT_TRUE(result.success) << "Error: " << result.error;
+    ASSERT_NE(result.renderer, nullptr);
+
+    // Even though red child has z-index:100, it remains below blue child because
+    // its parent stacking context (z-index:1) is below the blue parent (z-index:2).
+    auto overlap = result.renderer->get_pixel(90, 90);
+    EXPECT_EQ(overlap.r, 0);
+    EXPECT_EQ(overlap.g, 0);
+    EXPECT_EQ(overlap.b, 255);
+    EXPECT_EQ(overlap.a, 255);
+}
+
+// ============================================================================
 // Linear gradient rendering
 // ============================================================================
 TEST(RenderPipeline, LinearGradientInline) {

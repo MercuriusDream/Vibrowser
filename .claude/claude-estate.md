@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-02
-**Current Focus**: Cycle 1990 — Fixed build errors from C1989 (OffscreenCanvas inside audio_src raw string). Launched 5 agents: font-variant sub-props, scroll-snap, navigator API stubs, overscroll-behavior/touch-action, Proxy/Reflect + polyfills.
-**Momentum**: Cycle 1990 — 140+ commits. 14/14 tests at 100%. Fixing cascading raw-string injection bugs from parallel agents.
-**Cycle**: 1990
+**Current Focus**: Cycle 1991 — 5 agents running: CSS filter, position:sticky, aspect-ratio, backdrop-filter, z-index stacking context
+**Momentum**: Cycle 1991 — 14/14 tests passing. Fixed C1990 type conflicts (font_variant int→string, touch-action encoding mismatch). Agents running new features.
+**Cycle**: 1991
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
