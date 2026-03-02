@@ -4730,6 +4730,52 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, navigator, "deviceMemory", JS_NewFloat64(ctx, 8.0));
     JS_SetPropertyStr(ctx, navigator, "pdfViewerEnabled", JS_TRUE);
 
+    // ---- navigator.userAgentData (UA client hints stub) ----
+    {
+        JSValue ua_data = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, ua_data, "mobile", JS_FALSE);
+        JS_SetPropertyStr(ctx, ua_data, "platform", JS_NewString(ctx, "macOS"));
+
+        JSValue brands = JS_NewArray(ctx);
+        {
+            JSValue brand0 = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, brand0, "brand", JS_NewString(ctx, "Chromium"));
+            JS_SetPropertyStr(ctx, brand0, "version", JS_NewString(ctx, "120"));
+            JS_SetPropertyUint32(ctx, brands, 0, brand0);
+        }
+        {
+            JSValue brand1 = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, brand1, "brand", JS_NewString(ctx, "Not A;Brand"));
+            JS_SetPropertyStr(ctx, brand1, "version", JS_NewString(ctx, "99"));
+            JS_SetPropertyUint32(ctx, brands, 1, brand1);
+        }
+        JS_SetPropertyStr(ctx, ua_data, "brands", brands);
+
+        JS_SetPropertyStr(ctx, ua_data, "getHighEntropyValues",
+            JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
+                JSValue values = JS_NewObject(c);
+                JS_SetPropertyStr(c, values, "platform", JS_NewString(c, "macOS"));
+                JS_SetPropertyStr(c, values, "platformVersion", JS_NewString(c, "14.0"));
+                JS_SetPropertyStr(c, values, "architecture", JS_NewString(c, "arm"));
+                JS_SetPropertyStr(c, values, "model", JS_NewString(c, ""));
+                JS_SetPropertyStr(c, values, "uaFullVersion", JS_NewString(c, "120.0.0.0"));
+
+                JSValue rf[2];
+                JSValue promise = JS_NewPromiseCapability(c, rf);
+                if (JS_IsException(promise)) {
+                    JS_FreeValue(c, values);
+                    return promise;
+                }
+                JSValue ret = JS_Call(c, rf[0], JS_UNDEFINED, 1, &values);
+                JS_FreeValue(c, ret);
+                JS_FreeValue(c, rf[0]);
+                JS_FreeValue(c, rf[1]);
+                JS_FreeValue(c, values);
+                return promise;
+            }, "getHighEntropyValues", 1));
+        JS_SetPropertyStr(ctx, navigator, "userAgentData", ua_data);
+    }
+
     // ---- navigator.connection (NetworkInformation stub) ----
     {
         JSValue conn = JS_NewObject(ctx);
@@ -4970,18 +5016,43 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // ---- navigator.share (Web Share API stub) ----
     JS_SetPropertyStr(ctx, navigator, "share",
         JS_NewCFunction(ctx, [](JSContext* c, JSValueConst, int, JSValueConst*) -> JSValue {
-            // Reject with NotSupportedError (no native share sheet in desktop)
-            JSValue err = JS_NewError(c);
-            JS_SetPropertyStr(c, err, "name", JS_NewString(c, "NotSupportedError"));
-            JS_SetPropertyStr(c, err, "message", JS_NewString(c, "Share not supported"));
+            JSValue global = JS_GetGlobalObject(c);
+            JSValue dom_exception_ctor = JS_GetPropertyStr(c, global, "DOMException");
+            JSValue err = JS_UNDEFINED;
+
+            if (JS_IsFunction(c, dom_exception_ctor)) {
+                JSValue msg = JS_NewString(c, "Share not supported");
+                JSValue name = JS_NewString(c, "NotSupportedError");
+                JSValue args[2] = { msg, name };
+                err = JS_CallConstructor(c, dom_exception_ctor, 2, args);
+                JS_FreeValue(c, msg);
+                JS_FreeValue(c, name);
+                if (JS_IsException(err)) {
+                    JS_FreeValue(c, err);
+                    err = JS_UNDEFINED;
+                }
+            }
+            JS_FreeValue(c, dom_exception_ctor);
+
+            if (JS_IsUndefined(err)) {
+                err = JS_NewError(c);
+                JS_SetPropertyStr(c, err, "name", JS_NewString(c, "NotSupportedError"));
+                JS_SetPropertyStr(c, err, "message", JS_NewString(c, "Share not supported"));
+            }
+
             JSValue rf[2];
             JSValue promise = JS_NewPromiseCapability(c, rf);
-            if (JS_IsException(promise)) { JS_FreeValue(c, err); return promise; }
+            if (JS_IsException(promise)) {
+                JS_FreeValue(c, err);
+                JS_FreeValue(c, global);
+                return promise;
+            }
             JSValue ret = JS_Call(c, rf[1], JS_UNDEFINED, 1, &err);
             JS_FreeValue(c, ret);
             JS_FreeValue(c, rf[0]);
             JS_FreeValue(c, rf[1]);
             JS_FreeValue(c, err);
+            JS_FreeValue(c, global);
             return promise;
         }, "share", 1));
     JS_SetPropertyStr(ctx, navigator, "canShare",
