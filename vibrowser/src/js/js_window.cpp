@@ -2933,6 +2933,7 @@ static JSValue js_css_supports(JSContext* ctx, JSValueConst /*this_val*/,
         "animation-fill-mode", "animation-play-state",
         "animation-composition", "animation-timeline",
         "animation-range",
+        "interpolate-size",
         // Filter / backdrop
         "filter", "backdrop-filter", "-webkit-backdrop-filter",
         // Clip / shape / mask
@@ -3096,6 +3097,10 @@ static JSValue js_css_supports(JSContext* ctx, JSValueConst /*this_val*/,
 
         if (prop_name == "box-sizing") {
             return val == "border-box" || val == "content-box";
+        }
+
+        if (prop_name == "interpolate-size") {
+            return val == "allow-keywords" || val == "numeric-only";
         }
 
         // For all other known properties, accept any non-empty value.

@@ -17598,6 +17598,14 @@ void install_dom_bindings(JSContext* ctx,
         if (tag !== 'dialog') return;
         if (arguments.length) this.__dialogReturnValue = (returnValue === undefined || returnValue === null) ? '' : String(returnValue);
         this.removeAttribute('open');
+        // Dispatch 'close' event (non-bubbling, non-cancelable)
+        try {
+            var closeEvt = document.createEvent('Event');
+            if (closeEvt && closeEvt.initEvent) {
+                closeEvt.initEvent('close', false, false);
+                this.dispatchEvent(closeEvt);
+            }
+        } catch(e) {}
         return undefined;
     };
 
