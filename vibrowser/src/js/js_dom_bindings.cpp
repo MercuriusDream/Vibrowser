@@ -18916,6 +18916,123 @@ void install_dom_bindings(JSContext* ctx,
             return err;
         };
     }
+    // Promise.withResolvers() — ES2024
+    if (typeof Promise.withResolvers !== 'function') {
+        Promise.withResolvers = function() {
+            var resolve, reject;
+            var promise = new Promise(function(res, rej) {
+                resolve = res;
+                reject = rej;
+            });
+            return { promise: promise, resolve: resolve, reject: reject };
+        };
+    }
+    // Array.fromAsync() — ES2024
+    if (typeof Array.fromAsync !== 'function') {
+        Array.fromAsync = function(iterable, mapFn) {
+            var result = [];
+            var index = 0;
+            return Promise.resolve().then(function processAsync() {
+                var iterator = iterable[Symbol.iterator]();
+                return (function iterate() {
+                    var item = iterator.next();
+                    if (item.done) return result;
+                    var value = item.value;
+                    if (value && typeof value.then === 'function') {
+                        return value.then(function(v) {
+                            result.push(mapFn ? mapFn(v, index++) : v);
+                            return iterate();
+                        });
+                    } else {
+                        result.push(mapFn ? mapFn(value, index++) : value);
+                        return iterate();
+                    }
+                })();
+            });
+        };
+    }
+    // Map.groupBy() — ES2024
+    if (typeof Map.groupBy !== 'function') {
+        Map.groupBy = function(iterable, callback) {
+            var result = new Map();
+            var index = 0;
+            for (var item of iterable) {
+                var key = callback(item, index++);
+                if (!result.has(key)) result.set(key, []);
+                result.get(key).push(item);
+            }
+            return result;
+        };
+    }
+    // Set prototype operations — ES2025
+    if (typeof Set.prototype.union !== 'function') {
+        Set.prototype.union = function(other) {
+            var result = new Set(this);
+            for (var item of other) {
+                result.add(item);
+            }
+            return result;
+        };
+        Set.prototype.intersection = function(other) {
+            var result = new Set();
+            for (var item of this) {
+                if (other.has(item)) result.add(item);
+            }
+            return result;
+        };
+        Set.prototype.difference = function(other) {
+            var result = new Set(this);
+            for (var item of other) {
+                result.delete(item);
+            }
+            return result;
+        };
+        Set.prototype.symmetricDifference = function(other) {
+            var result = new Set(this);
+            for (var item of other) {
+                if (result.has(item)) {
+                    result.delete(item);
+                } else {
+                    result.add(item);
+                }
+            }
+            return result;
+        };
+        Set.prototype.isSubsetOf = function(other) {
+            for (var item of this) {
+                if (!other.has(item)) return false;
+            }
+            return true;
+        };
+        Set.prototype.isSupersetOf = function(other) {
+            for (var item of other) {
+                if (!this.has(item)) return false;
+            }
+            return true;
+        };
+        Set.prototype.isDisjointFrom = function(other) {
+            for (var item of this) {
+                if (other.has(item)) return false;
+            }
+            return true;
+        };
+    }
+    // Iterator.from() stub — ES2024
+    if (typeof Iterator === 'undefined') {
+        globalThis.Iterator = {
+            from: function(iterable) {
+                if (iterable && typeof iterable[Symbol.iterator] === 'function') {
+                    return iterable[Symbol.iterator]();
+                }
+                throw new TypeError('Iterator.from requires an iterable');
+            }
+        };
+    }
+    // Float16Array stub — ES2025
+    if (typeof Float16Array === 'undefined') {
+        globalThis.Float16Array = Float32Array;
+    }
+    
 })();
 )JS";
         JSValue ret_builtins = JS_Eval(ctx, modern_builtins_src, std::strlen(modern_builtins_src),

@@ -5998,6 +5998,64 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_FreeValue(ctx, polyfill_promise_any);
     }
 
+    {
+        const char* polyfill_broadcast_channel_src = R"JS(
+        if (typeof globalThis.BroadcastChannel === 'undefined') {
+            globalThis.BroadcastChannel = function BroadcastChannel(name) {
+                this.name = name;
+                this.onmessage = null;
+                this.onmessageerror = null;
+                this._listeners = [];
+            };
+            BroadcastChannel.prototype.postMessage = function(data) {
+                // Stub: in a real browser, broadcasts to all same-origin BroadcastChannels
+            };
+            BroadcastChannel.prototype.close = function() {
+                this._listeners = [];
+                this.onmessage = null;
+            };
+            BroadcastChannel.prototype.addEventListener = function(type, fn) {
+                this._listeners.push({ type: type, fn: fn });
+            };
+            BroadcastChannel.prototype.removeEventListener = function(type, fn) {
+                this._listeners = this._listeners.filter(function(l) { return l.fn !== fn; });
+            };
+            BroadcastChannel.prototype.dispatchEvent = function() {
+                return true;
+            };
+        }
+)JS";
+        JSValue polyfill_broadcast_channel = JS_Eval(ctx, polyfill_broadcast_channel_src, std::strlen(polyfill_broadcast_channel_src),
+                                                     "<polyfill-BroadcastChannel>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_broadcast_channel)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_broadcast_channel);
+    }
+
+    {
+        const char* polyfill_promise_withresolvers_src = R"JS(
+        if (typeof globalThis.Promise !== 'undefined' && !globalThis.Promise.withResolvers) {
+            Promise.withResolvers = function() {
+                var resolve, reject;
+                var promise = new Promise(function(res, rej) {
+                    resolve = res;
+                    reject = rej;
+                });
+                return { promise: promise, resolve: resolve, reject: reject };
+            };
+        }
+)JS";
+        JSValue polyfill_promise_withresolvers = JS_Eval(ctx, polyfill_promise_withresolvers_src, std::strlen(polyfill_promise_withresolvers_src),
+                                                         "<polyfill-PromiseWithResolvers>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(polyfill_promise_withresolvers)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, polyfill_promise_withresolvers);
+    }
+
     // ---- ES2021-2023 polyfills ----
     {
         const char* polyfill_es2023_src = R"JS(
