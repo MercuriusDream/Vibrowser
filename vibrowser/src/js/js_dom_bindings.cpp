@@ -19610,6 +19610,9 @@ AbortController.prototype.abort = function(reason) {
     var methods = ['encrypt','decrypt','sign','verify','generateKey',
                    'importKey','exportKey','deriveBits','deriveKey',
                    'wrapKey','unwrapKey'];
+    if (!subtle.digest) {
+        methods.push('digest');
+    }
     for (var i = 0; i < methods.length; i++) {
         if (!subtle[methods[i]]) {
             subtle[methods[i]] = notSupported;
@@ -19633,6 +19636,33 @@ AbortController.prototype.abort = function(reason) {
 
         // Install as globalThis.crypto (native, always)
         JS_SetPropertyStr(ctx, global, "crypto", crypto_obj);
+    }
+
+    // ------------------------------------------------------------------
+    // Error.stack polyfill (guarantee Error.stack exists everywhere)
+    // ------------------------------------------------------------------
+    {
+        const char* error_stack_src = R"JS(
+(function() {
+    if (typeof (new Error()).stack !== 'string') {
+        var _origError = Error;
+        Object.defineProperty(Error.prototype, 'stack', {
+            get: function() {
+                return this._stack || ('Error: ' + (this.message || '') + '\n    at <anonymous>');
+            },
+            set: function(v) { this._stack = v; },
+            configurable: true
+        });
+    }
+})();
+)JS";
+        JSValue error_stack_ret = JS_Eval(ctx, error_stack_src, std::strlen(error_stack_src),
+                                         "<error-stack-polyfill>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(error_stack_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, error_stack_ret);
     }
 
     // ------------------------------------------------------------------
@@ -21854,6 +21884,217 @@ if(typeof globalThis.AbstractRange==='undefined')
             JS_FreeValue(ctx, exc);
         }
         JS_FreeValue(ctx, fonts_ret);
+    }
+
+    // ------------------------------------------------------------------
+    // OffscreenCanvas and related stubs
+    // ------------------------------------------------------------------
+    {
+        const char* offscreen_canvas_src = R"JS(
+(function() {
+    if (typeof globalThis.OffscreenCanvas !== 'undefined') return;
+
+    function OffscreenCanvas(width, height) {
+        this.width = width || 0;
+        this.height = height || 0;
+        var canvas = document.createElement('canvas');
+        canvas.width = this.width;
+        canvas.height = this.height;
+        this._canvas = canvas;
+    }
+
+    OffscreenCanvas.prototype.getContext = function(contextType, options) {
+        if (this._canvas) return this._canvas.getContext(contextType, options);
+        return null;
+    };
+
+    OffscreenCanvas.prototype.transferToImageBitmap = function() {
+        return new ImageBitmap(this);
+    };
+
+    OffscreenCanvas.prototype.convertToBlob = function(type, quality) {
+        var self = this;
+        return new Promise(function(resolve) {
+            if (!self._canvas) {
+                if (typeof Blob === 'undefined') {
+                    resolve(null);
+                } else {
+                    resolve(new Blob());
+                }
+                return;
+            }
+            self._canvas.toBlob(function(blob) {
+                resolve(blob);
+            }, type, quality);
+        });
+    };
+
+    globalThis.OffscreenCanvas = OffscreenCanvas;
+})();
+)JS";
+        JSValue offscreen_canvas_ret = JS_Eval(ctx, offscreen_canvas_src, std::strlen(offscreen_canvas_src),
+                                 "<offscreen-canvas>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(offscreen_canvas_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, offscreen_canvas_ret);
+    }
+
+    // ------------------------------------------------------------------
+    // ImageBitmap and createImageBitmap stubs
+    // ------------------------------------------------------------------
+    {
+        const char* imagebitmap_src = R"JS(
+(function() {
+    function toNumber(value, fallback) {
+        value = Number(value);
+        return isFinite(value) ? value : fallback;
+    }
+
+    if (typeof globalThis.ImageBitmap === 'undefined') {
+        function ImageBitmap(source) {
+            this.width = toNumber(source && source.width, 0);
+            this.height = toNumber(source && source.height, 0);
+            this._source = source || null;
+            this._closed = false;
+        }
+
+        ImageBitmap.prototype.close = function() {
+            this._closed = true;
+            this._source = null;
+        };
+
+        globalThis.ImageBitmap = ImageBitmap;
+    }
+
+    if (typeof globalThis.createImageBitmap !== 'undefined') return;
+
+    globalThis.createImageBitmap = function(source, sx, sy, sw, sh) {
+        return new Promise(function(resolve, reject) {
+            var width = 0;
+            var height = 0;
+            if (source && typeof source.width === 'number') width = source.width;
+            if (source && typeof source.height === 'number') height = source.height;
+
+            if (typeof sw === 'number' && sw >= 0) width = sw;
+            if (typeof sh === 'number' && sh >= 0) height = sh;
+
+            resolve(new ImageBitmap({ width: width, height: height }));
+        });
+    };
+})();
+)JS";
+        JSValue imagebitmap_ret = JS_Eval(ctx, imagebitmap_src, std::strlen(imagebitmap_src),
+                                 "<imagebitmap-stub>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(imagebitmap_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, imagebitmap_ret);
+    }
+
+    // ------------------------------------------------------------------
+    // CSS Highlights stubs
+    // ------------------------------------------------------------------
+    {
+        const char* css_highlights_src = R"JS(
+(function() {
+    if (typeof globalThis.CSS === 'undefined') {
+        globalThis.CSS = {};
+    }
+    if (typeof globalThis.CSS.highlights !== 'undefined') return;
+
+    function Highlight(range, options) {
+        options = options || {};
+        this.priority = Number(options.priority) === Number(options.priority) ? options.priority : 0;
+        this.type = options.type || 'text';
+        this.range = range || null;
+        this.label = options.label || '';
+    }
+
+    function HighlightRegistry() {
+        this._highlights = {};
+        this.size = 0;
+    }
+
+    HighlightRegistry.prototype.set = function(name, highlight) {
+        var key = String(name);
+        if (!Object.prototype.hasOwnProperty.call(this._highlights, key)) {
+            this.size++;
+        }
+        this._highlights[key] = highlight;
+        return this;
+    };
+
+    HighlightRegistry.prototype.get = function(name) {
+        return this._highlights[String(name)];
+    };
+
+    HighlightRegistry.prototype.has = function(name) {
+        return Object.prototype.hasOwnProperty.call(this._highlights, String(name));
+    };
+
+    HighlightRegistry.prototype.delete = function(name) {
+        var key = String(name);
+        if (!this.has(key)) return false;
+        delete this._highlights[key];
+        this.size--;
+        return true;
+    };
+
+    HighlightRegistry.prototype.clear = function() {
+        this._highlights = {};
+        this.size = 0;
+    };
+
+    HighlightRegistry.prototype.forEach = function(cb, thisArg) {
+        if (typeof cb !== 'function') return;
+        for (var key in this._highlights) {
+            if (!Object.prototype.hasOwnProperty.call(this._highlights, key)) continue;
+            cb.call(thisArg, this._highlights[key], key, this);
+        }
+    };
+
+    HighlightRegistry.prototype.keys = function() {
+        return Object.keys(this._highlights);
+    };
+
+    HighlightRegistry.prototype.values = function() {
+        var out = [];
+        for (var key in this._highlights) {
+            if (!Object.prototype.hasOwnProperty.call(this._highlights, key)) continue;
+            out.push(this._highlights[key]);
+        }
+        return out;
+    };
+
+    HighlightRegistry.prototype.entries = function() {
+        var out = [];
+        for (var key in this._highlights) {
+            if (!Object.prototype.hasOwnProperty.call(this._highlights, key)) continue;
+            out.push([key, this._highlights[key]]);
+        }
+        return out;
+    };
+
+    if (typeof globalThis.Highlight === 'undefined') {
+        globalThis.Highlight = Highlight;
+    }
+    if (typeof globalThis.HighlightRegistry === 'undefined') {
+        globalThis.HighlightRegistry = HighlightRegistry;
+    }
+
+    globalThis.CSS.highlights = new HighlightRegistry();
+})();
+)JS";
+        JSValue css_highlights_ret = JS_Eval(ctx, css_highlights_src, std::strlen(css_highlights_src),
+                                 "<css-highlights>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(css_highlights_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, css_highlights_ret);
     }
 
     // ------------------------------------------------------------------
