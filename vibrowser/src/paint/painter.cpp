@@ -2051,6 +2051,165 @@ void Painter::paint_borders(const clever::layout::LayoutNode& node, DisplayList&
         return; // border-image replaces normal borders
     }
 
+    // CSS border-image with image pixels: 9-part slicing
+    if (node.border_image_pixels && !node.border_image_pixels->empty()) {
+        Rect border_box = {abs_x, abs_y, geom.border_box_width(), geom.border_box_height()};
+        float bt = geom.border.top, br_w = geom.border.right;
+        float bb = geom.border.bottom, bl_w = geom.border.left;
+
+        int img_w = node.border_image_img_width;
+        int img_h = node.border_image_img_height;
+        float slice_pct = node.border_image_slice / 100.0f;
+        float slice_px_w = slice_pct * img_w;
+        float slice_px_h = slice_pct * img_h;
+        int repeat_mode = node.border_image_repeat; // 0=stretch, 1=repeat, 2=round, 3=space
+
+        if (img_w <= 0 || img_h <= 0) {
+            // Invalid image dimensions, fall through to normal borders
+        } else {
+            // Helper lambda to extract a rectangular region from source pixels
+            auto extract_region = [&](int src_x, int src_y, int src_w, int src_h) -> std::shared_ptr<ImageData> {
+                auto result = std::make_shared<ImageData>();
+                result->width = src_w;
+                result->height = src_h;
+                result->pixels.resize(src_w * src_h * 4, 0);
+
+                const auto& src = *node.border_image_pixels;
+                for (int dy = 0; dy < src_h; dy++) {
+                    for (int dx = 0; dx < src_w; dx++) {
+                        int src_idx = (src_y + dy) * img_w * 4 + (src_x + dx) * 4;
+                        int dst_idx = dy * src_w * 4 + dx * 4;
+                        if (src_idx + 3 < static_cast<int>(src.size())) {
+                            result->pixels[dst_idx] = src[src_idx];
+                            result->pixels[dst_idx + 1] = src[src_idx + 1];
+                            result->pixels[dst_idx + 2] = src[src_idx + 2];
+                            result->pixels[dst_idx + 3] = src[src_idx + 3];
+                        }
+                    }
+                }
+                return result;
+            };
+
+            // Clamp slice values to image bounds
+            int slice_x = static_cast<int>(std::max(0.0f, std::min(slice_px_w, static_cast<float>(img_w))));
+            int slice_y = static_cast<int>(std::max(0.0f, std::min(slice_px_h, static_cast<float>(img_h))));
+
+            // 4 corners (always stretch)
+            if (bt > 0 && bl_w > 0) {
+                auto img = extract_region(0, 0, slice_x, slice_y);
+                if (img->width > 0 && img->height > 0) {
+                    list.draw_image({abs_x, abs_y, bl_w, bt}, img);
+                }
+            }
+            if (bt > 0 && br_w > 0 && slice_x < img_w) {
+                auto img = extract_region(img_w - slice_x, 0, slice_x, slice_y);
+                if (img->width > 0 && img->height > 0) {
+                    list.draw_image({abs_x + border_box.width - br_w, abs_y, br_w, bt}, img);
+                }
+            }
+            if (bb > 0 && bl_w > 0 && slice_y < img_h) {
+                auto img = extract_region(0, img_h - slice_y, slice_x, slice_y);
+                if (img->width > 0 && img->height > 0) {
+                    list.draw_image({abs_x, abs_y + border_box.height - bb, bl_w, bb}, img);
+                }
+            }
+            if (bb > 0 && br_w > 0 && slice_x < img_w && slice_y < img_h) {
+                auto img = extract_region(img_w - slice_x, img_h - slice_y, slice_x, slice_y);
+                if (img->width > 0 && img->height > 0) {
+                    list.draw_image({abs_x + border_box.width - br_w, abs_y + border_box.height - bb, br_w, bb}, img);
+                }
+            }
+
+            // 4 edges (use repeat mode)
+            // Top edge
+            if (bt > 0 && slice_x < img_w) {
+                auto img = extract_region(slice_x, 0, img_w - 2 * slice_x, slice_y);
+                if (img->width > 0 && img->height > 0 && border_box.width - bl_w - br_w > 0) {
+                    float edge_w = border_box.width - bl_w - br_w;
+                    if (repeat_mode == 0) { // stretch
+                        list.draw_image({abs_x + bl_w, abs_y, edge_w, bt}, img);
+                    } else if (repeat_mode == 1) { // repeat
+                        float x = abs_x + bl_w;
+                        while (x < abs_x + bl_w + edge_w) {
+                            float w = std::min(img->width * bt / img->height, abs_x + bl_w + edge_w - x);
+                            list.draw_image({x, abs_y, w, bt}, img);
+                            x += w;
+                        }
+                    } else {
+                        list.draw_image({abs_x + bl_w, abs_y, edge_w, bt}, img);
+                    }
+                }
+            }
+            // Bottom edge
+            if (bb > 0 && slice_x < img_w && slice_y < img_h) {
+                auto img = extract_region(slice_x, img_h - slice_y, img_w - 2 * slice_x, slice_y);
+                if (img->width > 0 && img->height > 0 && border_box.width - bl_w - br_w > 0) {
+                    float edge_w = border_box.width - bl_w - br_w;
+                    if (repeat_mode == 0) { // stretch
+                        list.draw_image({abs_x + bl_w, abs_y + border_box.height - bb, edge_w, bb}, img);
+                    } else if (repeat_mode == 1) { // repeat
+                        float x = abs_x + bl_w;
+                        while (x < abs_x + bl_w + edge_w) {
+                            float w = std::min(img->width * bb / img->height, abs_x + bl_w + edge_w - x);
+                            list.draw_image({x, abs_y + border_box.height - bb, w, bb}, img);
+                            x += w;
+                        }
+                    } else {
+                        list.draw_image({abs_x + bl_w, abs_y + border_box.height - bb, edge_w, bb}, img);
+                    }
+                }
+            }
+            // Left edge
+            if (bl_w > 0 && slice_y < img_h) {
+                auto img = extract_region(0, slice_y, slice_x, img_h - 2 * slice_y);
+                if (img->width > 0 && img->height > 0 && border_box.height - bt - bb > 0) {
+                    float edge_h = border_box.height - bt - bb;
+                    if (repeat_mode == 0) { // stretch
+                        list.draw_image({abs_x, abs_y + bt, bl_w, edge_h}, img);
+                    } else if (repeat_mode == 1) { // repeat
+                        float y = abs_y + bt;
+                        while (y < abs_y + bt + edge_h) {
+                            float h = std::min(img->height * bl_w / img->width, abs_y + bt + edge_h - y);
+                            list.draw_image({abs_x, y, bl_w, h}, img);
+                            y += h;
+                        }
+                    } else {
+                        list.draw_image({abs_x, abs_y + bt, bl_w, edge_h}, img);
+                    }
+                }
+            }
+            // Right edge
+            if (br_w > 0 && slice_x < img_w && slice_y < img_h) {
+                auto img = extract_region(img_w - slice_x, slice_y, slice_x, img_h - 2 * slice_y);
+                if (img->width > 0 && img->height > 0 && border_box.height - bt - bb > 0) {
+                    float edge_h = border_box.height - bt - bb;
+                    if (repeat_mode == 0) { // stretch
+                        list.draw_image({abs_x + border_box.width - br_w, abs_y + bt, br_w, edge_h}, img);
+                    } else if (repeat_mode == 1) { // repeat
+                        float y = abs_y + bt;
+                        while (y < abs_y + bt + edge_h) {
+                            float h = std::min(img->height * br_w / img->width, abs_y + bt + edge_h - y);
+                            list.draw_image({abs_x + border_box.width - br_w, y, br_w, h}, img);
+                            y += h;
+                        }
+                    } else {
+                        list.draw_image({abs_x + border_box.width - br_w, abs_y + bt, br_w, edge_h}, img);
+                    }
+                }
+            }
+
+            // Center fill (only if fill keyword is present)
+            if (node.border_image_slice_fill && border_box.width - bl_w - br_w > 0 && border_box.height - bt - bb > 0 && slice_x < img_w && slice_y < img_h) {
+                auto img = extract_region(slice_x, slice_y, img_w - 2 * slice_x, img_h - 2 * slice_y);
+                if (img->width > 0 && img->height > 0) {
+                    list.draw_image({abs_x + bl_w, abs_y + bt, border_box.width - bl_w - br_w, border_box.height - bt - bb}, img);
+                }
+            }
+
+            return; // border-image replaces normal borders
+        }
+    }
+
     auto extract_color = [&](uint32_t bc) -> Color {
         uint8_t a = static_cast<uint8_t>((bc >> 24) & 0xFF);
         uint8_t r = static_cast<uint8_t>((bc >> 16) & 0xFF);
