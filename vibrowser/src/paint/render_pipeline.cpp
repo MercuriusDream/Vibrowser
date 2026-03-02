@@ -5135,23 +5135,21 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             else if (val_lower == "none") val = 2;
             style.overscroll_behavior_y = val;
         } else if (d.property == "touch-action") {
-            // 0=auto, 1=none, 2=pan-x, 3=pan-y, 4=pan-x pan-y, 5=manipulation, 6=pinch-zoom
-            int val = 0; // default auto
-            if (val_lower == "none") val = 1;
-            else if (val_lower == "pan-x") val = 2;
-            else if (val_lower == "pan-y") val = 3;
-            else if (val_lower == "pan-x pan-y" || val_lower == "pan-y pan-x") val = 4;
-            else if (val_lower == "manipulation") val = 5;
-            else if (val_lower == "pinch-zoom") val = 6;
-            style.touch_action = val;
+            // 0=auto, 1=none, 2=manipulation, 3=pan-x, 4=pan-y
+            if (val_lower == "auto") style.touch_action = 0;
+            else if (val_lower == "none") style.touch_action = 1;
+            else if (val_lower == "manipulation") style.touch_action = 2;
+            else if (val_lower == "pan-x") style.touch_action = 3;
+            else if (val_lower == "pan-y") style.touch_action = 4;
+            else style.touch_action = 0;
         } else if (d.property == "appearance" || d.property == "-webkit-appearance") {
             // 0=auto, 1=none, 2=menulist-button, 3=textfield, 4=button
-            int val = 0; // default auto
-            if (val_lower == "none") val = 1;
-            else if (val_lower == "menulist-button") val = 2;
-            else if (val_lower == "textfield") val = 3;
-            else if (val_lower == "button") val = 4;
-            style.appearance = val;
+            if (val_lower == "auto") style.appearance = 0;
+            else if (val_lower == "none") style.appearance = 1;
+            else if (val_lower == "menulist-button") style.appearance = 2;
+            else if (val_lower == "textfield") style.appearance = 3;
+            else if (val_lower == "button") style.appearance = 4;
+            else style.appearance = 0;
         } else if (d.property == "-webkit-tap-highlight-color") {
             // Parse color value
             auto color_val = clever::css::parse_color(d.value);
