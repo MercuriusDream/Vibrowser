@@ -286,6 +286,13 @@ struct DOMState {
     bool has_pending_scroll = false;
     double pending_scroll_x = 0.0;
     double pending_scroll_y = 0.0;
+
+    // History API: stack of (url, state_json) pairs
+    std::vector<std::pair<std::string, std::string>> history_stack;
+    int history_index = 0;
+    std::string pending_history_url = "";
+    std::string pending_history_action = ""; // "push", "replace", "back", or "forward"
+
 };
 
 struct URLState {
