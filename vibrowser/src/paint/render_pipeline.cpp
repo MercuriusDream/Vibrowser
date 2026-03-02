@@ -3366,6 +3366,31 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             else if (d.property == "border-right") style.border_right = side;
             else if (d.property == "border-bottom") style.border_bottom = side;
             else style.border_left = side;
+        } else if (d.property == "border-inline") {
+            // CSS border-inline logical shorthand: parse "width style color"
+            auto bi_parts = split_whitespace_paren(d.value);
+            clever::css::Length bw = clever::css::Length::px(1);
+            clever::css::BorderStyle bs_val = clever::css::BorderStyle::None;
+            clever::css::Color bc = style.color;
+            for (const auto& part : bi_parts) {
+                auto bwp = clever::css::parse_length(part);
+                if (bwp) { bw = *bwp; continue; }
+                std::string pl = to_lower(part);
+                if (pl == "solid" || pl == "dashed" || pl == "dotted" || pl == "double" || pl == "none") {
+                    if (pl == "none") {
+                        bs_val = clever::css::BorderStyle::None;
+                        bw = clever::css::Length::zero();
+                    }
+                    else if (pl == "solid") bs_val = clever::css::BorderStyle::Solid;
+                    else if (pl == "dashed") bs_val = clever::css::BorderStyle::Dashed;
+                    else if (pl == "dotted") bs_val = clever::css::BorderStyle::Dotted;
+                    continue;
+                }
+                auto bcp = clever::css::parse_color(part);
+                if (bcp) { bc = *bcp; continue; }
+            }
+            style.border_left = {bw, bs_val, bc};
+            style.border_right = {bw, bs_val, bc};
         } else if (d.property == "border-block" || d.property == "border-block-start" || d.property == "border-block-end") {
             // CSS border-block logical shorthands: parse "width style color"
             auto bb_parts = split_whitespace_paren(d.value);
@@ -5134,6 +5159,16 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "contain") val = 1;
             else if (val_lower == "none") val = 2;
             style.overscroll_behavior_y = val;
+        } else if (d.property == "overscroll-behavior-inline") {
+            int val = 0;
+            if (val_lower == "contain") val = 1;
+            else if (val_lower == "none") val = 2;
+            style.overscroll_behavior_x = val;
+        } else if (d.property == "overscroll-behavior-block") {
+            int val = 0;
+            if (val_lower == "contain") val = 1;
+            else if (val_lower == "none") val = 2;
+            style.overscroll_behavior_y = val;
         } else if (d.property == "touch-action") {
             // 0=auto, 1=none, 2=manipulation, 3=pan-x, 4=pan-y
             if (val_lower == "auto") style.touch_action = 0;
@@ -6316,6 +6351,10 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "auto") style.forced_color_adjust = 0;
             else if (val_lower == "none") style.forced_color_adjust = 1;
             else if (val_lower == "preserve-parent-color") style.forced_color_adjust = 2;
+        } else if (d.property == "text-box-trim" || d.property == "text-box-edge" ||
+                   d.property == "leading-trim" || d.property == "text-edge") {
+            // Parse typography properties (stored for future use, not rendered)
+            // Just consume the value to prevent "unknown property" warnings
         } else if (d.property == "math-style") {
             if (val_lower == "normal") style.math_style = 0;
             else if (val_lower == "compact") style.math_style = 1;
