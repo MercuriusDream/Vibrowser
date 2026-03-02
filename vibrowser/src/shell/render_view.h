@@ -17,6 +17,10 @@ struct StickyElementInfo {
     float top_offset;      // CSS `top` value in pixels (the stick threshold)
     float container_top;   // top of the scrollable container (pixels)
     float container_bottom;// bottom of the scrollable container (pixels)
+    float container_scroll_y; // scroll_top of the sticky container (pixels)
+    float container_x;     // x position of the scroll container in page coordinates (pixels)
+    float container_y;     // y position of the scroll container in page coordinates (pixels)
+    bool is_page_sticky;   // true when relative to viewport (page scroll), false for container-relative sticky
     // Pixel data for the sticky element's region (RGBA, row-major)
     std::vector<uint8_t> pixels;
     int pixel_x;           // x position in the rendered buffer

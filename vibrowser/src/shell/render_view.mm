@@ -443,9 +443,15 @@ struct TextRegion {
 
         // Convert scroll offset from logical view points to renderer pixel coords
         CGFloat scrollPx = _scrollOffset / _pageScale * _backingScale;
+        CGFloat stickyScrollPx = elem.is_page_sticky
+            ? scrollPx
+            : (elem.container_scroll_y / _pageScale * _backingScale);
 
         // The element's normal position in the page (renderer pixel coords)
         float normal_y = elem.abs_y;
+        if (!elem.is_page_sticky) {
+            normal_y -= elem.container_y;
+        }
         // The threshold: element starts sticking when its top edge scrolls
         // past the viewport top + top_offset
         float stick_threshold = elem.top_offset * _backingScale;
@@ -454,14 +460,16 @@ struct TextRegion {
         // The element's Y relative to viewport = normal_y - scrollPx
         // It should stick when normal_y - scrollPx < stick_threshold
         // i.e., when scrollPx > normal_y - stick_threshold
-        bool should_stick = (scrollPx > normal_y - stick_threshold);
+        bool should_stick = (stickyScrollPx > normal_y - stick_threshold);
 
         // Also check container bounds: the sticky element should not stick
         // past the bottom of its container. When the container's bottom edge
         // minus the element's height reaches the stick threshold, the element
         // should start scrolling away with the container.
         float max_stick_y = elem.container_bottom - elem.height;
-        bool past_container = (scrollPx + stick_threshold > max_stick_y);
+        bool past_container = elem.is_page_sticky
+            ? (stickyScrollPx + stick_threshold > max_stick_y)
+            : (elem.container_y + stick_threshold > max_stick_y);
 
         if (!should_stick) continue; // Element is in normal flow position, already drawn in main image
 
@@ -471,13 +479,19 @@ struct TextRegion {
             // Element is pushed up by the container bottom edge
             draw_y_px = max_stick_y;
         } else {
-            // Element is stuck at the top_offset from viewport top
-            draw_y_px = scrollPx + stick_threshold;
+            // Element is stuck at the sticky container's top_offset.
+            if (elem.is_page_sticky) {
+                // Page-level sticky tracks the viewport scroll.
+                draw_y_px = stickyScrollPx + stick_threshold;
+            } else {
+                // Container-level sticky tracks the container origin.
+                draw_y_px = elem.container_y + stick_threshold;
+            }
         }
 
         // Convert from renderer pixels to logical view points
         CGFloat draw_x = (elem.pixel_x / _backingScale) * _pageScale;
-        CGFloat draw_y = (draw_y_px / _backingScale) * _pageScale - _scrollOffset;
+        CGFloat draw_y = ((draw_y_px / _backingScale) * _pageScale) - (elem.is_page_sticky ? _scrollOffset : 0.0);
         CGFloat draw_w = (elem.pixel_width / _backingScale) * _pageScale;
         CGFloat draw_h = (elem.pixel_height / _backingScale) * _pageScale;
 

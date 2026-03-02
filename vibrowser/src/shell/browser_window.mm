@@ -1831,9 +1831,17 @@ static std::string build_shell_message_html(const std::string& page_title,
             // Walk the layout tree to compute absolute positions and find sticky nodes.
             // We pass parent_abs_x/y to accumulate absolute coordinates, plus the
             // parent container's top/bottom bounds for constraining the stick range.
-            std::function<void(const clever::layout::LayoutNode&, float, float, float, float)> collectSticky;
+            struct StickyContainerContext {
+                float top = 0;
+                float bottom = 0;
+                float x = 0;
+                float y = 0;
+                float scroll_y = 0;
+                bool is_page = true;
+            };
+            std::function<void(const clever::layout::LayoutNode&, float, float, const StickyContainerContext&, int)> collectSticky;
             collectSticky = [&](const clever::layout::LayoutNode& n, float parent_abs_x, float parent_abs_y,
-                                float container_top, float container_bottom) {
+                                const StickyContainerContext& container, int depth) {
                 const auto& g = n.geometry;
                 float abs_x = parent_abs_x + g.x;
                 float abs_y = parent_abs_y + g.y;
@@ -1842,8 +1850,12 @@ static std::string build_shell_message_html(const std::string& page_title,
 
                 // Update container bounds for children: if this node is a block-level
                 // container, its content area defines the scrollable constraint region.
-                float child_container_top = container_top;
-                float child_container_bottom = container_bottom;
+                float child_container_top = container.top;
+                float child_container_bottom = container.bottom;
+                float child_container_x = container.x;
+                float child_container_y = container.y;
+                float child_container_scroll_y = container.scroll_y;
+                bool child_is_page_sticky = container.is_page;
                 if (!n.is_text && n.position_type != 4) {
                     // Use this node's content area as the container for sticky children
                     float node_top = abs_y;
@@ -1855,14 +1867,29 @@ static std::string build_shell_message_html(const std::string& page_title,
                     }
                 }
 
+                // For position:sticky descendants, nearest scroll container should be
+                // an overflow:auto ancestor (excluding the layout root, which is handled
+                // by page-level scrolling via RenderView::_scrollOffset).
+                if (depth > 0 && n.is_scroll_container && n.overflow == 3) {
+                    // First non-root scroll container encountered becomes container-relative sticky.
+                    child_container_scroll_y = n.scroll_top;
+                    child_container_x = abs_x;
+                    child_container_y = abs_y;
+                    child_is_page_sticky = false;
+                }
+
                 if (n.position_type == 4 && n.pos_top_set) {
                     // This is a position:sticky element with a top offset
                     StickyElementInfo info;
                     info.abs_y = abs_y;
                     info.height = border_box_h;
                     info.top_offset = n.pos_top;
-                    info.container_top = container_top;
-                    info.container_bottom = container_bottom;
+                    info.container_top = child_container_top;
+                    info.container_bottom = child_container_bottom;
+                    info.container_scroll_y = child_container_scroll_y;
+                    info.container_x = child_container_x;
+                    info.container_y = child_container_y;
+                    info.is_page_sticky = child_is_page_sticky;
 
                     // Compute pixel rect in the rendered buffer
                     int px_x = std::max(0, static_cast<int>(abs_x));
@@ -1893,12 +1920,20 @@ static std::string build_shell_message_html(const std::string& page_title,
                 float child_x = abs_x + g.border.left + g.padding.left;
                 float child_y = abs_y + g.border.top + g.padding.top;
                 for (auto& c : n.children) {
-                    collectSticky(*c, child_x, child_y, child_container_top, child_container_bottom);
+                    collectSticky(*c, child_x, child_y,
+                                  StickyContainerContext{
+                                      child_container_top,
+                                      child_container_bottom,
+                                      child_container_x,
+                                      child_container_y,
+                                      child_container_scroll_y,
+                                      child_is_page_sticky},
+                                  depth + 1);
                 }
             };
 
             float page_bottom = static_cast<float>(rh);
-            collectSticky(*result.root, 0, 0, 0, page_bottom);
+            collectSticky(*result.root, 0, 0, StickyContainerContext{0, page_bottom, 0, 0, 0, true}, 0);
         }
         [tab.renderView updateStickyElements:std::move(stickyElements)];
 
