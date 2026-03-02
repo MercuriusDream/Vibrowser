@@ -175,13 +175,29 @@ static float measure_intrinsic_width(const LayoutNode& node, bool max_content,
     }
     if (node.is_text && !node.text_content.empty()) {
         if (max_content) {
-            // max-content: no wrapping, full text width
+            // max-content: no wrapping, full text width.
+            // Expand tab characters per tab-size, then add word-spacing per space.
+            std::string expanded;
+            expanded.reserve(node.text_content.size());
+            int space_count = 0;
+            for (char c : node.text_content) {
+                if (c == '\t' && node.tab_size > 0) {
+                    for (int t = 0; t < node.tab_size; ++t) expanded += ' ';
+                    space_count++;
+                } else {
+                    if (c == ' ') space_count++;
+                    expanded += c;
+                }
+            }
             if (measurer && *measurer) {
-                width = (*measurer)(node.text_content, node.font_size, node.font_family,
+                width = (*measurer)(expanded, node.font_size, node.font_family,
                                     node.font_weight, node.font_italic, node.letter_spacing);
+                // word-spacing adds extra width per inter-word space
+                if (node.word_spacing != 0.0f) width += node.word_spacing * static_cast<float>(space_count);
             } else {
                 float char_w = node.font_size * 0.6f;
-                width = static_cast<float>(node.text_content.size()) * char_w;
+                width = static_cast<float>(expanded.size()) * char_w;
+                if (node.word_spacing != 0.0f) width += node.word_spacing * static_cast<float>(space_count);
             }
         } else {
             // min-content: longest word — measure each word individually
