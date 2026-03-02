@@ -7533,6 +7533,138 @@ bool StyleResolver::evaluate_media_condition(const std::string& condition) const
 
         auto colon_pos = inner.find(':');
         if (colon_pos == std::string::npos) {
+            auto tokenize_range = [](const std::string& input) {
+                std::vector<std::string> tokens;
+                for (size_t i = 0; i < input.size();) {
+                    while (i < input.size() && std::isspace(static_cast<unsigned char>(input[i]))) {
+                        ++i;
+                    }
+                    if (i >= input.size()) {
+                        break;
+                    }
+
+                    if (input[i] == '>' || input[i] == '<') {
+                        if (i + 1 < input.size() && input[i + 1] == '=') {
+                            tokens.push_back(input.substr(i, 2));
+                            i += 2;
+                        } else {
+                            tokens.push_back(input.substr(i, 1));
+                            ++i;
+                        }
+                        continue;
+                    }
+
+                    size_t start = i;
+                    while (i < input.size() && !std::isspace(static_cast<unsigned char>(input[i])) &&
+                           input[i] != '>' && input[i] != '<') {
+                        ++i;
+                    }
+                    tokens.push_back(input.substr(start, i - start));
+                }
+                return tokens;
+            };
+
+            auto parse_length = [](const std::string& input, float& out) {
+                if (input.empty()) return false;
+                char* end_ptr = nullptr;
+                out = std::strtof(input.c_str(), &end_ptr);
+                if (end_ptr == input.c_str()) return false;
+
+                if (*end_ptr == '\0') return true;
+
+                std::string unit;
+                unit.reserve(input.size());
+                for (const char ch : std::string(end_ptr)) {
+                    unit.push_back(std::tolower(static_cast<unsigned char>(ch)));
+                }
+
+                if (unit == "px") {
+                    return true;
+                }
+                if (unit == "em") {
+                    out *= 16.0f;
+                    return true;
+                }
+                return false;
+            };
+
+            auto get_feature_value = [&](const std::string& feature, float& out) {
+                if (feature == "width") {
+                    out = static_cast<float>(viewport_width_);
+                    return true;
+                }
+                if (feature == "height") {
+                    out = static_cast<float>(viewport_height_);
+                    return true;
+                }
+                return false;
+            };
+
+            auto compare_feature_value = [](float feature_value, const std::string& op, float value) {
+                if (op == "<") return feature_value < value;
+                if (op == "<=") return feature_value <= value;
+                if (op == ">") return feature_value > value;
+                if (op == ">=") return feature_value >= value;
+                return false;
+            };
+
+            auto compare_value_feature = [](float value, const std::string& op, float feature_value) {
+                if (op == "<") return feature_value > value;
+                if (op == "<=") return feature_value >= value;
+                if (op == ">") return feature_value < value;
+                if (op == ">=") return feature_value <= value;
+                return false;
+            };
+
+            auto evaluate_comparison = [&](const std::string& left, const std::string& op, const std::string& right) {
+                float left_value = 0.0f;
+                float right_value = 0.0f;
+                float value = 0.0f;
+
+                bool left_is_width_or_height = get_feature_value(left, left_value);
+                bool right_is_width_or_height = get_feature_value(right, right_value);
+
+                if (left_is_width_or_height && !right_is_width_or_height) {
+                    if (!parse_length(right, value)) return false;
+                    return compare_feature_value(left_value, op, value);
+                }
+                if (!left_is_width_or_height && right_is_width_or_height) {
+                    if (!parse_length(left, value)) return false;
+                    return compare_value_feature(value, op, right_value);
+                }
+                return false;
+            };
+
+            bool has_comparison = (inner.find('>') != std::string::npos) || (inner.find('<') != std::string::npos);
+            std::vector<std::string> tokens = tokenize_range(inner);
+            if (tokens.size() == 3) {
+                return evaluate_comparison(tokens[0], tokens[1], tokens[2]);
+            }
+            if (tokens.size() == 5) {
+                std::string left_str = tokens[0];
+                std::string op1 = tokens[1];
+                std::string feature_str = tokens[2];
+                std::string op2 = tokens[3];
+                std::string right_str = tokens[4];
+
+                float left_val = 0.0f;
+                float feature_val = 0.0f;
+                float right_val = 0.0f;
+
+                // Parse left value
+                if (!parse_length(left_str, left_val)) return false;
+                // Get feature value
+                if (!get_feature_value(feature_str, feature_val)) return false;
+                // Parse right value
+                if (!parse_length(right_str, right_val)) return false;
+
+                // Evaluate both comparisons
+                bool first = compare_value_feature(left_val, op1, feature_val);
+                bool second = compare_feature_value(feature_val, op2, right_val);
+                return first && second;
+            }
+            if (has_comparison) return false;
+
             // Boolean feature like (color), (hover), (pointer)
             if (inner == "color" || inner == "hover" || inner == "grid") return true;
             if (inner == "pointer") return true; // we have a pointer

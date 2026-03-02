@@ -14986,6 +14986,145 @@ static bool evaluate_media_feature(const std::string& expr, int vw, int vh) {
     // Parse "feature: value"
     auto colon = trimmed.find(':');
     if (colon == std::string::npos) {
+        // Handle range syntax, e.g. (width > 600px) or (600px <= width < 900px)
+        auto to_lower = [](const std::string& input) {
+            std::string out = input;
+            for (char& c : out) c = std::tolower(static_cast<unsigned char>(c));
+            return out;
+        };
+
+        auto tokenize_range = [](const std::string& input) {
+            std::vector<std::string> tokens;
+            for (size_t i = 0; i < input.size();) {
+                while (i < input.size() && std::isspace(static_cast<unsigned char>(input[i]))) {
+                    ++i;
+                }
+                if (i >= input.size()) {
+                    break;
+                }
+
+                if (input[i] == '>' || input[i] == '<') {
+                    if (i + 1 < input.size() && input[i + 1] == '=') {
+                        tokens.push_back(input.substr(i, 2));
+                        i += 2;
+                    } else {
+                        tokens.push_back(input.substr(i, 1));
+                        ++i;
+                    }
+                    continue;
+                }
+
+                size_t start = i;
+                while (i < input.size() && !std::isspace(static_cast<unsigned char>(input[i])) &&
+                       input[i] != '>' && input[i] != '<') {
+                    ++i;
+                }
+                tokens.push_back(input.substr(start, i - start));
+            }
+            return tokens;
+        };
+
+        auto parse_length = [&to_lower](const std::string& input, float& out) {
+            if (input.empty()) return false;
+            char* end_ptr = nullptr;
+            out = std::strtof(input.c_str(), &end_ptr);
+            if (end_ptr == input.c_str()) return false;
+
+            if (*end_ptr == '\0') return true;
+
+            std::string unit = to_lower(std::string(end_ptr));
+            if (unit == "px") {
+                return true;
+            }
+            if (unit == "em") {
+                out *= 16.0f;
+                return true;
+            }
+            return false;
+        };
+
+        auto get_feature_value = [&](const std::string& feature, float& out) {
+            if (feature == "width") {
+                out = static_cast<float>(vw);
+                return true;
+            }
+            if (feature == "height") {
+                out = static_cast<float>(vh);
+                return true;
+            }
+            return false;
+        };
+
+        auto compare_feature_value = [](float feature_value, const std::string& op, float value) {
+            if (op == "<") return feature_value < value;
+            if (op == "<=") return feature_value <= value;
+            if (op == ">") return feature_value > value;
+            if (op == ">=") return feature_value >= value;
+            return false;
+        };
+
+        auto compare_value_feature = [](float value, const std::string& op, float feature_value) {
+            if (op == "<") return feature_value > value;
+            if (op == "<=") return feature_value >= value;
+            if (op == ">") return feature_value < value;
+            if (op == ">=") return feature_value <= value;
+            return false;
+        };
+
+        auto evaluate_comparison = [&](const std::string& left, const std::string& op, const std::string& right) {
+            std::string left_feature = to_lower(left);
+            std::string right_feature = to_lower(right);
+            float left_value = 0.0f;
+            float right_value = 0.0f;
+            float value = 0.0f;
+
+            bool left_is_width_or_height = get_feature_value(left_feature, left_value);
+            bool right_is_width_or_height = get_feature_value(right_feature, right_value);
+
+            if (left_is_width_or_height && !right_is_width_or_height) {
+                if (!parse_length(right, value)) return false;
+                return compare_feature_value(left_value, op, value);
+            }
+            if (!left_is_width_or_height && right_is_width_or_height) {
+                if (!parse_length(left, value)) return false;
+                return compare_value_feature(value, op, right_value);
+            }
+            return false;
+        };
+
+        bool has_comparison = (trimmed.find('>') != std::string::npos) || (trimmed.find('<') != std::string::npos);
+        std::vector<std::string> tokens = tokenize_range(trimmed);
+        if (tokens.size() == 3) {
+            std::string left = to_lower(tokens[0]);
+            std::string op = tokens[1];
+            std::string right = to_lower(tokens[2]);
+            return evaluate_comparison(left, op, right);
+        }
+        if (tokens.size() == 5) {
+            std::string left_str = to_lower(tokens[0]);
+            std::string op1 = tokens[1];
+            std::string feature_str = to_lower(tokens[2]);
+            std::string op2 = tokens[3];
+            std::string right_str = to_lower(tokens[4]);
+
+            float left_val = 0.0f;
+            float feature_val = 0.0f;
+            float right_val = 0.0f;
+
+            // Parse left value
+            if (!parse_length(left_str, left_val)) return false;
+            // Get feature value
+            if (!get_feature_value(feature_str, feature_val)) return false;
+            // Parse right value
+            if (!parse_length(right_str, right_val)) return false;
+
+            // Evaluate both comparisons
+            bool first = compare_value_feature(left_val, op1, feature_val);
+            bool second = compare_feature_value(feature_val, op2, right_val);
+            return first && second;
+        }
+        if (has_comparison) return false;
+
         // Bare feature name without value (e.g., "(color)") — treat as true
         return true;
     }
