@@ -5712,8 +5712,16 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
         } else if (d.property == "shape-image-threshold") {
             try { style.shape_image_threshold = std::stof(val_lower); } catch (...) {}
         } else if (d.property == "line-clamp" || d.property == "-webkit-line-clamp") {
-            if (val_lower == "none") style.line_clamp = -1;
-            else { try { style.line_clamp = std::stoi(d.value); } catch (...) {} }
+            if (val_lower == "none") {
+                style.line_clamp = -1;
+                style.webkit_line_clamp = -1;
+            } else {
+                try {
+                    int clamp_val = std::stoi(d.value);
+                    style.line_clamp = clamp_val;
+                    style.webkit_line_clamp = clamp_val;
+                } catch (...) {}
+            }
         } else if (d.property == "caret-color") {
             if (val_lower != "auto") {
                 auto c = clever::css::parse_color(val_lower);
@@ -6973,6 +6981,14 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             auto v = clever::css::parse_length(val_lower);
             if (v) style.contain_intrinsic_height = v->to_px();
             else if (val_lower == "none" || val_lower == "auto") style.contain_intrinsic_height = 0;
+        } else if (d.property == "contain-intrinsic-block-size") {
+            auto v = clever::css::parse_length(val_lower);
+            if (v) style.contain_intrinsic_height = v->to_px();
+            else if (val_lower == "none" || val_lower == "auto") style.contain_intrinsic_height = 0;
+        } else if (d.property == "contain-intrinsic-inline-size") {
+            auto v = clever::css::parse_length(val_lower);
+            if (v) style.contain_intrinsic_width = v->to_px();
+            else if (val_lower == "none" || val_lower == "auto") style.contain_intrinsic_width = 0;
         } else if (d.property == "mask-repeat" || d.property == "-webkit-mask-repeat") {
             if (val_lower == "repeat") style.mask_repeat = 0;
             else if (val_lower == "repeat-x") style.mask_repeat = 1;
@@ -12970,6 +12986,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     } else if (style.text_overflow == clever::css::TextOverflow::Fade) {
         layout_node->text_overflow = 2;
     }
+    layout_node->text_overflow_string = style.text_overflow_string;
 
     // Word break and overflow wrap
     layout_node->word_break = style.word_break;
@@ -15704,6 +15721,8 @@ bool evaluate_supports_condition(const std::string& condition) {
                 "accent-color", "caret-color", "color-scheme", "appearance", "-webkit-appearance",
                 // Container and visibility
                 "content-visibility", "container-type", "container-name", "will-change",
+                "contain", "contain-intrinsic-size", "contain-intrinsic-width", "contain-intrinsic-height",
+                "contain-intrinsic-block-size", "contain-intrinsic-inline-size",
                 "isolation", "mix-blend-mode",
                 // SVG properties
                 "fill", "fill-opacity", "fill-rule", "stroke", "stroke-width", "stroke-linecap",
