@@ -651,6 +651,11 @@ struct LayoutNode {
     float first_letter_font_size = 0;  // 0 = inherit
     uint32_t first_letter_color = 0;   // 0 = inherit
     bool first_letter_bold = false;
+    uint32_t first_letter_bg_color = 0; // 0 = inherit
+    float first_letter_padding = 0;     // 0 = inherit
+    float first_letter_margin = 0;      // 0 = inherit
+    bool first_letter_italic = false;
+    css::Float first_letter_float = css::Float::None;
 
     // ::first-line pseudo-element support
     bool has_first_line = false;       // Element has ::first-line styling
