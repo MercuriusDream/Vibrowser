@@ -12968,6 +12968,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
     // CSS Transforms
     layout_node->transforms = style.transforms;
+    layout_node->individual_translate_x = style.individual_translate_x;
+    layout_node->individual_translate_y = style.individual_translate_y;
+    layout_node->individual_scale_x = style.individual_scale_x;
+    layout_node->individual_scale_y = style.individual_scale_y;
+    layout_node->individual_rotate = style.individual_rotate;
+    layout_node->has_individual_transforms = style.has_individual_transforms;
 
     auto convert_pseudo_border_style = [](clever::css::BorderStyle bs) -> int {
         if (bs == clever::css::BorderStyle::None) return 0;
@@ -13407,31 +13413,269 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
     }
 
-    // Check for ::first-letter pseudo-element and propagate styling to text children
-    if (elem_view) {
+    // Check for ::first-letter pseudo-element and split the first text node for styling
+    if (elem_view && layout_node->display != clever::layout::DisplayType::Inline) {
         auto fl_style = resolver.resolve_pseudo(*elem_view, "first-letter", style);
         if (fl_style) {
-            // Propagate first-letter styling to the first text child node
-            std::function<bool(clever::layout::LayoutNode&)> propagate_first_letter =
-                [&](clever::layout::LayoutNode& n) -> bool {
-                if (n.is_text && !n.text_content.empty()) {
-                    n.has_first_letter = true;
-                    float fl_fs = fl_style->font_size.to_px(font_size);
-                    n.first_letter_font_size = (fl_fs != font_size) ? fl_fs : 0;
-                    uint32_t fl_color = color_to_argb(fl_style->color);
-                    n.first_letter_color = (fl_color != n.color) ? fl_color : 0;
-                    n.first_letter_bold = (fl_style->font_weight >= 700);
-                    // Note: ::first-letter does NOT inherit italic by default, only if explicitly set
-                    // For now we only store if explicitly bold; italic would need explicit ::first-letter { font-style: italic; }
-                    return true; // found first text node, stop
+            auto is_ascii_punctuation = [](int cp) -> bool {
+                return (cp >= 0 && cp < 128) && (std::ispunct(static_cast<unsigned char>(cp)) != 0);
+            };
+
+            auto clone_first_letter_node = [&](const clever::layout::LayoutNode& source)
+                -> std::unique_ptr<clever::layout::LayoutNode> {
+                auto node = std::make_unique<clever::layout::LayoutNode>();
+                node->mode = source.mode;
+                node->display = source.display;
+                node->is_text = true;
+                node->color = source.color;
+                node->font_size = source.font_size;
+                node->font_weight = source.font_weight;
+                node->font_italic = source.font_italic;
+                node->font_family = source.font_family;
+                node->is_monospace = source.is_monospace;
+                node->line_height = source.line_height;
+                node->opacity = source.opacity;
+                node->letter_spacing = source.letter_spacing;
+                node->word_spacing = source.word_spacing;
+                node->text_transform = source.text_transform;
+                node->text_decoration = source.text_decoration;
+                node->text_decoration_bits = source.text_decoration_bits;
+                node->text_decoration_color = source.text_decoration_color;
+                node->text_decoration_style = source.text_decoration_style;
+                node->text_decoration_thickness = source.text_decoration_thickness;
+                node->pointer_events = source.pointer_events;
+                node->user_select = source.user_select;
+                node->tab_size = source.tab_size;
+                node->line_clamp = source.line_clamp;
+                node->word_break = source.word_break;
+                node->overflow_wrap = source.overflow_wrap;
+                node->text_wrap = source.text_wrap;
+                node->white_space = source.white_space;
+                node->white_space_pre = source.white_space_pre;
+                node->white_space_nowrap = source.white_space_nowrap;
+                node->white_space_collapse = source.white_space_collapse;
+                node->line_break = source.line_break;
+                node->direction = source.direction;
+                node->hanging_punctuation = source.hanging_punctuation;
+                node->math_style = source.math_style;
+                node->math_depth = source.math_depth;
+                node->orphans = source.orphans;
+                node->widows = source.widows;
+                node->column_span = source.column_span;
+                node->break_before = source.break_before;
+                node->break_after = source.break_after;
+                node->break_inside = source.break_inside;
+                node->page_break_before = source.page_break_before;
+                node->page_break_after = source.page_break_after;
+                node->page_break_inside = source.page_break_inside;
+                node->page = source.page;
+                node->hyphens = source.hyphens;
+                node->text_justify = source.text_justify;
+                node->text_underline_offset = source.text_underline_offset;
+                node->text_underline_position = source.text_underline_position;
+                node->font_variant = source.font_variant;
+                node->font_variant_caps = source.font_variant_caps;
+                node->font_variant_numeric = source.font_variant_numeric;
+                node->font_synthesis = source.font_synthesis;
+                node->font_variant_alternates = source.font_variant_alternates;
+                node->font_feature_settings = source.font_feature_settings;
+                node->font_variation_settings = source.font_variation_settings;
+                node->font_optical_sizing = source.font_optical_sizing;
+                node->font_size_adjust = source.font_size_adjust;
+                node->font_stretch = source.font_stretch;
+                node->text_decoration_skip_ink = source.text_decoration_skip_ink;
+                node->text_emphasis_style = source.text_emphasis_style;
+                node->text_emphasis_color = source.text_emphasis_color;
+                node->text_stroke_width = source.text_stroke_width;
+                node->text_stroke_color = source.text_stroke_color;
+                node->text_fill_color = source.text_fill_color;
+                node->font_variant_ligatures = source.font_variant_ligatures;
+                node->font_variant_east_asian = source.font_variant_east_asian;
+                node->font_language_override = source.font_language_override;
+                node->text_rendering = source.text_rendering;
+                node->font_smooth = source.font_smooth;
+                node->text_size_adjust = source.text_size_adjust;
+                node->caret_color = source.caret_color;
+                node->accent_color = source.accent_color;
+                node->color_interpolation = source.color_interpolation;
+                node->background_color = source.background_color;
+                node->visibility_hidden = source.visibility_hidden;
+                node->visibility_collapse = source.visibility_collapse;
+                node->link_href = source.link_href;
+                node->link_target = source.link_target;
+                node->float_type = source.float_type;
+                node->geometry = source.geometry;
+                return node;
+            };
+
+            auto apply_first_letter_style = [&](clever::layout::LayoutNode& target) {
+                float fl_fs = fl_style->font_size.to_px(font_size);
+                target.first_letter_font_size = (fl_fs != font_size) ? fl_fs : 0;
+                uint32_t fl_color = color_to_argb(fl_style->color);
+                target.first_letter_color = (fl_color != target.color) ? fl_color : 0;
+                target.first_letter_bold = (fl_style->font_weight >= 700);
+                target.first_letter_italic = (fl_style->font_style != clever::css::FontStyle::Normal);
+                float fl_padding = std::max(
+                    {fl_style->padding.top.to_px(font_size),
+                     fl_style->padding.right.to_px(font_size),
+                     fl_style->padding.bottom.to_px(font_size),
+                     fl_style->padding.left.to_px(font_size)});
+                float fl_margin = std::max(
+                    {fl_style->margin.top.to_px(font_size),
+                     fl_style->margin.right.to_px(font_size),
+                     fl_style->margin.bottom.to_px(font_size),
+                     fl_style->margin.left.to_px(font_size)});
+                target.first_letter_bg_color = color_to_argb(fl_style->background_color);
+                target.first_letter_padding = (fl_padding != 0) ? fl_padding : 0;
+                target.first_letter_margin = (fl_margin != 0) ? fl_margin : 0;
+                target.first_letter_float = fl_style->float_val;
+                target.has_first_letter = true;
+
+                if (target.first_letter_font_size > 0) {
+                    target.font_size = target.first_letter_font_size;
                 }
-                for (auto& child : n.children) {
-                    if (propagate_first_letter(*child)) return true;
+                if (target.first_letter_color != 0) {
+                    target.color = target.first_letter_color;
+                }
+                if (target.first_letter_bold) {
+                    target.font_weight = 700;
+                }
+                if (target.first_letter_italic) {
+                    target.font_italic = true;
+                }
+                if (target.first_letter_bg_color != 0) {
+                    target.background_color = target.first_letter_bg_color;
+                }
+                if (target.first_letter_padding > 0) {
+                    target.geometry.padding = {target.first_letter_padding,
+                                              target.first_letter_padding,
+                                              target.first_letter_padding,
+                                              target.first_letter_padding};
+                }
+                if (target.first_letter_margin > 0) {
+                    target.geometry.margin = {target.first_letter_margin,
+                                             target.first_letter_margin,
+                                             target.first_letter_margin,
+                                             target.first_letter_margin};
+                }
+                switch (target.first_letter_float) {
+                    case clever::css::Float::Left: target.float_type = 1; break;
+                    case clever::css::Float::Right: target.float_type = 2; break;
+                    default: target.float_type = 0; break;
+                }
+            };
+
+            clever::layout::LayoutNode* first_text_node = nullptr;
+            clever::layout::LayoutNode* first_text_parent = nullptr;
+            size_t first_text_index = 0;
+
+            std::function<bool(clever::layout::LayoutNode&,
+                               clever::layout::LayoutNode*,
+                               size_t)> find_first_text =
+                [&](clever::layout::LayoutNode& node,
+                    clever::layout::LayoutNode* parent,
+                    size_t idx) -> bool {
+                if (node.is_text && !node.text_content.empty()) {
+                    first_text_node = &node;
+                    first_text_parent = parent;
+                    first_text_index = idx;
+                    return true;
+                }
+                for (size_t i = 0; i < node.children.size(); ++i) {
+                    if (find_first_text(*node.children[i], &node, i)) return true;
                 }
                 return false;
             };
-            for (auto& child : layout_node->children) {
-                if (propagate_first_letter(*child)) break;
+
+            for (size_t i = 0; i < layout_node->children.size(); ++i) {
+                if (find_first_text(*layout_node->children[i], layout_node.get(), i)) {
+                    break;
+                }
+            }
+
+            if (!first_text_node || !first_text_parent) {
+                // No text content to style
+            } else {
+                const std::string& text = first_text_node->text_content;
+                size_t first_byte = 0;
+                while (first_byte < text.size() && text[first_byte] == ' ') {
+                    ++first_byte;
+                }
+                if (first_byte < text.size()) {
+                    size_t scan_pos = first_byte;
+                    int first_cp = decode_utf8_codepoint(text, scan_pos);
+                    size_t cluster_end = first_byte;
+                    if (first_cp >= 0 && is_ascii_punctuation(first_cp)) {
+                        while (scan_pos < text.size()) {
+                            size_t next = scan_pos;
+                            int cp = decode_utf8_codepoint(text, next);
+                            if (cp < 0) break;
+                            if (std::isspace(static_cast<unsigned char>(cp))) break;
+                            if (is_ascii_punctuation(cp)) {
+                                scan_pos = next;
+                                continue;
+                            }
+                            scan_pos = next;
+                            break;
+                        }
+                        cluster_end = scan_pos;
+                    } else if (first_cp >= 0) {
+                        cluster_end = scan_pos;
+                    } else {
+                        cluster_end = std::min(text.size(), first_byte + 1);
+                    }
+
+                    if (cluster_end <= first_byte) {
+                        cluster_end = std::min(text.size(), first_byte + 1);
+                    }
+
+                    const std::string prefix = text.substr(0, first_byte);
+                    const std::string first_cluster = text.substr(first_byte, cluster_end - first_byte);
+                    const bool has_prefix = !prefix.empty();
+                    const bool has_suffix = cluster_end < text.size();
+
+                    if (!has_prefix && !has_suffix) {
+                        apply_first_letter_style(*first_text_node);
+                    } else {
+                        auto first_node = clone_first_letter_node(*first_text_node);
+                        first_node->text_content = first_cluster;
+                        apply_first_letter_style(*first_node);
+
+                        auto& children = first_text_parent->children;
+                        if (has_prefix) {
+                            first_text_node->text_content = has_suffix ? text.substr(cluster_end) : prefix;
+
+                            auto prefix_node = clone_first_letter_node(*first_text_node);
+                            prefix_node->text_content = prefix;
+                            prefix_node->parent = first_text_parent;
+
+                            first_node->parent = first_text_parent;
+                            first_text_parent->children.insert(
+                                children.begin() + first_text_index,
+                                std::move(prefix_node));
+                            children[first_text_index + 1]->parent = first_text_parent;
+
+                            first_node->parent = first_text_parent;
+                            first_text_parent->children.insert(
+                                children.begin() + first_text_index + 1,
+                                std::move(first_node));
+                            children[first_text_index + 2]->parent = first_text_parent;
+
+                            if (!has_suffix) {
+                                first_text_parent->children[first_text_index + 2] = std::move(first_text_parent->children[first_text_index + 2]);
+                            } else {
+                                first_text_node->parent = first_text_parent;
+                            }
+                        } else {
+                            first_text_node->text_content = text.substr(cluster_end);
+                            first_text_node->parent = first_text_parent;
+                            first_node->parent = first_text_parent;
+                            first_text_parent->children.insert(children.begin() + first_text_index,
+                                                              std::move(first_node));
+                            children[first_text_index]->parent = first_text_parent;
+                        }
+                    }
+                }
             }
         }
     }
