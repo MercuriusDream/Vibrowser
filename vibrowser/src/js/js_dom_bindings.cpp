@@ -3312,6 +3312,53 @@ static JSValue js_document_create_element(JSContext* ctx,
     return wrap_element(ctx, raw_ptr);
 }
 
+static JSValue js_document_create_element_ns(JSContext* ctx,
+                                             JSValueConst /*this_val*/,
+                                             int argc, JSValueConst* argv) {
+    if (argc < 2) return JS_NULL;
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_NULL;
+
+    const char* ns = JS_ToCString(ctx, argv[0]);
+    if (!ns) return JS_NULL;
+    JS_FreeCString(ctx, ns);
+
+    const char* qualified = JS_ToCString(ctx, argv[1]);
+    if (!qualified) return JS_NULL;
+    std::string qualified_name = qualified;
+    JS_FreeCString(ctx, qualified);
+
+    auto colon = qualified_name.find_last_of(':');
+    std::string local_name = (colon == std::string::npos)
+                                 ? qualified_name
+                                 : qualified_name.substr(colon + 1);
+
+    JSValue delegated_arg = JS_NewString(ctx, local_name.c_str());
+    JSValue result = js_document_create_element(ctx, JS_UNDEFINED, 1,
+                                               &delegated_arg);
+    JS_FreeValue(ctx, delegated_arg);
+    return result;
+}
+
+static JSValue js_document_create_attribute_ns(JSContext* ctx,
+                                               JSValueConst /*this_val*/,
+                                               int argc, JSValueConst* argv) {
+    if (argc < 2) return JS_NULL;
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_NULL;
+
+    const char* name = JS_ToCString(ctx, argv[1]);
+    if (!name) return JS_NULL;
+    auto node = std::make_unique<clever::html::SimpleNode>();
+    node->type = clever::html::SimpleNode::Element;
+    node->tag_name = name;
+    JS_FreeCString(ctx, name);
+
+    auto* raw_ptr = node.get();
+    state->owned_nodes.push_back(std::move(node));
+    return wrap_element(ctx, raw_ptr);
+}
+
 static JSValue js_document_create_text_node(JSContext* ctx,
                                              JSValueConst /*this_val*/,
                                              int argc, JSValueConst* argv) {
@@ -15262,6 +15309,9 @@ void install_dom_bindings(JSContext* ctx,
         JS_NewCFunction(ctx, js_element_set_id, "__setId", 1));
     JS_SetPropertyStr(ctx, element_proto, "__getTagName",
         JS_NewCFunction(ctx, js_element_get_tag_name, "__getTagName", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__getNamespaceURI",
+        JS_NewCFunction(ctx, js_element_get_namespace_uri,
+                        "__getNamespaceURI", 0));
     JS_SetPropertyStr(ctx, element_proto, "__getClassName",
         JS_NewCFunction(ctx, js_element_get_class_name, "__getClassName", 0));
     JS_SetPropertyStr(ctx, element_proto, "__setClassName",
@@ -15551,6 +15601,12 @@ void install_dom_bindings(JSContext* ctx,
     JS_SetPropertyStr(ctx, doc_obj, "createElement",
         JS_NewCFunction(ctx, js_document_create_element,
                         "createElement", 1));
+    JS_SetPropertyStr(ctx, doc_obj, "createElementNS",
+        JS_NewCFunction(ctx, js_document_create_element_ns,
+                        "createElementNS", 2));
+    JS_SetPropertyStr(ctx, doc_obj, "createAttributeNS",
+        JS_NewCFunction(ctx, js_document_create_attribute_ns,
+                        "createAttributeNS", 2));
     JS_SetPropertyStr(ctx, doc_obj, "createTextNode",
         JS_NewCFunction(ctx, js_document_create_text_node,
                         "createTextNode", 1));
@@ -16262,6 +16318,10 @@ void install_dom_bindings(JSContext* ctx,
     });
     Object.defineProperty(proto, 'tagName', {
         get: function() { return this.__getTagName(); },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'namespaceURI', {
+        get: function() { return this.__getNamespaceURI(); },
         configurable: true
     });
     Object.defineProperty(proto, 'nodeName', {
