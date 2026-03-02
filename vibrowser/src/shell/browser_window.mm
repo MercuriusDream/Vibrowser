@@ -1711,18 +1711,13 @@ static std::string build_shell_message_html(const std::string& page_title,
     if (!std::isfinite(scaleFactor) || scaleFactor <= 0.0) {
         scaleFactor = 1.0;
     }
-    // Use CSS pixel dimensions (logical points) for layout, not device pixels.
-    // The layout engine expects CSS pixel widths matching what CSS media queries
-    // and viewport units (vw/vh) should resolve to. Multiplying by DPR causes
-    // pages to render at half size on Retina displays.
-    // TODO: Add proper DPR support (layout at CSS pixels, render buffer at device pixels)
-    // for crisp Retina rendering. For now, accept non-Retina buffer quality.
     int renderWidth = width;
     int renderHeight = height;
+    float renderDPR = static_cast<float>(scaleFactor);
 
     auto result = _toggledDetails.empty()
-        ? clever::paint::render_html(html, [tab currentBaseURL], renderWidth, renderHeight)
-        : clever::paint::render_html(html, [tab currentBaseURL], renderWidth, renderHeight, _toggledDetails);
+        ? clever::paint::render_html(html, [tab currentBaseURL], renderWidth, renderHeight, renderDPR)
+        : clever::paint::render_html(html, [tab currentBaseURL], renderWidth, renderHeight, _toggledDetails, renderDPR);
 
     bool animationsActive = clever::paint::render_has_active_animations();
 
@@ -2169,7 +2164,7 @@ static std::string build_shell_message_html(const std::string& page_title,
             result.error.empty() ? "Unknown render failure." : result.error;
         const std::string error_html =
             build_shell_message_html("Render Error", "Render Error", detail);
-        auto fallback = clever::paint::render_html(error_html, renderWidth, renderHeight);
+        auto fallback = clever::paint::render_html(error_html, "", renderWidth, renderHeight, renderDPR);
         if (fallback.success && fallback.renderer) {
             [tab.renderView updateWithRenderer:fallback.renderer.get()];
             [tab.renderView setLayoutRoot:fallback.root.get()];

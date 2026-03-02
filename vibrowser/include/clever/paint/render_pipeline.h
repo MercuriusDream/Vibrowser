@@ -106,17 +106,17 @@ struct RenderResult {
 };
 
 // Render HTML string to pixels
-RenderResult render_html(const std::string& html, int viewport_width = 800, int viewport_height = 600);
+RenderResult render_html(const std::string& html, int viewport_width = 800, int viewport_height = 600, float dpr = 1.0f);
 
 // Render HTML with a base URL for resolving relative links (CSS, images)
 RenderResult render_html(const std::string& html, const std::string& base_url,
-                         int viewport_width = 800, int viewport_height = 600);
+                         int viewport_width = 800, int viewport_height = 600, float dpr = 1.0f);
 
 // Render HTML with toggle state for interactive <details> elements
 // toggled_details: set of details_id values whose open state should be flipped
 RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height,
-                         const std::set<int>& toggled_details);
+                         const std::set<int>& toggled_details, float dpr = 1.0f);
 
 // Returns true if the thread-local AnimationController has any active
 // CSS animations or transitions running. Call this after render_html() to

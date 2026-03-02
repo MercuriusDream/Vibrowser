@@ -61,6 +61,36 @@ These are known gaps that impact real website rendering:
 | P14 | Popover API (`popover` attribute) | Tooltips, dropdowns, menus | Medium | DONE — show/hide/toggle + :popover-open |
 | P15 | CSS `@scope` | Scoped component styling | Medium | DONE — scope boundary matching |
 | P16 | customElements registry | Web Components define/get/whenDefined | Medium | DONE — full registry |
+| **P20** | **HiDPI / Retina rendering (blurry on macOS)** | **Every page looks blurry on Retina macs** | **High** | **TODO — see below** |
+
+### HiDPI / Retina Rendering Fix (P20 — Comprehensive)
+
+**Problem**: vibrowser renders at CSS pixel dimensions (e.g. 1280×800) and displays that 1x buffer on a Retina screen (backingScaleFactor=2.0). macOS upscales the 1x buffer to fill 2560×1600 physical pixels → blurry text, blurry edges, blurry everything.
+
+**Root Cause** (in `browser_window.mm:1714-1721`):
+```
+// TODO: Add proper DPR support (layout at CSS pixels, render buffer at device pixels)
+// for crisp Retina rendering. For now, accept non-Retina buffer quality.
+int renderWidth = width;   // logical CSS pixels, NOT device pixels
+int renderHeight = height;
+```
+The `scaleFactor` (from `NSScreen.backingScaleFactor`) is already read but explicitly NOT used for the render buffer.
+
+**Full Fix Plan** (all 5 files):
+
+1. **`browser_window.mm`**: Pass `scaleFactor` to `render_html()` so the renderer knows the device pixel ratio. Change `renderWidth/renderHeight` to `width*scaleFactor × height*scaleFactor`.
+
+2. **`render_pipeline.cpp`**: Accept a `float device_pixel_ratio` param. Use `viewport_width / dpr` and `viewport_height / dpr` for layout (CSS pixels), but pass `dpr` to the SoftwareRenderer constructor so it creates a physical-pixel-size buffer. Also pass `dpr` to `install_window_bindings()`.
+
+3. **`software_renderer.h/.cpp`**: Add `float dpr_` field. Constructor takes `int width, int height, float dpr = 1.0f`. Pixel buffer size = `(width*dpr) × (height*dpr)`. All `draw_*` methods and `apply_*` methods must multiply Rect / float coordinates by `dpr_` before doing pixel work. Key methods: `draw_filled_rect`, `draw_box_shadow`, `draw_inset_shadow`, `draw_gradient_rect`, `draw_radial_gradient_rect`, `draw_conic_gradient_rect`, `draw_image`, `draw_text_simple`, `draw_filled_ellipse`, `draw_stroked_ellipse`, `draw_line_segment`, `apply_filter_to_region`, `apply_drop_shadow_to_region`, `apply_backdrop_filter_to_region`, `apply_clip_path_mask`, `apply_blend_mode_to_region`. Also expose `pixels_width()` = `width*dpr` and `pixels_height()` = `height*dpr`.
+
+4. **`render_view.mm`** (`drawRect:`): Draw the CGImage at LOGICAL point dimensions (CSS pixels), not physical pixels. Currently `img_w = (_imageWidth / _backingScale) * _pageScale` — this already does the right division, but `_backingScale` is inferred from render/view ratio. Once we render at physical pixels, the inferred scale will be correct (2.0 on Retina) and division gives CSS pixel dimensions. Draw at logical size → macOS displays at native 2x.
+
+5. **TextRenderer font rendering**: The `draw_text_simple` font size must be multiplied by dpr to render fonts at 2x size into the 2x buffer. Otherwise text is still 1x-quality. `CoreText` glyph rendering must use the physical size.
+
+**Expected result**: Crisp, sharp text and images on Retina macs. All CSS pixel coordinates remain correct (layout, media queries, viewport units unchanged). Only the renderer buffer and paint coordinates scale up.
+
+**Effort**: High — ~18 drawing methods need coord scaling + 5 files. Use codex-spark agent. Clean rebuild required after.
 
 ### Task Backlog (1500 Tasks)
 

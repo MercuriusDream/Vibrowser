@@ -16717,21 +16717,22 @@ void trigger_lazy_loading_if_near_viewport(clever::layout::LayoutNode* layout_no
 
 } // anonymous namespace
 
-RenderResult render_html(const std::string& html, int viewport_width, int viewport_height) {
-    return render_html(html, "", viewport_width, viewport_height);
+RenderResult render_html(const std::string& html, int viewport_width, int viewport_height,
+                         float dpr) {
+    return render_html(html, "", viewport_width, viewport_height, dpr);
 }
 
 RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height,
-                         const std::set<int>& toggled_details) {
+                         const std::set<int>& toggled_details, float dpr) {
     g_toggled_details = &toggled_details;
-    auto result = render_html(html, base_url, viewport_width, viewport_height);
+    auto result = render_html(html, base_url, viewport_width, viewport_height, dpr);
     g_toggled_details = nullptr;
     return result;
 }
 
 RenderResult render_html(const std::string& html, const std::string& base_url,
-                         int viewport_width, int viewport_height) {
+                         int viewport_width, int viewport_height, float dpr) {
     const int device_viewport_width = std::max(1, viewport_width);
     const int device_viewport_height = std::max(1, viewport_height);
     int layout_viewport_width = device_viewport_width;
@@ -17380,7 +17381,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 clever::js::install_dom_bindings(js_engine.context(), doc.get());
                 clever::js::install_timer_bindings(js_engine.context());
                 clever::js::install_window_bindings(js_engine.context(), effective_base_url,
-                                                    layout_viewport_width, layout_viewport_height);
+                                                    layout_viewport_width, layout_viewport_height, dpr);
                 clever::js::install_fetch_bindings(js_engine.context());
 
                 // Set up module fetcher for dynamic imports
@@ -18044,7 +18045,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                                           0.0f, 0.0f);
 
         // Step 7: Render to pixel buffer
-        auto renderer = std::make_unique<SoftwareRenderer>(layout_viewport_width, render_height);
+        auto renderer = std::make_unique<SoftwareRenderer>(layout_viewport_width, render_height, dpr);
         renderer->clear({255, 255, 255, 255});
         renderer->render(display_list);
 
