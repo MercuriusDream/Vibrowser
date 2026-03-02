@@ -226,8 +226,12 @@ struct DOMState {
         // Tracks previous intersection state per element for threshold crossing detection
         std::unordered_map<clever::html::SimpleNode*, float> prev_ratio;
         std::unordered_map<clever::html::SimpleNode*, bool> prev_intersecting;
+        std::vector<JSValue> pending_entries;
     };
     std::vector<IntersectionObserverEntry> intersection_observers;
+    float last_intersection_observer_scroll_y = 0.0f;
+    double current_scroll_x = 0.0;
+    double current_scroll_y = 0.0;
 
     // ResizeObserver registry
     struct ResizeObserverEntry {
@@ -7701,10 +7705,30 @@ static JSValue js_intersection_observer_disconnect(JSContext* ctx,
 }
 
 static JSValue js_intersection_observer_take_records(JSContext* ctx,
-                                                      JSValueConst /*this_val*/,
+                                                      JSValueConst this_val,
                                                       int /*argc*/,
                                                       JSValueConst* /*argv*/) {
-    return JS_NewArray(ctx);
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_NewArray(ctx);
+
+    JSValue idx_val = JS_GetPropertyStr(ctx, this_val, "_io_index");
+    int32_t idx = -1;
+    JS_ToInt32(ctx, &idx, idx_val);
+    JS_FreeValue(ctx, idx_val);
+
+    JSValue entries = JS_NewArray(ctx);
+    if (idx >= 0 && idx < static_cast<int32_t>(state->intersection_observers.size())) {
+        auto& io = state->intersection_observers[idx];
+        int entry_idx = 0;
+        for (auto& pending : io.pending_entries) {
+            JS_SetPropertyUint32(ctx, entries, entry_idx++, JS_DupValue(ctx, pending));
+        }
+        for (auto& pending : io.pending_entries) {
+            JS_FreeValue(ctx, pending);
+        }
+        io.pending_entries.clear();
+    }
+    return entries;
 }
 
 // Parse rootMargin string like "10px 20px 30px 40px" or "10px"
@@ -22572,6 +22596,8 @@ void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h)
 
                 JS_SetPropertyUint32(ctx, entries, entry_idx++, entry);
 
+                io.pending_entries.push_back(JS_DupValue(ctx, entry));
+
                 // Update tracked state after firing
                 io.prev_ratio[elem] = ratio;
                 io.prev_intersecting[elem] = is_intersecting;
@@ -22812,6 +22838,25 @@ void dispatch_window_listeners(JSContext* ctx, const std::string& event_type,
         JS_FreeValue(ctx, result);
     }
     JS_FreeValue(ctx, global);
+}
+
+void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h, float scroll_y) {
+    auto* state = get_dom_state(ctx);
+    if (!state) return;
+
+    bool scroll_changed = (scroll_y != state->last_intersection_observer_scroll_y);
+    state->last_intersection_observer_scroll_y = scroll_y;
+    state->current_scroll_y = scroll_y;
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "scrollY", JS_NewFloat64(ctx, scroll_y));
+    JS_SetPropertyStr(ctx, global, "pageYOffset", JS_NewFloat64(ctx, scroll_y));
+    JS_FreeValue(ctx, global);
+
+    if (scroll_changed) {
+        dispatch_window_listeners(ctx, "scroll", JS_NULL);
+        fire_intersection_observers(ctx, viewport_w, viewport_h);
+    }
 }
 
 } // namespace clever::js
