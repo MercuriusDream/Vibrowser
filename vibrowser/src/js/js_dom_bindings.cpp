@@ -3070,6 +3070,21 @@ static JSValue js_style_set_property(JSContext* ctx, JSValueConst this_val,
     JS_FreeCString(ctx, prop_cstr);
     JS_FreeCString(ctx, val_cstr);
 
+    // Check for priority flag (third argument, typically "important")
+    if (argc >= 3) {
+        const char* priority_cstr = JS_ToCString(ctx, argv[2]);
+        if (priority_cstr) {
+            std::string priority(priority_cstr);
+            if (priority == "important") {
+                // Append !important to the value if not already present
+                if (value.find("!important") == std::string::npos) {
+                    value += " !important";
+                }
+            }
+            JS_FreeCString(ctx, priority_cstr);
+        }
+    }
+
     auto props = parse_style_attr(get_attr(*node, "style"));
     std::string css_name = camel_to_kebab(prop);
 
@@ -3163,7 +3178,7 @@ static JSValue create_style_proxy(JSContext* ctx,
     JS_SetPropertyStr(ctx, obj, "getPropertyValue",
         JS_NewCFunction(ctx, js_style_get_property, "getPropertyValue", 1));
     JS_SetPropertyStr(ctx, obj, "setProperty",
-        JS_NewCFunction(ctx, js_style_set_property, "setProperty", 2));
+        JS_NewCFunction(ctx, js_style_set_property, "setProperty", 3));
     JS_SetPropertyStr(ctx, obj, "removeProperty",
         JS_NewCFunction(ctx, js_style_remove_property, "removeProperty", 1));
     JS_SetPropertyStr(ctx, obj, "__getProperty",
@@ -6334,6 +6349,56 @@ static JSValue js_element_get_animations(JSContext* ctx,
                                           JSValueConst* /*argv*/) {
     // Return empty array — active animation tracking not yet implemented
     return JS_NewArray(ctx);
+}
+
+// =========================================================================
+// Element.checkVisibility() — W3C standard DOM API
+//
+// Returns true if element is visible (not display:none, not visibility:hidden,
+// not opacity:0). Checks the element itself only, not ancestors.
+// =========================================================================
+
+static JSValue js_element_check_visibility(JSContext* ctx,
+                                            JSValueConst this_val,
+                                            int argc,
+                                            JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    auto* state = get_dom_state(ctx);
+
+    if (!node || !state) return JS_FALSE;
+
+    // Check if element is in layout
+    auto it = state->layout_geometry.find(node);
+    if (it == state->layout_geometry.end()) return JS_FALSE;
+
+    auto& rect = it->second;
+
+    // Check display: none
+    if (rect.display_type == 5) return JS_FALSE; // 5 = DisplayType::None
+
+    // Parse options (checkVisibilityCSS and checkOpacity default to false)
+    bool check_visibility_css = false;
+    bool check_opacity = false;
+
+    if (argc > 0 && JS_IsObject(argv[0])) {
+        JSValue opt_vis = JS_GetPropertyStr(ctx, argv[0], "checkVisibilityCSS");
+        if (!JS_IsUndefined(opt_vis)) {
+            check_visibility_css = JS_ToBool(ctx, opt_vis);
+        }
+        JS_FreeValue(ctx, opt_vis);
+
+        JSValue opt_opacity = JS_GetPropertyStr(ctx, argv[0], "checkOpacity");
+        if (!JS_IsUndefined(opt_opacity)) {
+            check_opacity = JS_ToBool(ctx, opt_opacity);
+        }
+        JS_FreeValue(ctx, opt_opacity);
+    }
+
+    if (check_visibility_css && rect.visibility_hidden) return JS_FALSE;
+
+    if (check_opacity && rect.opacity_val < 0.001f) return JS_FALSE;
+
+    return JS_TRUE;
 }
 
 // =========================================================================
@@ -15339,6 +15404,8 @@ void install_dom_bindings(JSContext* ctx,
         JS_NewCFunction(ctx, js_element_animate, "animate", 2));
     JS_SetPropertyStr(ctx, element_proto, "getAnimations",
         JS_NewCFunction(ctx, js_element_get_animations, "getAnimations", 0));
+    JS_SetPropertyStr(ctx, element_proto, "checkVisibility",
+        JS_NewCFunction(ctx, js_element_check_visibility, "checkVisibility", 0));
 
     // outerHTML internal getter/setter (wired into JS getter/setter by setup script)
     JS_SetPropertyStr(ctx, element_proto, "__getOuterHTML",
@@ -16249,6 +16316,22 @@ void install_dom_bindings(JSContext* ctx,
                 }
             });
         },
+        configurable: true
+    });
+
+    // ---- Element.inert property — backed by 'inert' HTML attribute ----
+    Object.defineProperty(proto, 'inert', {
+        get: function() {
+            return this.hasAttribute('inert');
+        },
+        set: function(v) {
+            if (v) {
+                this.setAttribute('inert', '');
+            } else {
+                this.removeAttribute('inert');
+            }
+        },
+        enumerable: true,
         configurable: true
     });
 
