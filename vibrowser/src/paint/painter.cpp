@@ -2435,7 +2435,7 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         overflow_parent->white_space_nowrap &&
         (overflow_parent->overflow == 1 || overflow_parent->overflow_indicator_right || overflow_parent->overflow_indicator_bottom || node_text_overflow_ellipsis)) {
         static TextRenderer s_text_measurer;
-        const std::string ellipsis_str = "\xE2\x80\xA6"; // U+2026 HORIZONTAL ELLIPSIS
+        const std::string ellipsis_str = !overflow_parent->text_overflow_string.empty() ? overflow_parent->text_overflow_string : "\xE2\x80\xA6"; // U+2026 HORIZONTAL ELLIPSIS
         // Dual-mode support:
         // 1) legacy behavior: text-overflow set on the overflow container (parent)
         // 2) modern behavior: text-overflow set on the text node itself (child)
