@@ -15565,6 +15565,47 @@ bool evaluate_supports_condition(const std::string& condition) {
             };
             return supported_props.count(prop) > 0;
         }
+
+        static const std::unordered_set<std::string> supported_font_formats = {
+            "woff2",
+            "woff",
+            "truetype",
+            "opentype",
+            "embedded-opentype",
+            "svg",
+        };
+        static const std::unordered_set<std::string> supported_font_techs = {
+            "variations",
+            "palettes",
+            "incremental-tables",
+            "color-cbdt",
+            "color-colrv1",
+            "color-svg",
+            "features-opentype",
+            "features-aat",
+            "features-graphite",
+        };
+
+        auto inner_lower = to_lower(inner);
+        if (inner_lower.rfind("selector(", 0) == 0) {
+            return true;
+        }
+
+        if (inner_lower.rfind("font-tech(", 0) == 0) {
+            std::string tech = trim(inner.substr(10));
+            if (!tech.empty() && tech.back() == ')') {
+                tech.pop_back();
+            }
+            return supported_font_techs.count(to_lower(trim(tech))) > 0;
+        }
+
+        if (inner_lower.rfind("font-format(", 0) == 0) {
+            std::string format = trim(inner.substr(12));
+            if (!format.empty() && format.back() == ')') {
+                format.pop_back();
+            }
+            return supported_font_formats.count(to_lower(trim(format))) > 0;
+        }
     }
 
     return false;

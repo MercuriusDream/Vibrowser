@@ -631,6 +631,10 @@ void PropertyCascade::apply_declaration(
         return;
     }
 
+    if (value_lower == "revert-layer") {
+        return;
+    }
+
     // Handle 'initial' keyword — reset property to CSS initial value
     // Exclude 'all' shorthand which has its own handler.
     if (value_lower == "initial" && prop != "all") {
