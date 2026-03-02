@@ -2399,9 +2399,9 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
     // font_variant_caps: 1=small-caps, 2=all-small-caps, 3=petite-caps,
     //                    4=all-petite-caps, 5=unicase, 6=titling-caps
     float effective_font_size = node.font_size;
-    bool do_small_caps = (node.font_variant == 1 || node.font_variant_caps == 1 ||
-                          node.font_variant_caps == 2 || node.font_variant_caps == 3 ||
-                          node.font_variant_caps == 4);
+    bool do_small_caps = (node.font_variant == 1 || node.font_variant_caps == "small-caps" ||
+                          node.font_variant_caps == "all-small-caps" || node.font_variant_caps == "petite-caps" ||
+                          node.font_variant_caps == "all-petite-caps");
     if (do_small_caps) {
         std::transform(text_to_render.begin(), text_to_render.end(),
                        text_to_render.begin(),
@@ -2409,12 +2409,12 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         // all-small-caps/all-petite-caps: ALL letters at reduced size
         // small-caps/petite-caps: only originally-lowercase letters smaller
         // (simplified: reduce all to 80% since we can't track original case)
-        float scale = (node.font_variant_caps == 3 || node.font_variant_caps == 4) ? 0.75f : 0.8f;
+        float scale = (node.font_variant_caps == "petite-caps" || node.font_variant_caps == "all-petite-caps") ? 0.75f : 0.8f;
         effective_font_size = node.font_size * scale;
-    } else if (node.font_variant_caps == 5) {
+    } else if (node.font_variant_caps == "unicase") {
         // unicase: uppercase stays as-is, lowercase becomes small-caps size
         effective_font_size = node.font_size * 0.85f;
-    } else if (node.font_variant_caps == 6) {
+    } else if (node.font_variant_caps == "titling-caps") {
         // titling-caps: slightly larger capitals, no size reduction
         effective_font_size = node.font_size;
     }
@@ -3219,18 +3219,17 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
             effective_features += "\"" + node.font_feature_settings[fi].first + "\" " +
                                   std::to_string(node.font_feature_settings[fi].second);
         }
-        if (node.font_variant_numeric != 0) {
+        if (node.font_variant_numeric != "normal") {
             // Map font_variant_numeric to OpenType feature tags
             const char* tag = nullptr;
-            switch (node.font_variant_numeric) {
-                case 1: tag = "\"ordn\" 1"; break; // ordinal
-                case 2: tag = "\"zero\" 1"; break; // slashed-zero
-                case 3: tag = "\"lnum\" 1"; break; // lining-nums
-                case 4: tag = "\"onum\" 1"; break; // oldstyle-nums
-                case 5: tag = "\"pnum\" 1"; break; // proportional-nums
-                case 6: tag = "\"tnum\" 1"; break; // tabular-nums
-                default: break;
-            }
+            if (node.font_variant_numeric == "ordinal") tag = "\"ordn\" 1";
+            else if (node.font_variant_numeric == "slashed-zero") tag = "\"zero\" 1";
+            else if (node.font_variant_numeric == "lining-nums") tag = "\"lnum\" 1";
+            else if (node.font_variant_numeric == "oldstyle-nums") tag = "\"onum\" 1";
+            else if (node.font_variant_numeric == "proportional-nums") tag = "\"pnum\" 1";
+            else if (node.font_variant_numeric == "tabular-nums") tag = "\"tnum\" 1";
+            else if (node.font_variant_numeric == "diagonal-fractions") tag = "\"frac\" 1";
+            else if (node.font_variant_numeric == "stacked-fractions") tag = "\"afrc\" 1";
             if (tag) {
                 if (!effective_features.empty()) effective_features += ", ";
                 effective_features += tag;
@@ -3238,18 +3237,14 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         }
 
         // Map font_variant_caps to OpenType feature tags
-        // 1=small-caps, 2=all-small-caps, 3=petite-caps, 4=all-petite-caps, 5=unicase, 6=titling-caps
-        if (node.font_variant_caps != 0) {
+        if (node.font_variant_caps != "normal") {
             const char* tag = nullptr;
-            switch (node.font_variant_caps) {
-                case 1: tag = "\"smcp\" 1"; break;
-                case 2: tag = "\"smcp\" 1, \"c2sc\" 1"; break;
-                case 3: tag = "\"pcap\" 1"; break;
-                case 4: tag = "\"pcap\" 1, \"c2pc\" 1"; break;
-                case 5: tag = "\"unic\" 1"; break;
-                case 6: tag = "\"titl\" 1"; break;
-                default: break;
-            }
+            if (node.font_variant_caps == "small-caps") tag = "\"smcp\" 1";
+            else if (node.font_variant_caps == "all-small-caps") tag = "\"smcp\" 1, \"c2sc\" 1";
+            else if (node.font_variant_caps == "petite-caps") tag = "\"pcap\" 1";
+            else if (node.font_variant_caps == "all-petite-caps") tag = "\"pcap\" 1, \"c2pc\" 1";
+            else if (node.font_variant_caps == "unicase") tag = "\"unic\" 1";
+            else if (node.font_variant_caps == "titling-caps") tag = "\"titl\" 1";
             if (tag) {
                 if (!effective_features.empty()) effective_features += ", ";
                 effective_features += tag;
@@ -3257,24 +3252,34 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         }
 
         // Map font_variant_ligatures to OpenType feature tags
-        // 0=normal (default, ligatures on), 1=none (all off), 2=common-ligatures,
-        // 3=no-common-ligatures, 4=discretionary-ligatures, 5=no-discretionary-ligatures
-        if (node.font_variant_ligatures == 1) {
+        if (node.font_variant_ligatures == "none") {
             // none: disable all ligatures
             if (!effective_features.empty()) effective_features += ", ";
             effective_features += "\"liga\" 0, \"clig\" 0, \"dlig\" 0, \"hlig\" 0";
-        } else if (node.font_variant_ligatures == 3) {
+        } else if (node.font_variant_ligatures == "no-common-ligatures") {
             // no-common-ligatures: disable standard + contextual
             if (!effective_features.empty()) effective_features += ", ";
             effective_features += "\"liga\" 0, \"clig\" 0";
-        } else if (node.font_variant_ligatures == 4) {
+        } else if (node.font_variant_ligatures == "discretionary-ligatures") {
             // discretionary-ligatures: enable discretionary
             if (!effective_features.empty()) effective_features += ", ";
             effective_features += "\"dlig\" 1";
-        } else if (node.font_variant_ligatures == 5) {
+        } else if (node.font_variant_ligatures == "no-discretionary-ligatures") {
             // no-discretionary-ligatures: explicitly disable
             if (!effective_features.empty()) effective_features += ", ";
             effective_features += "\"dlig\" 0";
+        } else if (node.font_variant_ligatures == "historical-ligatures") {
+            // historical-ligatures: enable historical
+            if (!effective_features.empty()) effective_features += ", ";
+            effective_features += "\"hlig\" 1";
+        } else if (node.font_variant_ligatures == "no-historical-ligatures") {
+            // no-historical-ligatures: disable historical
+            if (!effective_features.empty()) effective_features += ", ";
+            effective_features += "\"hlig\" 0";
+        } else if (node.font_variant_ligatures == "no-contextual") {
+            // no-contextual: disable contextual
+            if (!effective_features.empty()) effective_features += ", ";
+            effective_features += "\"calt\" 0";
         }
 
         // Map font_variant_east_asian to OpenType feature tags

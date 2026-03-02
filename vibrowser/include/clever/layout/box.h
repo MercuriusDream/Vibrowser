@@ -764,11 +764,11 @@ struct LayoutNode {
     // Font variant: 0=normal, 1=small-caps
     int font_variant = 0;
 
-    // Font variant caps: 0=normal, 1=small-caps, 2=all-small-caps, 3=petite-caps, 4=all-petite-caps, 5=unicase, 6=titling-caps
-    int font_variant_caps = 0;
+    // Font variant caps: normal|small-caps|all-small-caps|petite-caps|all-petite-caps|unicase|titling-caps
+    std::string font_variant_caps = "normal";
 
-    // Font variant numeric: 0=normal, 1=ordinal, 2=slashed-zero, 3=lining-nums, 4=oldstyle-nums, 5=proportional-nums, 6=tabular-nums
-    int font_variant_numeric = 0;
+    // Font variant numeric: normal|ordinal|slashed-zero|lining-nums|oldstyle-nums|proportional-nums|tabular-nums|diagonal-fractions|stacked-fractions
+    std::string font_variant_numeric = "normal";
 
     // Font feature settings (OpenType feature tags)
     std::vector<std::pair<std::string, int>> font_feature_settings;
@@ -785,9 +785,8 @@ struct LayoutNode {
     // Font kerning: 0=auto (default), 1=normal, 2=none
     int font_kerning = 0;
 
-    // Font variant ligatures: 0=normal, 1=none, 2=common-ligatures, 3=no-common-ligatures,
-    //                         4=discretionary-ligatures, 5=no-discretionary-ligatures, 6=contextual, 7=no-contextual
-    int font_variant_ligatures = 0;
+    // Font variant ligatures: normal|none|common-ligatures|no-common-ligatures|discretionary-ligatures|no-discretionary-ligatures|historical-ligatures|no-historical-ligatures|contextual|no-contextual
+    std::string font_variant_ligatures = "normal";
 
     // Font variant east-asian: 0=normal, 1=jis78, 2=jis83, 3=jis90, 4=jis04, 5=simplified, 6=traditional, 7=full-width, 8=proportional-width, 9=ruby
     int font_variant_east_asian = 0;
@@ -897,6 +896,9 @@ struct LayoutNode {
     float text_stroke_width = 0;
     uint32_t text_stroke_color = 0xFF000000; // ARGB, default black
     uint32_t text_fill_color = 0; // ARGB, 0 = use node.color
+
+    // -webkit-tap-highlight-color
+    uint32_t webkit_tap_highlight_color = 0u; // ARGB, default transparent
 
     // Line break: 0=auto, 1=loose, 2=normal, 3=strict, 4=anywhere
     int line_break = 0;

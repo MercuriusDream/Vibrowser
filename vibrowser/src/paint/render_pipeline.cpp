@@ -2577,6 +2577,9 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (p == "font-size") { style.font_size = parent.font_size; continue; }
             if (p == "font-weight") { style.font_weight = parent.font_weight; continue; }
             if (p == "font-style") { style.font_style = parent.font_style; continue; }
+            if (p == "font-variant-caps") { style.font_variant_caps = parent.font_variant_caps; continue; }
+            if (p == "font-variant-numeric") { style.font_variant_numeric = parent.font_variant_numeric; continue; }
+            if (p == "font-variant-ligatures") { style.font_variant_ligatures = parent.font_variant_ligatures; continue; }
             if (p == "line-height") { style.line_height = parent.line_height; style.line_height_unitless = parent.line_height_unitless; continue; }
             if (p == "text-align") { style.text_align = parent.text_align; continue; }
             if (p == "text-transform") { style.text_transform = parent.text_transform; continue; }
@@ -2625,6 +2628,10 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (p == "order") { style.order = parent.order; continue; }
             if (p == "user-select") { style.user_select = parent.user_select; continue; }
             if (p == "pointer-events") { style.pointer_events = parent.pointer_events; continue; }
+            if (p == "overscroll-behavior" || p == "overscroll-behavior-x" || p == "overscroll-behavior-y") { style.overscroll_behavior_x = parent.overscroll_behavior_x; style.overscroll_behavior_y = parent.overscroll_behavior_y; continue; }
+            if (p == "touch-action") { style.touch_action = parent.touch_action; continue; }
+            if (p == "appearance" || p == "-webkit-appearance") { style.appearance = parent.appearance; continue; }
+            if (p == "-webkit-tap-highlight-color") { style.webkit_tap_highlight_color = parent.webkit_tap_highlight_color; continue; }
             continue; // unrecognized property — skip
         }
         if (val_lower == "initial" && d.property != "all") {
@@ -2634,6 +2641,9 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (p == "font-size") { style.font_size = clever::css::Length::px(16); continue; }
             if (p == "font-weight") { style.font_weight = 400; continue; }
             if (p == "font-style") { style.font_style = clever::css::FontStyle::Normal; continue; }
+            if (p == "font-variant-caps") { style.font_variant_caps = "normal"; continue; }
+            if (p == "font-variant-numeric") { style.font_variant_numeric = "normal"; continue; }
+            if (p == "font-variant-ligatures") { style.font_variant_ligatures = "normal"; continue; }
             if (p == "display") { style.display = clever::css::Display::Inline; continue; }
             if (p == "position") { style.position = clever::css::Position::Static; continue; }
             if (p == "background-color") { style.background_color = clever::css::Color::transparent(); continue; }
@@ -3796,6 +3806,35 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "italic") style.font_style = clever::css::FontStyle::Italic;
             else if (val_lower == "oblique") style.font_style = clever::css::FontStyle::Oblique;
             else style.font_style = clever::css::FontStyle::Normal;
+        } else if (d.property == "font-variant-caps") {
+            if (val_lower == "small-caps") style.font_variant_caps = "small-caps";
+            else if (val_lower == "all-small-caps") style.font_variant_caps = "all-small-caps";
+            else if (val_lower == "petite-caps") style.font_variant_caps = "petite-caps";
+            else if (val_lower == "all-petite-caps") style.font_variant_caps = "all-petite-caps";
+            else if (val_lower == "unicase") style.font_variant_caps = "unicase";
+            else if (val_lower == "titling-caps") style.font_variant_caps = "titling-caps";
+            else style.font_variant_caps = "normal";
+        } else if (d.property == "font-variant-numeric") {
+            if (val_lower == "ordinal") style.font_variant_numeric = "ordinal";
+            else if (val_lower == "slashed-zero") style.font_variant_numeric = "slashed-zero";
+            else if (val_lower == "lining-nums") style.font_variant_numeric = "lining-nums";
+            else if (val_lower == "oldstyle-nums") style.font_variant_numeric = "oldstyle-nums";
+            else if (val_lower == "proportional-nums") style.font_variant_numeric = "proportional-nums";
+            else if (val_lower == "tabular-nums") style.font_variant_numeric = "tabular-nums";
+            else if (val_lower == "diagonal-fractions") style.font_variant_numeric = "diagonal-fractions";
+            else if (val_lower == "stacked-fractions") style.font_variant_numeric = "stacked-fractions";
+            else style.font_variant_numeric = "normal";
+        } else if (d.property == "font-variant-ligatures") {
+            if (val_lower == "none") style.font_variant_ligatures = "none";
+            else if (val_lower == "common-ligatures") style.font_variant_ligatures = "common-ligatures";
+            else if (val_lower == "no-common-ligatures") style.font_variant_ligatures = "no-common-ligatures";
+            else if (val_lower == "discretionary-ligatures") style.font_variant_ligatures = "discretionary-ligatures";
+            else if (val_lower == "no-discretionary-ligatures") style.font_variant_ligatures = "no-discretionary-ligatures";
+            else if (val_lower == "historical-ligatures") style.font_variant_ligatures = "historical-ligatures";
+            else if (val_lower == "no-historical-ligatures") style.font_variant_ligatures = "no-historical-ligatures";
+            else if (val_lower == "contextual") style.font_variant_ligatures = "contextual";
+            else if (val_lower == "no-contextual") style.font_variant_ligatures = "no-contextual";
+            else style.font_variant_ligatures = "normal";
         } else if (d.property == "font") {
             // CSS font shorthand: [font-style] [font-variant] [font-weight] font-size[/line-height] font-family
             // System fonts: caption, icon, menu, message-box, small-caption, status-bar
@@ -3816,7 +3855,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                     else if (pl == "bolder") { style.font_weight = 700; idx++; }
                     else if (pl == "lighter") { style.font_weight = 300; idx++; }
                     else if (pl == "normal") { idx++; } // could be style, variant, or weight
-                    else if (pl == "small-caps") { style.font_variant = 1; idx++; }
+                    else if (pl == "small-caps") { style.font_variant = 1; style.font_variant_caps = "small-caps"; idx++; }
                     else {
                         // Check if it's a numeric weight
                         bool is_weight = false;
@@ -5064,6 +5103,65 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             else if (val_lower == "text") style.user_select = clever::css::UserSelect::Text;
             else if (val_lower == "all") style.user_select = clever::css::UserSelect::All;
             else style.user_select = clever::css::UserSelect::Auto;
+        } else if (d.property == "overscroll-behavior") {
+            // overscroll-behavior shorthand: sets both x and y
+            // 0=auto, 1=contain, 2=none
+            auto parts = split_whitespace_paren(val_lower);
+            int val = 0; // default auto
+            if (val_lower == "contain") val = 1;
+            else if (val_lower == "none") val = 2;
+            if (parts.size() == 1) {
+                style.overscroll_behavior_x = val;
+                style.overscroll_behavior_y = val;
+            } else if (parts.size() >= 2) {
+                int x_val = 0, y_val = 0;
+                if (to_lower(parts[0]) == "contain") x_val = 1;
+                else if (to_lower(parts[0]) == "none") x_val = 2;
+                if (to_lower(parts[1]) == "contain") y_val = 1;
+                else if (to_lower(parts[1]) == "none") y_val = 2;
+                style.overscroll_behavior_x = x_val;
+                style.overscroll_behavior_y = y_val;
+            }
+        } else if (d.property == "overscroll-behavior-x") {
+            // 0=auto, 1=contain, 2=none
+            int val = 0;
+            if (val_lower == "contain") val = 1;
+            else if (val_lower == "none") val = 2;
+            style.overscroll_behavior_x = val;
+        } else if (d.property == "overscroll-behavior-y") {
+            // 0=auto, 1=contain, 2=none
+            int val = 0;
+            if (val_lower == "contain") val = 1;
+            else if (val_lower == "none") val = 2;
+            style.overscroll_behavior_y = val;
+        } else if (d.property == "touch-action") {
+            // 0=auto, 1=none, 2=pan-x, 3=pan-y, 4=pan-x pan-y, 5=manipulation, 6=pinch-zoom
+            int val = 0; // default auto
+            if (val_lower == "none") val = 1;
+            else if (val_lower == "pan-x") val = 2;
+            else if (val_lower == "pan-y") val = 3;
+            else if (val_lower == "pan-x pan-y" || val_lower == "pan-y pan-x") val = 4;
+            else if (val_lower == "manipulation") val = 5;
+            else if (val_lower == "pinch-zoom") val = 6;
+            style.touch_action = val;
+        } else if (d.property == "appearance" || d.property == "-webkit-appearance") {
+            // 0=auto, 1=none, 2=menulist-button, 3=textfield, 4=button
+            int val = 0; // default auto
+            if (val_lower == "none") val = 1;
+            else if (val_lower == "menulist-button") val = 2;
+            else if (val_lower == "textfield") val = 3;
+            else if (val_lower == "button") val = 4;
+            style.appearance = val;
+        } else if (d.property == "-webkit-tap-highlight-color") {
+            // Parse color value
+            auto color_val = clever::css::parse_color(d.value);
+            if (color_val) {
+                style.webkit_tap_highlight_color =
+                    ((uint32_t)color_val->r << 16) |
+                    ((uint32_t)color_val->g << 8) |
+                    ((uint32_t)color_val->b) |
+                    ((uint32_t)color_val->a << 24);
+            }
         } else if (d.property == "tab-size" || d.property == "-moz-tab-size") {
             try { style.tab_size = std::stoi(d.value); } catch (...) {}
         } else if (d.property == "filter") {
@@ -5757,22 +5855,6 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
         } else if (d.property == "font-variant") {
             if (val_lower == "small-caps") style.font_variant = 1;
             else style.font_variant = 0;
-        } else if (d.property == "font-variant-caps") {
-            if (val_lower == "small-caps") style.font_variant_caps = 1;
-            else if (val_lower == "all-small-caps") style.font_variant_caps = 2;
-            else if (val_lower == "petite-caps") style.font_variant_caps = 3;
-            else if (val_lower == "all-petite-caps") style.font_variant_caps = 4;
-            else if (val_lower == "unicase") style.font_variant_caps = 5;
-            else if (val_lower == "titling-caps") style.font_variant_caps = 6;
-            else style.font_variant_caps = 0; // normal
-        } else if (d.property == "font-variant-numeric") {
-            if (val_lower == "ordinal") style.font_variant_numeric = 1;
-            else if (val_lower == "slashed-zero") style.font_variant_numeric = 2;
-            else if (val_lower == "lining-nums") style.font_variant_numeric = 3;
-            else if (val_lower == "oldstyle-nums") style.font_variant_numeric = 4;
-            else if (val_lower == "proportional-nums") style.font_variant_numeric = 5;
-            else if (val_lower == "tabular-nums") style.font_variant_numeric = 6;
-            else style.font_variant_numeric = 0; // normal
         } else if (d.property == "font-synthesis") {
             if (val_lower == "none") { style.font_synthesis = 0; }
             else {
@@ -5806,13 +5888,6 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "auto") style.font_kerning = 0;
             else if (val_lower == "normal") style.font_kerning = 1;
             else if (val_lower == "none") style.font_kerning = 2;
-        } else if (d.property == "font-variant-ligatures") {
-            if (val_lower == "normal") style.font_variant_ligatures = 0;
-            else if (val_lower == "none") style.font_variant_ligatures = 1;
-            else if (val_lower == "common-ligatures") style.font_variant_ligatures = 2;
-            else if (val_lower == "no-common-ligatures") style.font_variant_ligatures = 3;
-            else if (val_lower == "discretionary-ligatures") style.font_variant_ligatures = 4;
-            else if (val_lower == "no-discretionary-ligatures") style.font_variant_ligatures = 5;
         } else if (d.property == "font-variant-east-asian") {
             if (val_lower == "normal") style.font_variant_east_asian = 0;
             else if (val_lower == "jis78") style.font_variant_east_asian = 1;
@@ -8057,6 +8132,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->pointer_events = static_cast<int>(parent_style.pointer_events);
         layout_node->user_select = static_cast<int>(parent_style.user_select);
         layout_node->tab_size = parent_style.tab_size;
+        layout_node->overscroll_behavior_x = parent_style.overscroll_behavior_x;
+        layout_node->overscroll_behavior_y = parent_style.overscroll_behavior_y;
+        layout_node->touch_action = parent_style.touch_action;
+        layout_node->appearance = parent_style.appearance;
+        layout_node->webkit_tap_highlight_color = parent_style.webkit_tap_highlight_color;
         layout_node->line_clamp = parent_style.line_clamp;
         layout_node->link_href = current_link;
         layout_node->link_target = current_link_target;
@@ -8778,6 +8858,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->pointer_events = static_cast<int>(style.pointer_events);
     layout_node->user_select = static_cast<int>(style.user_select);
     layout_node->tab_size = style.tab_size;
+    layout_node->overscroll_behavior_x = style.overscroll_behavior_x;
+    layout_node->overscroll_behavior_y = style.overscroll_behavior_y;
+    layout_node->touch_action = style.touch_action;
+    layout_node->appearance = style.appearance;
+    layout_node->webkit_tap_highlight_color = style.webkit_tap_highlight_color;
     layout_node->filters = style.filters;
     layout_node->drop_shadow_ox = style.drop_shadow_ox;
     layout_node->drop_shadow_oy = style.drop_shadow_oy;

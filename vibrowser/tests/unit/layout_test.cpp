@@ -7198,19 +7198,19 @@ TEST(LayoutNodeProps, FontVariantDefaultsZero) {
     EXPECT_EQ(n.font_variant, 0);
 }
 
-TEST(LayoutNodeProps, FontVariantCapsDefaultsZero) {
+TEST(LayoutNodeProps, FontVariantCapsDefaultsNormal) {
     LayoutNode n;
-    EXPECT_EQ(n.font_variant_caps, 0);
+    EXPECT_EQ(n.font_variant_caps, "normal");
 }
 
-TEST(LayoutNodeProps, FontVariantNumericDefaultsZero) {
+TEST(LayoutNodeProps, FontVariantNumericDefaultsNormal) {
     LayoutNode n;
-    EXPECT_EQ(n.font_variant_numeric, 0);
+    EXPECT_EQ(n.font_variant_numeric, "normal");
 }
 
-TEST(LayoutNodeProps, FontVariantLigaturesDefaultsZero) {
+TEST(LayoutNodeProps, FontVariantLigaturesDefaultsNormal) {
     LayoutNode n;
-    EXPECT_EQ(n.font_variant_ligatures, 0);
+    EXPECT_EQ(n.font_variant_ligatures, "normal");
 }
 
 TEST(LayoutNodeProps, FontFeatureSettingsDefaultsEmpty) {

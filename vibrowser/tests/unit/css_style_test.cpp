@@ -7063,22 +7063,22 @@ TEST(PropertyCascadeTest, FontVariantCapsValues) {
     ComputedStyle style;
     ComputedStyle parent;
 
-    EXPECT_EQ(style.font_variant_caps, 0);  // default: normal
+    EXPECT_EQ(style.font_variant_caps, "normal");
 
     cascade.apply_declaration(style, make_decl("font-variant-caps", "small-caps"), parent);
-    EXPECT_EQ(style.font_variant_caps, 1);
+    EXPECT_EQ(style.font_variant_caps, "small-caps");
 
     cascade.apply_declaration(style, make_decl("font-variant-caps", "all-small-caps"), parent);
-    EXPECT_EQ(style.font_variant_caps, 2);
+    EXPECT_EQ(style.font_variant_caps, "all-small-caps");
 
     cascade.apply_declaration(style, make_decl("font-variant-caps", "petite-caps"), parent);
-    EXPECT_EQ(style.font_variant_caps, 3);
+    EXPECT_EQ(style.font_variant_caps, "petite-caps");
 
     cascade.apply_declaration(style, make_decl("font-variant-caps", "titling-caps"), parent);
-    EXPECT_EQ(style.font_variant_caps, 6);
+    EXPECT_EQ(style.font_variant_caps, "titling-caps");
 
     cascade.apply_declaration(style, make_decl("font-variant-caps", "normal"), parent);
-    EXPECT_EQ(style.font_variant_caps, 0);
+    EXPECT_EQ(style.font_variant_caps, "normal");
 }
 
 TEST(PropertyCascadeTest, FontVariantNumericValues) {
@@ -7086,19 +7086,19 @@ TEST(PropertyCascadeTest, FontVariantNumericValues) {
     ComputedStyle style;
     ComputedStyle parent;
 
-    EXPECT_EQ(style.font_variant_numeric, 0);  // default: normal
+    EXPECT_EQ(style.font_variant_numeric, "normal");
 
     cascade.apply_declaration(style, make_decl("font-variant-numeric", "ordinal"), parent);
-    EXPECT_EQ(style.font_variant_numeric, 1);
+    EXPECT_EQ(style.font_variant_numeric, "ordinal");
 
     cascade.apply_declaration(style, make_decl("font-variant-numeric", "slashed-zero"), parent);
-    EXPECT_EQ(style.font_variant_numeric, 2);
+    EXPECT_EQ(style.font_variant_numeric, "slashed-zero");
 
     cascade.apply_declaration(style, make_decl("font-variant-numeric", "lining-nums"), parent);
-    EXPECT_EQ(style.font_variant_numeric, 3);
+    EXPECT_EQ(style.font_variant_numeric, "lining-nums");
 
     cascade.apply_declaration(style, make_decl("font-variant-numeric", "tabular-nums"), parent);
-    EXPECT_EQ(style.font_variant_numeric, 6);
+    EXPECT_EQ(style.font_variant_numeric, "tabular-nums");
 }
 
 TEST(PropertyCascadeTest, FontFeatureAndVariationSettings) {
@@ -7179,22 +7179,22 @@ TEST(PropertyCascadeTest, FontVariantLigatures) {
     ComputedStyle style;
     ComputedStyle parent;
 
-    EXPECT_EQ(style.font_variant_ligatures, 0);  // default: normal
+    EXPECT_EQ(style.font_variant_ligatures, "normal");
 
     cascade.apply_declaration(style, make_decl("font-variant-ligatures", "none"), parent);
-    EXPECT_EQ(style.font_variant_ligatures, 1);
+    EXPECT_EQ(style.font_variant_ligatures, "none");
 
     cascade.apply_declaration(style, make_decl("font-variant-ligatures", "common-ligatures"), parent);
-    EXPECT_EQ(style.font_variant_ligatures, 2);
+    EXPECT_EQ(style.font_variant_ligatures, "common-ligatures");
 
     cascade.apply_declaration(style, make_decl("font-variant-ligatures", "no-common-ligatures"), parent);
-    EXPECT_EQ(style.font_variant_ligatures, 3);
+    EXPECT_EQ(style.font_variant_ligatures, "no-common-ligatures");
 
     cascade.apply_declaration(style, make_decl("font-variant-ligatures", "discretionary-ligatures"), parent);
-    EXPECT_EQ(style.font_variant_ligatures, 4);
+    EXPECT_EQ(style.font_variant_ligatures, "discretionary-ligatures");
 
     cascade.apply_declaration(style, make_decl("font-variant-ligatures", "normal"), parent);
-    EXPECT_EQ(style.font_variant_ligatures, 0);
+    EXPECT_EQ(style.font_variant_ligatures, "normal");
 }
 
 // ---------------------------------------------------------------------------

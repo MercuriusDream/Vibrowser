@@ -646,9 +646,9 @@ void PropertyCascade::apply_declaration(
         if (prop == "font-weight") { style.font_weight = initial_style.font_weight; return; }
         if (prop == "font-style") { style.font_style = FontStyle::Normal; return; }
         if (prop == "font-variant") { style.font_variant = 0; return; }
-        if (prop == "font-variant-caps") { style.font_variant_caps = 0; return; }
-        if (prop == "font-variant-numeric") { style.font_variant_numeric = 0; return; }
-        if (prop == "font-variant-ligatures") { style.font_variant_ligatures = 0; return; }
+        if (prop == "font-variant-caps") { style.font_variant_caps = "normal"; return; }
+        if (prop == "font-variant-numeric") { style.font_variant_numeric = "normal"; return; }
+        if (prop == "font-variant-ligatures") { style.font_variant_ligatures = "normal"; return; }
         if (prop == "font-variant-east-asian") { style.font_variant_east_asian = 0; return; }
         if (prop == "font-variant-position") { style.font_variant_position = 0; return; }
         if (prop == "font-variant-alternates") { style.font_variant_alternates = 0; return; }
@@ -5418,25 +5418,27 @@ void PropertyCascade::apply_declaration(
 
     // ---- Font variant caps (inherited) ----
     if (prop == "font-variant-caps") {
-        if (value_lower == "small-caps") style.font_variant_caps = 1;
-        else if (value_lower == "all-small-caps") style.font_variant_caps = 2;
-        else if (value_lower == "petite-caps") style.font_variant_caps = 3;
-        else if (value_lower == "all-petite-caps") style.font_variant_caps = 4;
-        else if (value_lower == "unicase") style.font_variant_caps = 5;
-        else if (value_lower == "titling-caps") style.font_variant_caps = 6;
-        else style.font_variant_caps = 0; // normal
+        if (value_lower == "small-caps") style.font_variant_caps = "small-caps";
+        else if (value_lower == "all-small-caps") style.font_variant_caps = "all-small-caps";
+        else if (value_lower == "petite-caps") style.font_variant_caps = "petite-caps";
+        else if (value_lower == "all-petite-caps") style.font_variant_caps = "all-petite-caps";
+        else if (value_lower == "unicase") style.font_variant_caps = "unicase";
+        else if (value_lower == "titling-caps") style.font_variant_caps = "titling-caps";
+        else style.font_variant_caps = "normal";
         return;
     }
 
     // ---- Font variant numeric (inherited) ----
     if (prop == "font-variant-numeric") {
-        if (value_lower == "ordinal") style.font_variant_numeric = 1;
-        else if (value_lower == "slashed-zero") style.font_variant_numeric = 2;
-        else if (value_lower == "lining-nums") style.font_variant_numeric = 3;
-        else if (value_lower == "oldstyle-nums") style.font_variant_numeric = 4;
-        else if (value_lower == "proportional-nums") style.font_variant_numeric = 5;
-        else if (value_lower == "tabular-nums") style.font_variant_numeric = 6;
-        else style.font_variant_numeric = 0; // normal
+        if (value_lower == "ordinal") style.font_variant_numeric = "ordinal";
+        else if (value_lower == "slashed-zero") style.font_variant_numeric = "slashed-zero";
+        else if (value_lower == "lining-nums") style.font_variant_numeric = "lining-nums";
+        else if (value_lower == "oldstyle-nums") style.font_variant_numeric = "oldstyle-nums";
+        else if (value_lower == "proportional-nums") style.font_variant_numeric = "proportional-nums";
+        else if (value_lower == "tabular-nums") style.font_variant_numeric = "tabular-nums";
+        else if (value_lower == "diagonal-fractions") style.font_variant_numeric = "diagonal-fractions";
+        else if (value_lower == "stacked-fractions") style.font_variant_numeric = "stacked-fractions";
+        else style.font_variant_numeric = "normal";
         return;
     }
 
@@ -5508,12 +5510,16 @@ void PropertyCascade::apply_declaration(
 
     // ---- Font variant ligatures (inherited) ----
     if (prop == "font-variant-ligatures") {
-        if (value_lower == "normal") style.font_variant_ligatures = 0;
-        else if (value_lower == "none") style.font_variant_ligatures = 1;
-        else if (value_lower == "common-ligatures") style.font_variant_ligatures = 2;
-        else if (value_lower == "no-common-ligatures") style.font_variant_ligatures = 3;
-        else if (value_lower == "discretionary-ligatures") style.font_variant_ligatures = 4;
-        else if (value_lower == "no-discretionary-ligatures") style.font_variant_ligatures = 5;
+        if (value_lower == "none") style.font_variant_ligatures = "none";
+        else if (value_lower == "common-ligatures") style.font_variant_ligatures = "common-ligatures";
+        else if (value_lower == "no-common-ligatures") style.font_variant_ligatures = "no-common-ligatures";
+        else if (value_lower == "discretionary-ligatures") style.font_variant_ligatures = "discretionary-ligatures";
+        else if (value_lower == "no-discretionary-ligatures") style.font_variant_ligatures = "no-discretionary-ligatures";
+        else if (value_lower == "historical-ligatures") style.font_variant_ligatures = "historical-ligatures";
+        else if (value_lower == "no-historical-ligatures") style.font_variant_ligatures = "no-historical-ligatures";
+        else if (value_lower == "contextual") style.font_variant_ligatures = "contextual";
+        else if (value_lower == "no-contextual") style.font_variant_ligatures = "no-contextual";
+        else style.font_variant_ligatures = "normal";
         return;
     }
 

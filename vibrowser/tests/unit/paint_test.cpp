@@ -11795,13 +11795,13 @@ TEST(PaintIntegration, FontVariantCapsInline) {
 
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.font_variant_caps == 1) {
+        if (n.font_variant_caps == "small-caps") {
             found = true;
         }
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "font-variant-caps: small-caps should set font_variant_caps==1";
+    EXPECT_TRUE(found) << "font-variant-caps: small-caps should set font_variant_caps==\"small-caps\"";
 }
 
 // ============================================================================
@@ -14115,12 +14115,12 @@ TEST_F(PaintTest, FontVariantLigaturesNone) {
 
     const clever::layout::LayoutNode* target = nullptr;
     std::function<void(const clever::layout::LayoutNode&)> find = [&](const clever::layout::LayoutNode& n) {
-        if (n.font_variant_ligatures == 1 && target == nullptr) target = &n;
+        if (n.font_variant_ligatures == "none" && target == nullptr) target = &n;
         for (auto& c : n.children) find(*c);
     };
     find(*result.root);
     ASSERT_NE(target, nullptr) << "Should find a node with font_variant_ligatures=1";
-    EXPECT_EQ(target->font_variant_ligatures, 1) << "font-variant-ligatures: none should be 1";
+    EXPECT_EQ(target->font_variant_ligatures, "none") << "font-variant-ligatures: none should be none";
 }
 
 // ============================================================================
@@ -14137,12 +14137,12 @@ TEST_F(PaintTest, FontVariantLigaturesDiscretionary) {
 
     const clever::layout::LayoutNode* target = nullptr;
     std::function<void(const clever::layout::LayoutNode&)> find = [&](const clever::layout::LayoutNode& n) {
-        if (n.font_variant_ligatures == 4 && target == nullptr) target = &n;
+        if (n.font_variant_ligatures == "discretionary-ligatures" && target == nullptr) target = &n;
         for (auto& c : n.children) find(*c);
     };
     find(*result.root);
     ASSERT_NE(target, nullptr) << "Should find a node with font_variant_ligatures=4";
-    EXPECT_EQ(target->font_variant_ligatures, 4) << "font-variant-ligatures: discretionary-ligatures should be 4";
+    EXPECT_EQ(target->font_variant_ligatures, "discretionary-ligatures") << "font-variant-ligatures: discretionary-ligatures should be discretionary-ligatures";
 }
 
 // ============================================================================
@@ -17787,7 +17787,7 @@ TEST_F(PaintTest, FontVariantNumericOrdinal) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.tag_name == "div" && n.font_variant_numeric == 1) found = true;
+        if (n.tag_name == "div" && n.font_variant_numeric == "ordinal") found = true;
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
@@ -17805,7 +17805,7 @@ TEST_F(PaintTest, FontVariantNumericSlashedZero) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.tag_name == "div" && n.font_variant_numeric == 2) found = true;
+        if (n.tag_name == "div" && n.font_variant_numeric == "slashed-zero") found = true;
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
@@ -17823,7 +17823,7 @@ TEST_F(PaintTest, FontVariantNumericTabularNums) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.tag_name == "div" && n.font_variant_numeric == 6) found = true;
+        if (n.tag_name == "div" && n.font_variant_numeric == "tabular-nums") found = true;
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
@@ -24706,7 +24706,7 @@ TEST_F(PaintTest, FontVariantCapsCascadeTitlingCaps) {
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
         if (n.tag_name == "div" && !found) {
-            EXPECT_EQ(n.font_variant_caps, 6) << "font-variant-caps: titling-caps should be 6";
+            EXPECT_EQ(n.font_variant_caps, 6) << "font-variant-caps: titling-caps should be "titling-caps"";
             found = true;
         }
         for (auto& c : n.children) check(*c);
@@ -24729,7 +24729,7 @@ TEST_F(PaintTest, FontVariantCapsInherited) {
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
         if (n.is_text && n.text_content == "Child" && !found) {
-            EXPECT_EQ(n.font_variant_caps, 2) << "font-variant-caps should be inherited (all-small-caps=2)";
+            EXPECT_EQ(n.font_variant_caps, 2) << "font-variant-caps should be inherited (all-small-caps="all-small-caps")";
             found = true;
         }
         for (auto& c : n.children) check(*c);
@@ -32003,7 +32003,7 @@ TEST_F(PaintTest, FontVariantNumericTabularNumsRendering) {
     ASSERT_NE(result.root, nullptr);
     std::function<const clever::layout::LayoutNode*(const clever::layout::LayoutNode*)> find_node;
     find_node = [&](const clever::layout::LayoutNode* n) -> const clever::layout::LayoutNode* {
-        if (n->font_variant_numeric == 6) return n; // tabular-nums = 6
+        if (n->font_variant_numeric == "tabular-nums") return n; // tabular-nums = 6
         for (auto& c : n->children) {
             auto* r = find_node(c.get());
             if (r) return r;
@@ -32026,7 +32026,7 @@ TEST_F(PaintTest, FontVariantNumericSlashedZeroRendering) {
     ASSERT_NE(result.root, nullptr);
     std::function<const clever::layout::LayoutNode*(const clever::layout::LayoutNode*)> find_node;
     find_node = [&](const clever::layout::LayoutNode* n) -> const clever::layout::LayoutNode* {
-        if (n->font_variant_numeric == 2) return n; // slashed-zero = 2
+        if (n->font_variant_numeric == "slashed-zero") return n; // slashed-zero = 2
         for (auto& c : n->children) {
             auto* r = find_node(c.get());
             if (r) return r;
