@@ -592,6 +592,72 @@ struct TextRegion {
     }
 }
 
+// Helper: Find the innermost scroll container at the given (page) coordinates
+// that can accept scroll in the given direction. Returns nullptr if none found.
+- (clever::layout::LayoutNode*)findScrollableContainerAtPageX:(CGFloat)pageX
+                                                         pageY:(CGFloat)pageY
+                                                canScrollDown:(BOOL)canScrollDown
+                                                canScrollRight:(BOOL)canScrollRight {
+    if (!_layoutRoot) return nullptr;
+
+    // Convert page coordinates to viewport coordinates for easier calculation
+    // (page coords = viewport coords shifted by _scrollOffset)
+    CGFloat viewportY = pageY + _scrollOffset;
+
+    // Recursive search: find the deepest scrollable container at this point
+    std::function<clever::layout::LayoutNode*(clever::layout::LayoutNode&,
+                                              CGFloat, CGFloat)> search_containers =
+        [&](clever::layout::LayoutNode& node, CGFloat offsetX, CGFloat offsetY)
+            -> clever::layout::LayoutNode* {
+
+        // Skip invisible or clipped nodes
+        if (node.visibility_hidden || node.display == clever::layout::DisplayType::None) {
+            return nullptr;
+        }
+
+        float absX = offsetX + node.geometry.x;
+        float absY = offsetY + node.geometry.y;
+        float w = node.geometry.border_box_width();
+        float h = node.geometry.border_box_height();
+
+        // Check if point is within this node's border box
+        if (pageX < absX || pageX > absX + w ||
+            viewportY < absY || viewportY > absY + h) {
+            return nullptr;
+        }
+
+        // Check children first (depth-first to find innermost)
+        for (auto& child : node.children) {
+            if (auto* result = search_containers(*child, absX, absY)) {
+                return result;
+            }
+        }
+
+        // If no scrollable child found, check if THIS node can scroll
+        if (node.is_scroll_container && node.overflow >= 2) {  // 2=scroll, 3=auto
+            // Check if there's actually something to scroll in the requested direction
+            bool canScroll = false;
+
+            if (canScrollDown && node.overflow_indicator_bottom &&
+                node.scroll_top < node.scroll_content_height - node.geometry.height) {
+                canScroll = true;
+            }
+            if (canScrollRight && node.overflow_indicator_right &&
+                node.scroll_left < node.scroll_content_width - node.geometry.width) {
+                canScroll = true;
+            }
+
+            if (canScroll) {
+                return &node;
+            }
+        }
+
+        return nullptr;
+    };
+
+    return search_containers(*_layoutRoot, 0.0f, 0.0f);
+}
+
 - (void)scrollWheel:(NSEvent*)event {
     // Dismiss text input overlay when scrolling — it would be mispositioned
     if (_overlayTextField || _overlaySecureField) {
@@ -619,6 +685,48 @@ struct TextRegion {
     CGFloat scrollAmountX = -rawDeltaX;
     CGFloat scrollAmountY = -rawDeltaY;
     BOOL isMomentum = (event.momentumPhase != NSEventPhaseNone);
+
+    // Try to find a scrollable child container under the cursor first
+    // Get the current mouse position in page coordinates
+    NSPoint mouseLocation = [NSEvent mouseLocation];
+    NSPoint viewMouseLocation = [self convertPoint:[self.window convertScreenToBase:mouseLocation] fromView:nil];
+    CGFloat pageX = viewMouseLocation.x / _pageScale / _backingScale;
+    CGFloat pageY = -viewMouseLocation.y / _pageScale / _backingScale; // flip Y axis
+
+    // Check if we should try scrolling a child container
+    auto scrollTarget = [self findScrollableContainerAtPageX:pageX
+                                                       pageY:pageY
+                                              canScrollDown:(scrollAmountY > kScrollDeltaEpsilon)
+                                              canScrollRight:(scrollAmountX > kScrollDeltaEpsilon)];
+
+    if (scrollTarget && scrollTarget != _layoutRoot) {
+        // Scroll the child container instead of the viewport
+        CGFloat appliedDeltaY = 0;
+        CGFloat appliedDeltaX = 0;
+
+        // Apply vertical scroll to child container
+        if (std::abs(scrollAmountY) > kScrollDeltaEpsilon) {
+            float maxScrollY = std::max(0.0f, scrollTarget->scroll_content_height - scrollTarget->geometry.height);
+            float prevScroll = scrollTarget->scroll_top;
+            scrollTarget->scroll_top = std::max(0.0f, std::min(scrollTarget->scroll_top + scrollAmountY, maxScrollY));
+            appliedDeltaY = scrollTarget->scroll_top - prevScroll;
+        }
+
+        // Apply horizontal scroll to child container
+        if (std::abs(scrollAmountX) > kScrollDeltaEpsilon) {
+            float maxScrollX = std::max(0.0f, scrollTarget->scroll_content_width - scrollTarget->geometry.width);
+            float prevScroll = scrollTarget->scroll_left;
+            scrollTarget->scroll_left = std::max(0.0f, std::min(scrollTarget->scroll_left + scrollAmountX, maxScrollX));
+            appliedDeltaX = scrollTarget->scroll_left - prevScroll;
+        }
+
+        // Trigger re-render if scroll was applied
+        if (std::abs(appliedDeltaX) > kScrollDeltaEpsilon || std::abs(appliedDeltaY) > kScrollDeltaEpsilon) {
+            [self setNeedsDisplay:YES];
+        }
+
+        return; // Event consumed by child container
+    }
 
     // CSS overscroll-behavior: contain (1) or none (2) on viewport means clamp
     // and consume boundary-pushing wheel input to prevent scroll chaining/bounce.
