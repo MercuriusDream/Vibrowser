@@ -187,11 +187,12 @@ struct TextRegion {
         return;
     }
 
-    _imageWidth = renderer->width();
-    _imageHeight = renderer->height();
-    // Infer renderer-to-view scale from image width. The layout/render pipeline
-    // uses logical CSS pixels for viewport sizing; any higher raster density
-    // should be reflected as an image/view ratio here.
+    // Use physical pixel dimensions for the pixel buffer (CSS logical pixels × dpr).
+    // renderer->width()/height() return CSS logical pixels; pixels_width()/pixels_height()
+    // return the actual buffer dimensions at device resolution.
+    _imageWidth = renderer->pixels_width();
+    _imageHeight = renderer->pixels_height();
+    // _backingScale = dpr: physical pixels / logical CSS pixels
     CGFloat viewWidth = std::max<CGFloat>(1.0, self.bounds.size.width);
     CGFloat inferredScale = static_cast<CGFloat>(_imageWidth) / viewWidth;
     if (!std::isfinite(inferredScale) || inferredScale < 1.0) {
