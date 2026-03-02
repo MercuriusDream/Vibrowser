@@ -582,6 +582,34 @@ static JSValue js_performance_get_entries_by_type(JSContext* ctx, JSValueConst /
     if (argc < 1 || !JS_IsString(argv[0])) return arr;
     const char* type_cstr = JS_ToCString(ctx, argv[0]);
     if (!type_cstr) return arr;
+    if (std::string(type_cstr) == "navigation") {
+        PerformanceEntry nav;
+        nav.name = "";
+        nav.entry_type = "navigation";
+        nav.start_time = 0.0;
+        nav.duration = 100.0;
+
+        JSValue nav_obj = make_perf_entry_obj(ctx, nav);
+        JS_SetPropertyStr(ctx, nav_obj, "type", JS_NewString(ctx, "navigate"));
+        JS_SetPropertyStr(ctx, nav_obj, "redirectCount", JS_NewInt32(ctx, 0));
+        JS_SetPropertyStr(ctx, nav_obj, "activationStart", JS_NewFloat64(ctx, 0.0));
+        JS_SetPropertyStr(ctx, nav_obj, "criticalCHRestart", JS_NewInt32(ctx, 0));
+        JS_SetPropertyStr(ctx, nav_obj, "serverTiming", JS_NewArray(ctx));
+        JS_SetPropertyStr(ctx, nav_obj, "domContentLoadedEventStart", JS_NewFloat64(ctx, 50.0));
+        JS_SetPropertyStr(ctx, nav_obj, "domContentLoadedEventEnd", JS_NewFloat64(ctx, 52.0));
+        JS_SetPropertyStr(ctx, nav_obj, "loadEventStart", JS_NewFloat64(ctx, 90.0));
+        JS_SetPropertyStr(ctx, nav_obj, "loadEventEnd", JS_NewFloat64(ctx, 95.0));
+        JS_SetPropertyStr(ctx, nav_obj, "domInteractive", JS_NewFloat64(ctx, 80.0));
+        JS_SetPropertyStr(ctx, nav_obj, "domComplete", JS_NewFloat64(ctx, 90.0));
+        JS_SetPropertyStr(ctx, nav_obj, "transferSize", JS_NewInt32(ctx, 0));
+        JS_SetPropertyStr(ctx, nav_obj, "encodedBodySize", JS_NewInt32(ctx, 0));
+        JS_SetPropertyStr(ctx, nav_obj, "decodedBodySize", JS_NewInt32(ctx, 0));
+
+        uint32_t idx = 0;
+        JS_SetPropertyUint32(ctx, arr, idx++, nav_obj);
+        JS_FreeCString(ctx, type_cstr);
+        return arr;
+    }
     std::string type(type_cstr);
     JS_FreeCString(ctx, type_cstr);
     auto* state = get_perf_state(ctx);
@@ -5001,6 +5029,12 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_NewCFunction(ctx, js_window_open, "open", 1));
     JS_SetPropertyStr(ctx, global, "close",
         JS_NewCFunction(ctx, js_window_close, "close", 0));
+    JS_SetPropertyStr(ctx, global, "top", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, global, "parent", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, global, "opener", JS_NULL);
+    JS_SetPropertyStr(ctx, global, "self", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, global, "frames", JS_DupValue(ctx, global));
+    JS_SetPropertyStr(ctx, global, "frameElement", JS_NULL);
 
     // ---- window.dispatchEvent ----
     JS_SetPropertyStr(ctx, global, "dispatchEvent",
