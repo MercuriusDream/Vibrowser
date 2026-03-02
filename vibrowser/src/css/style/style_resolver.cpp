@@ -2446,7 +2446,6 @@ void PropertyCascade::apply_declaration(
         else if (value_lower == "avoid") style.page_break_before = 2;
         else if (value_lower == "left") style.page_break_before = 3;
         else if (value_lower == "right") style.page_break_before = 4;
-        return;
     }
     if (prop == "page-break-after") {
         if (value_lower == "auto") style.page_break_after = 0;
@@ -2454,11 +2453,34 @@ void PropertyCascade::apply_declaration(
         else if (value_lower == "avoid") style.page_break_after = 2;
         else if (value_lower == "left") style.page_break_after = 3;
         else if (value_lower == "right") style.page_break_after = 4;
-        return;
     }
     if (prop == "page-break-inside") {
         if (value_lower == "auto") style.page_break_inside = 0;
         else if (value_lower == "avoid") style.page_break_inside = 1;
+    }
+    // Legacy page-break-* properties are kept for compatibility (CSS 2.1),
+    // but are deprecated in favor of break-* in modern CSS.
+    // Re-map them into break-before/after/inside so rendering uses the modern model.
+    // page-break-before/after `left` and `right` are normalized to `page`.
+    if (prop == "page-break-before") {
+        if (value_lower == "auto") style.break_before = 0;
+        else if (value_lower == "always") style.break_before = 3;
+        else if (value_lower == "avoid") style.break_before = 1;
+        else if (value_lower == "left") style.break_before = 3;
+        else if (value_lower == "right") style.break_before = 3;
+        return;
+    }
+    if (prop == "page-break-after") {
+        if (value_lower == "auto") style.break_after = 0;
+        else if (value_lower == "always") style.break_after = 3;
+        else if (value_lower == "avoid") style.break_after = 1;
+        else if (value_lower == "left") style.break_after = 3;
+        else if (value_lower == "right") style.break_after = 3;
+        return;
+    }
+    if (prop == "page-break-inside") {
+        if (value_lower == "auto") style.break_inside = 0;
+        else if (value_lower == "avoid") style.break_inside = 1;
         return;
     }
     if (prop == "background-clip" || prop == "-webkit-background-clip") {
@@ -7507,7 +7529,11 @@ bool StyleResolver::evaluate_media_condition(const std::string& condition) const
         return evaluate_media_condition(cond.substr(5));
     }
 
-    // Media types
+    // Media types:
+    // - "screen" and "all" are supported in this screen-first browser.
+    // - "print" is intentionally unsupported (false) because print output/layout is not implemented.
+    // - Other print-adjacent media types are also treated as non-applicable.
+    // - This keeps "@media not print" and similar checks evaluating to the expected non-print branch.
     if (lower == "all" || lower == "screen") return true;
     if (lower == "print" || lower == "speech" || lower == "tty" ||
         lower == "tv" || lower == "projection" || lower == "handheld" ||
