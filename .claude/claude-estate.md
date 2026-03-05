@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 2003 - matchMedia resize dispatch width/height propagation + render-view DPR backing-scale stabilization
-**Momentum**: C2003 complete - matchMedia resize hooks now update viewport dimensions atomically and render view prefers renderer DPR directly, with JS regression updates.
-**Cycle**: 2003
+**Current Focus**: Cycle 2004 - legacy uppercase table ALIGN centering fix with case-insensitive attribute lookup
+**Momentum**: C2004 complete - fixed uppercase ALIGN handling and restored centered table layout in the table path with regression coverage.
+**Cycle**: 2004
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -1605,6 +1605,24 @@ Generated: 2026-03-01
 *Claude Estate — no end condition. Only more work.*
 
 ## Session Log
+
+### Cycle 2004 (Legacy Table ALIGN Case-Insensitive Centering) - 2026-03-06
+
+- **Theme**: keep legacy table alignment behavior robust for uppercase HTML attributes and table-layout execution path.
+- **Files Changed**:
+  - `vibrowser/src/paint/render_pipeline.cpp`
+  - `vibrowser/src/layout/layout_engine.cpp`
+  - `vibrowser/tests/unit/paint_test.cpp`
+- **Fixes Implemented**:
+  - made attribute-name lookup in render pipeline case-insensitive (`get_attr` / `has_attr`) so legacy uppercase attributes are recognized.
+  - preserved `<table align="center">` semantics for uppercase forms by ensuring table auto-margin centering survives through `layout_table()` instead of being force-zeroed.
+  - added regression test `PaintTest.TableAlignAttributeCaseInsensitiveCentering` validating centered placement for `<table align="CENTER">`.
+- **Validation**:
+  - `cmake --build build_compact --target vibrowser_paint_tests -j8`
+  - `./build_compact/tests/unit/vibrowser_paint_tests --gtest_filter='PaintTest.TableAlignAttributeCaseInsensitiveCentering'`
+  - `./build_compact/tests/unit/vibrowser_paint_tests --gtest_filter='PaintTest.TdAlignAttribute:PaintTest.TableBgcolorAttribute:PaintTest.TdBgcolorAttribute:PaintTest.TableAlignAttributeCaseInsensitiveCentering'`
+  - Result: all targeted tests passed.
+- **Ledger divergence resolution**: cycle started with `.claude` newer than `.codex`; `.claude` remained source of truth by mtime and `.codex/codex-estate.md` was re-synced after this update.
 
 ### Cycle 2002 (P20 HiDPI/Retina DPR Plumbing) - 2026-03-06
 
