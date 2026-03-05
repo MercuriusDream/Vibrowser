@@ -10547,25 +10547,124 @@ if (typeof structuredClone === 'undefined') {
     }
 
     // ------------------------------------------------------------------
-    // navigator.serviceWorker (full stub)
+    // navigator.serviceWorker (stateful stub)
     // ------------------------------------------------------------------
     {
         const char* sw_src = R"JS(
 if (typeof navigator !== 'undefined' && navigator && !navigator.serviceWorker.register) {
-    navigator.serviceWorker = {
-        register: function() { return Promise.resolve({
-            installing: null, waiting: null, active: null,
-            scope: '/', unregister: function() { return Promise.resolve(true); },
-            update: function() { return Promise.resolve(); },
-            addEventListener: function() {},
-            removeEventListener: function() {}
-        }); },
-        ready: Promise.resolve({ active: null }),
-        controller: null,
-        addEventListener: function() {},
-        removeEventListener: function() {},
-        getRegistrations: function() { return Promise.resolve([]); }
+    var __swRegistrations = [];
+    var __swGlobalController = null;
+    var __swNullReady = Object.freeze({ active: null, scope: '/' });
+    var __swNoop = function() {};
+
+    var __swNormalizeScope = function(options) {
+        if (options && typeof options.scope === 'string' && options.scope.length > 0) {
+            return options.scope;
+        }
+        return '/';
     };
+
+    var __swFindRegistration = function(scope) {
+        for (var i = 0; i < __swRegistrations.length; i++) {
+            if (__swRegistrations[i].scope === scope) {
+                return __swRegistrations[i];
+            }
+        }
+        return null;
+    };
+
+    var __swBuildRegistration = function(scope, scriptURL) {
+        var activeWorker = {
+            scriptURL: scriptURL,
+            state: 'activated',
+            addEventListener: __swNoop,
+            removeEventListener: __swNoop
+        };
+        var registration = {
+            installing: null,
+            waiting: null,
+            active: activeWorker,
+            scope: scope,
+            update: function() { return Promise.resolve(); },
+            addEventListener: __swNoop,
+            removeEventListener: __swNoop,
+            unregister: function() {
+                for (var i = 0; i < __swRegistrations.length; i++) {
+                    if (__swRegistrations[i] === registration) {
+                        __swRegistrations.splice(i, 1);
+                        if (__swGlobalController === activeWorker) {
+                            __swGlobalController = null;
+                        }
+                        return Promise.resolve(true);
+                    }
+                }
+                return Promise.resolve(false);
+            }
+        };
+        return registration;
+    };
+
+    navigator.serviceWorker = {
+        register: function(scriptURL, options) {
+            var normalizedScriptURL = String(scriptURL || '');
+            var scope = __swNormalizeScope(options);
+            var existing = __swFindRegistration(scope);
+            if (existing) {
+                if (normalizedScriptURL.length > 0) {
+                    existing.active.scriptURL = normalizedScriptURL;
+                }
+                __swGlobalController = existing.active;
+                return Promise.resolve(existing);
+            }
+
+            var created = __swBuildRegistration(scope, normalizedScriptURL);
+            __swRegistrations.push(created);
+            __swGlobalController = created.active;
+            return Promise.resolve(created);
+        },
+        getRegistration: function(url) {
+            var path = '/';
+            if (typeof url === 'string' && url.length > 0) {
+                if (url.charAt(0) === '/') {
+                    path = url;
+                }
+            }
+            var best = null;
+            for (var i = 0; i < __swRegistrations.length; i++) {
+                var reg = __swRegistrations[i];
+                if (path.indexOf(reg.scope) === 0) {
+                    if (!best || reg.scope.length > best.scope.length) {
+                        best = reg;
+                    }
+                }
+            }
+            return Promise.resolve(best);
+        },
+        getRegistrations: function() {
+            return Promise.resolve(__swRegistrations.slice());
+        },
+        addEventListener: __swNoop,
+        removeEventListener: __swNoop
+    };
+
+    Object.defineProperty(navigator.serviceWorker, 'ready', {
+        configurable: true,
+        enumerable: true,
+        get: function() {
+            if (__swRegistrations.length > 0) {
+                return Promise.resolve(__swRegistrations[0]);
+            }
+            return Promise.resolve(__swNullReady);
+        }
+    });
+
+    Object.defineProperty(navigator.serviceWorker, 'controller', {
+        configurable: true,
+        enumerable: true,
+        get: function() {
+            return __swGlobalController;
+        }
+    });
 }
 )JS";
         JSValue sw_ret = JS_Eval(ctx, sw_src, std::strlen(sw_src),

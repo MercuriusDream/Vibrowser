@@ -6,15 +6,15 @@
 ## Current Status
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
-**Last Active**: 2026-03-02
-**Current Focus**: Cycle 1993 — Launching next feature batch
-**Momentum**: C1992 complete — 9 commits shipped. HiDPI Retina rendering, button CSS fix, CompressionStream, matchMedia onchange, dialog close event, CSS interpolate-size, logical border shorthands, border-inline/block, overscroll-behavior-inline/block. 14/14 tests passing.
-**Cycle**: 1993
+**Last Active**: 2026-03-06
+**Current Focus**: Cycle 1997 — Service Worker stateful stub progression (`register/getRegistration/getRegistrations/ready/controller`)
+**Momentum**: C1997 complete — moved Service Worker from static no-op stub to stateful registration semantics with scope-aware lookup and unregister bookkeeping. Incremental P1 progress.
+**Cycle**: 1997
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
 **Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
-**User Issue**: All user-reported centering/layout bugs FIXED. DPR viewport scaling FIXED. Mac UI white blank area NOT a bug.
+**User Issue**: HN-style narrow title/subtext wrapping fixed (auto-width table columns now consume available width).
 
 **IMPORTANT**: When running parallel agents, always do a `rm -rf build && cmake -S . -B build` clean rebuild after agents finish, since concurrent file modifications can create stale .o files that link incorrectly. `/screenshot 2` to see the current state after build.
 
@@ -1606,6 +1606,54 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 1997 (Service Worker Stateful Stub Progression) — 2026-03-06
+
+- **Theme**: advance P1 Service Worker from static stubs toward realistic registration semantics.
+- **Files Changed**:
+  - `clever/src/js/js_dom_bindings.cpp`
+  - `clever/tests/unit/js_engine_test.cpp`
+- **Fixes Implemented**:
+  - Converted `navigator.serviceWorker` from static object literals to stateful in-memory registration handling.
+  - Added scope-aware `register(scriptURL, options)` behavior with registration reuse-by-scope.
+  - Added `getRegistration(url)` longest-scope-prefix matching and `getRegistrations()` snapshot semantics.
+  - Added dynamic `ready` getter and `controller` getter tied to current registrations.
+  - Added unregister bookkeeping so registration lists shrink correctly and controller is cleared when active worker is removed.
+- **Validation**:
+  - Attempted: `cmake -S clever -B clever/build && cmake --build clever/build --target clever_js_tests -j4`
+  - Attempted: `./clever/build/tests/unit/clever_js_tests --gtest_filter='JSDom.ServiceWorker*'`
+  - Result: blocked in this runtime because `FetchContent` cannot clone googletest (network restricted: `Could not resolve host: github.com`).
+- **Ledger divergence resolution**: cycle start ledgers differed by mtime (`.claude` newer than `.codex`), so `.claude` remained source of truth and `.codex` was re-synced after this update.
+
+### Cycle 1996 (HN Spacer Row Regression) — 2026-03-06
+
+- **Theme**: lock in HN-style table behavior after Cycle 1995 width-distribution fix.
+- **Files Changed**:
+  - `vibrowser/tests/unit/layout_table_regression_test.cpp` (new)
+  - `vibrowser/tests/unit/CMakeLists.txt`
+- **Fixes Implemented**:
+  - Added dedicated regression test `TableLayoutRegression.HnLikeAutoLayoutKeepsSpacerRowHeightAndWideTitleColumn`.
+  - Verifies title column consumes most table width in HN-like rows.
+  - Verifies explicit spacer row height is preserved and row stacking remains stable.
+- **Validation**:
+  - `cmake -S vibrowser -B build_compact && cmake --build build_compact --target vibrowser_layout_tests -j4`
+  - `build_compact/tests/unit/vibrowser_layout_tests --gtest_filter='TableLayout.*:TableLayoutRegression.*'`
+  - Result: 8/8 table-related tests passing.
+- **Ledger divergence resolution**: `.claude/claude-estate.md` was newer than `.codex/codex-estate.md` at cycle start, so `.claude` was selected as source of truth and `.codex` was re-synced this cycle.
+
+### Cycle 1995 (HN Table Wrap Fix) — 2026-03-02
+
+- **Theme**: Fix unexpected early line wrapping in Hacker News list rows.
+- **Root Cause**: Table auto-layout kept intrinsic (narrow) column widths, then a post-layout shrink-to-fit pass collapsed auto-width tables to content width, causing excessive wraps in title/subtext columns.
+- **Files Changed**:
+  - `vibrowser/src/layout/layout_engine.cpp`
+  - `vibrowser/tests/unit/layout_test.cpp`
+- **Fixes Implemented**:
+  - Expanded remaining table column space for the table's available used width even when width is auto.
+  - Removed end-of-layout auto-table shrink pass that over-constrained content tables.
+  - Added regression test `TableLayout.AutoWidthTableDistributesRemainingColumnSpace`.
+- **Validation**:
+  - `vibrowser_layout_tests --gtest_filter='TableLayout.*'` → 8/8 passed.
+
 ### Cycle 1978 (R46-R48 Feature Implementation) — 2026-03-02
 
 - **Theme**: BFC margin collapsing, CSS animations, Web Workers, font-feature-settings, Canvas 2D, text-wrap, font-variant, HTML entities, visualViewport
@@ -2070,9 +2118,56 @@ Generated: 2026-03-01
 - system-ui/ui-serif/ui-sans-serif/ui-monospace font stacks mapped (cycle 1979)
 - prefers-color-scheme, prefers-reduced-motion, prefers-contrast media queries — ALL implemented (cycle 1979)
 - `codex-spark` haiku agents are the primary subagent type. 4-6 per round. They commit+push directly.
+- HN narrow line-wrap regression fixed in C1995: `layout_table()` no longer performs post-layout shrink-to-fit for auto-width tables; remaining table content width is distributed to columns. Regression test: `TableLayout.AutoWidthTableDistributesRemainingColumnSpace`.
 - Cycle 1987 done: window.top/parent/opener/self/frames, PerformanceNavigationTiming, ES2024+ (Promise.withResolvers, Array.fromAsync, Set.union/intersection/difference), BroadcastChannel stub, animation-fill-mode forwards/backwards/both/paused, StorageEvent dispatch, @supports selector()/font-tech(), CSS revert-layer
 - High-value next targets: CompressionStream/DecompressionStream stubs, matchMedia live change event dispatch (store callbacks, fire on resize), visibilitychange event on page load, CSS interpolate-size:allow-keywords for auto transitions, HTMLDialogElement close event, more fetch() improvements, CSS `paint()` Houdini stubs
 
 ### Tell The Next Codex
 
-- `.codex/codex-estate.md` is write-blocked in this runtime (`operation not permitted`), so Cycle 915 is recorded in `.claude/claude-estate.md` as source of truth for sync-forward.
+- `.codex/codex-estate.md` is write-blocked in this runtime (`Operation not permitted` while creating in-place temp file), so Cycle 1996 is recorded in `.claude/claude-estate.md` as source of truth for sync-forward.
+- Service Worker status improved from static/no-op to stateful registration semantics, but full lifecycle/events/fetch interception remain pending (P1 still partial).
+
+### Cycle 2423 (Render/CSS/JS Stability Sweep) — 2026-03-02
+
+- **Theme**: render break diagnosis + targeted hardening with multi-agent audits
+- **Agents**: 6 concurrent subagents (root/vibrowser builders + render/layout/css/js auditors)
+- **Files**: root + vibrowser trees touched (CMake, CSS parser/resolver, shell event handling, workers, tests)
+- **Shipped Fixes**:
+  - Root test execution regression fixed by setting CTest working directory to source root.
+  - `vibrowser` build break fixed (`<cmath>` include for `std::isfinite` in style resolver).
+  - `@supports` evaluator hardened:
+    - empty condition now safely returns false (no `front()/back()` crash path),
+    - unknown properties now return false (removed permissive true fallback),
+    - common value checks added for `display`/`position`.
+  - Media query evaluator fixed for text-valued features:
+    - `orientation` and `prefers-color-scheme` now evaluated before numeric parsing,
+    - unknown/invalid values fail closed.
+  - DOM pointer lifetime guards in `browser_window.mm`:
+    - shared `is_node_attached()` guard,
+    - click event sequence now checks node liveness between `mousedown`/`mouseup`/`click`,
+    - stale `_hoveredNode` and stale focused-input pointers are cleared safely,
+    - pending programmatic scroll now triggers redraw (`setNeedsDisplay`).
+  - Selector/parser correctness:
+    - `:has()` now contributes argument specificity like `:is()`/`:not()`,
+    - attribute selector parser now accepts unquoted numeric/dimension/percentage value tokens.
+  - Worker runtime fixes:
+    - `self.postMessage()` now routes worker->main queue,
+    - worker class registration no longer recreates class IDs on every install/runtime bind.
+- **New/Updated Tests**:
+  - Root: existing 31-test suite revalidated after CMake test fix.
+  - Vibrowser:
+    - `StyleResolverTest.SupportsUnknownPropertyDoesNotMatch`
+    - `StyleResolverTest.SupportsNotUnknownDisplayValueMatches`
+    - `StyleResolverTest.SupportsEmptyConditionDoesNotMatch`
+    - `StyleResolverTest.OrientationMediaFeatureMatchesPortrait`
+    - `SelectorMatcherTest.AttributeSelectorParsesUnquotedNumericValue`
+    - `SpecificityTest.HasPseudoUsesArgumentSpecificity`
+- **Validation**:
+  - Root: `31/31` passed.
+  - Vibrowser: `14/14` passed.
+- **Residual Risks / Next Targets**:
+  - Remaining high-risk render gaps from audit still open:
+    - DPR/logical coordinate-space mismatch between render pipeline and view hit-testing/anchor scroll,
+    - nested at-rules inside `@media` not recursively parsed,
+    - worker message pumping integration into main runtime loop,
+    - async callback tab affinity (`activeTab` drift) in fetch/form completion paths.

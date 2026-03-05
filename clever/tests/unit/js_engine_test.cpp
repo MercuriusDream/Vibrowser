@@ -9266,6 +9266,84 @@ TEST(JSDom, ServiceWorkerGetRegistrations) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, ServiceWorkerReadyAndControllerAfterRegister) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    engine.evaluate(R"(
+        var swReadyScope = '';
+        var swControllerScript = '';
+        navigator.serviceWorker.register('/sw-main.js', { scope: '/app/' })
+            .then(function() {
+                return navigator.serviceWorker.ready;
+            })
+            .then(function(reg) {
+                swReadyScope = reg.scope;
+                swControllerScript = navigator.serviceWorker.controller
+                    ? navigator.serviceWorker.controller.scriptURL
+                    : '';
+            });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate(R"(
+        String(swReadyScope + ',' + swControllerScript);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "/app/,/sw-main.js");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ServiceWorkerGetRegistrationByScope) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    engine.evaluate(R"(
+        var swScopedScope = '';
+        navigator.serviceWorker.register('/sw-root.js', { scope: '/' })
+            .then(function() {
+                return navigator.serviceWorker.register('/sw-app.js', { scope: '/app/' });
+            })
+            .then(function() {
+                return navigator.serviceWorker.getRegistration('/app/page');
+            })
+            .then(function(reg) {
+                swScopedScope = reg ? reg.scope : '';
+            });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("String(swScopedScope)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "/app/");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ServiceWorkerUnregisterUpdatesRegistrationList) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    engine.evaluate(R"(
+        var swRegCountAfterUnregister = -1;
+        navigator.serviceWorker.register('/sw-main.js', { scope: '/app/' })
+            .then(function(reg) {
+                return reg.unregister();
+            })
+            .then(function() {
+                return navigator.serviceWorker.getRegistrations();
+            })
+            .then(function(regs) {
+                swRegCountAfterUnregister = regs.length;
+            });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("String(swRegCountAfterUnregister)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // ============================================================================
 // Web API — BroadcastChannel stub
 // ============================================================================
