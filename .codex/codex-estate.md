@@ -7,8 +7,8 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 2006 - render-view DPR source-of-truth stabilization for HiDPI consistency
-**Momentum**: C2006 complete - render views now prefer renderer DPR over transient window scale, with successful vibrowser app build and targeted DPR/JS regressions passing. From C1995 to C2006: 11 implementation cycles advanced.
+**Current Focus**: Cycle 2006 — matchMedia listener lifecycle hardening (remove semantics + teardown safety)
+**Momentum**: C2006 complete — native matchMedia listeners now remove correctly and teardown frees retained callbacks to avoid GC assertion risk.
 **Cycle**: 2006
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
@@ -1606,6 +1606,29 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 2006 (matchMedia Listener Lifecycle Hardening) - 2026-03-06
+
+- **Theme**: complete pending matchMedia live-listener reliability by enforcing callback removal semantics and teardown cleanup.
+- **Files Changed**:
+  - `vibrowser/src/js/js_window.cpp`
+  - `vibrowser/include/clever/js/js_window.h`
+  - `vibrowser/src/js/js_dom_bindings.cpp`
+  - `vibrowser/tests/unit/js_engine_test.cpp`
+- **Fixes Implemented**:
+  - Replaced native `matchMedia` listener no-ops with concrete lifecycle behavior:
+    - implemented `removeEventListener('change', fn)` removal by strict function identity
+    - implemented legacy aliases `addListener(fn)` and `removeListener(fn)` on top of `change` listeners
+  - Added `cleanup_match_media_listeners(JSContext*)` to release retained callback references and clear native matchMedia registry state.
+  - Wired matchMedia listener cleanup into DOM teardown (`cleanup_dom_bindings`) so JS runtime teardown does not retain rooted callbacks.
+  - Added regressions:
+    - `JSDom.MatchMediaRemoveEventListenerStopsResizeChangeCallbacks`
+    - `JSDom.MatchMediaOnchangeReplacementDoesNotDuplicateCallbacks`
+- **Validation**:
+  - `cmake --build build --target vibrowser_js_tests -j1`
+  - `./build/tests/unit/vibrowser_js_tests --gtest_filter='JSDom.MatchMediaRemoveEventListenerStopsResizeChangeCallbacks:JSDom.MatchMediaOnchangeReplacementDoesNotDuplicateCallbacks'`
+  - Result: 2/2 passing.
+- **Ledger divergence resolution**: cycle start ledgers differed by mtime/content (`.claude` newer than `.codex`), so `.claude` remained source of truth and `.codex` was re-synced after this update.
+
 ### Cycle 2006 (P20 HiDPI RenderView DPR Source Stabilization) - 2026-03-06
 
 - **Theme**: finish this cycle by removing render-view backing-scale drift when renderer DPR and current window scale differ.
@@ -2255,11 +2278,11 @@ Generated: 2026-03-01
 - `codex-spark` haiku agents are the primary subagent type. 4-6 per round. They commit+push directly.
 - HN narrow line-wrap regression fixed in C1995: `layout_table()` no longer performs post-layout shrink-to-fit for auto-width tables; remaining table content width is distributed to columns. Regression test: `TableLayout.AutoWidthTableDistributesRemainingColumnSpace`.
 - Cycle 1987 done: window.top/parent/opener/self/frames, PerformanceNavigationTiming, ES2024+ (Promise.withResolvers, Array.fromAsync, Set.union/intersection/difference), BroadcastChannel stub, animation-fill-mode forwards/backwards/both/paused, StorageEvent dispatch, @supports selector()/font-tech(), CSS revert-layer
-- High-value next targets: CompressionStream/DecompressionStream stubs, matchMedia live change event dispatch (store callbacks, fire on resize), visibilitychange event on page load, CSS interpolate-size:allow-keywords for auto transitions, HTMLDialogElement close event, more fetch() improvements, CSS `paint()` Houdini stubs
+- High-value next targets: visibilitychange event on page load parity, CSS interpolate-size:allow-keywords transition behavior, HTMLDialogElement close event semantics, more fetch() improvements, CSS `paint()` Houdini stubs
 
 ### Tell The Next Codex
 
-- Cycle 2002 completed P20 DPR plumbing in `clever` shell/render/renderer paths; next continuation should focus on Retina-space hit-testing/sticky overlay/anchor-scroll parity validation against real pages.
+- Cycle 2006 completed matchMedia listener lifecycle hardening in native JS window bindings; next continuation should focus on visibilitychange-on-load parity and remaining dialog/fetch event semantics.
 
 - Cycle 1998 landed table auto-layout proportional scaling when all columns are explicit and table shortfall needs expansion; keep this behavior as the baseline for HN-like and legacy table content.
 - Source-of-truth divergence handling remains mtime-based: `.claude` was newer at cycle start, then re-synced to `.codex` after updates.
