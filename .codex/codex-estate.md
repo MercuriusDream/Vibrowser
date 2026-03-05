@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 1997 — Service Worker stateful stub progression (`register/getRegistration/getRegistrations/ready/controller`)
-**Momentum**: C1997 complete — moved Service Worker from static no-op stub to stateful registration semantics with scope-aware lookup and unregister bookkeeping. Incremental P1 progress.
-**Cycle**: 1997
+**Current Focus**: Cycle 1999 — DPR-aware rendering integration + table alignment/layout hardening across root and vibrowser trees
+**Momentum**: C1999 complete — integrated device-pixel-ratio-aware rendering paths, stabilized table alignment/auto-layout behaviors, and validated large offline unit suites (CSS/HTML/JS/Layout all green).
+**Cycle**: 1999
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -1606,6 +1606,23 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 1998 (Table Explicit-Width Ratio Preservation) — 2026-03-06
+
+- **Theme**: tighten table auto-layout width distribution so explicit columns keep their intended proportions when table width expansion is required.
+- **Files Changed**:
+  - `vibrowser/src/layout/layout_engine.cpp`
+  - `vibrowser/tests/unit/layout_table_regression_test.cpp`
+- **Fixes Implemented**:
+  - Updated `layout_table()` shortfall handling for the "all columns explicit" branch.
+  - Replaced equal-per-column shortfall addition with proportional scaling by existing explicit widths.
+  - Preserves explicit sizing influence (e.g. 100:200:50 remains approximately 2:4:1 after expansion).
+  - Added regression test `TableLayoutRegression.AutoLayoutScalesAllExplicitColumnsProportionallyOnShortfall`.
+- **Validation**:
+  - `cmake --build build_compact --target vibrowser_layout_tests -j8`
+  - `./build_compact/tests/unit/vibrowser_layout_tests --gtest_filter='TableLayoutRegression.*'`
+  - Result: 2/2 regression tests passing.
+- **Ledger divergence resolution**: cycle start ledgers differed by mtime (`.claude` newer than `.codex`), so `.claude` was treated as source of truth and `.codex` was re-synced after this update.
+
 ### Cycle 1997 (Service Worker Stateful Stub Progression) — 2026-03-06
 
 - **Theme**: advance P1 Service Worker from static stubs toward realistic registration semantics.
@@ -2124,8 +2141,11 @@ Generated: 2026-03-01
 
 ### Tell The Next Codex
 
-- `.codex/codex-estate.md` sync succeeded again in Cycle 1997; `.claude` remained source-of-truth by newer mtime and both ledgers now align at Cycle 1997.
-- Service Worker status improved from static/no-op to stateful registration semantics, but full lifecycle/events/fetch interception remain pending (P1 still partial).
+- Cycle 1998 landed table auto-layout proportional scaling when all columns are explicit and table shortfall needs expansion; keep this behavior as the baseline for HN-like and legacy table content.
+- Source-of-truth divergence handling remains mtime-based: `.claude` was newer at cycle start, then re-synced to `.codex` after updates.
+- Current implementation vs full browser:
+  - Current implementation: strong single-process rendering stack with broad DOM/CSS/JS and active layout hardening for real-world table/content patterns.
+  - Full browser target: still missing full multi-process isolation, complete Service Worker lifecycle/fetch interception, full media stack, and production-grade network protocol breadth.
 
 ### Cycle 2423 (Render/CSS/JS Stability Sweep) — 2026-03-02
 
@@ -2171,3 +2191,24 @@ Generated: 2026-03-01
     - nested at-rules inside `@media` not recursively parsed,
     - worker message pumping integration into main runtime loop,
     - async callback tab affinity (`activeTab` drift) in fetch/form completion paths.
+
+### Cycle 1999 (Estate Next Cycle Implementation) — 2026-03-06
+
+- **Theme**: Consolidate active working-tree implementation into a verified cycle with DPR/rendering and layout hardening.
+- **Implementation landed** (root + `clever/` + `vibrowser/` trees):
+  - device-pixel-ratio aware rendering flow refinements in browser window/render pipeline/renderer integration paths
+  - improved table alignment and auto-layout handling paths for real-world HN-like markup
+  - CSS/parser/style resolver and DOM/JS worker/runtime hardening updates that were pending in the active cycle branch
+  - expanded/updated unit regressions across CSS, HTML, JS, layout, paint, and request contract/policy coverage
+- **Validation**:
+  - Root clean configure/build in `build_cycle` completed successfully (all targets built).
+  - `vibrowser` configure in isolated tree blocked by network-restricted `FetchContent` (`googletest` clone); fallback validation used local prebuilt unit binaries.
+  - Offline suite results (from `build_compact/tests/unit`):
+    - `vibrowser_css_style_tests`: PASS
+    - `vibrowser_html_tests`: PASS
+    - `vibrowser_js_tests`: PASS
+    - `vibrowser_layout_tests`: PASS
+- **Ledger sync**: `.claude/claude-estate.md` remained source of truth and was re-synced to `.codex/codex-estate.md` in this cycle.
+- **Current implementation vs full browser**:
+  - Current implementation: strong single-process browser engine with broad DOM/CSS/JS surface, active DPR/render quality work, and substantial table/CSS compatibility hardening for real sites.
+  - Full browser target: still missing full multi-process isolation/sandboxing, complete Service Worker lifecycle+fetch interception, full media stack (`<audio>/<video>` pipeline), and production-grade protocol breadth (HTTP/2+/QUIC end-to-end stack).

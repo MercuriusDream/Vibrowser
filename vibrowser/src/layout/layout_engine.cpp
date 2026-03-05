@@ -463,30 +463,28 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
     float w;
     if (node.specified_width >= 0) {
         w = node.specified_width;
-        // border-box: specified width includes padding and border.
-        // In this engine, geometry.width is used as the outer content dimension
-        // (content_w = width - padding - border for children), so for border-box
-        // we keep specified_width as-is — layout_block's content_w calculation
-        // will naturally give children the correct content area.
-        // No adjustment needed here; it matches the engine convention.
+        // geometry.width is treated as border-box width in this engine.
+        // For content-box sizing, expand specified content width to border-box.
+        if (!node.border_box) {
+            w += node.geometry.padding.left + node.geometry.padding.right
+                + node.geometry.border.left + node.geometry.border.right;
+        }
     } else if (node.specified_width < 0 && node.specified_height >= 0 && effective_aspect_ratio(node) > 0) {
         // Width is auto, height is set, and aspect-ratio exists: compute width from height
         w = node.specified_height * effective_aspect_ratio(node);
     } else if (node.float_type != 0
                || node.display == DisplayType::InlineBlock
                || node.mode == LayoutMode::InlineBlock) {
-        // CSS spec §9.5: floats and inline-block elements with width:auto use shrink-to-fit sizing.
-        // shrink-to-fit = min(max-content-width, available-width).
-        // We compute max-content intrinsic width and clamp to containing width.
+        // CSS shrink-to-fit:
+        // min(max(min-content-width, available-width), max-content-width).
         const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
+        float min_content_w = measure_intrinsic_width(node, /*max_content=*/false, mp);
         float max_content_w = measure_intrinsic_width(node, /*max_content=*/true, mp);
-        // measure_intrinsic_width returns the outer content dimension including
-        // padding+border. Clamp to available containing_width minus margins.
         float horiz_margins = 0;
         if (!is_margin_auto(node.geometry.margin.left)) horiz_margins += node.geometry.margin.left;
         if (!is_margin_auto(node.geometry.margin.right)) horiz_margins += node.geometry.margin.right;
         float avail = std::max(0.0f, containing_width - horiz_margins);
-        w = std::min(max_content_w, avail);
+        w = std::min(std::max(min_content_w, avail), max_content_w);
     } else {
         float horiz_margins = 0;
         // Only subtract non-auto margins
@@ -505,23 +503,32 @@ float LayoutEngine::compute_height(LayoutNode& node, float containing_height) {
     // a definite (explicitly set) height. If containing_height is not provided
     // (<0), try to get it from the parent node or the viewport.
     float cb_height = containing_height;
+    bool has_definite_cb_height = cb_height >= 0;
     if (cb_height < 0) {
         // Walk up to the parent: if it has a definite height, use it
         if (node.parent && node.parent->specified_height >= 0) {
             cb_height = node.parent->specified_height;
+            has_definite_cb_height = true;
         } else if (!node.parent) {
             // Root element: resolve against viewport height
             cb_height = viewport_height_;
+            has_definite_cb_height = true;
         } else {
-            // Parent has auto height: percentage heights resolve to auto (0)
+            // Parent has auto/indefinite height: percentage height resolves to auto.
             cb_height = 0;
+            has_definite_cb_height = false;
         }
     }
 
     // Resolve deferred calc/percent height
     if (node.css_height.has_value()) {
-        float resolved = node.css_height->to_px(cb_height);
-        node.specified_height = resolved;
+        bool depends_on_parent_height =
+            node.css_height->unit == clever::css::Length::Unit::Percent ||
+            node.css_height->unit == clever::css::Length::Unit::Calc;
+        if (!(depends_on_parent_height && !has_definite_cb_height)) {
+            float resolved = node.css_height->to_px(cb_height);
+            node.specified_height = resolved;
+        }
     }
 
     // Resolve deferred calc/percent min/max-height
@@ -554,9 +561,10 @@ float LayoutEngine::compute_height(LayoutNode& node, float containing_height) {
 
     if (node.specified_height >= 0) {
         float h = node.specified_height;
-        // border-box: specified height includes padding and border
-        // No adjustment needed — matches engine convention where geometry.height
-        // is the outer content dimension
+        if (!node.border_box) {
+            h += node.geometry.padding.top + node.geometry.padding.bottom
+               + node.geometry.border.top + node.geometry.border.bottom;
+        }
         h = std::max(h, node.min_height);
         h = std::min(h, node.max_height);
         return h;
@@ -1440,7 +1448,8 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
         // Floats are laid out with the full content_w as their containing block so that
         // compute_width can correctly compute shrink-to-fit against the full width.
         // Normal-flow elements get content_w too (they use margin collapsing instead).
-        float layout_width = content_w;
+        float layout_width = (child->float_type != 0) ? content_w : avail_w;
+        if (layout_width < 0) layout_width = 0;
         switch (child->mode) {
             case LayoutMode::Block:
                 layout_block(*child, layout_width);
@@ -3664,7 +3673,14 @@ void LayoutEngine::position_absolute_children(LayoutNode& node) {
         } else if (child.pos_left_set && child.pos_right_set) {
             child.geometry.width = ref_w - child.pos_left - child.pos_right;
         } else {
-            child.geometry.width = ref_w;
+            const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
+            float min_content_w = measure_intrinsic_width(child, /*max_content=*/false, mp);
+            float max_content_w = measure_intrinsic_width(child, /*max_content=*/true, mp);
+            float horiz_margins = 0;
+            if (!is_margin_auto(child.geometry.margin.left)) horiz_margins += child.geometry.margin.left;
+            if (!is_margin_auto(child.geometry.margin.right)) horiz_margins += child.geometry.margin.right;
+            float avail = std::max(0.0f, ref_w - horiz_margins);
+            child.geometry.width = std::min(std::max(min_content_w, avail), max_content_w);
         }
 
         switch (child.mode) {
@@ -3698,7 +3714,7 @@ void LayoutEngine::position_absolute_children(LayoutNode& node) {
             child.geometry.x = ref_w - child.geometry.margin_box_width() - child.pos_right
                 + child.geometry.margin.left - ox;
         } else {
-            child.geometry.x = -ox;
+            child.geometry.x = child.geometry.margin.left - ox;
         }
 
         if (child.pos_top_set) {
@@ -3707,7 +3723,7 @@ void LayoutEngine::position_absolute_children(LayoutNode& node) {
             child.geometry.y = ref_h - child.geometry.margin_box_height() - child.pos_bottom
                 + child.geometry.margin.top - oy;
         } else {
-            child.geometry.y = -oy;
+            child.geometry.y = child.geometry.margin.top - oy;
         }
     };
 
@@ -5778,11 +5794,13 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         }
     }
 
-    // When the table has an explicit width and columns don't fill it,
-    // expand columns without explicit widths to fill the available space.
-    // Columns with explicit cell widths (specified_width or css_width) keep their size.
-    bool table_has_explicit_width = (node.specified_width >= 0.0f) || node.css_width.has_value();
-    if (table_has_explicit_width && num_cols > 0) {
+    // Expand columns to consume the table's available content width.
+    // Even for width:auto tables, this engine resolves a used table width via
+    // compute_width(), so leaving intrinsic columns unexpanded causes large
+    // blank gaps and over-wrapping in content-heavy tables (e.g. HN rows).
+    // Columns with explicit cell widths (specified_width or css_width) keep
+    // their relative influence; only non-explicit columns are grown first.
+    if (num_cols > 0) {
         float total = 0;
         for (int i = 0; i < num_cols; i++) total += col_widths[static_cast<size_t>(i)];
         float shortfall = available_for_cols - total;
@@ -5813,10 +5831,18 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                     }
                 }
             } else {
-                // ALL columns have explicit widths — distribute equally to all
-                float per_col = shortfall / static_cast<float>(num_cols);
-                for (int i = 0; i < num_cols; i++) {
-                    col_widths[static_cast<size_t>(i)] += per_col;
+                // ALL columns have explicit widths — preserve relative influence by
+                // scaling proportionally instead of adding equal deltas.
+                if (total > 0) {
+                    float scale = (total + shortfall) / total;
+                    for (int i = 0; i < num_cols; i++) {
+                        col_widths[static_cast<size_t>(i)] *= scale;
+                    }
+                } else {
+                    float per_col = shortfall / static_cast<float>(num_cols);
+                    for (int i = 0; i < num_cols; i++) {
+                        col_widths[static_cast<size_t>(i)] += per_col;
+                    }
                 }
             }
         }
@@ -6069,11 +6095,20 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             cell_col += span;
         }
 
+        // Honor explicit row height (e.g. spacer rows like <tr style="height:5px">)
+        // even when the row has no non-empty cells.
+        float explicit_row_height = compute_height(*row);
+        if (explicit_row_height >= 0) {
+            row_height = std::max(row_height, explicit_row_height);
+        }
+
         // Set row geometry — positions are relative to table content area (painter adds border+padding)
         row->geometry.x = 0;
         row->geometry.y = cursor_y;
         row->geometry.width = content_w;
         row->geometry.height = row_height;
+        apply_min_max_constraints(*row);
+        row_height = row->geometry.height;
         row_heights[ri] = row_height;
 
         // Adjust cell y positions relative to the row, applying vertical-align
@@ -6197,25 +6232,9 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     node.geometry.height = std::max(node.geometry.height, node.min_height);
     node.geometry.height = std::min(node.geometry.height, node.max_height);
 
-    // Shrink-to-fit for auto-width tables: table without explicit width should
-    // not stretch to the full containing width but shrink to its column content.
-    if (!table_has_explicit_width) {
-        float col_total = 0;
-        for (int i = 0; i < num_cols; i++) col_total += col_widths[static_cast<size_t>(i)];
-        float shrink_content_w = col_total + h_spacing * static_cast<float>(num_cols + 1);
-        float shrink_w = shrink_content_w
-            + node.geometry.padding.left + node.geometry.padding.right
-            + node.geometry.border.left + node.geometry.border.right;
-        if (node.geometry.width > shrink_w) {
-            node.geometry.width = shrink_w;
-            // Also shrink row widths to match actual column content
-            for (auto* row : rows) {
-                if (row && row->geometry.width > shrink_content_w) {
-                    row->geometry.width = shrink_content_w;
-                }
-            }
-        }
-    }
+    // Note: width resolution is already handled by compute_width(). Do not
+    // force a post-layout shrink pass here; that can collapse auto-layout
+    // content tables to min-content columns and produce excessive wrapping.
 
     // Position absolute/fixed children
     position_absolute_children(node);
