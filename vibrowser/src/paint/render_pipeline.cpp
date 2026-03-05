@@ -12689,15 +12689,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         resolve_margin(style.margin.left, layout_node->geometry.margin.left,
                        layout_node->css_margin_left, MARGIN_AUTO);
     }
-    // Preserve legacy <table align="center"> when stylesheet defaults resolve
-    // margins to 0. This avoids left-pinned legacy centered tables (e.g. HN).
+    // Preserve legacy <table align="center"> as a presentational hint.
+    // Keep tables centered unless explicit CSS later overrides geometry.
     if (tag_lower == "table") {
         const std::string table_align = to_lower(trim(get_attr(node, "align")));
-        if (table_align == "center" &&
-            !clever::layout::is_margin_auto(layout_node->geometry.margin.left) &&
-            !clever::layout::is_margin_auto(layout_node->geometry.margin.right) &&
-            std::abs(layout_node->geometry.margin.left) < 0.01f &&
-            std::abs(layout_node->geometry.margin.right) < 0.01f) {
+        if (table_align == "center") {
             layout_node->geometry.margin.left = MARGIN_AUTO;
             layout_node->geometry.margin.right = MARGIN_AUTO;
         }
