@@ -13,7 +13,8 @@
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
-**Workflow**: Multi-phase feature implementation. Use codex-spark haiku subagents in parallel. Commit and push after each round.
+**Workflow**: Codex CLI external orchestration. Main agent runs `gpt-5.4/high` with fast mode enabled. Six external fast workers run `gpt-5.4` with orchestrator-selected `medium/high` reasoning, then integrator/verifier/fixer/optional CI loop complete the cycle.
+**Long-Range Maps**: `.codex/orchestrator/ultra-long-horizon-workload-map.md`, `.codex/orchestrator/phase16-master-checklist.md`
 **User Issue**: HN-style narrow title/subtext wrapping fixed (auto-width table columns now consume available width).
 
 **IMPORTANT**: When running parallel agents, always do a `rm -rf build && cmake -S . -B build` clean rebuild after agents finish, since concurrent file modifications can create stale .o files that link incorrectly. `/screenshot 2` to see the current state after build.

@@ -34,7 +34,14 @@
 # CMake / Build
 build/
 build-*/
+build_estate/
 clever/build/
+clever/build_estate/
+vibrowser/build/
+vibrowser/build_estate/
+vibrowser/build_verify/
+vibrowser/build_clean/
+vibrowser/build_cycle/
 CMakeCache.txt
 CMakeFiles
 CMakeScripts
@@ -66,8 +73,6 @@ Temporary Items
 .apdisk
 
 # AI / Agents
-.codex/
-.claude/
 .agents/
 .gemini/
 .ralph/logs/
@@ -75,11 +80,78 @@ Temporary Items
 .ralph/ralph-tasks.md
 _bmad-output/
 
+# Codex / Claude runtime state
+.codex/*
+!.codex/codex-estate.md
+!.codex/codex-estate.local.md
+!.codex/skills/
+.codex/skills/*
+!.codex/skills/codex-estate/
+.codex/skills/codex-estate/*
+!.codex/skills/codex-estate/SKILL.md
+!.codex/skills/codex-estate/scripts/
+.codex/skills/codex-estate/scripts/*
+!.codex/skills/codex-estate/scripts/codex-estate-sync.sh
+!.codex/orchestrator/
+.codex/orchestrator/*
+!.codex/orchestrator/README.md
+!.codex/orchestrator/lib.sh
+!.codex/orchestrator/migrate-ledger.sh
+!.codex/orchestrator/supervisor.sh
+!.codex/orchestrator/tmux-launch.sh
+!.codex/orchestrator/tmux-stop.sh
+!.codex/orchestrator/watch-role.sh
+!.codex/orchestrator/watch-state.sh
+!.codex/orchestrator/worker.sh
+!.codex/orchestrator/install-launchd.sh
+!.codex/orchestrator/uninstall-launchd.sh
+!.codex/orchestrator/ultra-long-horizon-workload-map.md
+!.codex/orchestrator/schemas/
+.codex/orchestrator/schemas/*
+!.codex/orchestrator/schemas/*.json
+
+.claude/*
+!.claude/claude-estate.md
+!.claude/claude-estate.local.md
+.claude/.claude-estate-stop
+.claude/.claude-estate-session-id
+.claude/estate-logs/
+.claude/screenshots/
+
+.codex/archived_sessions/
+.codex/automations/
+.codex/history.jsonl
+.codex/log/
+.codex/memories/
+.codex/models_cache.json
+.codex/session_index.jsonl
+.codex/sessions/
+.codex/shell_snapshots/
+.codex/sqlite/
+.codex/state_*.sqlite
+.codex/state_*.sqlite-shm
+.codex/state_*.sqlite-wal
+.codex/tmp/
+.codex/worktrees/
+.codex/orchestrator/logs/
+.codex/orchestrator/state/
+vibrowser/.claude/
+
 # Data files
 dataclaw_conversations.jsonl
 
 # Images (Outputs)
 *.ppm
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# JS frontends
+landing/node_modules/
+landing/dist/
 
 clever/build/
 clever/cache/

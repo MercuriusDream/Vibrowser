@@ -1,0 +1,21 @@
+name: Vibrowser Estate CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "codex/**"
+      - "estate/**"
+      - "agent/**"
+  workflow_dispatch:
+
+jobs:
+  vibrowser:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify estate cycle
+        run: bash tools/codex/pr-ready.sh

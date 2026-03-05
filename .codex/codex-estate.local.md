@@ -1,0 +1,22 @@
+# Codex Estate Local Protocol
+
+- Canonical ledger: `.codex/codex-estate.md`
+- Shadow ledger: `.claude/claude-estate.md`
+- Main orchestrator runtime: `gpt-5.4` / `high`
+- Main orchestrator fast mode: enabled
+- Worker runtime: `gpt-5.4` / `medium` or `high`
+- Worker fast mode: enabled
+- External worker fan-out: `6`
+- Cycle contract: planner -> worker-1..worker-6 -> integrator -> verifier -> fixer (max one round) -> ledger sync
+- Planner grounding map: `.codex/orchestrator/ultra-long-horizon-workload-map.md`
+- Long-range master checklist: `.codex/orchestrator/phase16-master-checklist.md`
+- Optional post-verify git/PR/CI loop:
+  - `CODEX_ESTATE_AUTOGIT=1`
+  - `CODEX_ESTATE_PUSH=1`
+  - `CODEX_ESTATE_CREATE_PR=1`
+  - `CODEX_ESTATE_WAIT_FOR_CI=1`
+  - `CODEX_ESTATE_CI_AUTOFIX=1`
+- Verification gate: `tools/codex/pr-ready.sh`
+- Stop file: `.claude/.claude-estate-stop`
+- Fast launcher: `.codex/orchestrator/start-full-autonomy-fast.sh`
+- Human live view: `.codex/orchestrator/tmux-launch.sh`

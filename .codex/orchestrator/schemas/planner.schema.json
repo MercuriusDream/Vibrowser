@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "properties": {
+    "workloads": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "objective": { "type": "string" },
+          "owned_paths": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" }
+          },
+          "verification": { "type": "string" },
+          "prompt_seed": { "type": "string" }
+        },
+        "required": ["title", "objective", "owned_paths", "verification", "prompt_seed"]
+      }
+    }
+  },
+  "required": ["workloads"]
+}

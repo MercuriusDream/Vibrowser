@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "status": { "type": "string" },
+    "summary": { "type": "string" },
+    "changed_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tests_run": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["status", "summary", "changed_paths", "tests_run", "blockers"]
+}

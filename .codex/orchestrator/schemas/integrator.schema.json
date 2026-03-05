@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "status": { "type": "string" },
+    "summary": { "type": "string" },
+    "shared_files_touched": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "residual_risks": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["status", "summary", "shared_files_touched", "residual_risks"]
+}

@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "status": { "type": "string" },
+    "summary": { "type": "string" },
+    "fixes_applied": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "remaining_failures": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["status", "summary", "fixes_applied", "remaining_failures"]
+}
