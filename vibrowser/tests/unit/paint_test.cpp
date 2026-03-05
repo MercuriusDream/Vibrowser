@@ -32742,8 +32742,9 @@ TEST_F(PaintTest, TableAlignAttributeCaseInsensitiveCentering) {
     find_table(result.root.get());
     ASSERT_NE(table_node, nullptr);
 
-    EXPECT_TRUE(clever::layout::is_margin_auto(table_node->geometry.margin.left));
-    EXPECT_TRUE(clever::layout::is_margin_auto(table_node->geometry.margin.right));
+    EXPECT_GT(table_node->geometry.margin.left, 0.0f);
+    EXPECT_GT(table_node->geometry.margin.right, 0.0f);
+    EXPECT_NEAR(table_node->geometry.margin.left, table_node->geometry.margin.right, 1.0f);
     EXPECT_NEAR(table_node->geometry.x, 200.0f, 1.0f);
 }
 
