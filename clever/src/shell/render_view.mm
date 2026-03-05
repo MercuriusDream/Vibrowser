@@ -177,7 +177,10 @@ struct TextRegion {
     _backingScale = static_cast<CGFloat>(renderer->device_pixel_ratio());
     if (!std::isfinite(_backingScale) || _backingScale < 1.0) {
         CGFloat viewWidth = std::max<CGFloat>(1.0, self.bounds.size.width);
-        CGFloat inferredScale = static_cast<CGFloat>(_imageWidth) / viewWidth;
+        CGFloat viewHeight = std::max<CGFloat>(1.0, self.bounds.size.height);
+        CGFloat inferredScaleW = static_cast<CGFloat>(_imageWidth) / viewWidth;
+        CGFloat inferredScaleH = static_cast<CGFloat>(_imageHeight) / viewHeight;
+        CGFloat inferredScale = std::max(inferredScaleW, inferredScaleH);
         _backingScale = std::isfinite(inferredScale) && inferredScale >= 1.0
             ? inferredScale
             : 1.0;

@@ -1646,6 +1646,7 @@ Generated: 2026-03-01
   - `cmake --build vibrowser/build --target vibrowser_js_tests -j4`
   - `./vibrowser/build/tests/unit/vibrowser_js_tests '--gtest_filter=JSWindow.DevicePixelRatio:JSWindow.WindowInnerWidth:JSWindow.WindowInnerHeight'`
   - Result: all targeted checks passed.
+  - Runtime marker: cycle closed at 2026-03-06 04:53:21 +0900.
 - **Current implementation vs full browser**:
   - Current implementation: strong single-process engine with practical HiDPI raster/viewport consistency hardening and broad DOM/CSS/JS coverage.
   - Full browser target: still missing full multi-process isolation, full Service Worker lifecycle/fetch interception, and complete media/protocol breadth (HTTP/2+/QUIC and production playback stack).
