@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 2001 - HiDPI DPR regression coverage and estate-ledger synchronization
-**Momentum**: C2001 complete - added explicit DPR regression tests for renderer backing-buffer sizing and render_html viewport-vs-pixel behavior; synchronized codex/claude ledgers by mtime rule.
-**Cycle**: 2001
+**Current Focus**: Cycle 2003 - matchMedia resize dispatch width/height propagation + render-view DPR backing-scale stabilization
+**Momentum**: C2003 complete - matchMedia resize hooks now update viewport dimensions atomically and render view prefers renderer DPR directly, with JS regression updates.
+**Cycle**: 2003
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -1606,6 +1606,32 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 2002 (P20 HiDPI/Retina DPR Plumbing) - 2026-03-06
+
+- **Theme**: complete the next P20 cycle by wiring DPR through shell -> render pipeline -> renderer -> JS window bindings while preserving logical CSS viewport semantics.
+- **Files Changed**:
+  - `clever/src/shell/browser_window.mm`
+  - `clever/include/clever/paint/render_pipeline.h`
+  - `clever/src/paint/render_pipeline.cpp`
+  - `clever/include/clever/paint/software_renderer.h`
+  - `clever/src/paint/software_renderer.cpp`
+  - `clever/include/clever/js/js_window.h`
+  - `clever/src/js/js_window.cpp`
+  - `clever/tests/unit/paint_test.cpp`
+- **Fixes Implemented**:
+  - browser shell now passes logical viewport dimensions plus `backingScaleFactor` separately to `render_html(...)`.
+  - `render_html(...)` overloads now accept `device_pixel_ratio` without breaking existing callsites.
+  - render pipeline preserves logical viewport for layout/media queries/`window.innerWidth|innerHeight`, while raster buffer allocation scales to physical pixels (`viewport * dpr`).
+  - `install_window_bindings(...)` now receives DPR from render pipeline; `window.devicePixelRatio` is explicit and consistent.
+  - `SoftwareRenderer` now stores DPR and scales command-space geometry (bounds/text/strokes/shadows/clip/filter/blend/mask/backdrop regions) into physical pixel space during dispatch.
+  - added regression test `PaintTest.RenderHtmlScalesRasterByDevicePixelRatio` to lock DPR raster sizing behavior.
+- **Validation**:
+  - Attempted: `cmake -S clever -B clever/build && cmake --build clever/build --target clever_paint_tests clever_js_tests -j8`
+  - Result: blocked in this runtime because `FetchContent` could not clone googletest (`Could not resolve host: github.com`).
+  - Static signature/callsite consistency checks were run across changed render and JS binding paths.
+- **Ledger divergence resolution**: cycle start ledgers were aligned; `.claude` remained source of truth and `.codex` was re-synced after this update.
+
+
 ### Cycle 1999 (HTTP/1.x High-Octet Separator Hardening) — 2026-03-06
 
 - **Theme**: tighten malformed-status-line contract coverage for non-ASCII separator bytes.
@@ -2160,6 +2186,8 @@ Generated: 2026-03-01
 
 ### Tell The Next Codex
 
+- Cycle 2002 completed P20 DPR plumbing in `clever` shell/render/renderer paths; next continuation should focus on Retina-space hit-testing/sticky overlay/anchor-scroll parity validation against real pages.
+
 - Cycle 1998 landed table auto-layout proportional scaling when all columns are explicit and table shortfall needs expansion; keep this behavior as the baseline for HN-like and legacy table content.
 - Source-of-truth divergence handling remains mtime-based: `.claude` was newer at cycle start, then re-synced to `.codex` after updates.
 - Current implementation vs full browser:
@@ -2210,6 +2238,22 @@ Generated: 2026-03-01
     - nested at-rules inside `@media` not recursively parsed,
     - worker message pumping integration into main runtime loop,
     - async callback tab affinity (`activeTab` drift) in fetch/form completion paths.
+
+### Cycle 2003 (matchMedia + DPR View Stabilization) — 2026-03-06
+
+- **Theme**: Finish and validate pending resize/media-query reactivity + DPR-backed view scaling consistency.
+- **Shipped**:
+  - `vibrowser/src/js/js_dom_bindings.cpp`: `__dispatchMatchMediaResize(width, height)` now updates `innerWidth/innerHeight` before dispatch, with safe fallback for non-writable globals.
+  - `vibrowser/src/shell/render_view.mm`: render view now prefers renderer-provided DPR for `_backingScale`, falling back to inferred scale only when needed.
+  - `vibrowser/tests/unit/js_engine_test.cpp`: updated matchMedia resize tests for explicit dimension dispatch and added listener cleanup calls for isolation.
+- **Validation**:
+  - `./build_compact/tests/unit/vibrowser_css_style_tests` PASS
+  - `./build_compact/tests/unit/vibrowser_html_tests` PASS
+  - `./build_compact/tests/unit/vibrowser_js_tests` PASS
+  - `./build_compact/tests/unit/vibrowser_layout_tests` PASS
+- **Current implementation vs full browser**:
+  - Current implementation: fast-moving single-process engine with substantial DOM/CSS/JS coverage, active HiDPI correctness work, and robust real-site layout regressions.
+  - Full browser target: still requires full multi-process sandbox architecture, full Service Worker/fetch interception lifecycle, complete media playback stack, and production-grade protocol breadth (HTTP/2+/QUIC stack).
 
 ### Cycle 1999 (Estate Next Cycle Implementation) — 2026-03-06
 

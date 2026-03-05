@@ -5414,13 +5414,31 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         node.geometry.padding.bottom = node.css_padding_bottom->to_px(containing_width);
     if (node.css_padding_left.has_value())
         node.geometry.padding.left = node.css_padding_left->to_px(containing_width);
-    if (is_margin_auto(node.geometry.margin.left)) node.geometry.margin.left = 0;
-    if (is_margin_auto(node.geometry.margin.right)) node.geometry.margin.right = 0;
+    const bool auto_left = is_margin_auto(node.geometry.margin.left);
+    const bool auto_right = is_margin_auto(node.geometry.margin.right);
 
     // Compute table width
     if (node.parent != nullptr) {
         node.geometry.width = compute_width(node, containing_width);
     }
+    if (auto_left || auto_right) {
+        float remaining = containing_width - node.geometry.width;
+        if (!auto_left) remaining -= node.geometry.margin.left;
+        if (!auto_right) remaining -= node.geometry.margin.right;
+        if (remaining < 0) remaining = 0;
+        if (auto_left && auto_right) {
+            node.geometry.margin.left = remaining / 2.0f;
+            node.geometry.margin.right = remaining / 2.0f;
+        } else if (auto_left) {
+            node.geometry.margin.left = remaining;
+            node.geometry.margin.right = 0;
+        } else {
+            node.geometry.margin.right = remaining;
+            node.geometry.margin.left = 0;
+        }
+    }
+    if (is_margin_auto(node.geometry.margin.left)) node.geometry.margin.left = 0;
+    if (is_margin_auto(node.geometry.margin.right)) node.geometry.margin.right = 0;
 
     float content_w = node.geometry.width
         - node.geometry.padding.left - node.geometry.padding.right

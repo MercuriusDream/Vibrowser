@@ -1283,6 +1283,28 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\xfd" "200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with 0xFD status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for 0xFD status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with 0xFD status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\xfd" "OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with 0xFD reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for 0xFD reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with 0xFD reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/1.1 200", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: expected status line missing reason separator to be rejected\n";
             ++failures;

@@ -9495,20 +9495,18 @@ TEST(JSDom, MatchMediaResizeDispatchesChange) {
     clever::js::JSEngine engine;
     clever::js::install_dom_bindings(engine.context(), doc.get());
     auto result = engine.evaluate(R"(
-        var mql = matchMedia('(min-width: 1000px)');
+        var mql = matchMedia('(min-width: 1300px)');
         var listenerCalls = 0;
         var onchangeCalls = 0;
         function onChange(ev) { if (ev && ev.type === 'change') listenerCalls++; }
         mql.addEventListener('change', onChange);
         mql.onchange = function(ev) { if (ev && ev.type === 'change') onchangeCalls++; };
 
-        innerWidth = 1200;
-        __dispatchMatchMediaResize();
+        __dispatchMatchMediaResize(1400, 768);
         var afterGrow = (mql.matches === true && listenerCalls === 1 && onchangeCalls === 1);
 
         mql.removeEventListener('change', onChange);
-        innerWidth = 700;
-        __dispatchMatchMediaResize();
+        __dispatchMatchMediaResize(700, 768);
         var afterShrink = (mql.matches === false && listenerCalls === 1 && onchangeCalls === 2);
 
         String(afterGrow && afterShrink);
@@ -9536,6 +9534,7 @@ TEST(JSDom, MatchMediaRemoveEventListenerStopsResizeChangeCallbacks) {
     auto result = engine.evaluate("String(calls)");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "0");
+    clever::js::cleanup_match_media_listeners(engine.context());
 }
 
 TEST(JSDom, MatchMediaOnchangeReplacementDoesNotDuplicateCallbacks) {
@@ -9556,6 +9555,7 @@ TEST(JSDom, MatchMediaOnchangeReplacementDoesNotDuplicateCallbacks) {
     auto result = engine.evaluate("String(countA) + ',' + String(countB)");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "0,1");
+    clever::js::cleanup_match_media_listeners(engine.context());
 }
 
 // ============================================================================

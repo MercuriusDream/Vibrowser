@@ -192,13 +192,16 @@ struct TextRegion {
     // return the actual buffer dimensions at device resolution.
     _imageWidth = renderer->pixels_width();
     _imageHeight = renderer->pixels_height();
-    // _backingScale = dpr: physical pixels / logical CSS pixels
-    CGFloat viewWidth = std::max<CGFloat>(1.0, self.bounds.size.width);
-    CGFloat inferredScale = static_cast<CGFloat>(_imageWidth) / viewWidth;
-    if (!std::isfinite(inferredScale) || inferredScale < 1.0) {
-        inferredScale = 1.0;
+    // _backingScale = dpr: physical pixels / logical CSS pixels.
+    // Prefer renderer DPR so content remains stable if window scale changes.
+    _backingScale = static_cast<CGFloat>(renderer->dpr());
+    if (!std::isfinite(_backingScale) || _backingScale < 1.0) {
+        CGFloat viewWidth = std::max<CGFloat>(1.0, self.bounds.size.width);
+        CGFloat inferredScale = static_cast<CGFloat>(_imageWidth) / viewWidth;
+        _backingScale = (std::isfinite(inferredScale) && inferredScale >= 1.0)
+            ? inferredScale
+            : 1.0;
     }
-    _backingScale = inferredScale;
     _contentHeight = _imageHeight / _backingScale; // logical points
 
     // Convert RGBA pixel buffer to CGImage.

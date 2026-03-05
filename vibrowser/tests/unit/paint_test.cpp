@@ -32718,10 +32718,10 @@ TEST_F(PaintTest, TdAlignAttribute) {
 }
 
 TEST_F(PaintTest, TableAlignAttributeCaseInsensitiveCentering) {
-    // align="CENTER" on <table> should be treated as center and produce auto horizontal margins.
+    // align="CENTER" on <table> should be treated as center and center the table box.
     auto result = render_html(R"HTML(
         <html><body style="margin:0;">
-        <table align="CENTER" style="width:200px;">
+        <table align="CENTER" width="200">
             <tr><td>Centered table</td></tr>
         </table>
         </body></html>
@@ -32745,6 +32745,7 @@ TEST_F(PaintTest, TableAlignAttributeCaseInsensitiveCentering) {
     EXPECT_GT(table_node->geometry.margin.left, 0.0f);
     EXPECT_GT(table_node->geometry.margin.right, 0.0f);
     EXPECT_NEAR(table_node->geometry.margin.left, table_node->geometry.margin.right, 1.0f);
+    EXPECT_NEAR(table_node->geometry.x, table_node->geometry.margin.left, 1.0f);
     EXPECT_NEAR(table_node->geometry.x, 200.0f, 1.0f);
 }
 

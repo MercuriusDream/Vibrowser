@@ -19009,7 +19009,29 @@ void install_dom_bindings(JSContext* ctx,
                 return result;
             };
         }
-        globalThis.__dispatchMatchMediaResize = dispatchMqlChangeEvents;
+        globalThis.__dispatchMatchMediaResize = function(width, height) {
+            if (typeof width === 'number') {
+                try { globalThis.innerWidth = width; } catch (e) {}
+                if (globalThis.innerWidth !== width) {
+                    try {
+                        Object.defineProperty(globalThis, 'innerWidth', {
+                            value: width, writable: true, configurable: true
+                        });
+                    } catch (e) {}
+                }
+            }
+            if (typeof height === 'number') {
+                try { globalThis.innerHeight = height; } catch (e) {}
+                if (globalThis.innerHeight !== height) {
+                    try {
+                        Object.defineProperty(globalThis, 'innerHeight', {
+                            value: height, writable: true, configurable: true
+                        });
+                    } catch (e) {}
+                }
+            }
+            dispatchMqlChangeEvents();
+        };
         globalThis.__matchMediaResizeHookInstalled = true;
     }
 })();
