@@ -1,4 +1,5 @@
 #include <clever/js/js_dom_bindings.h>
+#include <clever/js/js_window.h>
 #include <clever/layout/box.h>
 #include <clever/net/cookie_jar.h>
 #include <clever/paint/image_fetch.h>
@@ -23684,6 +23685,8 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h) {
 }
 
 void cleanup_dom_bindings(JSContext* ctx) {
+    cleanup_match_media_listeners(ctx);
+
     auto* state = get_dom_state(ctx);
     if (!state) return;
 

@@ -6690,4 +6690,15 @@ void cleanup_animation_frames(JSContext* ctx) {
     JS_FreeValue(ctx, global);
 }
 
+void cleanup_match_media_listeners(JSContext* ctx) {
+    for (auto& entry : g_mql_registry.listeners) {
+        for (auto& callback : entry.second) {
+            JS_FreeValue(ctx, callback);
+        }
+        entry.second.clear();
+    }
+    g_mql_registry.listeners.clear();
+    g_mql_registry.last_match.clear();
+}
+
 } // namespace clever::js

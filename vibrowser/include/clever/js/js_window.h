@@ -19,6 +19,10 @@ void flush_animation_frames(JSContext* ctx);
 // Call once when tearing down the JS context to avoid GC assertion failures.
 void cleanup_animation_frames(JSContext* ctx);
 
+// Free retained matchMedia listener callback references for the current JS context.
+// Call before JS runtime teardown to avoid leaking rooted callback values.
+void cleanup_match_media_listeners(JSContext* ctx);
+
 // Look up a blob: URL in the blob registry.
 // Returns a pointer to (mime_type, data) pair, or nullptr if not found.
 // The pointer is valid until the blob is revoked or the registry is modified.
