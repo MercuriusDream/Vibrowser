@@ -19,4 +19,5 @@
 - Verification gate: `tools/codex/pr-ready.sh`
 - Stop file: `.claude/.claude-estate-stop`
 - Fast launcher: `.codex/orchestrator/start-full-autonomy-fast.sh`
+- zsh fast launcher: `.codex/orchestrator/start-full-autonomy-fast.zsh`
 - Human live view: `.codex/orchestrator/tmux-launch.sh`

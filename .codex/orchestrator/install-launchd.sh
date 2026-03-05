@@ -22,8 +22,9 @@ cat > "$PLIST_PATH" <<EOF
   <string>com.vibrowser.codex-estate</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
-    <string>$PROJECT_DIR/.codex/orchestrator/supervisor.sh</string>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>bash "$PROJECT_DIR/.codex/orchestrator/supervisor.sh"</string>
   </array>
   <key>WorkingDirectory</key>
   <string>$PROJECT_DIR</string>
@@ -41,6 +42,8 @@ cat > "$PLIST_PATH" <<EOF
     <string>$MAIN_MODEL</string>
     <key>CODEX_ESTATE_MAIN_REASONING</key>
     <string>$MAIN_REASONING</string>
+    <key>CODEX_ESTATE_MAIN_FAST_FLAG</key>
+    <string>$MAIN_FAST_FLAG</string>
     <key>CODEX_ESTATE_SUBAGENT_MODEL</key>
     <string>$SUBAGENT_MODEL</string>
     <key>CODEX_ESTATE_SUBAGENT_REASONING</key>

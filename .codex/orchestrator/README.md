@@ -29,6 +29,7 @@ Each cycle is orchestrated as:
 bash .codex/orchestrator/migrate-ledger.sh
 bash .codex/orchestrator/supervisor.sh
 bash .codex/orchestrator/start-full-autonomy-fast.sh
+zsh .codex/orchestrator/start-full-autonomy-fast.zsh
 bash .codex/orchestrator/tmux-launch.sh
 bash .codex/orchestrator/tmux-stop.sh
 bash .codex/orchestrator/install-launchd.sh

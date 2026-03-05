@@ -43,14 +43,14 @@ if [[ "$MODE" == "single-session" ]]; then
   if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
     echo "tmux session already exists: $TMUX_SESSION"
   else
-    tmux new-session -d -s "$TMUX_SESSION" -c "$PROJECT_DIR" "bash .codex/orchestrator/supervisor.sh $SUPERVISOR_ARGS"
+    tmux new-session -d -s "$TMUX_SESSION" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/supervisor.sh $SUPERVISOR_ARGS'"
     for slot in $(seq 1 "$WORKER_COUNT"); do
-      tmux new-window -t "$TMUX_SESSION" -n "worker-$slot" -c "$PROJECT_DIR" "bash .codex/orchestrator/watch-role.sh worker-$slot"
+      tmux new-window -t "$TMUX_SESSION" -n "worker-$slot" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh worker-$slot'"
     done
-    tmux new-window -t "$TMUX_SESSION" -n integrator -c "$PROJECT_DIR" "bash .codex/orchestrator/watch-role.sh integrator"
-    tmux new-window -t "$TMUX_SESSION" -n verifier -c "$PROJECT_DIR" "bash .codex/orchestrator/watch-role.sh verifier"
-    tmux new-window -t "$TMUX_SESSION" -n fixer -c "$PROJECT_DIR" "bash .codex/orchestrator/watch-role.sh fixer"
-    tmux new-window -t "$TMUX_SESSION" -n state -c "$PROJECT_DIR" "bash .codex/orchestrator/watch-state.sh"
+    tmux new-window -t "$TMUX_SESSION" -n integrator -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh integrator'"
+    tmux new-window -t "$TMUX_SESSION" -n verifier -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh verifier'"
+    tmux new-window -t "$TMUX_SESSION" -n fixer -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh fixer'"
+    tmux new-window -t "$TMUX_SESSION" -n state -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-state.sh'"
   fi
   if [[ $ATTACH -eq 1 ]]; then
     exec tmux attach -t "$TMUX_SESSION"
@@ -59,13 +59,13 @@ if [[ "$MODE" == "single-session" ]]; then
 fi
 
 base="${TMUX_SESSION}"
-tmux new-session -d -s "${base}-supervisor" -c "$PROJECT_DIR" "bash .codex/orchestrator/supervisor.sh $SUPERVISOR_ARGS"
+tmux new-session -d -s "${base}-supervisor" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/supervisor.sh $SUPERVISOR_ARGS'"
 for slot in $(seq 1 "$WORKER_COUNT"); do
-  tmux new-session -d -s "${base}-worker-$slot" -c "$PROJECT_DIR" "bash .codex/orchestrator/watch-role.sh worker-$slot"
+  tmux new-session -d -s "${base}-worker-$slot" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh worker-$slot'"
 done
-tmux new-session -d -s "${base}-integrator" -c "$PROJECT_DIR" "bash .codex/orchestrator/watch-role.sh integrator"
-tmux new-session -d -s "${base}-verifier" -c "$PROJECT_DIR" "bash .codex/orchestrator/watch-role.sh verifier"
-tmux new-session -d -s "${base}-state" -c "$PROJECT_DIR" "bash .codex/orchestrator/watch-state.sh"
+tmux new-session -d -s "${base}-integrator" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh integrator'"
+tmux new-session -d -s "${base}-verifier" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh verifier'"
+tmux new-session -d -s "${base}-state" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-state.sh'"
 
 if [[ $ATTACH -eq 1 ]]; then
   exec tmux attach -t "${base}-supervisor"

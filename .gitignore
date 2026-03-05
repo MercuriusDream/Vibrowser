@@ -105,7 +105,10 @@ _bmad-output/
 !.codex/orchestrator/worker.sh
 !.codex/orchestrator/install-launchd.sh
 !.codex/orchestrator/uninstall-launchd.sh
+!.codex/orchestrator/start-full-autonomy-fast.sh
+!.codex/orchestrator/start-full-autonomy-fast.zsh
 !.codex/orchestrator/ultra-long-horizon-workload-map.md
+!.codex/orchestrator/phase16-master-checklist.md
 !.codex/orchestrator/schemas/
 .codex/orchestrator/schemas/*
 !.codex/orchestrator/schemas/*.json

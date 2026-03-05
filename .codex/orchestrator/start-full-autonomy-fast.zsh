@@ -1,0 +1,26 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+export CODEX_ESTATE_MAIN_MODEL="${CODEX_ESTATE_MAIN_MODEL:-gpt-5.4}"
+export CODEX_ESTATE_MAIN_REASONING="${CODEX_ESTATE_MAIN_REASONING:-high}"
+export CODEX_ESTATE_MAIN_FAST_FLAG="${CODEX_ESTATE_MAIN_FAST_FLAG:-1}"
+export CODEX_ESTATE_SUBAGENT_MODEL="${CODEX_ESTATE_SUBAGENT_MODEL:-gpt-5.4}"
+export CODEX_ESTATE_SUBAGENT_REASONING="${CODEX_ESTATE_SUBAGENT_REASONING:-medium}"
+export CODEX_ESTATE_SUBAGENT_FAST_FLAG="${CODEX_ESTATE_SUBAGENT_FAST_FLAG:-1}"
+export CODEX_ESTATE_WORKERS="${CODEX_ESTATE_WORKERS:-6}"
+
+cat <<EOF
+Starting Codex Estate with:
+  main model      : $CODEX_ESTATE_MAIN_MODEL
+  main reasoning  : $CODEX_ESTATE_MAIN_REASONING
+  main fast       : $CODEX_ESTATE_MAIN_FAST_FLAG
+  worker model    : $CODEX_ESTATE_SUBAGENT_MODEL
+  worker reasoning: $CODEX_ESTATE_SUBAGENT_REASONING
+  worker fast     : $CODEX_ESTATE_SUBAGENT_FAST_FLAG
+  workers         : $CODEX_ESTATE_WORKERS
+EOF
+
+exec /bin/zsh -lc 'bash "$1" "${@:2}"' zsh "$SCRIPT_DIR/tmux-launch.sh" "$@"

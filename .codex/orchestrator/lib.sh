@@ -256,6 +256,7 @@ seed_local_protocols() {
 - Stop file: \`.claude/.claude-estate-stop\`
 - Human live view surface: \`.codex/orchestrator/tmux-launch.sh\`
 - Fast launcher: \`.codex/orchestrator/start-full-autonomy-fast.sh\`
+- zsh fast launcher: \`.codex/orchestrator/start-full-autonomy-fast.zsh\`
 - launchd install: \`.codex/orchestrator/install-launchd.sh\`
 EOF
 )"
