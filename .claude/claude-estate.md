@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 2004 - legacy uppercase table ALIGN centering fix with case-insensitive attribute lookup
-**Momentum**: C2004 complete - fixed uppercase ALIGN handling and restored centered table layout in the table path with regression coverage.
-**Cycle**: 2004
+**Current Focus**: Cycle 2006 - render-view DPR source-of-truth stabilization for HiDPI consistency
+**Momentum**: C2006 complete - render views now prefer renderer DPR over transient window scale, with successful vibrowser app build and targeted DPR/JS regressions passing. From C1995 to C2006: 11 implementation cycles advanced.
+**Cycle**: 2006
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -1606,6 +1606,61 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 2006 (P20 HiDPI RenderView DPR Source Stabilization) - 2026-03-06
+
+- **Theme**: finish this cycle by removing render-view backing-scale drift when renderer DPR and current window scale differ.
+- **Files Changed**:
+  - `vibrowser/src/shell/render_view.mm`
+  - `clever/src/shell/render_view.mm`
+- **Fixes Implemented**:
+  - `RenderView::updateWithRenderer(...)` now uses renderer-provided DPR (`dpr()`/`device_pixel_ratio()`) as the backing-scale source of truth.
+  - kept resilient fallback inference from raster-pixel-width to view-width for invalid/non-finite DPR values.
+  - preserved logical-point content-height computation while ensuring physical buffer scaling stays coherent across display-scale transitions.
+- **Validation**:
+  - `cmake --build vibrowser/build --target vibrowser -j4`
+  - `cmake --build vibrowser/build --target vibrowser_paint_tests -j4`
+  - `./vibrowser/build/tests/unit/vibrowser_paint_tests '--gtest_filter=SoftwareRenderer.DevicePixelRatioScalesBackingBufferDimensions:PaintTest.RenderHtmlDevicePixelRatioScalesRendererPixelsNotLayoutViewport:PaintTest.InvalidDprFallsBackToOne:PaintTest.NonFiniteDprFallsBackToOne'`
+  - `cmake --build vibrowser/build --target vibrowser_js_tests -j4`
+  - `./vibrowser/build/tests/unit/vibrowser_js_tests '--gtest_filter=JSWindow.DevicePixelRatio:JSWindow.WindowInnerWidth:JSWindow.WindowInnerHeight'`
+  - Result: all targeted checks passed.
+- **Current implementation vs full browser**:
+  - Current implementation: strong single-process engine with practical HiDPI raster/viewport consistency hardening and broad DOM/CSS/JS coverage.
+  - Full browser target: still missing full multi-process isolation, full Service Worker lifecycle/fetch interception, and complete media/protocol breadth (HTTP/2+/QUIC and production playback stack).
+
+### Cycle 2005 (DPR-Aware Srcset Selection and Table Centering Regression Stabilization) - 2026-03-06
+
+- **Theme**: complete the next implementation cycle by hardening DPR-driven image candidate selection and stabilizing legacy table centering regression coverage.
+- **Files Changed**:
+  - `vibrowser/src/paint/render_pipeline.cpp`
+  - `vibrowser/tests/unit/paint_test.cpp`
+- **Fixes Implemented**:
+  - ensured responsive image candidate selection paths consume runtime `g_render_dpr` instead of a hardcoded 2x assumption, matching the active rendering device pixel ratio contract.
+  - kept legacy `<table align="CENTER">` centering behavior fail-closed via post-style auto-margin enforcement in the table layout path.
+  - stabilized centering regression coverage by asserting computed centering geometry with explicit legacy width attribute input in `PaintTest.TableAlignAttributeCaseInsensitiveCentering`.
+- **Validation**:
+  - `cmake --build build_compact --target vibrowser_paint_tests -j8`
+  - `./build_compact/tests/unit/vibrowser_paint_tests --gtest_filter='PaintTest.TableAlignAttributeCaseInsensitiveCentering:PaintTest.RenderHtmlDevicePixelRatioScalesRendererPixelsNotLayoutViewport:RenderPipeline.InvalidDprFallsBackToOne:RenderPipeline.NonFiniteDprFallsBackToOne:SoftwareRenderer.DevicePixelRatioScalesBackingBufferDimensions'`
+  - `./build_compact/tests/unit/vibrowser_layout_tests --gtest_filter='TableLayoutRegression.HnLikeAutoLayoutKeepsSpacerRowHeightAndWideTitleColumn'`
+  - Result: 6 targeted regressions passed.
+- **Ledger divergence resolution**: cycle started with `.claude` newer than `.codex`; `.claude` remained source of truth by mtime and `.codex/codex-estate.md` was re-synced after this update.
+
+
+### Cycle 2005 (HTTP/1.x High-Octet Separator Hardening) - 2026-03-06
+
+- **Theme**: continue Priority-4 HTTP transport hardening with explicit high-octet separator fail-closed contract coverage.
+- **Files Changed**:
+  - `tests/test_request_contracts.cpp`
+- **Fixes Implemented**:
+  - Added fail-closed regression cases for `0xFD` separator variants:
+    - `HTTP/1.1\xFD200 OK`
+    - `HTTP/1.1 200\xFDOK`
+- **Validation**:
+  - `cmake --build build_vibrowser --target test_request_contracts test_request_policy -j8`
+  - `./build_vibrowser/test_request_contracts`
+  - `./build_vibrowser/test_request_policy`
+  - Result: both suites passed.
+- **Ledger divergence resolution**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` remains source of truth for Cycle 2005 and sync should be replayed when permissions allow.
+
 ### Cycle 2004 (Legacy Table ALIGN Case-Insensitive Centering) - 2026-03-06
 
 - **Theme**: keep legacy table alignment behavior robust for uppercase HTML attributes and table-layout execution path.
@@ -2312,3 +2367,28 @@ Generated: 2026-03-01
 
 - Keep the new DPR regressions green when touching renderer dimensions or viewport scaling semantics.
 - Progress framing: we now have explicit tests proving logical viewport sizing remains stable while physical backing buffers scale with DPR.
+
+### Cycle 2005 (matchMedia Resize Live Dispatch) - 2026-03-06
+
+- **Theme**: implement the next estate cycle item from high-value targets by making `matchMedia` react to viewport resize changes in the DOM bindings path.
+- **Files Changed**:
+  - `vibrowser/src/js/js_dom_bindings.cpp`
+  - `vibrowser/tests/unit/js_engine_test.cpp`
+- **Fixes Implemented**:
+  - Refactored the JS `matchMedia` shim in `install_dom_bindings(...)` to centralize media query evaluation and maintain a tracked list of MediaQueryList objects.
+  - Added resize-driven re-evaluation (`dispatchMqlChangeEvents`) that updates `mql.matches` and emits `change` payloads to both `addEventListener('change', ...)` callbacks and `mql.onchange`.
+  - Added `globalThis.__dispatchMatchMediaResize(width, height)` helper to support deterministic viewport updates and media-query change dispatch in runtime/test contexts where `window.dispatchEvent` is unavailable.
+  - Added regression test `JSDom.MatchMediaResizeDispatchesChange` covering: first change dispatch on grow, `removeEventListener` behavior, and `onchange` continuity.
+- **Validation**:
+  - `cmake --build build_compact --target vibrowser_js_tests -j4`
+  - `./build_compact/tests/unit/vibrowser_js_tests --gtest_filter='JSDom.MatchMediaAddEventListener:JSDom.MatchMediaResizeDispatchesChange'`
+  - Result: `2/2` tests passed.
+- **Ledger divergence resolution**: cycle start ledgers differed by mtime (`.claude` newer than `.codex`), so `.claude` stayed source of truth and `.codex` was re-synced after this update.
+- **Current implementation vs full browser**:
+  - Current implementation: single-process engine with broad DOM/CSS/JS coverage and now live `matchMedia` resize change dispatch in DOM runtime.
+  - Full browser target: still requires full multi-process process isolation/sandboxing, complete Service Worker lifecycle + interception, robust media playback stack, and production-grade HTTP/2+/QUIC networking.
+
+### Tell The Next Codex (Cycle 2005 addendum)
+
+- Keep `JSDom.MatchMediaResizeDispatchesChange` green when touching media-query parsing, resize dispatch, or window dimension semantics.
+- Mtime rule applied this cycle: `.claude/claude-estate.md` remained canonical and `.codex/codex-estate.md` was re-synced.
