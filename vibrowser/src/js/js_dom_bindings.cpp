@@ -18974,10 +18974,20 @@ void install_dom_bindings(JSContext* ctx,
             media: query,
             onchange: null,
             __listeners: [],
-            addListener: function(fn) { if (typeof fn === 'function') this.__listeners.push(fn); },
+            addListener: function(fn) {
+                if (typeof fn !== 'function') return;
+                for (var i = 0; i < this.__listeners.length; i++) {
+                    if (this.__listeners[i] === fn) return;
+                }
+                this.__listeners.push(fn);
+            },
             removeListener: function(fn) { this.__listeners = this.__listeners.filter(function(l) { return l !== fn; }); },
             addEventListener: function(type, fn) {
-                if (type === 'change' && typeof fn === 'function') this.__listeners.push(fn);
+                if (type !== 'change' || typeof fn !== 'function') return;
+                for (var i = 0; i < this.__listeners.length; i++) {
+                    if (this.__listeners[i] === fn) return;
+                }
+                this.__listeners.push(fn);
             },
             removeEventListener: function(type, fn) {
                 if (type === 'change') this.__listeners = this.__listeners.filter(function(l) { return l !== fn; });

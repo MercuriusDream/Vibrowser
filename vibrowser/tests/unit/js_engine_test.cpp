@@ -9516,6 +9516,24 @@ TEST(JSDom, MatchMediaResizeDispatchesChange) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, MatchMediaAddEventListenerDeduplicatesCallbacks) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var mql = matchMedia('(min-width: 1300px)');
+        var calls = 0;
+        function onChange() { calls++; }
+        mql.addEventListener('change', onChange);
+        mql.addEventListener('change', onChange);
+        __dispatchMatchMediaResize(1400, 768);
+        String(calls);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 TEST(JSDom, MatchMediaRemoveEventListenerStopsResizeChangeCallbacks) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 1200, 800);
