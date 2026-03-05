@@ -60,7 +60,10 @@ endif()
 
 # Phase 3: Layout Engine tests
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/layout_test.cpp")
-    add_executable(vibrowser_layout_tests layout_test.cpp)
+    add_executable(vibrowser_layout_tests
+        layout_test.cpp
+        layout_table_regression_test.cpp
+    )
     target_link_libraries(vibrowser_layout_tests PRIVATE vibrowser_layout GTest::gtest_main)
     add_test(NAME layout_tests COMMAND vibrowser_layout_tests)
 endif()
