@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 2006 — matchMedia listener lifecycle hardening (remove semantics + teardown safety)
-**Momentum**: C2006 complete — native matchMedia listeners now remove correctly and teardown frees retained callbacks to avoid GC assertion risk.
-**Cycle**: 2006
+**Current Focus**: Cycle 2007 — render-view DPR source-of-truth stabilization for HiDPI consistency
+**Momentum**: C2007 complete — render views now prefer renderer DPR over transient window scale, with successful vibrowser app build and targeted DPR/JS regressions passing. From C1995 to C2007: 12 implementation cycles advanced.
+**Cycle**: 2007
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -1629,7 +1629,7 @@ Generated: 2026-03-01
   - Result: 2/2 passing.
 - **Ledger divergence resolution**: cycle start ledgers differed by mtime/content (`.claude` newer than `.codex`), so `.claude` remained source of truth and `.codex` was re-synced after this update.
 
-### Cycle 2006 (P20 HiDPI RenderView DPR Source Stabilization) - 2026-03-06
+### Cycle 2007 (P20 HiDPI RenderView DPR Source Stabilization) - 2026-03-06
 
 - **Theme**: finish this cycle by removing render-view backing-scale drift when renderer DPR and current window scale differ.
 - **Files Changed**:
@@ -2282,7 +2282,7 @@ Generated: 2026-03-01
 
 ### Tell The Next Codex
 
-- Cycle 2006 completed matchMedia listener lifecycle hardening in native JS window bindings; next continuation should focus on visibilitychange-on-load parity and remaining dialog/fetch event semantics.
+- Cycle 2007 completed render-view DPR source-of-truth stabilization in both `vibrowser` and `clever` shell paths; next continuation should focus on Retina-space hit-testing/sticky-overlay/anchor-scroll parity checks across display-scale transitions.
 
 - Cycle 1998 landed table auto-layout proportional scaling when all columns are explicit and table shortfall needs expansion; keep this behavior as the baseline for HN-like and legacy table content.
 - Source-of-truth divergence handling remains mtime-based: `.claude` was newer at cycle start, then re-synced to `.codex` after updates.
