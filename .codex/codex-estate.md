@@ -7,13 +7,13 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 2007 — render-view DPR source-of-truth stabilization for HiDPI consistency
+**Current Focus**: Cycle 2051 — 
 **Momentum**: C2007 complete — render views now prefer renderer DPR over transient window scale, with successful vibrowser app build and targeted DPR/JS regressions passing. From C1995 to C2007: 12 implementation cycles advanced.
-**Cycle**: 2007
+**Cycle**: 2051
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
-**Workflow**: Codex CLI external orchestration. Main agent runs `gpt-5.4/high` with fast mode enabled. Six external fast workers run `gpt-5.4` with orchestrator-selected `medium/high` reasoning, then integrator/verifier/fixer/optional CI loop complete the cycle.
+**Workflow**: Codex CLI ultra-long-horizon orchestration. Planner -> 6 external Codex workers -> integrator -> verifier -> fixer -> optional git/PR/CI loop -> ledger sync. tmux is the primary live observability surface.
 **Long-Range Maps**: `.codex/orchestrator/ultra-long-horizon-workload-map.md`, `.codex/orchestrator/phase16-master-checklist.md`
 **User Issue**: HN-style narrow title/subtext wrapping fixed (auto-width table columns now consume available width).
 
@@ -2417,3 +2417,365 @@ Generated: 2026-03-01
 
 - Keep `JSDom.MatchMediaResizeDispatchesChange` green when touching media-query parsing, resize dispatch, or window dimension semantics.
 - Mtime rule applied this cycle: `.claude/claude-estate.md` remained canonical and `.codex/codex-estate.md` was re-synced.
+
+## Codex CLI Supervisor Log
+
+### Cycle 2009 — 2026-03-06 06:50:40 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2008 — 2026-03-06 06:51:44 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2009 — 2026-03-06 06:52:47 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2010 — 2026-03-06 06:53:50 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2011 — 2026-03-06 06:54:51 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2012 — 2026-03-06 06:55:56 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2013 — 2026-03-06 06:57:50 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2014 — 2026-03-06 06:59:53 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2015 — 2026-03-06 07:01:57 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2016 — 2026-03-06 07:03:51 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2017 — 2026-03-06 07:05:53 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2018 — 2026-03-06 07:07:58 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2019 — 2026-03-06 07:09:52 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2020 — 2026-03-06 07:11:58 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2021 — 2026-03-06 07:14:03 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2022 — 2026-03-06 07:15:57 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2023 — 2026-03-06 07:18:01 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2024 — 2026-03-06 07:20:08 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2025 — 2026-03-06 07:22:03 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2026 — 2026-03-06 07:24:06 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2027 — 2026-03-06 07:26:10 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2028 — 2026-03-06 07:28:07 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2029 — 2026-03-06 07:30:11 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2030 — 2026-03-06 07:32:15 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2031 — 2026-03-06 07:34:09 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2032 — 2026-03-06 07:36:14 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2033 — 2026-03-06 07:38:18 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2034 — 2026-03-06 07:40:17 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2036 — 2026-03-06 07:42:36 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2037 — 2026-03-06 07:42:37 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2039 — 2026-03-06 07:44:43 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2038 — 2026-03-06 07:44:46 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2039 — 2026-03-06 07:46:48 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2040 — 2026-03-06 07:46:53 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2041 — 2026-03-06 07:48:50 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2042 — 2026-03-06 07:50:57 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2043 — 2026-03-06 07:53:09 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2044 — 2026-03-06 07:55:06 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2045 — 2026-03-06 07:57:13 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2046 — 2026-03-06 07:59:19 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2047 — 2026-03-06 08:01:16 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2048 — 2026-03-06 08:03:22 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2049 — 2026-03-06 08:05:29 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2050 — 2026-03-06 08:07:25 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
+
+### Cycle 2051 — 2026-03-06 08:09:31 +0900
+- Runtime: main  (fast=gpt-5.4), workers  (fast=high)
+- Runtime: main  (fast=1), workers  (fast=gpt-5.4)
+- Runtime: main  (fast=medium), workers  (fast=1)
+- Summary: 
+- Planner output: 
+- Verification report: 
