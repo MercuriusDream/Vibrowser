@@ -6,6 +6,7 @@ extern "C" {
 
 #include <chrono>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace clever::js {
@@ -17,6 +18,7 @@ namespace {
 // =========================================================================
 
 static JSClassID worker_class_id = 0;
+static std::unordered_set<JSRuntime*> g_worker_class_runtimes;
 
 struct WorkerStateEntry {
     std::shared_ptr<WorkerThread> thread;
@@ -398,7 +400,7 @@ static JSValue worker_post_message(JSContext* ctx, JSValueConst this_val, int ar
     }
 
     // Post message to worker
-    worker->post_message_to_worker(json_data, ports_json);
+    worker->post_message_to_main(json_data, ports_json);
 
     return JS_UNDEFINED;
 }
@@ -553,6 +555,21 @@ void WorkerThread::post_message_to_worker(const std::string& json_data, const st
             return;
         }
         main_to_worker_.push(WorkerMessage{json_data, ports_json, "", "", 0, WorkerMessageKind::kMessage});
+    }
+    queue_cv_.notify_one();
+}
+
+void WorkerThread::post_message_to_main(const std::string& json_data, const std::string& ports_json) {
+    if (should_terminate_) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        if (should_terminate_) {
+            return;
+        }
+        worker_to_main_.push(WorkerMessage{json_data, ports_json, "", "", 0, WorkerMessageKind::kMessage});
     }
     queue_cv_.notify_one();
 }
@@ -762,6 +779,7 @@ void WorkerThread::worker_main() {
 
 void install_worker_bindings(JSContext* ctx) {
     JSValue global = JS_GetGlobalObject(ctx);
+    JSRuntime* runtime = JS_GetRuntime(ctx);
 
     // Create Worker class
     JSClassDef worker_class = {
@@ -769,8 +787,16 @@ void install_worker_bindings(JSContext* ctx) {
         .finalizer = worker_finalizer,
     };
 
-    JS_NewClassID(&worker_class_id);
-    JS_NewClass(JS_GetRuntime(ctx), worker_class_id, &worker_class);
+    {
+        std::lock_guard<std::mutex> lock(g_worker_states_mutex);
+        if (worker_class_id == 0) {
+            JS_NewClassID(&worker_class_id);
+        }
+        if (g_worker_class_runtimes.find(runtime) == g_worker_class_runtimes.end()) {
+            JS_NewClass(runtime, worker_class_id, &worker_class);
+            g_worker_class_runtimes.insert(runtime);
+        }
+    }
 
     JS_DefinePropertyValueStr(ctx, global, "MessageEvent",
                              JS_NewCFunction2(ctx, message_event_constructor,

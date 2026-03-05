@@ -838,8 +838,12 @@ bool try_parse_length_token(const std::string& token, int& out) {
     return false;
   }
 
-  out = std::stoi(lower.substr(0, digits_end));
-  return true;
+  try {
+    out = std::stoi(lower.substr(0, digits_end));
+    return true;
+  } catch (...) {
+    return false;
+  }
 }
 
 int parse_border_width(const std::string& border_width_value, const std::string& border_value) {

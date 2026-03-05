@@ -18844,36 +18844,33 @@ void install_dom_bindings(JSContext* ctx,
         const char* mm_src = R"JS(
 (function() {
     var _listeners = [];
-    globalThis.matchMedia = function(query) {
+
+    function parseLen(s) {
+        var n = parseFloat(s);
+        if (s.indexOf('em') !== -1 || s.indexOf('rem') !== -1) return n * 16;
+        return n;
+    }
+
+    function evaluateQuery(query) {
         var viewportWidth = (typeof globalThis.innerWidth === 'number' && globalThis.innerWidth > 0)
             ? globalThis.innerWidth : 1024;
         var viewportHeight = (typeof globalThis.innerHeight === 'number' && globalThis.innerHeight > 0)
             ? globalThis.innerHeight : 768;
         var dpr = globalThis.devicePixelRatio || 1;
-        function parseLen(s) {
-            var n = parseFloat(s);
-            if (s.indexOf('em') !== -1 || s.indexOf('rem') !== -1) return n * 16;
-            return n;
-        }
+
         function evalSingle(q) {
             q = q.trim();
             if (q === 'all' || q === 'screen') return true;
             if (q === 'print' || q === 'speech') return false;
-            // prefers-color-scheme
             if (q.indexOf('prefers-color-scheme: light') !== -1) return true;
             if (q.indexOf('prefers-color-scheme: dark') !== -1) return false;
-            // prefers-reduced-motion
             if (q.indexOf('prefers-reduced-motion: reduce') !== -1) return false;
             if (q.indexOf('prefers-reduced-motion: no-preference') !== -1) return true;
-            // prefers-contrast
             if (q.indexOf('prefers-contrast: more') !== -1) return false;
             if (q.indexOf('prefers-contrast: no-preference') !== -1) return true;
-            // prefers-reduced-data
             if (q.indexOf('prefers-reduced-data: reduce') !== -1) return false;
-            // forced-colors
             if (q.indexOf('forced-colors: active') !== -1) return false;
             if (q.indexOf('forced-colors: none') !== -1) return true;
-            // pointer / hover
             if (q.indexOf('pointer: fine') !== -1) return true;
             if (q.indexOf('pointer: coarse') !== -1) return false;
             if (q.indexOf('pointer: none') !== -1) return false;
@@ -18881,64 +18878,51 @@ void install_dom_bindings(JSContext* ctx,
             if (q.indexOf('hover: none') !== -1) return false;
             if (q.indexOf('any-pointer: fine') !== -1) return true;
             if (q.indexOf('any-hover: hover') !== -1) return true;
-            // display-mode
             if (q.indexOf('display-mode: browser') !== -1) return true;
             if (q.indexOf('display-mode: standalone') !== -1) return false;
-            // scripting
             if (q.indexOf('scripting: enabled') !== -1) return true;
-            // orientation
             if (q.indexOf('orientation: landscape') !== -1) return viewportWidth >= viewportHeight;
             if (q.indexOf('orientation: portrait') !== -1) return viewportHeight > viewportWidth;
-            // resolution / dpi / dppx
             var dpiM = q.match(/min-resolution:\s*([\d.]+)dpi/);
             if (dpiM) return dpr * 96 >= parseFloat(dpiM[1]);
             var dppxM = q.match(/min-resolution:\s*([\d.]+)(?:dppx|x)/);
             if (dppxM) return dpr >= parseFloat(dppxM[1]);
             var maxDpiM = q.match(/max-resolution:\s*([\d.]+)dpi/);
             if (maxDpiM) return dpr * 96 <= parseFloat(maxDpiM[1]);
-            // device-pixel-ratio (webkit)
             var mdpr = q.match(/-webkit-min-device-pixel-ratio:\s*([\d.]+)/);
             if (mdpr) return dpr >= parseFloat(mdpr[1]);
             var xdpr = q.match(/-webkit-max-device-pixel-ratio:\s*([\d.]+)/);
             if (xdpr) return dpr <= parseFloat(xdpr[1]);
-            // min/max width
             var minW = q.match(/min-width:\s*([\d.]+)(px|em|rem)?/);
             if (minW) return viewportWidth >= parseLen(minW[1] + (minW[2]||''));
             var maxW = q.match(/max-width:\s*([\d.]+)(px|em|rem)?/);
             if (maxW) return viewportWidth <= parseLen(maxW[1] + (maxW[2]||''));
-            // min/max height
             var minH = q.match(/min-height:\s*([\d.]+)(px|em|rem)?/);
             if (minH) return viewportHeight >= parseLen(minH[1] + (minH[2]||''));
             var maxH = q.match(/max-height:\s*([\d.]+)(px|em|rem)?/);
             if (maxH) return viewportHeight <= parseLen(maxH[1] + (maxH[2]||''));
-            // width / height exact
             var exW = q.match(/\(width:\s*([\d.]+)(px|em|rem)?\)/);
             if (exW) return viewportWidth === parseLen(exW[1] + (exW[2]||''));
             var exH = q.match(/\(height:\s*([\d.]+)(px|em|rem)?\)/);
             if (exH) return viewportHeight === parseLen(exH[1] + (exH[2]||''));
-            // CSS Level 4 range syntax: (width > Npx), (width >= Npx), (width < Npx), (width <= Npx)
             var rgw = q.match(/\(\s*width\s*(>=?|<=?)\s*([\d.]+)(px|em|rem)?\s*\)/);
             if (rgw) { var rv = parseLen(rgw[2]+(rgw[3]||'')); if (rgw[1]==='>')return viewportWidth>rv; if (rgw[1]==='>=')return viewportWidth>=rv; if (rgw[1]==='<')return viewportWidth<rv; return viewportWidth<=rv; }
             var rgh = q.match(/\(\s*height\s*(>=?|<=?)\s*([\d.]+)(px|em|rem)?\s*\)/);
             if (rgh) { var rhv = parseLen(rgh[2]+(rgh[3]||'')); if (rgh[1]==='>')return viewportHeight>rhv; if (rgh[1]==='>=')return viewportHeight>=rhv; if (rgh[1]==='<')return viewportHeight<rhv; return viewportHeight<=rhv; }
-            // Range form: (Npx <= width <= Mpx)
             var rangew = q.match(/\(\s*([\d.]+)(px|em|rem)?\s*(<=?)\s*width\s*(<=?)\s*([\d.]+)(px|em|rem)?\s*\)/);
             if (rangew) { var rlo=parseLen(rangew[1]+(rangew[2]||'')),rhi=parseLen(rangew[5]+(rangew[6]||'')); return (rangew[3]==='<='?viewportWidth>=rlo:viewportWidth>rlo)&&(rangew[4]==='<='?viewportWidth<=rhi:viewportWidth<rhi); }
             var rangeh = q.match(/\(\s*([\d.]+)(px|em|rem)?\s*(<=?)\s*height\s*(<=?)\s*([\d.]+)(px|em|rem)?\s*\)/);
             if (rangeh) { var rhlo=parseLen(rangeh[1]+(rangeh[2]||'')),rhhi=parseLen(rangeh[5]+(rangeh[6]||'')); return (rangeh[3]==='<='?viewportHeight>=rhlo:viewportHeight>rhlo)&&(rangeh[4]==='<='?viewportHeight<=rhhi:viewportHeight<rhhi); }
-            // color / monochrome
             if (q.indexOf('(color)') !== -1) return true;
             if (q.indexOf('(monochrome)') !== -1) return false;
             if (q.indexOf('color-gamut: srgb') !== -1) return true;
             if (q.indexOf('color-gamut: p3') !== -1) return true;
-            // Default: unknown query matches false
             return false;
         }
+
         function evalQuery(q) {
             q = q.trim();
-            // Handle not
             if (q.indexOf('not ') === 0) return !evalQuery(q.substring(4));
-            // Handle comma-separated (OR)
             var parts = q.split(',');
             if (parts.length > 1) {
                 for (var i = 0; i < parts.length; i++) {
@@ -18946,7 +18930,6 @@ void install_dom_bindings(JSContext* ctx,
                 }
                 return false;
             }
-            // Handle 'and' (AND)
             var ands = q.split(' and ');
             if (ands.length > 1) {
                 for (var j = 0; j < ands.length; j++) {
@@ -18956,21 +18939,78 @@ void install_dom_bindings(JSContext* ctx,
             }
             return evalSingle(q);
         }
-        var matches = evalQuery(query);
-        var listeners = [];
+
+        return evalQuery(query);
+    }
+
+    function dispatchMqlChangeEvents() {
+        for (var i = 0; i < _listeners.length; i++) {
+            var mql = _listeners[i];
+            var next = evaluateQuery(mql.media);
+            if (next === mql.matches) continue;
+            mql.matches = next;
+            var ev = {
+                type: 'change',
+                matches: next,
+                media: mql.media,
+                target: mql,
+                currentTarget: mql
+            };
+            var callbacks = mql.__listeners.slice();
+            for (var j = 0; j < callbacks.length; j++) {
+                try { callbacks[j].call(mql, ev); } catch (e) {}
+            }
+            if (typeof mql.onchange === 'function') {
+                try { mql.onchange.call(mql, ev); } catch (e) {}
+            }
+        }
+    }
+
+    globalThis.matchMedia = function(query) {
+        query = String(query || '');
         var mql = {
-            matches: matches,
+            matches: evaluateQuery(query),
             media: query,
             onchange: null,
-            addListener: function(fn) { if (fn) listeners.push(fn); },
-            removeListener: function(fn) { listeners = listeners.filter(function(l) { return l !== fn; }); },
-            addEventListener: function(type, fn) { if (type === 'change' && fn) listeners.push(fn); },
-            removeEventListener: function(type, fn) { if (type === 'change') listeners = listeners.filter(function(l) { return l !== fn; }); },
-            dispatchEvent: function(ev) { listeners.forEach(function(fn) { fn(ev || mql); }); return true; }
+            __listeners: [],
+            addListener: function(fn) { if (typeof fn === 'function') this.__listeners.push(fn); },
+            removeListener: function(fn) { this.__listeners = this.__listeners.filter(function(l) { return l !== fn; }); },
+            addEventListener: function(type, fn) {
+                if (type === 'change' && typeof fn === 'function') this.__listeners.push(fn);
+            },
+            removeEventListener: function(type, fn) {
+                if (type === 'change') this.__listeners = this.__listeners.filter(function(l) { return l !== fn; });
+            },
+            dispatchEvent: function(ev) {
+                var eventObj = ev || { type: 'change', matches: this.matches, media: this.media };
+                var callbacks = this.__listeners.slice();
+                for (var i = 0; i < callbacks.length; i++) {
+                    try { callbacks[i].call(this, eventObj); } catch (e) {}
+                }
+                if (typeof this.onchange === 'function') {
+                    try { this.onchange.call(this, eventObj); } catch (e) {}
+                }
+                return true;
+            }
         };
         _listeners.push(mql);
         return mql;
     };
+
+    if (!globalThis.__matchMediaResizeHookInstalled) {
+        var _origDispatchEvent = globalThis.dispatchEvent;
+        if (typeof _origDispatchEvent === 'function') {
+            globalThis.dispatchEvent = function(ev) {
+                var result = _origDispatchEvent.call(this, ev);
+                try {
+                    if (ev && ev.type === 'resize') dispatchMqlChangeEvents();
+                } catch (e) {}
+                return result;
+            };
+        }
+        globalThis.__dispatchMatchMediaResize = dispatchMqlChangeEvents;
+        globalThis.__matchMediaResizeHookInstalled = true;
+    }
 })();
 )JS";
         JSValue ret3 = JS_Eval(ctx, mm_src, std::strlen(mm_src),

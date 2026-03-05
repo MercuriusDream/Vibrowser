@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 1999 — DPR-aware rendering integration + table alignment/layout hardening across root and vibrowser trees
-**Momentum**: C1999 complete — integrated device-pixel-ratio-aware rendering paths, stabilized table alignment/auto-layout behaviors, and validated large offline unit suites (CSS/HTML/JS/Layout all green).
-**Cycle**: 1999
+**Current Focus**: Cycle 2001 - HiDPI DPR regression coverage and estate-ledger synchronization
+**Momentum**: C2001 complete - added explicit DPR regression tests for renderer backing-buffer sizing and render_html viewport-vs-pixel behavior; synchronized codex/claude ledgers by mtime rule.
+**Cycle**: 2001
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -1606,6 +1606,25 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 1999 (HTTP/1.x High-Octet Separator Hardening) — 2026-03-06
+
+- **Theme**: tighten malformed-status-line contract coverage for non-ASCII separator bytes.
+- **Files Changed**:
+  - `tests/test_request_contracts.cpp`
+- **Fixes Implemented**:
+  - Added fail-closed regression cases for `0x9F` separator variants:
+    - `HTTP/1.1\x9F200 OK`
+    - `HTTP/1.1 200\x9FOK`
+  - Added fail-closed regression cases for `0xFE` separator variants:
+    - `HTTP/1.1\xFE200 OK`
+    - `HTTP/1.1 200\xFEOK`
+- **Validation**:
+  - `cmake --build build --target test_request_contracts test_request_policy`
+  - `./build/test_request_contracts`
+  - `./build/test_request_policy`
+  - Result: both suites passed.
+- **Ledger divergence resolution**: cycle start ledgers differed by mtime (`.claude` newer than `.codex`), so `.claude` stayed source of truth and `.codex` was re-synced after this update.
+
 ### Cycle 1998 (Table Explicit-Width Ratio Preservation) — 2026-03-06
 
 - **Theme**: tighten table auto-layout width distribution so explicit columns keep their intended proportions when table width expansion is required.
@@ -2212,3 +2231,22 @@ Generated: 2026-03-01
 - **Current implementation vs full browser**:
   - Current implementation: strong single-process browser engine with broad DOM/CSS/JS surface, active DPR/render quality work, and substantial table/CSS compatibility hardening for real sites.
   - Full browser target: still missing full multi-process isolation/sandboxing, complete Service Worker lifecycle+fetch interception, full media stack (`<audio>/<video>` pipeline), and production-grade protocol breadth (HTTP/2+/QUIC end-to-end stack).
+
+### Cycle 2001 (Estate Next Cycle Implementation) - 2026-03-06
+
+- **Theme**: Convert existing HiDPI rendering work into locked regression coverage and sync estate continuity.
+- **Implementation landed**:
+  - Added DPR regressions in `vibrowser/tests/unit/paint_test.cpp`:
+    - `SoftwareRenderer.DevicePixelRatioScalesBackingBufferDimensions`
+    - `PaintTest.RenderHtmlDevicePixelRatioScalesRendererPixelsNotLayoutViewport`
+  - Built `vibrowser_paint_tests` and ran targeted tests for both new cases (both passing).
+  - Ran full `paint_tests` suite; 11 failures remain in pre-existing areas (`calc()` layout, SVG rendering, JS geometry bindings), unchanged by this cycle.
+- **Ledger sync**: `.claude/claude-estate.md` remained source-of-truth by mtime and was re-synced to `.codex/codex-estate.md`.
+- **Current implementation vs full browser**:
+  - Current implementation: broad single-process DOM/CSS/JS/rendering engine with active HiDPI hardening and large offline unit coverage.
+  - Full browser target: still needs full multi-process architecture, complete Service Worker lifecycle/interception, and production-grade media/network stack breadth.
+
+### Tell The Next Codex (Cycle 2001 addendum)
+
+- Keep the new DPR regressions green when touching renderer dimensions or viewport scaling semantics.
+- Progress framing: we now have explicit tests proving logical viewport sizing remains stable while physical backing buffers scale with DPR.

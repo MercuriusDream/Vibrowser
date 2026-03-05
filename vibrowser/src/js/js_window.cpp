@@ -1456,6 +1456,53 @@ static JSValue js_mql_add_event_listener(JSContext* ctx, JSValueConst this_val,
     return JS_UNDEFINED;
 }
 
+static JSValue js_mql_remove_event_listener(JSContext* ctx, JSValueConst this_val,
+                                            int argc, JSValueConst* argv) {
+    std::string event_type;
+    if (argc > 0) event_type = js_value_to_string(ctx, argv[0]);
+    if (event_type != "change" || argc < 2 || !JS_IsFunction(ctx, argv[1])) {
+        return JS_UNDEFINED;
+    }
+
+    JSValue media_value = JS_GetPropertyStr(ctx, this_val, "media");
+    std::string query = js_value_to_string(ctx, media_value);
+    JS_FreeValue(ctx, media_value);
+
+    auto it = g_mql_registry.listeners.find(query);
+    if (it == g_mql_registry.listeners.end()) {
+        return JS_UNDEFINED;
+    }
+
+    auto& callbacks = it->second;
+    for (auto cb_it = callbacks.begin(); cb_it != callbacks.end();) {
+        if (JS_StrictEq(ctx, *cb_it, argv[1])) {
+            JS_FreeValue(ctx, *cb_it);
+            cb_it = callbacks.erase(cb_it);
+        } else {
+            ++cb_it;
+        }
+    }
+    return JS_UNDEFINED;
+}
+
+static JSValue js_mql_add_listener(JSContext* ctx, JSValueConst this_val,
+                                   int argc, JSValueConst* argv) {
+    JSValue add_event = JS_NewString(ctx, "change");
+    JSValue args[2] = {add_event, argc > 0 ? argv[0] : JS_UNDEFINED};
+    JSValue result = js_mql_add_event_listener(ctx, this_val, 2, args);
+    JS_FreeValue(ctx, add_event);
+    return result;
+}
+
+static JSValue js_mql_remove_listener(JSContext* ctx, JSValueConst this_val,
+                                      int argc, JSValueConst* argv) {
+    JSValue remove_event = JS_NewString(ctx, "change");
+    JSValue args[2] = {remove_event, argc > 0 ? argv[0] : JS_UNDEFINED};
+    JSValue result = js_mql_remove_event_listener(ctx, this_val, 2, args);
+    JS_FreeValue(ctx, remove_event);
+    return result;
+}
+
 static void fire_mql_change_events(JSContext* ctx, int width, int height) {
     for (const auto& entry : g_mql_registry.listeners) {
         const auto& query = entry.first;
@@ -1531,13 +1578,13 @@ static JSValue js_window_match_media(JSContext* ctx, JSValueConst /*this_val*/,
     JS_SetPropertyStr(ctx, result, "media", JS_NewString(ctx, query.c_str()));
     JS_SetPropertyStr(ctx, result, "onchange", JS_NULL);
     JS_SetPropertyStr(ctx, result, "addListener",
-        JS_NewCFunction(ctx, js_media_query_noop, "addListener", 1));
+        JS_NewCFunction(ctx, js_mql_add_listener, "addListener", 1));
     JS_SetPropertyStr(ctx, result, "removeListener",
-        JS_NewCFunction(ctx, js_media_query_noop, "removeListener", 1));
+        JS_NewCFunction(ctx, js_mql_remove_listener, "removeListener", 1));
     JS_SetPropertyStr(ctx, result, "addEventListener",
         JS_NewCFunction(ctx, js_mql_add_event_listener, "addEventListener", 2));
     JS_SetPropertyStr(ctx, result, "removeEventListener",
-        JS_NewCFunction(ctx, js_media_query_noop, "removeEventListener", 2));
+        JS_NewCFunction(ctx, js_mql_remove_event_listener, "removeEventListener", 2));
     JS_SetPropertyStr(ctx, result, "dispatchEvent",
         JS_NewCFunction(ctx, js_media_query_noop, "dispatchEvent", 1));
     return result;

@@ -1031,17 +1031,30 @@ struct TextRegion {
                 _scrollbarDragStartOffset = _scrollOffset;
             } else {
                 // Click on track — jump scroll position
+                CGFloat prevScrollY = _scrollOffset;
                 CGFloat totalHeight = _contentHeight * _pageScale;
                 CGFloat viewportHeight = self.bounds.size.height;
                 CGFloat scrollRange = totalHeight - viewportHeight;
                 CGFloat clickRatio = (loc.y - trackRect.origin.y) / trackRect.size.height;
                 _scrollOffset = clickRatio * scrollRange;
                 _scrollOffset = std::max(0.0, std::min(_scrollOffset, scrollRange));
+                _scrollY = _scrollOffset;
 
                 // Also start dragging from this new position
                 _draggingScrollbar = YES;
                 _scrollbarDragStartY = loc.y;
                 _scrollbarDragStartOffset = _scrollOffset;
+
+                CGFloat deltaY = _scrollOffset - prevScrollY;
+                if (std::abs(deltaY) > kScrollDeltaEpsilon &&
+                    [_delegate respondsToSelector:@selector(renderView:didScrollToX:y:deltaX:deltaY:isMomentum:)]) {
+                    [_delegate renderView:self
+                             didScrollToX:_scrollX
+                                        y:_scrollY
+                                   deltaX:0.0
+                                   deltaY:deltaY
+                               isMomentum:NO];
+                }
             }
             [self setNeedsDisplay:YES];
             [self.window invalidateCursorRectsForView:self];
@@ -1063,6 +1076,7 @@ struct TextRegion {
     NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
 
     if (_draggingScrollbar) {
+        CGFloat prevScrollY = _scrollOffset;
         CGFloat totalHeight = _contentHeight * _pageScale;
         CGFloat viewportHeight = self.bounds.size.height;
         CGFloat scrollRange = totalHeight - viewportHeight;
@@ -1075,6 +1089,17 @@ struct TextRegion {
             CGFloat deltaY = loc.y - _scrollbarDragStartY;
             _scrollOffset = _scrollbarDragStartOffset + (deltaY / usableTrack) * scrollRange;
             _scrollOffset = std::max(0.0, std::min(_scrollOffset, scrollRange));
+        }
+        _scrollY = _scrollOffset;
+        CGFloat appliedDeltaY = _scrollOffset - prevScrollY;
+        if (std::abs(appliedDeltaY) > kScrollDeltaEpsilon &&
+            [_delegate respondsToSelector:@selector(renderView:didScrollToX:y:deltaX:deltaY:isMomentum:)]) {
+            [_delegate renderView:self
+                     didScrollToX:_scrollX
+                                y:_scrollY
+                           deltaX:0.0
+                           deltaY:appliedDeltaY
+                       isMomentum:NO];
         }
         [self setNeedsDisplay:YES];
         [self.window invalidateCursorRectsForView:self];
@@ -1642,7 +1667,19 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
     }
 
     if (handled) {
+        CGFloat prevScrollY = _scrollY;
         _scrollOffset = std::max(0.0, std::min(_scrollOffset, maxScroll));
+        _scrollY = _scrollOffset;
+        CGFloat deltaY = _scrollY - prevScrollY;
+        if (std::abs(deltaY) > kScrollDeltaEpsilon &&
+            [_delegate respondsToSelector:@selector(renderView:didScrollToX:y:deltaX:deltaY:isMomentum:)]) {
+            [_delegate renderView:self
+                     didScrollToX:_scrollX
+                                y:_scrollY
+                           deltaX:0.0
+                           deltaY:deltaY
+                       isMomentum:NO];
+        }
         [self setNeedsDisplay:YES];
         [self.window invalidateCursorRectsForView:self];
         return;

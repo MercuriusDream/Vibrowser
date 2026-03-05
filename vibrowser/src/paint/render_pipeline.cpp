@@ -67,6 +67,8 @@ static thread_local int g_details_id_counter = 0;
 static thread_local const std::set<int>* g_toggled_details = nullptr;
 // When true, <noscript> content is rendered (JS failed or produced many errors)
 static thread_local bool g_noscript_fallback = false;
+// Current render device pixel ratio used for responsive image selection.
+static thread_local float g_render_dpr = 1.0f;
 // Shadow DOM: pointer to the shadow_roots map from DOMState (set before build_layout_tree_styled)
 static thread_local const std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*>*
     g_shadow_roots = nullptr;
@@ -1433,15 +1435,17 @@ std::vector<std::string> detect_changed_transition_properties(
 namespace { // reopen anonymous namespace for remaining internal helpers
 
 std::string get_attr(const clever::html::SimpleNode& node, const std::string& name) {
+    const std::string name_lower = to_lower(name);
     for (auto& attr : node.attributes) {
-        if (attr.name == name) return attr.value;
+        if (to_lower(attr.name) == name_lower) return attr.value;
     }
     return "";
 }
 
 bool has_attr(const clever::html::SimpleNode& node, const std::string& name) {
+    const std::string name_lower = to_lower(name);
     for (auto& attr : node.attributes) {
-        if (attr.name == name) return true;
+        if (to_lower(attr.name) == name_lower) return true;
     }
     return false;
 }
@@ -9665,7 +9669,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 if (!srcset.empty()) {
                     // For <source>, we don't have sizes attribute here; use viewport width
                     float effective_size = static_cast<float>(vw);
-                    float dpr = 2.0f;
+                    float dpr = g_render_dpr;
                     selected_src = select_best_srcset_url(srcset, vw, effective_size, dpr);
                 } else {
                     std::string src = get_attr(*child, "src");
@@ -9681,8 +9685,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             std::string fb_srcset = get_attr(*fallback_img, "srcset");
             if (!fb_srcset.empty()) {
                 std::string fb_sizes = get_attr(*fallback_img, "sizes");
-                float fb_effective_size = parse_sizes_attribute(fb_sizes, vw, 2.0f);
-                float fb_dpr = 2.0f;
+                float fb_effective_size = parse_sizes_attribute(fb_sizes, vw, g_render_dpr);
+                float fb_dpr = g_render_dpr;
                 selected_src = select_best_srcset_url(fb_srcset, vw, fb_effective_size, fb_dpr);
             }
             if (selected_src.empty()) selected_src = get_attr(*fallback_img, "src");
@@ -9795,10 +9799,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
             // Parse sizes attribute to get effective size for width-based srcset
             std::string sizes_attr = get_attr(node, "sizes");
-            float effective_size = parse_sizes_attribute(sizes_attr, vw, 2.0f);
+            float effective_size = parse_sizes_attribute(sizes_attr, vw, g_render_dpr);
 
             // Select best image URL using responsive image helpers
-            float dpr = 2.0f;
+            float dpr = g_render_dpr;
             std::string best_url = select_best_srcset_url(srcset_attr, vw, effective_size, dpr);
             if (!best_url.empty()) src = best_url;
         }
@@ -12299,7 +12303,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             }
         }
         // Legacy HTML align attribute (table alignment)
-        std::string ta = get_attr(node, "align");
+        std::string ta = to_lower(trim(get_attr(node, "align")));
         if (ta == "center") {
             layout_node->geometry.margin.left = MARGIN_AUTO; // auto
             layout_node->geometry.margin.right = MARGIN_AUTO; // auto
@@ -12684,6 +12688,19 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                        layout_node->css_margin_bottom, 0);
         resolve_margin(style.margin.left, layout_node->geometry.margin.left,
                        layout_node->css_margin_left, MARGIN_AUTO);
+    }
+    // Preserve legacy <table align="center"> when stylesheet defaults resolve
+    // margins to 0. This avoids left-pinned legacy centered tables (e.g. HN).
+    if (tag_lower == "table") {
+        const std::string table_align = to_lower(trim(get_attr(node, "align")));
+        if (table_align == "center" &&
+            !clever::layout::is_margin_auto(layout_node->geometry.margin.left) &&
+            !clever::layout::is_margin_auto(layout_node->geometry.margin.right) &&
+            std::abs(layout_node->geometry.margin.left) < 0.01f &&
+            std::abs(layout_node->geometry.margin.right) < 0.01f) {
+            layout_node->geometry.margin.left = MARGIN_AUTO;
+            layout_node->geometry.margin.right = MARGIN_AUTO;
+        }
     }
 
     // Padding (percentage padding resolves against containing block width)
@@ -16848,6 +16865,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
 RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height, float dpr) {
+    const float normalized_dpr = (std::isfinite(dpr) && dpr >= 0.1f) ? dpr : 1.0f;
+    g_render_dpr = normalized_dpr;
     const int device_viewport_width = std::max(1, viewport_width);
     const int device_viewport_height = std::max(1, viewport_height);
     int layout_viewport_width = device_viewport_width;
@@ -17200,20 +17219,41 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         std::vector<clever::css::StyleSheet> external_sheets;
         auto link_urls = extract_link_stylesheets(*doc, effective_base_url);
         auto css_fetched = fetch_css_parallel(link_urls);
-        for (auto& css_result : css_fetched) {
-            if (!css_result.css_text.empty()) {
-                external_sheets.push_back(clever::css::parse_stylesheet(css_result.css_text));
-                // Fetch and merge @import rules from the external stylesheet
-                process_css_imports(external_sheets.back(), css_result.final_url,
-                                    layout_viewport_width, layout_viewport_height);
-                // Evaluate @media/@supports queries and promote matching rules
-                flatten_media_queries(external_sheets.back(), layout_viewport_width, layout_viewport_height);
-                flatten_supports_rules(external_sheets.back());
-                flatten_layer_rules(external_sheets.back());
-                flatten_container_rules(external_sheets.back(), layout_viewport_width);
-                flatten_scope_rules(external_sheets.back());
-                resolver.add_stylesheet(external_sheets.back());
+        for (size_t i = 0; i < css_fetched.size(); i++) {
+            auto& css_result = css_fetched[i];
+            const std::string source_url = (i < link_urls.size()) ? link_urls[i] : css_result.final_url;
+            const std::string resolved_url = css_result.final_url.empty() ? source_url : css_result.final_url;
+            if (css_result.css_text.empty()) {
+                if (!resolved_url.empty()) {
+                    result.js_errors.push_back("CSS load warning: empty response for stylesheet " + resolved_url);
+                } else {
+                    result.js_errors.push_back("CSS load warning: empty response for linked stylesheet");
+                }
+                continue;
             }
+            external_sheets.push_back(clever::css::parse_stylesheet(css_result.css_text));
+            if (external_sheets.back().rules.empty() &&
+                external_sheets.back().media_queries.empty() &&
+                external_sheets.back().imports.empty()) {
+                if (!resolved_url.empty()) {
+                    result.js_errors.push_back("CSS load warning: stylesheet parsed with no rules " + resolved_url);
+                } else {
+                    result.js_errors.push_back("CSS load warning: linked stylesheet parsed with no rules");
+                }
+            }
+            // Fetch and merge @import rules from the external stylesheet
+            process_css_imports(external_sheets.back(), css_result.final_url,
+                                layout_viewport_width, layout_viewport_height);
+            // Evaluate @media/@supports queries and promote matching rules
+            flatten_media_queries(external_sheets.back(), layout_viewport_width, layout_viewport_height);
+            flatten_supports_rules(external_sheets.back());
+            flatten_layer_rules(external_sheets.back());
+            flatten_container_rules(external_sheets.back(), layout_viewport_width);
+            flatten_scope_rules(external_sheets.back());
+            resolver.add_stylesheet(external_sheets.back());
+        }
+        if (!link_urls.empty() && external_sheets.empty()) {
+            result.js_errors.push_back("CSS load warning: all linked stylesheets failed to load");
         }
 
         // Extract and parse inline <style> elements
@@ -17496,7 +17536,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 clever::js::install_dom_bindings(js_engine.context(), doc.get());
                 clever::js::install_timer_bindings(js_engine.context());
                 clever::js::install_window_bindings(js_engine.context(), effective_base_url,
-                                                    layout_viewport_width, layout_viewport_height, dpr);
+                                                    layout_viewport_width, layout_viewport_height, normalized_dpr);
                 clever::js::install_fetch_bindings(js_engine.context());
 
                 // Set up module fetcher for dynamic imports
@@ -18162,7 +18202,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                                           0.0f, 0.0f);
 
         // Step 7: Render to pixel buffer
-        auto renderer = std::make_unique<SoftwareRenderer>(layout_viewport_width, render_height, dpr);
+        auto renderer = std::make_unique<SoftwareRenderer>(layout_viewport_width, render_height, normalized_dpr);
         renderer->clear({255, 255, 255, 255});
         renderer->render(display_list);
 

@@ -213,6 +213,25 @@ int main() {
         }
     }
 
+    // Test 13: class selector matches tokenized class attributes
+    {
+        const std::string token_html = R"(
+            <html><body>
+                <div id="multi-class" class="alpha beta gamma">Token class target</div>
+            </body></html>
+        )";
+        auto token_dom = browser::html::parse_html(token_html);
+        auto result = browser::js::query_selector_all(*token_dom, ".beta");
+        if (!result.ok || result.elements.size() != 1 ||
+            result.elements[0].attributes.find("id") == result.elements[0].attributes.end() ||
+            result.elements[0].attributes.at("id") != "multi-class") {
+            std::cerr << "FAIL: class token selector .beta did not match class=\"alpha beta gamma\"\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: class selector supports space-delimited class tokens\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

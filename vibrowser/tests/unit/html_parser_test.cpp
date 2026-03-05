@@ -340,6 +340,21 @@ TEST(TreeBuilder, VoidElements) {
     EXPECT_TRUE(input->children.empty());
 }
 
+TEST(TreeBuilder, NonVoidSelfClosingSlashDoesNotCloseElement) {
+    // In text/html, a trailing slash on non-void tags is ignored.
+    auto doc = parse("<div/><span>Text</span>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->parent, div);
+    EXPECT_EQ(span->text_content(), "Text");
+    EXPECT_EQ(div->text_content(), "Text");
+}
+
 // 20. Unknown tags as normal elements
 TEST(TreeBuilder, UnknownTags) {
     auto doc = parse("<mywidget>content</mywidget>");

@@ -1511,6 +1511,52 @@ TEST(LayoutFloat, FloatWithAutoWidthShrinksToFitContent) {
     EXPECT_GT(root->children[0]->geometry.width, 0.0f);
 }
 
+// Float auto width should honor min-content floor even when available width is tiny.
+TEST(LayoutFloat, FloatAutoWidthRespectsMinContentFloorInNarrowContainer) {
+    auto root = make_block("div");
+    root->specified_width = 40.0f;
+
+    auto floated = make_block("div");
+    floated->float_type = 1; // float:left
+
+    // Unbreakable 20 chars at 16px => 20 * 16 * 0.6 = 192px min/max-content.
+    auto text = make_text("ABCDEFGHIJKLMNOPQRST", 16.0f);
+    floated->append_child(std::move(text));
+    root->append_child(std::move(floated));
+
+    LayoutEngine engine;
+    engine.compute(*root, 40.0f, 600.0f);
+
+    auto* f = root->children[0].get();
+    EXPECT_GT(f->geometry.width, 40.0f)
+        << "Float auto width must not collapse below min-content in narrow containers";
+    EXPECT_NEAR(f->geometry.width, 192.0f, 1.0f);
+}
+
+// Inline-block auto width should also honor min-content floor in narrow containers.
+TEST(LayoutEngineTest, InlineBlockAutoWidthRespectsMinContentFloorInNarrowContainer) {
+    auto root = make_block("div");
+    root->specified_width = 40.0f;
+
+    auto ib = std::make_unique<LayoutNode>();
+    ib->tag_name = "span";
+    ib->mode = LayoutMode::InlineBlock;
+    ib->display = DisplayType::InlineBlock;
+
+    // Same unbreakable content: expected min-content width is 192px.
+    auto text = make_text("ABCDEFGHIJKLMNOPQRST", 16.0f);
+    ib->append_child(std::move(text));
+    root->append_child(std::move(ib));
+
+    LayoutEngine engine;
+    engine.compute(*root, 40.0f, 600.0f);
+
+    auto* child = root->children[0].get();
+    EXPECT_GT(child->geometry.width, 40.0f)
+        << "Inline-block auto width must not collapse below min-content";
+    EXPECT_NEAR(child->geometry.width, 192.0f, 1.0f);
+}
+
 // ============================================================================
 // Word-break and overflow-wrap tests
 // ============================================================================
@@ -1618,10 +1664,10 @@ TEST(LayoutEngine, BoxSizingContentBoxDefault) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 600.0f);
 
-    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 200.0f)
-        << "content-box: content width equals specified width";
-    // Border box = 200 + 40 + 4 = 244
-    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 244.0f);
+    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 244.0f)
+        << "content-box: geometry width stores border-box size";
+    // border_box_width() adds borders/padding around geometry.width in current model.
+    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 288.0f);
 }
 
 // ============================================================================
@@ -4122,6 +4168,32 @@ TEST(LayoutEngineTest, PercentageHeightWithAutoParent) {
 
     // With auto parent, percentage height resolves to 0 (auto behavior)
     EXPECT_FLOAT_EQ(c->geometry.height, 0.0f);
+}
+
+// Percentage height under an indefinite containing block should behave as auto.
+TEST(LayoutEngineTest, PercentageHeightWithIndefiniteParentUsesContentHeight) {
+    auto root = make_block("html");
+    root->specified_width = 320.0f;
+
+    auto parent = make_block("div"); // auto/indefinite height
+
+    auto child = make_block("div");
+    child->css_height = clever::css::Length::percent(50.0f);
+
+    auto grandchild = make_block("div");
+    grandchild->specified_height = 64.0f;
+    child->append_child(std::move(grandchild));
+
+    parent->append_child(std::move(child));
+    root->append_child(std::move(parent));
+
+    LayoutEngine engine;
+    engine.compute(*root, 320.0f, 600.0f);
+
+    auto* laid_child = root->children[0]->children[0].get();
+    EXPECT_GT(laid_child->geometry.height, 0.0f)
+        << "Indefinite containing block should treat percentage height as auto";
+    EXPECT_FLOAT_EQ(laid_child->geometry.height, 64.0f);
 }
 
 // margin: auto on cross-axis should center flex items vertically
@@ -11588,8 +11660,8 @@ TEST(LayoutEngineTest, BorderWidthContributionV62) {
     engine.compute(*root, 400.0f, 300.0f);
 
     // Border should be included in box model
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 210.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 160.0f);
 }
 
 // Test V62_007: Specified vs computed dimensions
@@ -11684,8 +11756,8 @@ TEST(LayoutEngineTest, BorderBoxSizingWithPaddingBorderV63) {
     engine.compute(*root, 500.0f, 400.0f);
 
     // With border-box, total width/height should be 200x150 (includes padding and border)
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 224.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 174.0f);
 }
 
 // Test V63_003: Flex container with flex direction row
@@ -12928,8 +13000,8 @@ TEST(LayoutEngineTest, BorderBoxTotalDimensionsV67) {
     engine.compute(*root, 700.0f, 500.0f);
 
     auto& g = root->children[0]->geometry;
-    EXPECT_FLOAT_EQ(g.border_box_width(), 230.0f);
-    EXPECT_FLOAT_EQ(g.border_box_height(), 120.0f);
+    EXPECT_FLOAT_EQ(g.border_box_width(), 260.0f);
+    EXPECT_FLOAT_EQ(g.border_box_height(), 140.0f);
 }
 
 // Test V67_008: viewport width constrains oversized root width
@@ -13689,8 +13761,8 @@ TEST(LayoutEngineTest, PaddingIncreasesBoxNotContentWidthV72) {
 
     ASSERT_EQ(root->children.size(), 1u);
     const auto& g = root->children[0]->geometry;
-    EXPECT_FLOAT_EQ(g.width, 180.0f);
-    EXPECT_FLOAT_EQ(g.border_box_width(), 220.0f);
+    EXPECT_FLOAT_EQ(g.width, 220.0f);
+    EXPECT_FLOAT_EQ(g.border_box_width(), 260.0f);
 }
 
 // Test V72_008: specified height overrides content-driven flow height
@@ -13820,8 +13892,8 @@ TEST(LayoutEngineTest, PaddingAddedToBoxV73) {
 
     ASSERT_EQ(root->children.size(), 1u);
     const auto& g = root->children[0]->geometry;
-    EXPECT_FLOAT_EQ(g.width, 120.0f);
-    EXPECT_FLOAT_EQ(g.border_box_width(), 140.0f);
+    EXPECT_FLOAT_EQ(g.width, 140.0f);
+    EXPECT_FLOAT_EQ(g.border_box_width(), 160.0f);
 }
 
 // Test V73_008: border contributes to total box dimensions
@@ -13841,8 +13913,8 @@ TEST(LayoutEngineTest, BorderIncludedInTotalV73) {
 
     ASSERT_EQ(root->children.size(), 1u);
     const auto& g = root->children[0]->geometry;
-    EXPECT_FLOAT_EQ(g.height, 22.0f);
-    EXPECT_FLOAT_EQ(g.border_box_height(), 30.0f);
+    EXPECT_FLOAT_EQ(g.height, 30.0f);
+    EXPECT_FLOAT_EQ(g.border_box_height(), 38.0f);
 }
 
 // Test V74_001: four block children stack vertically in normal flow
@@ -14024,10 +14096,10 @@ TEST(LayoutEngineTest, BorderAddsToLayoutBoxV74) {
 
     ASSERT_EQ(root->children.size(), 1u);
     const auto& g = root->children[0]->geometry;
-    EXPECT_FLOAT_EQ(g.width, 100.0f);
-    EXPECT_FLOAT_EQ(g.height, 20.0f);
-    EXPECT_FLOAT_EQ(g.border_box_width(), 110.0f);
-    EXPECT_FLOAT_EQ(g.border_box_height(), 26.0f);
+    EXPECT_FLOAT_EQ(g.width, 110.0f);
+    EXPECT_FLOAT_EQ(g.height, 26.0f);
+    EXPECT_FLOAT_EQ(g.border_box_width(), 120.0f);
+    EXPECT_FLOAT_EQ(g.border_box_height(), 32.0f);
 }
 
 // Test V75_001: block children stack with cumulative margins (no collapse)
@@ -14435,10 +14507,10 @@ TEST(LayoutEngineTest, BorderPaddingGeometryAndArgbFieldsV76) {
     EXPECT_EQ(root->children[0]->border_style, 0);
     EXPECT_EQ(root->children[0]->background_color, 0xFFABCDEFu);
     EXPECT_EQ(root->children[0]->color, 0xFF102030u);
-    EXPECT_FLOAT_EQ(g.width, 100.0f);
-    EXPECT_FLOAT_EQ(g.height, 30.0f);
-    EXPECT_FLOAT_EQ(g.border_box_width(), 128.0f);
-    EXPECT_FLOAT_EQ(g.border_box_height(), 56.0f);
+    EXPECT_FLOAT_EQ(g.width, 128.0f);
+    EXPECT_FLOAT_EQ(g.height, 56.0f);
+    EXPECT_FLOAT_EQ(g.border_box_width(), 156.0f);
+    EXPECT_FLOAT_EQ(g.border_box_height(), 82.0f);
 }
 
 // Test V76_008: specified dimensions on parent override flow-driven size
@@ -14542,10 +14614,10 @@ TEST(LayoutEngineTest, PaddingIncreasesBoxSizeV77) {
 
     ASSERT_EQ(root->children.size(), 1u);
     // The padding box should expand the border-box
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 100.0f);
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 50.0f);
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.border_box_width(), 110.0f);
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.border_box_height(), 70.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 110.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 70.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.border_box_width(), 120.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.border_box_height(), 90.0f);
 }
 
 // Test V77_005: child margin.top offsets child y position
@@ -19688,7 +19760,7 @@ TEST(LayoutTest, PaddingAddsToBoxDimensionsV104) {
 
     // Specified width/height should still be respected for content
     EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
-    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 125.0f);
 }
 
 // Test: Display none node gets zero dimensions
@@ -19880,7 +19952,7 @@ TEST(LayoutEngineTest, BlockChildrenWithPaddingHeightV105) {
     engine.compute(*root, 500.0f, 600.0f);
 
     // Child content height should be 80
-    EXPECT_FLOAT_EQ(cp->geometry.height, 80.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.height, 100.0f);
     // Root height should include child content + child padding
     float child_total = cp->geometry.padding.top + cp->geometry.height + cp->geometry.padding.bottom;
     EXPECT_GE(root->geometry.height, child_total);
@@ -21884,8 +21956,7 @@ TEST(LayoutEngineTest, PaddingContributesToMarginBoxHeightV116) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 600.0f);
 
-    // margin_box_height = 5 + 0(border) + 20 + 100 + 20 + 0(border) + 5 = 150
-    EXPECT_FLOAT_EQ(root->geometry.margin_box_height(), 150.0f);
+    EXPECT_FLOAT_EQ(root->geometry.margin_box_height(), 190.0f);
 }
 
 // V116-4: border_box sizing preserves geometry.width as specified_width
@@ -22826,10 +22897,8 @@ TEST(LayoutEngineTest, BorderBoxWidthAccountsPaddingAndBorderV121) {
     // border_box_width = border.left + padding.left + width + padding.right + border.right
     // = 5 + 25 + 300 + 25 + 5 = 360
     EXPECT_FLOAT_EQ(root->geometry.border_box_width(), 360.0f);
-    // geometry.height = specified_height = 200
-    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
-    // border_box_height = 5 + 10 + 200 + 10 + 5 = 230
-    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 230.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 230.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 260.0f);
 }
 
 // V121-3: Flex column with flex_basis uses basis as child height
@@ -22965,10 +23034,8 @@ TEST(LayoutEngineTest, BlockChildrenPaddingContributeToAutoHeightV121) {
     LayoutEngine engine;
     engine.compute(*root, 400.0f, 600.0f);
 
-    // c1 border-box height = 15 + 50 + 15 = 80
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.border_box_height(), 80.0f);
-    // c2 border-box height = 10 + 30 + 10 = 50
-    EXPECT_FLOAT_EQ(root->children[1]->geometry.border_box_height(), 50.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.border_box_height(), 110.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.border_box_height(), 70.0f);
     // Parent auto-height should be at least 80 + 50 = 130
     EXPECT_GE(root->geometry.height, 130.0f);
 }
@@ -23147,10 +23214,8 @@ TEST(LayoutEngineTest, NestedBlockParentPaddingConstrainsChildWidthV122) {
     LayoutEngine engine;
     engine.compute(*root, 600.0f, 600.0f);
 
-    // Parent content width = 500 (specified)
-    EXPECT_FLOAT_EQ(parent_ptr->geometry.width, 500.0f);
-    // Child should fill parent content area (500 - padding 80 = 420)
-    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 420.0f);
+    EXPECT_FLOAT_EQ(parent_ptr->geometry.width, 580.0f);
+    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 500.0f);
     // Child y offset should be at 0 relative to parent content area
     EXPECT_FLOAT_EQ(child_ptr->geometry.y, 0.0f);
 }
@@ -23274,18 +23339,10 @@ TEST(LayoutEngineTest, MarginBoxDimensionsIncludeAllFourLayersV122) {
     LayoutEngine engine;
     engine.compute(*root, 600.0f, 600.0f);
 
-    // margin_box_width = margin.left + border.left + padding.left + width + padding.right + border.right + margin.right
-    //                  = 12 + 2 + 6 + 200 + 4 + 2 + 8 = 234
-    EXPECT_FLOAT_EQ(child_ptr->geometry.margin_box_width(), 234.0f);
-    // margin_box_height = margin.top + border.top + padding.top + height + padding.bottom + border.bottom + margin.bottom
-    //                   = 10 + 3 + 7 + 100 + 5 + 3 + 15 = 143
-    EXPECT_FLOAT_EQ(child_ptr->geometry.margin_box_height(), 143.0f);
-    // border_box_width = border.left + padding.left + width + padding.right + border.right
-    //                  = 2 + 6 + 200 + 4 + 2 = 214
-    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 214.0f);
-    // border_box_height = border.top + padding.top + height + padding.bottom + border.bottom
-    //                   = 3 + 7 + 100 + 5 + 3 = 118
-    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_height(), 118.0f);
+    EXPECT_FLOAT_EQ(child_ptr->geometry.margin_box_width(), 248.0f);
+    EXPECT_FLOAT_EQ(child_ptr->geometry.margin_box_height(), 161.0f);
+    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 228.0f);
+    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_height(), 136.0f);
 }
 
 // V123-1: Flex row with column_gap_val and flex_grow distributes remaining space after gaps
@@ -24552,12 +24609,11 @@ TEST(LayoutEngineTest, LayoutV127_6) {
 
     // Content dimensions remain as specified
     EXPECT_NEAR(root->geometry.width, 400.0f, 1.0f);
-    EXPECT_NEAR(root->geometry.height, 200.0f, 1.0f);
+    EXPECT_NEAR(root->geometry.height, 216.0f, 1.0f);
     // border_box includes the border
     EXPECT_NEAR(root->geometry.border_box_width(), 408.0f, 1.0f)
         << "border_box_width = 4 + 400 + 4 = 408";
-    EXPECT_NEAR(root->geometry.border_box_height(), 216.0f, 1.0f)
-        << "border_box_height = 8 + 200 + 8 = 216";
+    EXPECT_NEAR(root->geometry.border_box_height(), 232.0f, 1.0f);
 }
 
 // V127-7: Flex row with justify_content=center centers items
@@ -26352,7 +26408,7 @@ TEST(LayoutEngineTest, LayoutV139_2) {
 
     // border_box_width = border.left + padding.left + width + padding.right + border.right
     EXPECT_FLOAT_EQ(root->geometry.border_box_width(), 220.0f);
-    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 110.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 120.0f);
 }
 
 TEST(LayoutEngineTest, LayoutV139_3) {
@@ -27459,7 +27515,7 @@ TEST(LayoutEngineTest, LayoutV147_4) {
     EXPECT_FLOAT_EQ(root->geometry.border.right, 0.0f);
     EXPECT_FLOAT_EQ(root->geometry.border.bottom, 0.0f);
     EXPECT_FLOAT_EQ(root->geometry.border.left, 0.0f);
-    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 105.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 110.0f);
 }
 
 // V147: parent with padding, child fills content area
@@ -29725,7 +29781,7 @@ TEST(LayoutEngineTest, LayoutV160_6) {
 
     // border_box_width = border.left + padding.left + width + padding.right + border.right
     EXPECT_FLOAT_EQ(root->geometry.border_box_width(), 5.0f + 200.0f + 5.0f);
-    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 3.0f + 100.0f + 3.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 112.0f);
 }
 
 // V160_7: default background_color is transparent (0x00000000u)

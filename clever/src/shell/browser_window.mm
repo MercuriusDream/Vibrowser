@@ -1254,14 +1254,17 @@ static std::string build_shell_message_html(const std::string& page_title,
     NSRect bounds = tab.renderView.bounds;
     CGFloat scaleFactor = self.window.backingScaleFactor;
     if (scaleFactor < 1.0) scaleFactor = 1.0;
-    int width = static_cast<int>(bounds.size.width * scaleFactor);
-    int height = static_cast<int>(bounds.size.height * scaleFactor);
+    int width = static_cast<int>(bounds.size.width);
+    int height = static_cast<int>(bounds.size.height);
     if (width < 1) width = 800;
     if (height < 1) height = 600;
 
     auto result = _toggledDetails.empty()
-        ? clever::paint::render_html(html, [tab currentBaseURL], width, height)
-        : clever::paint::render_html(html, [tab currentBaseURL], width, height, _toggledDetails);
+        ? clever::paint::render_html(
+              html, [tab currentBaseURL], width, height, static_cast<float>(scaleFactor))
+        : clever::paint::render_html(
+              html, [tab currentBaseURL], width, height,
+              _toggledDetails, static_cast<float>(scaleFactor));
 
     if (result.success && result.renderer) {
         // Reset scroll position to top on new page load (but not on details toggle)
@@ -1527,7 +1530,8 @@ static std::string build_shell_message_html(const std::string& page_title,
             result.error.empty() ? "Unknown render failure." : result.error;
         const std::string error_html =
             build_shell_message_html("Render Error", "Render Error", detail);
-        auto fallback = clever::paint::render_html(error_html, width, height);
+        auto fallback = clever::paint::render_html(
+            error_html, "", width, height, static_cast<float>(scaleFactor));
         if (fallback.success && fallback.renderer) {
             [tab.renderView updateWithRenderer:fallback.renderer.get()];
         }

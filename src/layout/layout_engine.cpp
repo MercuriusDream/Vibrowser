@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cmath>
 #include <map>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -65,7 +66,16 @@ int parse_css_px(const std::string& raw, int fallback) {
     if (consumed != value.size()) {
       return fallback;
     }
-    return static_cast<int>(std::round(parsed));
+    const double rounded = std::round(parsed);
+    if (!std::isfinite(rounded)) {
+      return fallback;
+    }
+    const double kMin = static_cast<double>(std::numeric_limits<int>::min());
+    const double kMax = static_cast<double>(std::numeric_limits<int>::max());
+    if (rounded < kMin || rounded > kMax) {
+      return fallback;
+    }
+    return static_cast<int>(rounded);
   } catch (...) {
     return fallback;
   }

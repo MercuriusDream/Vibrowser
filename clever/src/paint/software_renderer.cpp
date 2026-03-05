@@ -7,8 +7,26 @@
 
 namespace clever::paint {
 
-SoftwareRenderer::SoftwareRenderer(int width, int height)
-    : width_(width), height_(height), pixels_(width * height * 4, 0),
+namespace {
+
+inline float scale_value(float value, float dpr) {
+    return value * dpr;
+}
+
+inline Rect scale_rect(const Rect& rect, float dpr) {
+    return {
+        scale_value(rect.x, dpr),
+        scale_value(rect.y, dpr),
+        scale_value(rect.width, dpr),
+        scale_value(rect.height, dpr),
+    };
+}
+
+} // namespace
+
+SoftwareRenderer::SoftwareRenderer(int width, int height, float device_pixel_ratio)
+    : width_(width), height_(height), dpr_(std::max(1.0f, device_pixel_ratio)),
+      pixels_(width * height * 4, 0),
       text_renderer_(std::make_unique<TextRenderer>()) {
 }
 
@@ -19,21 +37,26 @@ void SoftwareRenderer::render(const DisplayList& list) {
         switch (cmd.type) {
             case PaintCommand::FillRect:
                 if (!cmd.gradient_stops.empty()) {
+                    Rect scaled_bounds = scale_rect(cmd.bounds, dpr_);
+                    float scaled_radius = scale_value(cmd.border_radius, dpr_);
                     if (cmd.gradient_type == 3 || cmd.gradient_type == 6) {
-                        draw_conic_gradient_rect(cmd.bounds, cmd.gradient_angle,
-                                                  cmd.gradient_stops, cmd.border_radius,
+                        draw_conic_gradient_rect(scaled_bounds, cmd.gradient_angle,
+                                                  cmd.gradient_stops, scaled_radius,
                                                   cmd.gradient_type == 6);
                     } else if (cmd.gradient_type == 2 || cmd.gradient_type == 5) {
-                        draw_radial_gradient_rect(cmd.bounds, cmd.radial_shape,
-                                                   cmd.gradient_stops, cmd.border_radius,
+                        draw_radial_gradient_rect(scaled_bounds, cmd.radial_shape,
+                                                   cmd.gradient_stops, scaled_radius,
                                                    cmd.gradient_type == 5);
                     } else {
-                        draw_gradient_rect(cmd.bounds, cmd.gradient_angle,
-                                           cmd.gradient_stops, cmd.border_radius,
+                        draw_gradient_rect(scaled_bounds, cmd.gradient_angle,
+                                           cmd.gradient_stops, scaled_radius,
                                            cmd.gradient_type == 4);
                     }
                 } else {
-                    draw_filled_rect(cmd.bounds, cmd.color, cmd.border_radius);
+                    draw_filled_rect(
+                        scale_rect(cmd.bounds, dpr_),
+                        cmd.color,
+                        scale_value(cmd.border_radius, dpr_));
                 }
                 break;
             case PaintCommand::DrawText: {
@@ -53,8 +76,12 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 }
                 // Handle word_spacing: draw word-by-word with extra spacing
                 if (cmd.word_spacing != 0) {
-                    float char_advance = cmd.font_size * 0.6f + cmd.letter_spacing;
-                    float cursor_x = cmd.bounds.x;
+                    float scaled_font_size = scale_value(cmd.font_size, dpr_);
+                    float scaled_letter_spacing = scale_value(cmd.letter_spacing, dpr_);
+                    float scaled_word_spacing = scale_value(cmd.word_spacing, dpr_);
+                    float char_advance = scaled_font_size * 0.6f + scaled_letter_spacing;
+                    float cursor_x = scale_value(cmd.bounds.x, dpr_);
+                    float cursor_y = scale_value(cmd.bounds.y, dpr_);
                     size_t i = 0;
                     while (i < render_text.size()) {
                         // Find next space
@@ -62,26 +89,29 @@ void SoftwareRenderer::render(const DisplayList& list) {
                         if (sp == std::string::npos) sp = render_text.size();
                         std::string word = render_text.substr(i, sp - i);
                         if (!word.empty()) {
-                            draw_text_simple(word, cursor_x, cmd.bounds.y,
-                                             cmd.font_size, cmd.color, cmd.font_family,
+                            draw_text_simple(word, cursor_x, cursor_y,
+                                             scaled_font_size, cmd.color, cmd.font_family,
                                              cmd.font_weight, cmd.font_italic,
-                                             cmd.letter_spacing,
+                                             scaled_letter_spacing,
                                              cmd.font_feature_settings, cmd.font_variation_settings,
                                              cmd.text_rendering, cmd.font_kerning, cmd.font_optical_sizing);
                             cursor_x += static_cast<float>(word.size()) * char_advance;
                         }
                         if (sp < render_text.size()) {
                             // Space character: advance by char_advance + word_spacing
-                            cursor_x += char_advance + cmd.word_spacing;
+                            cursor_x += char_advance + scaled_word_spacing;
                         }
                         i = sp + 1;
                         if (sp == render_text.size()) break;
                     }
                 } else {
-                    draw_text_simple(render_text, cmd.bounds.x, cmd.bounds.y,
-                                     cmd.font_size, cmd.color, cmd.font_family,
+                    draw_text_simple(render_text,
+                                     scale_value(cmd.bounds.x, dpr_),
+                                     scale_value(cmd.bounds.y, dpr_),
+                                     scale_value(cmd.font_size, dpr_),
+                                     cmd.color, cmd.font_family,
                                      cmd.font_weight, cmd.font_italic,
-                                     cmd.letter_spacing,
+                                     scale_value(cmd.letter_spacing, dpr_),
                                      cmd.font_feature_settings, cmd.font_variation_settings,
                                      cmd.text_rendering, cmd.font_kerning, cmd.font_optical_sizing);
                 }
@@ -89,26 +119,26 @@ void SoftwareRenderer::render(const DisplayList& list) {
             }
             case PaintCommand::DrawImage:
                 if (cmd.image) {
-                    draw_image(cmd.bounds, *cmd.image, cmd.image_rendering);
+                    draw_image(scale_rect(cmd.bounds, dpr_), *cmd.image, cmd.image_rendering);
                 }
                 break;
             case PaintCommand::DrawBorder: {
                 // border_style: 0=none, 1=solid, 2=dashed, 3=dotted
                 if (cmd.border_style == 0) break; // none: skip drawing
 
-                float x = cmd.bounds.x;
-                float y = cmd.bounds.y;
-                float w = cmd.bounds.width;
-                float h = cmd.bounds.height;
-                float bt = cmd.border_widths[0];
-                float br = cmd.border_widths[1];
-                float bb = cmd.border_widths[2];
-                float bl = cmd.border_widths[3];
+                float x = scale_value(cmd.bounds.x, dpr_);
+                float y = scale_value(cmd.bounds.y, dpr_);
+                float w = scale_value(cmd.bounds.width, dpr_);
+                float h = scale_value(cmd.bounds.height, dpr_);
+                float bt = scale_value(cmd.border_widths[0], dpr_);
+                float br = scale_value(cmd.border_widths[1], dpr_);
+                float bb = scale_value(cmd.border_widths[2], dpr_);
+                float bl = scale_value(cmd.border_widths[3], dpr_);
 
                 if (cmd.border_style == 1) {
                     // Solid border (original behavior)
                     if (cmd.border_radius > 0) {
-                        float ro = std::min(cmd.border_radius, std::min(w, h) / 2.0f);
+                        float ro = std::min(scale_value(cmd.border_radius, dpr_), std::min(w, h) / 2.0f);
                         float bw_min = std::min({bt, br, bb, bl});
                         float ri = std::max(0.0f, ro - bw_min);
 
@@ -262,11 +292,14 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 break;
             }
             case PaintCommand::FillBoxShadow:
-                draw_box_shadow(cmd.bounds, cmd.element_rect, cmd.color,
-                                cmd.blur_radius, cmd.border_radius);
+                draw_box_shadow(scale_rect(cmd.bounds, dpr_),
+                                scale_rect(cmd.element_rect, dpr_),
+                                cmd.color,
+                                scale_value(cmd.blur_radius, dpr_),
+                                scale_value(cmd.border_radius, dpr_));
                 break;
             case PaintCommand::PushClip:
-                clip_stack_.push(cmd.bounds);
+                clip_stack_.push(scale_rect(cmd.bounds, dpr_));
                 break;
             case PaintCommand::PopClip:
                 if (!clip_stack_.empty()) clip_stack_.pop();
@@ -278,15 +311,15 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 AffineTransform t = AffineTransform::identity();
                 if (cmd.transform_type == 1) {
                     // Translate
-                    t.tx = cmd.transform_x;
-                    t.ty = cmd.transform_y;
+                    t.tx = scale_value(cmd.transform_x, dpr_);
+                    t.ty = scale_value(cmd.transform_y, dpr_);
                 } else if (cmd.transform_type == 2) {
                     // Rotate around origin
                     float rad = cmd.transform_angle * 3.14159265f / 180.0f;
                     float cos_a = std::cos(rad);
                     float sin_a = std::sin(rad);
-                    float ox = cmd.transform_origin_x;
-                    float oy = cmd.transform_origin_y;
+                    float ox = scale_value(cmd.transform_origin_x, dpr_);
+                    float oy = scale_value(cmd.transform_origin_y, dpr_);
                     // Translate to origin, rotate, translate back
                     // T(ox,oy) * R(angle) * T(-ox,-oy)
                     t.a = cos_a;  t.b = -sin_a;
@@ -297,8 +330,8 @@ void SoftwareRenderer::render(const DisplayList& list) {
                     // Scale around origin
                     float sx = cmd.transform_x;
                     float sy = cmd.transform_y;
-                    float ox = cmd.transform_origin_x;
-                    float oy = cmd.transform_origin_y;
+                    float ox = scale_value(cmd.transform_origin_x, dpr_);
+                    float oy = scale_value(cmd.transform_origin_y, dpr_);
                     // T(ox,oy) * S(sx,sy) * T(-ox,-oy)
                     t.a = sx; t.d = sy;
                     t.tx = ox - sx * ox;
@@ -307,8 +340,8 @@ void SoftwareRenderer::render(const DisplayList& list) {
                     // Skew around origin
                     float ax_rad = cmd.transform_x * 3.14159265f / 180.0f;
                     float ay_rad = cmd.transform_y * 3.14159265f / 180.0f;
-                    float ox = cmd.transform_origin_x;
-                    float oy = cmd.transform_origin_y;
+                    float ox = scale_value(cmd.transform_origin_x, dpr_);
+                    float oy = scale_value(cmd.transform_origin_y, dpr_);
                     float tan_ax = std::tan(ax_rad);
                     float tan_ay = std::tan(ay_rad);
                     // T(ox,oy) * Skew(ax,ay) * T(-ox,-oy)
@@ -323,8 +356,8 @@ void SoftwareRenderer::render(const DisplayList& list) {
                     t.b = cmd.transform_y;      // b
                     t.c = cmd.transform_angle;  // c
                     t.d = cmd.transform_origin_x; // d
-                    t.tx = cmd.transform_origin_y; // e (tx)
-                    t.ty = cmd.transform_extra;    // f (ty)
+                    t.tx = scale_value(cmd.transform_origin_y, dpr_); // e (tx)
+                    t.ty = scale_value(cmd.transform_extra, dpr_);    // f (ty)
                 }
                 // Concatenate: new = current * incremental
                 current_transform_ = current_transform_ * t;
@@ -340,21 +373,28 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 break;
             case PaintCommand::ApplyFilter:
                 if (cmd.filter_type == 10) {
-                    apply_drop_shadow_to_region(cmd.bounds, cmd.filter_value,
-                                                cmd.drop_shadow_ox, cmd.drop_shadow_oy,
+                    apply_drop_shadow_to_region(scale_rect(cmd.bounds, dpr_),
+                                                scale_value(cmd.filter_value, dpr_),
+                                                scale_value(cmd.drop_shadow_ox, dpr_),
+                                                scale_value(cmd.drop_shadow_oy, dpr_),
                                                 cmd.drop_shadow_color);
                 } else {
-                    apply_filter_to_region(cmd.bounds, cmd.filter_type, cmd.filter_value);
+                    apply_filter_to_region(scale_rect(cmd.bounds, dpr_),
+                                           cmd.filter_type, cmd.filter_value);
                 }
                 break;
             case PaintCommand::ApplyBackdropFilter:
-                apply_backdrop_filter_to_region(cmd.bounds, cmd.filter_type, cmd.filter_value);
+                apply_backdrop_filter_to_region(
+                    scale_rect(cmd.bounds, dpr_), cmd.filter_type, cmd.filter_value);
                 break;
             case PaintCommand::DrawEllipse: {
                 // Fill the ellipse
                 if (cmd.color.a > 0) {
-                    draw_filled_ellipse(cmd.center_x, cmd.center_y,
-                                        cmd.radius_x, cmd.radius_y, cmd.color);
+                    draw_filled_ellipse(scale_value(cmd.center_x, dpr_),
+                                        scale_value(cmd.center_y, dpr_),
+                                        scale_value(cmd.radius_x, dpr_),
+                                        scale_value(cmd.radius_y, dpr_),
+                                        cmd.color);
                 }
                 // Stroke the ellipse if stroke is visible
                 uint8_t stroke_a = static_cast<uint8_t>(cmd.border_widths[3]);
@@ -365,30 +405,52 @@ void SoftwareRenderer::render(const DisplayList& list) {
                         static_cast<uint8_t>(cmd.border_widths[2]),
                         stroke_a
                     };
-                    draw_stroked_ellipse(cmd.center_x, cmd.center_y,
-                                         cmd.radius_x, cmd.radius_y,
-                                         stroke_color, cmd.stroke_width);
+                    draw_stroked_ellipse(scale_value(cmd.center_x, dpr_),
+                                         scale_value(cmd.center_y, dpr_),
+                                         scale_value(cmd.radius_x, dpr_),
+                                         scale_value(cmd.radius_y, dpr_),
+                                         stroke_color,
+                                         scale_value(cmd.stroke_width, dpr_));
                 }
                 break;
             }
             case PaintCommand::DrawLine:
-                draw_line_segment(cmd.line_x1, cmd.line_y1,
-                                  cmd.line_x2, cmd.line_y2,
-                                  cmd.color, cmd.stroke_width);
+                draw_line_segment(scale_value(cmd.line_x1, dpr_),
+                                  scale_value(cmd.line_y1, dpr_),
+                                  scale_value(cmd.line_x2, dpr_),
+                                  scale_value(cmd.line_y2, dpr_),
+                                  cmd.color,
+                                  scale_value(cmd.stroke_width, dpr_));
                 break;
             case PaintCommand::ApplyClipPath:
-                apply_clip_path_mask(cmd.bounds, cmd.clip_path_type, cmd.clip_path_values);
+                {
+                    std::vector<float> scaled_values = cmd.clip_path_values;
+                    if (cmd.clip_path_type == 3) {
+                        for (auto& value : scaled_values) {
+                            value = scale_value(value, dpr_);
+                        }
+                    } else if (cmd.clip_path_type == 4) {
+                        for (auto& value : scaled_values) {
+                            if (value > 0.0f) {
+                                value = scale_value(value, dpr_);
+                            }
+                        }
+                    }
+                    apply_clip_path_mask(scale_rect(cmd.bounds, dpr_),
+                                         cmd.clip_path_type, scaled_values);
+                }
                 break;
             case PaintCommand::SaveBackdrop: {
                 // Save a snapshot of the current pixel region for later blend-mode compositing
-                int bx0 = std::max(0, static_cast<int>(std::floor(cmd.bounds.x)));
-                int by0 = std::max(0, static_cast<int>(std::floor(cmd.bounds.y)));
-                int bx1 = std::min(width_, static_cast<int>(std::ceil(cmd.bounds.x + cmd.bounds.width)));
-                int by1 = std::min(height_, static_cast<int>(std::ceil(cmd.bounds.y + cmd.bounds.height)));
+                Rect bounds = scale_rect(cmd.bounds, dpr_);
+                int bx0 = std::max(0, static_cast<int>(std::floor(bounds.x)));
+                int by0 = std::max(0, static_cast<int>(std::floor(bounds.y)));
+                int bx1 = std::min(width_, static_cast<int>(std::ceil(bounds.x + bounds.width)));
+                int by1 = std::min(height_, static_cast<int>(std::ceil(bounds.y + bounds.height)));
                 int bw = bx1 - bx0;
                 int bh = by1 - by0;
                 BackdropSnapshot snap;
-                snap.bounds = cmd.bounds;
+                snap.bounds = bounds;
                 if (bw > 0 && bh > 0) {
                     snap.pixels.resize(static_cast<size_t>(bw * bh * 4));
                     for (int py = by0; py < by1; py++) {
@@ -418,10 +480,10 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 break;
             }
             case PaintCommand::ApplyBlendMode:
-                apply_blend_mode_to_region(cmd.bounds, cmd.blend_mode);
+                apply_blend_mode_to_region(scale_rect(cmd.bounds, dpr_), cmd.blend_mode);
                 break;
             case PaintCommand::ApplyMaskGradient:
-                apply_mask_gradient_to_region(cmd.bounds, cmd.gradient_angle,
+                apply_mask_gradient_to_region(scale_rect(cmd.bounds, dpr_), cmd.gradient_angle,
                                               cmd.gradient_stops);
                 break;
         }
@@ -1289,7 +1351,7 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
 
     // Blur (type 9) — two-pass box blur, handled separately from per-pixel filters
     if (filter_type == 9) {
-        int radius = static_cast<int>(value);
+        int radius = static_cast<int>(value * dpr_);
         if (radius <= 0) return;
         if (radius > 50) radius = 50; // clamp to reasonable max
 

@@ -19,7 +19,7 @@ fi
 BUILD_DIR="${APP_ROOT}/build"
 
 cmake -S "${APP_ROOT}" -B "${BUILD_DIR}"
-cmake --build "${BUILD_DIR}" -j "$(sysctl -n hw.ncpu)"
+cmake --build "${BUILD_DIR}" -j "$(sysctl -n hw.ncpu)" --target vibrowser
 
 APP_PATH=""
 for candidate in \

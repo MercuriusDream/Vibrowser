@@ -1999,7 +1999,7 @@ bool resolve_redirect(const Url& base, const std::string& location, std::string&
   }
 
   if (trimmed_location.front() == '#') {
-    resolved = base.to_string();
+    resolved = base.to_string() + trimmed_location;
     return true;
   }
 
@@ -2194,6 +2194,9 @@ Response fetch_with_headers(const std::string& url,
       return finalize_response(response);
     }
 
+    if (next_url == current_url) {
+      return finalize_response(response);
+    }
     current_url = next_url;
   }
 }

@@ -8,8 +8,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_CXX_STANDARD": "20",
-        "CLEVER_ENABLE_ASAN": "ON",
-        "CLEVER_ENABLE_UBSAN": "ON"
+        "VIBROWSER_ENABLE_ASAN": "ON",
+        "VIBROWSER_ENABLE_UBSAN": "ON"
       }
     },
     {

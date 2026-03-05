@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <set>
 #include <string>
 
@@ -15686,6 +15687,31 @@ TEST_F(PaintTest, ScrollbarColorTwoColors) {
     };
     check(*result.root);
     EXPECT_TRUE(found) << "Should find div with scrollbar-color: red blue";
+}
+
+TEST(SoftwareRenderer, DevicePixelRatioScalesBackingBufferDimensions) {
+    SoftwareRenderer renderer(320, 200, 2.0f);
+    EXPECT_EQ(renderer.width(), 320);
+    EXPECT_EQ(renderer.height(), 200);
+    EXPECT_FLOAT_EQ(renderer.dpr(), 2.0f);
+    EXPECT_EQ(renderer.pixels_width(), 640);
+    EXPECT_EQ(renderer.pixels_height(), 400);
+}
+
+TEST_F(PaintTest, RenderHtmlDevicePixelRatioScalesRendererPixelsNotLayoutViewport) {
+    auto result = render_html(
+        "<html><body><div style='width:100vw;height:10px;background:#000'></div></body></html>",
+        300, 180, 2.0f);
+
+    ASSERT_TRUE(result.success);
+    ASSERT_NE(result.renderer, nullptr);
+
+    EXPECT_EQ(result.width, 300);
+    EXPECT_EQ(result.height, 180);
+    EXPECT_EQ(result.renderer->width(), 300);
+    EXPECT_EQ(result.renderer->height(), 180);
+    EXPECT_EQ(result.renderer->pixels_width(), 600);
+    EXPECT_EQ(result.renderer->pixels_height(), 360);
 }
 
 // ============================================================================
@@ -32691,6 +32717,36 @@ TEST_F(PaintTest, TdAlignAttribute) {
     EXPECT_EQ(td_node->text_align, 1); // center
 }
 
+TEST_F(PaintTest, TableAlignAttributeCaseInsensitiveCentering) {
+    // align="CENTER" on <table> should be treated as center and produce auto horizontal margins.
+    auto result = render_html(R"HTML(
+        <html><body style="margin:0;">
+        <table align="CENTER" style="width:200px;">
+            <tr><td>Centered table</td></tr>
+        </table>
+        </body></html>
+    )HTML", 600, 120);
+    ASSERT_TRUE(result.success);
+    ASSERT_NE(result.root, nullptr);
+
+    const clever::layout::LayoutNode* table_node = nullptr;
+    std::function<void(const clever::layout::LayoutNode*)> find_table =
+        [&](const clever::layout::LayoutNode* n) {
+            if (!n || table_node) return;
+            if (n->tag_name == "table") {
+                table_node = n;
+                return;
+            }
+            for (const auto& c : n->children) find_table(c.get());
+        };
+    find_table(result.root.get());
+    ASSERT_NE(table_node, nullptr);
+
+    EXPECT_TRUE(clever::layout::is_margin_auto(table_node->geometry.margin.left));
+    EXPECT_TRUE(clever::layout::is_margin_auto(table_node->geometry.margin.right));
+    EXPECT_NEAR(table_node->geometry.x, 200.0f, 1.0f);
+}
+
 TEST_F(PaintTest, TdValignAttribute) {
     // valign="middle" on <td> should set vertical_align=2 (middle)
     // per box.h: 0=baseline, 1=top, 2=middle, 3=bottom
@@ -41544,4 +41600,23 @@ TEST_F(PaintTest, TextWrapBalancePureText) {
     auto result = render_html(html, 400, 400);
     EXPECT_TRUE(result.success);
     EXPECT_NE(result.root, nullptr);
+}
+
+TEST(RenderPipeline, InvalidDprFallsBackToOne) {
+    auto result = render_html("<html><body>ok</body></html>", 320, 200, 0.0f);
+    ASSERT_TRUE(result.success);
+    ASSERT_NE(result.renderer, nullptr);
+    EXPECT_EQ(result.renderer->dpr(), 1.0f);
+    EXPECT_EQ(result.renderer->pixels_width(), 320);
+    EXPECT_GE(result.renderer->pixels_height(), 200);
+}
+
+TEST(RenderPipeline, NonFiniteDprFallsBackToOne) {
+    auto result = render_html("<html><body>ok</body></html>", 200, 120,
+                              std::numeric_limits<float>::infinity());
+    ASSERT_TRUE(result.success);
+    ASSERT_NE(result.renderer, nullptr);
+    EXPECT_EQ(result.renderer->dpr(), 1.0f);
+    EXPECT_EQ(result.renderer->pixels_width(), 200);
+    EXPECT_GE(result.renderer->pixels_height(), 120);
 }

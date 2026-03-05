@@ -112,6 +112,7 @@ set(BROWSER_LIB_SOURCES
 )
 
 # Tests
+enable_testing()
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.cpp")
 foreach(TEST_SOURCE ${TEST_SOURCES})
     get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
@@ -126,4 +127,6 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
         target_link_libraries(${TEST_NAME} PRIVATE OpenSSL::SSL OpenSSL::Crypto)
         target_compile_definitions(${TEST_NAME} PRIVATE BROWSER_USE_OPENSSL=1)
     endif()
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    set_tests_properties(${TEST_NAME} PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 endforeach()

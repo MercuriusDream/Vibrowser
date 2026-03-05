@@ -283,11 +283,10 @@ bool parse_data_text_url(const std::string& url,
 
   const std::string metadata = url.substr(kDataPrefixLen, comma_pos - kDataPrefixLen);
   const std::size_t param_pos = metadata.find(';');
-  const std::string media_type =
+  std::string media_type =
       to_lower_ascii(trim_copy(metadata.substr(0, param_pos)));
   if (media_type.empty()) {
-    err = "Malformed data URL: missing media type";
-    return false;
+    media_type = "text/plain";
   }
 
   if (!is_supported_data_media_type(media_type)) {
@@ -729,12 +728,12 @@ std::string collect_node_text_content(const browser::html::Node& node) {
   return content;
 }
 
-bool is_within_head_or_body(const browser::html::Node& node) {
+bool is_within_head_element(const browser::html::Node& node) {
   const browser::html::Node* current = node.parent;
   while (current != nullptr) {
     if (current->type == browser::html::NodeType::Element) {
       const std::string tag = to_lower_ascii(current->tag_name);
-      if (tag == "head" || tag == "body") {
+      if (tag == "head") {
         return true;
       }
     }
@@ -749,7 +748,7 @@ std::string resolve_resource_base_url(const browser::html::Node& document,
   const std::vector<const browser::html::Node*> base_nodes =
       browser::html::query_all_by_tag(document, "base");
   for (const browser::html::Node* base_node : base_nodes) {
-    if (base_node == nullptr || !is_within_head_or_body(*base_node)) {
+    if (base_node == nullptr || !is_within_head_element(*base_node)) {
       continue;
     }
 
@@ -1327,15 +1326,31 @@ void execute_scripts(browser::html::Node& document,
                      const std::string& resource_base_url,
                      std::vector<std::string>& warnings,
                      TextResourceCache& resource_cache) {
-  const std::vector<const browser::html::Node*> script_nodes =
-      browser::html::query_all_by_tag(static_cast<const browser::html::Node&>(document), "script");
   std::size_t script_index = 0;
+  std::size_t executed_scripts = 0;
+  constexpr std::size_t kMaxScriptExecutions = 2048;
+  std::unordered_set<const browser::html::Node*> executed_script_nodes;
 
-  for (const browser::html::Node* script_node : script_nodes) {
-    ++script_index;
-    if (script_node == nullptr) {
-      continue;
+  while (executed_scripts < kMaxScriptExecutions) {
+    const std::vector<browser::html::Node*> script_nodes =
+        browser::html::query_all_by_tag(document, "script");
+    browser::html::Node* script_node = nullptr;
+    for (browser::html::Node* candidate : script_nodes) {
+      if (candidate == nullptr) {
+        continue;
+      }
+      if (executed_script_nodes.find(candidate) == executed_script_nodes.end()) {
+        script_node = candidate;
+        break;
+      }
     }
+    if (script_node == nullptr) {
+      break;
+    }
+    executed_script_nodes.insert(script_node);
+
+    ++executed_scripts;
+    ++script_index;
     if (!is_javascript_script_type(*script_node)) {
       continue;
     }
@@ -1376,6 +1391,10 @@ void execute_scripts(browser::html::Node& document,
       warnings.push_back("Script #" + std::to_string(script_index) +
                          " execution failed: " + script_result.message);
     }
+  }
+
+  if (executed_scripts >= kMaxScriptExecutions) {
+    warnings.push_back("Script execution stopped after reaching iteration safety limit");
   }
 }
 

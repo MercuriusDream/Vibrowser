@@ -219,7 +219,8 @@ SimpleNode* TreeBuilder::insert_element(const Token& token) {
     node->tag_name = token.name;
     node->attributes = token.attributes;
     auto* raw = current_node()->append_child(std::move(node));
-    if (!is_void_element(token.name) && !token.self_closing) {
+    // In HTML parsing, self-closing syntax on non-void elements is ignored.
+    if (!is_void_element(token.name)) {
         open_elements_.push_back(raw);
     }
     return raw;

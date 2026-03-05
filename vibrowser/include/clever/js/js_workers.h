@@ -47,6 +47,9 @@ public:
     // Send a message from main thread to worker
     void post_message_to_worker(const std::string& json_data, const std::string& ports_json);
 
+    // Send a message from worker thread to main
+    void post_message_to_main(const std::string& json_data, const std::string& ports_json);
+
     // Try to receive a message from worker to main thread (non-blocking)
     bool try_recv_message_from_worker(WorkerMessage& message);
 

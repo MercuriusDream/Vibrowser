@@ -2,7 +2,9 @@
 #include <clever/layout/box.h>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
+#include <limits>
 #include <sstream>
 
 namespace clever::css {
@@ -1006,7 +1008,9 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "max-inline-size") {
         // CSS logical property: maps to max-width (horizontal-tb LTR)
-        if (value_lower == "none") style.max_width = Length::px(-1.0f);
+        if (value_lower == "none") {
+            style.max_width = Length::px(std::numeric_limits<float>::max());
+        }
         else { auto l = parse_length(value_str); if (l) style.max_width = *l; }
         return;
     }
@@ -1018,7 +1022,9 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "max-block-size") {
         // CSS logical property: maps to max-height (horizontal-tb)
-        if (value_lower == "none") style.max_height = Length::px(-1.0f);
+        if (value_lower == "none") {
+            style.max_height = Length::px(std::numeric_limits<float>::max());
+        }
         else { auto l = parse_length(value_str); if (l) style.max_height = *l; }
         return;
     }
@@ -2555,6 +2561,51 @@ void PropertyCascade::apply_declaration(
         // last layer as the primary (CSS spec: last listed = bottom-most painted).
         auto bg_layers = split_background_layers(value_str);
         std::string bg_value = bg_layers.empty() ? value_str : bg_layers.back();
+
+        auto extract_url = [](const std::string& input, std::string& out_url) -> bool {
+            auto url_pos = input.find("url(");
+            if (url_pos == std::string::npos) {
+                return false;
+            }
+            std::size_t cursor = url_pos + 4;
+            while (cursor < input.size() &&
+                   std::isspace(static_cast<unsigned char>(input[cursor])) != 0) {
+                ++cursor;
+            }
+            if (cursor >= input.size()) {
+                return false;
+            }
+            char quote = '\0';
+            if (input[cursor] == '"' || input[cursor] == '\'') {
+                quote = input[cursor];
+                ++cursor;
+            }
+            const std::size_t start = cursor;
+            if (quote != '\0') {
+                while (cursor < input.size() && input[cursor] != quote) {
+                    ++cursor;
+                }
+                if (cursor >= input.size()) {
+                    return false;
+                }
+                out_url = trim(input.substr(start, cursor - start));
+                return !out_url.empty();
+            }
+            while (cursor < input.size() && input[cursor] != ')') {
+                ++cursor;
+            }
+            if (cursor >= input.size()) {
+                return false;
+            }
+            out_url = trim(input.substr(start, cursor - start));
+            return !out_url.empty();
+        };
+
+        std::string parsed_url;
+        if ((prop == "background-image" || bg_value.find("url(") != std::string::npos) &&
+            extract_url(bg_value, parsed_url)) {
+            style.bg_image_url = parsed_url;
+        }
 
         if (bg_value.find("linear-gradient") != std::string::npos) {
             // Parse linear-gradient in the cascade
@@ -7220,20 +7271,17 @@ void PropertyCascade::apply_declaration(
     // ---- CSS all shorthand (NOT inherited) ----
     if (prop == "all") {
         if (value_lower == "initial") {
-            // Reset all properties to CSS initial values
-            style = ComputedStyle(); // Default constructor = CSS initial values
+            // Keep declaration intent without destructively resetting previously
+            // cascaded state. Full `all` semantics are resolved by the cascade.
             style.css_all = "initial";
         } else if (value_lower == "inherit") {
-            // For all: inherit, set inherited properties from parent
-            // This is complex, so for now just mark it
             style.css_all = "inherit";
         } else if (value_lower == "unset") {
-            // Combination: inherited->inherit, non-inherited->initial
-            style = ComputedStyle();
-            // Inherited properties should come from parent (handled separately)
             style.css_all = "unset";
         } else if (value_lower == "revert") {
             style.css_all = "revert";
+        } else if (value_lower == "revert-layer") {
+            style.css_all = "revert-layer";
         }
         return;
     }
@@ -7710,14 +7758,61 @@ bool StyleResolver::evaluate_media_condition(const std::string& condition) const
         std::string feature = inner.substr(0, colon_pos);
         std::string value = inner.substr(colon_pos + 1);
         while (!feature.empty() && feature.back() == ' ') feature.pop_back();
+        while (!feature.empty() && feature.front() == ' ') feature.erase(feature.begin());
+        while (!value.empty() && value.back() == ' ') value.pop_back();
         while (!value.empty() && value.front() == ' ') value.erase(value.begin());
+        std::string value_lower = value;
+        std::transform(value_lower.begin(), value_lower.end(), value_lower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
 
-        // Parse numeric value (strip units)
-        float num_val = 0;
-        try {
-            size_t end_pos = 0;
-            num_val = std::stof(value, &end_pos);
-        } catch (...) {}
+        // Text-valued features.
+        if (feature == "orientation") {
+            if (value_lower == "portrait") return viewport_height_ >= viewport_width_;
+            if (value_lower == "landscape") return viewport_width_ >= viewport_height_;
+            return false;
+        }
+        if (feature == "prefers-color-scheme") {
+            if (value_lower == "dark") return is_dark_mode();
+            if (value_lower == "light") return !is_dark_mode();
+            return false;
+        }
+        if (feature == "prefers-reduced-motion") {
+            if (value_lower == "reduce") return false;
+            if (value_lower == "no-preference") return true;
+            return false;
+        }
+        if (feature == "prefers-contrast") {
+            if (value_lower == "more") return false;
+            if (value_lower == "less") return false;
+            return false;
+        }
+        if (feature == "display-mode") {
+            return value_lower == "browser";
+        }
+
+        // Parse numeric value with optional unit.
+        float num_val = 0.0f;
+        char* end_ptr = nullptr;
+        num_val = std::strtof(value.c_str(), &end_ptr);
+        if (end_ptr == value.c_str()) {
+            return false;
+        }
+        if (*end_ptr != '\0') {
+            std::string unit;
+            for (const char ch : std::string(end_ptr)) {
+                unit.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+            }
+            if (unit == "px") {
+                // No conversion needed.
+            } else if (unit == "em") {
+                num_val *= 16.0f;
+            } else {
+                return false;
+            }
+        }
+        if (!std::isfinite(num_val)) {
+            return false;
+        }
 
         if (feature == "min-width") return viewport_width_ >= num_val;
         if (feature == "max-width") return viewport_width_ <= num_val;
@@ -7727,43 +7822,25 @@ bool StyleResolver::evaluate_media_condition(const std::string& condition) const
         if (feature == "height") return viewport_height_ == num_val;
         if (feature == "min-device-width") return viewport_width_ >= num_val;
         if (feature == "max-device-width") return viewport_width_ <= num_val;
-        if (feature == "orientation") {
-            if (value == "portrait") return viewport_height_ >= viewport_width_;
-            if (value == "landscape") return viewport_width_ >= viewport_height_;
-        }
-        if (feature == "prefers-color-scheme") {
-            if (value == "dark") return is_dark_mode();
-            if (value == "light") return !is_dark_mode();
-        }
-        if (feature == "prefers-reduced-motion") {
-            if (value == "reduce") return false;
-            else if (value == "no-preference") return true;
-            else return true;
-        }
-        if (feature == "prefers-contrast") {
-            if (value == "more") return false;
-            if (value == "less") return false;
-            return true;
-        }
-        if (feature == "display-mode") {
-            return value == "browser";
-        }
         if (feature == "color-gamut") return true;
         if (feature == "-webkit-min-device-pixel-ratio" ||
             feature == "min-resolution") return true;
 
-        // Unknown feature — assume true to be permissive
-        return true;
+        // Unknown feature — treat as no-match.
+        return false;
     }
 
-    // Bare media type or unknown — assume true
-    return true;
+    // Bare media type or unknown — treat as no-match.
+    return false;
 }
 
 bool StyleResolver::evaluate_supports_condition(const std::string& condition) const {
     std::string cond = condition;
     while (!cond.empty() && cond.front() == ' ') cond.erase(cond.begin());
     while (!cond.empty() && cond.back() == ' ') cond.pop_back();
+    if (cond.empty()) {
+        return false;
+    }
 
     std::string lower = cond;
     std::transform(lower.begin(), lower.end(), lower.begin(),
@@ -7792,42 +7869,73 @@ bool StyleResolver::evaluate_supports_condition(const std::string& condition) co
         }
     }
 
-    // Handle (property: value) — we support most CSS properties, so return true
+    // Handle (property: value)
     if (lower.front() == '(' && lower.back() == ')') {
         std::string inner = lower.substr(1, lower.size() - 2);
         auto colon_pos = inner.find(':');
         if (colon_pos != std::string::npos) {
             std::string prop = inner.substr(0, colon_pos);
+            std::string value = inner.substr(colon_pos + 1);
             while (!prop.empty() && prop.back() == ' ') prop.pop_back();
             while (!prop.empty() && prop.front() == ' ') prop.erase(prop.begin());
-            // We support most standard CSS properties
-            if (prop == "display" || prop == "flex" || prop == "grid" ||
-                prop == "position" || prop == "transform" || prop == "opacity" ||
-                prop == "transition" || prop == "animation" || prop == "filter" ||
-                prop == "backdrop-filter" || prop == "gap" || prop == "aspect-ratio" ||
-                prop == "object-fit" || prop == "scroll-snap-type" ||
-                prop == "overflow" || prop == "clip-path" || prop == "mask" ||
-                prop == "color" || prop == "background" || prop == "border" ||
-                prop == "margin" || prop == "padding" || prop == "width" ||
-                prop == "height" || prop == "font" || prop == "text-decoration" ||
-                prop == "box-shadow" || prop == "border-radius" ||
-                prop == "mix-blend-mode" || prop == "writing-mode" ||
-                prop == "contain" || prop == "content-visibility" ||
-                prop == "container-type" || prop == "user-select" ||
-                prop == "pointer-events" || prop == "resize" ||
-                prop == "cursor" || prop == "visibility" ||
-                prop == "z-index" || prop == "flex-direction" ||
-                prop == "flex-wrap" || prop == "justify-content" ||
-                prop == "align-items" || prop == "align-self" ||
-                prop == "order") {
-                return true;
+            while (!value.empty() && value.back() == ' ') value.pop_back();
+            while (!value.empty() && value.front() == ' ') value.erase(value.begin());
+            if (prop.empty() || value.empty()) {
+                return false;
             }
-            // Assume supported for other properties too
+
+            auto supports_known_property = [&](const std::string& name) {
+                return
+                    name == "display" || name == "flex" || name == "grid" ||
+                    name == "position" || name == "transform" || name == "opacity" ||
+                    name == "transition" || name == "animation" || name == "filter" ||
+                    name == "backdrop-filter" || name == "gap" || name == "aspect-ratio" ||
+                    name == "object-fit" || name == "scroll-snap-type" ||
+                    name == "overflow" || name == "clip-path" || name == "mask" ||
+                    name == "color" || name == "background" || name == "border" ||
+                    name == "margin" || name == "padding" || name == "width" ||
+                    name == "height" || name == "font" || name == "text-decoration" ||
+                    name == "box-shadow" || name == "border-radius" ||
+                    name == "mix-blend-mode" || name == "writing-mode" ||
+                    name == "contain" || name == "content-visibility" ||
+                    name == "container-type" || name == "user-select" ||
+                    name == "pointer-events" || name == "resize" ||
+                    name == "cursor" || name == "visibility" ||
+                    name == "z-index" || name == "flex-direction" ||
+                    name == "flex-wrap" || name == "justify-content" ||
+                    name == "align-items" || name == "align-self" ||
+                    name == "order";
+            };
+
+            if (!supports_known_property(prop)) {
+                return false;
+            }
+
+            // Guard obvious unsupported values for common feature-detected properties.
+            if (prop == "display" || prop == "flex" || prop == "grid" ||
+                prop == "position") {
+                if (prop == "display") {
+                    if (value == "block" || value == "inline" || value == "inline-block" ||
+                        value == "none" || value == "flex" || value == "inline-flex" ||
+                        value == "grid" || value == "inline-grid" || value == "contents" ||
+                        value == "table" || value == "list-item" || value == "flow-root") {
+                        return true;
+                    }
+                    return false;
+                }
+                if (prop == "position") {
+                    if (value == "static" || value == "relative" || value == "absolute" ||
+                        value == "fixed" || value == "sticky") {
+                        return true;
+                    }
+                    return false;
+                }
+            }
             return true;
         }
     }
 
-    return true; // Be permissive
+    return false;
 }
 
 bool StyleResolver::is_element_in_scope(const ElementView& element, const ScopeRule& scope) const {
@@ -7872,16 +7980,23 @@ void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
                                         std::vector<MatchedRule>& result,
                                         size_t& source_order) const {
     for (const auto& rule : rules) {
+        bool matched_any = false;
+        Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
             if (matcher_.matches(element, complex_sel)) {
-                MatchedRule matched;
-                matched.rule = &rule;
-                matched.specificity = compute_specificity(complex_sel);
-                matched.source_order = source_order++;
-                result.push_back(matched);
-                break;
+                Specificity spec = compute_specificity(complex_sel);
+                if (!matched_any || best_specificity < spec) {
+                    best_specificity = spec;
+                }
+                matched_any = true;
             }
         }
+        if (!matched_any) continue;
+        MatchedRule matched;
+        matched.rule = &rule;
+        matched.specificity = best_specificity;
+        matched.source_order = source_order++;
+        result.push_back(matched);
     }
 }
 
@@ -7891,6 +8006,8 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
                                                std::vector<MatchedRule>& result,
                                                size_t& source_order) const {
     for (const auto& rule : rules) {
+        bool matched_any = false;
+        Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
             if (complex_sel.parts.empty()) continue;
 
@@ -7922,14 +8039,19 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
             }
 
             if (matches) {
-                MatchedRule matched;
-                matched.rule = &rule;
-                matched.specificity = compute_specificity(complex_sel);
-                matched.source_order = source_order++;
-                result.push_back(matched);
-                break;
+                Specificity spec = compute_specificity(complex_sel);
+                if (!matched_any || best_specificity < spec) {
+                    best_specificity = spec;
+                }
+                matched_any = true;
             }
         }
+        if (!matched_any) continue;
+        MatchedRule matched;
+        matched.rule = &rule;
+        matched.specificity = best_specificity;
+        matched.source_order = source_order++;
+        result.push_back(matched);
     }
 }
 
@@ -7954,6 +8076,12 @@ std::vector<MatchedRule> StyleResolver::collect_matching_rules(const ElementView
         for (const auto& scope : sheet.scope_rules) {
             if (is_element_in_scope(element, scope)) {
                 collect_from_rules(scope.rules, element, result, source_order);
+            }
+        }
+
+        for (const auto& supports : sheet.supports_rules) {
+            if (evaluate_supports_condition(supports.condition)) {
+                collect_from_rules(supports.rules, element, result, source_order);
             }
         }
     }
@@ -7983,6 +8111,12 @@ std::vector<MatchedRule> StyleResolver::collect_pseudo_rules(
         for (const auto& scope : sheet.scope_rules) {
             if (is_element_in_scope(element, scope)) {
                 collect_pseudo_from_rules(scope.rules, element, pseudo_name, result, source_order);
+            }
+        }
+
+        for (const auto& supports : sheet.supports_rules) {
+            if (evaluate_supports_condition(supports.condition)) {
+                collect_pseudo_from_rules(supports.rules, element, pseudo_name, result, source_order);
             }
         }
     }

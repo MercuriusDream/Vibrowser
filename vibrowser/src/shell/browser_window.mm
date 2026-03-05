@@ -191,6 +191,22 @@ static std::string get_attr(const clever::html::SimpleNode* node, const std::str
     return "";
 }
 
+static bool is_node_attached(const clever::html::SimpleNode* root,
+                             const clever::html::SimpleNode* needle) {
+    if (!root || !needle) {
+        return false;
+    }
+    if (root == needle) {
+        return true;
+    }
+    for (const auto& child : root->children) {
+        if (is_node_attached(child.get(), needle)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static NSString* normalized_tab_title(id title) {
     if (!title || ![title isKindOfClass:[NSString class]]) return @"";
     NSString* normalized = [title copy];
@@ -1685,6 +1701,7 @@ static std::string build_shell_message_html(const std::string& page_title,
     if (clever::js::get_pending_scroll(jsEngine->context(), &scroll_x, &scroll_y)) {
         CGFloat viewY = [tab.renderView viewOffsetForRendererY:static_cast<CGFloat>(scroll_y)];
         tab.renderView.scrollOffset = viewY;
+        [tab.renderView setNeedsDisplay:YES];
         clever::js::clear_pending_scroll(jsEngine->context());
     }
 }
@@ -1725,6 +1742,7 @@ static std::string build_shell_message_html(const std::string& page_title,
         if (_toggledDetails.empty() && !_isAnimationRerender) {
             tab.renderView.scrollOffset = 0;
         }
+        _hoveredNode = nullptr;
 
         auto& oldEngine = [tab jsEngine];
         if (oldEngine && oldEngine->context()) {
@@ -1820,8 +1838,9 @@ static std::string build_shell_message_html(const std::string& page_title,
         std::vector<StickyElementInfo> stickyElements;
         if (result.root && result.renderer) {
             const auto& pixels = result.renderer->pixels();
-            int rw = result.renderer->width();
-            int rh = result.renderer->height();
+            int rw = result.renderer->pixels_width();
+            int rh = result.renderer->pixels_height();
+            float pixel_scale = result.renderer->dpr();
 
             // Walk the layout tree to compute absolute positions and find sticky nodes.
             // We pass parent_abs_x/y to accumulate absolute coordinates, plus the
@@ -1887,10 +1906,10 @@ static std::string build_shell_message_html(const std::string& page_title,
                     info.is_page_sticky = child_is_page_sticky;
 
                     // Compute pixel rect in the rendered buffer
-                    int px_x = std::max(0, static_cast<int>(abs_x));
-                    int px_y = std::max(0, static_cast<int>(abs_y));
-                    int px_w = std::min(static_cast<int>(border_box_w), rw - px_x);
-                    int px_h = std::min(static_cast<int>(border_box_h), rh - px_y);
+                    int px_x = std::max(0, static_cast<int>(std::round(abs_x * pixel_scale)));
+                    int px_y = std::max(0, static_cast<int>(std::round(abs_y * pixel_scale)));
+                    int px_w = std::min(static_cast<int>(std::round(border_box_w * pixel_scale)), rw - px_x);
+                    int px_h = std::min(static_cast<int>(std::round(border_box_h * pixel_scale)), rh - px_y);
 
                     if (px_w > 0 && px_h > 0) {
                         info.pixel_x = px_x;
@@ -1941,8 +1960,9 @@ static std::string build_shell_message_html(const std::string& page_title,
         std::vector<FixedElementInfo> fixedElements;
         if (result.root && result.renderer) {
             const auto& pixels = result.renderer->pixels();
-            int rw = result.renderer->width();
-            int rh_px = result.renderer->height();
+            int rw = result.renderer->pixels_width();
+            int rh_px = result.renderer->pixels_height();
+            float pixel_scale = result.renderer->dpr();
 
             // The painter paints fixed elements with offset (0,0), so their
             // geometry.x/y is already viewport-relative (set by layout_engine
@@ -1963,13 +1983,13 @@ static std::string build_shell_message_html(const std::string& page_title,
                     float vp_y = g.y;
 
                     FixedElementInfo info;
-                    info.viewport_x = vp_x;
-                    info.viewport_y = vp_y;
+                    info.viewport_x = vp_x * pixel_scale;
+                    info.viewport_y = vp_y * pixel_scale;
 
-                    int px_x = std::max(0, static_cast<int>(vp_x));
-                    int px_y = std::max(0, static_cast<int>(vp_y));
-                    int px_w = std::min(static_cast<int>(border_box_w), rw - px_x);
-                    int px_h = std::min(static_cast<int>(border_box_h), rh_px - px_y);
+                    int px_x = std::max(0, static_cast<int>(std::round(vp_x * pixel_scale)));
+                    int px_y = std::max(0, static_cast<int>(std::round(vp_y * pixel_scale)));
+                    int px_w = std::min(static_cast<int>(std::round(border_box_w * pixel_scale)), rw - px_x);
+                    int px_h = std::min(static_cast<int>(std::round(border_box_h * pixel_scale)), rh_px - px_y);
 
                     if (px_w > 0 && px_h > 0) {
                         info.pixel_width = px_w;
@@ -2167,7 +2187,8 @@ static std::string build_shell_message_html(const std::string& page_title,
         auto fallback = clever::paint::render_html(error_html, "", renderWidth, renderHeight, renderDPR);
         if (fallback.success && fallback.renderer) {
             [tab.renderView updateWithRenderer:fallback.renderer.get()];
-            [tab.renderView setLayoutRoot:fallback.root.get()];
+            [tab layoutRoot] = std::move(fallback.root);
+            [tab.renderView setLayoutRoot:[tab layoutRoot].get()];
         }
         self.window.title = [NSString stringWithFormat:@"Error - %@", kBrowserAppName];
     }
@@ -2944,24 +2965,40 @@ static std::string build_shell_message_html(const std::string& page_title,
 
     if (!target) return NO;
 
-    // Dispatch mousedown → mouseup → click event sequence with coordinates
+    if (domTree && !is_node_attached(domTree.get(), target)) {
+        return NO;
+    }
+
+    bool prevented = false;
+    // Dispatch mousedown → mouseup → click with liveness checks in-between.
     clever::js::dispatch_mouse_event(jsEngine->context(), target, "mousedown",
         x, y, x, y, 0, 1, false, false, false, false, 1);
-    clever::js::dispatch_mouse_event(jsEngine->context(), target, "mouseup",
-        x, y, x, y, 0, 0, false, false, false, false, 1);
-
-    // Dispatch the "click" event to the target DOM element.
-    // Returns true if event.preventDefault() was called.
-    bool prevented = clever::js::dispatch_mouse_event(
-        jsEngine->context(), target, "click",
-        x, y, x, y, 0, 0, false, false, false, false, 1);
+    if (domTree && !is_node_attached(domTree.get(), target)) {
+        target = nullptr;
+    }
+    if (target) {
+        clever::js::dispatch_mouse_event(jsEngine->context(), target, "mouseup",
+            x, y, x, y, 0, 0, false, false, false, false, 1);
+        if (domTree && !is_node_attached(domTree.get(), target)) {
+            target = nullptr;
+        }
+    }
+    if (target) {
+        // Returns true if event.preventDefault() was called.
+        prevented = clever::js::dispatch_mouse_event(
+            jsEngine->context(), target, "click",
+            x, y, x, y, 0, 0, false, false, false, false, 1);
+        if (domTree && !is_node_attached(domTree.get(), target)) {
+            target = nullptr;
+        }
+    }
 
     // ---- Interactive form control handling (checkbox / radio) ----
     // After JS click dispatch, if not prevented, toggle checkbox/radio state.
     // Find the <input> element: either the target itself, or the first <input>
     // child if the target is a <label>, or walk up to find a containing <label>.
     bool formControlToggled = false;
-    if (!prevented && domTree) {
+    if (!prevented && domTree && target) {
         clever::html::SimpleNode* inputNode = nullptr;
 
         // Check if the target IS a checkbox/radio input
@@ -3282,6 +3319,9 @@ static std::string build_shell_message_html(const std::string& page_title,
 
     // Re-render if JS modified the DOM or if we toggled a form control
     if (formControlToggled || clever::js::dom_was_modified(jsEngine->context())) {
+        if (domTree) {
+            [tab currentHTML] = serialize_dom_node(domTree.get());
+        }
         [self doRender:[tab currentHTML]];
     }
 
@@ -3383,8 +3423,13 @@ static std::string build_shell_message_html(const std::string& page_title,
 - (void)renderView:(RenderView*)view didFinishEditingInputWithValue:(NSString*)value {
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
+    auto& domTree = [tab domTree];
     auto* inputNode = [tab focusedInputNode];
     if (!inputNode) return;
+    if (!domTree || !is_node_attached(domTree.get(), inputNode)) {
+        [tab setFocusedInputNode:nullptr];
+        return;
+    }
 
     std::string newValue = value ? [value UTF8String] : "";
 
@@ -3410,7 +3455,6 @@ static std::string build_shell_message_html(const std::string& page_title,
     }
 
     // Serialize DOM and re-render
-    auto& domTree = [tab domTree];
     if (domTree) {
         [tab currentHTML] = serialize_dom_node(domTree.get());
         [self doRender:[tab currentHTML]];
@@ -3422,8 +3466,13 @@ static std::string build_shell_message_html(const std::string& page_title,
 - (void)renderView:(RenderView*)view didChangeInputValue:(NSString*)value {
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
+    auto& domTree = [tab domTree];
     auto* inputNode = [tab focusedInputNode];
     if (!inputNode) return;
+    if (!domTree || !is_node_attached(domTree.get(), inputNode)) {
+        [tab setFocusedInputNode:nullptr];
+        return;
+    }
 
     std::string newValue = value ? [value UTF8String] : "";
 
@@ -3456,6 +3505,9 @@ static std::string build_shell_message_html(const std::string& page_title,
     auto& elementRegions = [tab elementRegions];
     auto& domTree = [tab domTree];
     if (elementRegions.empty() || !domTree) return;
+    if (_hoveredNode && !is_node_attached(domTree.get(), _hoveredNode)) {
+        _hoveredNode = nullptr;
+    }
 
     // Hit-test to find the innermost element under the mouse.
     // Skip elements with pointer-events: none.
@@ -3480,6 +3532,12 @@ static std::string build_shell_message_html(const std::string& page_title,
     bool domModifiedByHover = false;
     if (jsEngine) {
         clever::html::SimpleNode* oldTarget = _hoveredNode;
+        if (oldTarget && !is_node_attached(domTree.get(), oldTarget)) {
+            oldTarget = nullptr;
+        }
+        if (target && !is_node_attached(domTree.get(), target)) {
+            target = nullptr;
+        }
 
         // mouseout/mouseleave on old target
         if (oldTarget) {
@@ -3774,6 +3832,10 @@ do_render:
 
     // Determine target: focused input node, or fall back to <body>
     clever::html::SimpleNode* target = [tab focusedInputNode];
+    if (target && !is_node_attached(domTree.get(), target)) {
+        [tab setFocusedInputNode:nullptr];
+        target = nullptr;
+    }
     if (!target) {
         target = domTree->find_element("body");
     }
@@ -3811,8 +3873,13 @@ do_render:
 - (void)colorPanelChanged:(NSColorPanel*)panel {
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
+    auto& domTree = [tab domTree];
     auto* inputNode = [tab focusedInputNode];
     if (!inputNode) return;
+    if (!domTree || !is_node_attached(domTree.get(), inputNode)) {
+        [tab setFocusedInputNode:nullptr];
+        return;
+    }
     if (get_attr(inputNode, "type") != "color") return;
 
     NSColor* color = [[panel color] colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
@@ -3828,7 +3895,6 @@ do_render:
         clever::js::dispatch_event(jsEngine->context(), inputNode, "input");
     }
 
-    auto& domTree = [tab domTree];
     if (domTree) {
         [tab currentHTML] = serialize_dom_node(domTree.get());
         [self doRender:[tab currentHTML]];

@@ -35,6 +35,35 @@ bool starts_with(std::string_view value, std::string_view prefix) {
          value.compare(0, prefix.size(), prefix) == 0;
 }
 
+bool class_attribute_contains_token(std::string_view class_attr,
+                                    std::string_view token) {
+  if (token.empty()) {
+    return false;
+  }
+
+  std::size_t cursor = 0;
+  while (cursor < class_attr.size()) {
+    while (cursor < class_attr.size() &&
+           std::isspace(static_cast<unsigned char>(class_attr[cursor])) != 0) {
+      ++cursor;
+    }
+    if (cursor >= class_attr.size()) {
+      break;
+    }
+
+    const std::size_t token_start = cursor;
+    while (cursor < class_attr.size() &&
+           std::isspace(static_cast<unsigned char>(class_attr[cursor])) == 0) {
+      ++cursor;
+    }
+    if (class_attr.substr(token_start, cursor - token_start) == token) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool is_identifier_start_char(char ch) {
   const unsigned char uch = static_cast<unsigned char>(ch);
   return std::isalpha(uch) != 0 || ch == '_';
@@ -1229,7 +1258,8 @@ void find_all_elements_by_class_const(
     std::vector<const browser::html::Node*>& results) {
     if (node.type == browser::html::NodeType::Element) {
         auto it = node.attributes.find("class");
-        if (it != node.attributes.end() && it->second == class_name) {
+        if (it != node.attributes.end() &&
+            class_attribute_contains_token(it->second, class_name)) {
             results.push_back(&node);
         }
     }

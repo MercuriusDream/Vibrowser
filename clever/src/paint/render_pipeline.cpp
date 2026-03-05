@@ -11156,20 +11156,22 @@ void process_css_imports(clever::css::StyleSheet& sheet,
 } // anonymous namespace
 
 RenderResult render_html(const std::string& html, int viewport_width, int viewport_height) {
-    return render_html(html, "", viewport_width, viewport_height);
+    return render_html(html, "", viewport_width, viewport_height, 1.0f);
 }
 
 RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height,
-                         const std::set<int>& toggled_details) {
+                         const std::set<int>& toggled_details,
+                         float device_pixel_ratio) {
     g_toggled_details = &toggled_details;
-    auto result = render_html(html, base_url, viewport_width, viewport_height);
+    auto result = render_html(html, base_url, viewport_width, viewport_height, device_pixel_ratio);
     g_toggled_details = nullptr;
     return result;
 }
 
 RenderResult render_html(const std::string& html, const std::string& base_url,
-                         int viewport_width, int viewport_height) {
+                         int viewport_width, int viewport_height,
+                         float device_pixel_ratio) {
     RenderResult result;
     result.width = viewport_width;
     result.height = viewport_height;
@@ -11545,7 +11547,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 auto& js_engine = *js_engine_ptr;
                 clever::js::install_dom_bindings(js_engine.context(), doc.get());
                 clever::js::install_timer_bindings(js_engine.context());
-                clever::js::install_window_bindings(js_engine.context(), effective_base_url, viewport_width, viewport_height);
+                clever::js::install_window_bindings(
+                    js_engine.context(), effective_base_url,
+                    viewport_width, viewport_height, device_pixel_ratio);
                 clever::js::install_fetch_bindings(js_engine.context());
 
                 // Run preliminary layout so getBoundingClientRect/dimension properties work
@@ -11812,7 +11816,10 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         // Cap to reasonable max to avoid OOM (e.g. 16384px)
         render_height = std::min(render_height, 16384);
 
-        auto renderer = std::make_unique<SoftwareRenderer>(viewport_width, render_height);
+        float clamped_dpr = std::max(1.0f, device_pixel_ratio);
+        int raster_width = std::max(1, static_cast<int>(std::round(static_cast<float>(viewport_width) * clamped_dpr)));
+        int raster_height = std::max(1, static_cast<int>(std::round(static_cast<float>(render_height) * clamped_dpr)));
+        auto renderer = std::make_unique<SoftwareRenderer>(raster_width, raster_height, clamped_dpr);
         renderer->clear({255, 255, 255, 255});
         renderer->render(display_list);
 

@@ -5,6 +5,7 @@ extern "C" {
 }
 
 #include <chrono>
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <mutex>
@@ -1582,7 +1583,7 @@ static void install_text_decoder(JSContext* ctx) {
 // =========================================================================
 
 void install_window_bindings(JSContext* ctx, const std::string& url,
-                              int width, int height) {
+                              int width, int height, float device_pixel_ratio) {
     // Record page start time for performance.now()
     page_start_time = std::chrono::steady_clock::now();
 
@@ -1603,6 +1604,8 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // ---- window.innerWidth / window.innerHeight ----
     JS_SetPropertyStr(ctx, global, "innerWidth", JS_NewInt32(ctx, width));
     JS_SetPropertyStr(ctx, global, "innerHeight", JS_NewInt32(ctx, height));
+    JS_SetPropertyStr(ctx, global, "devicePixelRatio",
+        JS_NewFloat64(ctx, std::max(1.0f, device_pixel_ratio)));
 
     // ---- window.scrollX / scrollY / pageXOffset / pageYOffset ----
     JS_SetPropertyStr(ctx, global, "scrollX", JS_NewInt32(ctx, 0));

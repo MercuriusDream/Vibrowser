@@ -1,5 +1,7 @@
 #include "browser/engine/render_pipeline.h"
 
+#include <stdexcept>
+
 namespace browser::engine {
 
 RenderPipeline::RenderPipeline(std::unique_ptr<browser::html::Node> document,
@@ -13,10 +15,16 @@ RenderPipeline::RenderPipeline(std::unique_ptr<browser::html::Node> document,
 }
 
 browser::html::Node& RenderPipeline::document() {
+    if (!document_) {
+        throw std::runtime_error("RenderPipeline::document() called with no document");
+    }
     return *document_;
 }
 
 const browser::html::Node& RenderPipeline::document() const {
+    if (!document_) {
+        throw std::runtime_error("RenderPipeline::document() called with no document");
+    }
     return *document_;
 }
 

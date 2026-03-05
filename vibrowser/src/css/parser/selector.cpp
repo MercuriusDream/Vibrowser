@@ -65,7 +65,7 @@ Specificity compute_specificity(const ComplexSelector& selector) {
                         if (pseudo == "where") {
                             break;
                         }
-                        if (pseudo == "is" || pseudo == "not" ||
+                        if (pseudo == "is" || pseudo == "not" || pseudo == "has" ||
                             pseudo == "matches" || pseudo == "-webkit-any") {
                             Specificity inner = max_specificity_in_list(
                                 parse_selector_list(ss.argument));
@@ -155,19 +155,25 @@ SelectorList SelectorParser::parse() {
         return list;
     }
 
-    list.selectors.push_back(parse_complex_selector());
+    ComplexSelector first = parse_complex_selector();
+    if (!first.parts.empty()) {
+        list.selectors.push_back(std::move(first));
+    }
 
     while (!at_end()) {
         skip_whitespace();
         if (at_end()) break;
         if (current().type == CSSToken::Comma) {
-            advance(); // skip comma
-            skip_whitespace();
-            if (!at_end()) {
-                list.selectors.push_back(parse_complex_selector());
-            }
-        } else {
-            break;
+                advance(); // skip comma
+                skip_whitespace();
+                if (!at_end()) {
+                    ComplexSelector next = parse_complex_selector();
+                    if (!next.parts.empty()) {
+                        list.selectors.push_back(std::move(next));
+                    }
+                }
+            } else {
+                break;
         }
     }
 
@@ -182,6 +188,9 @@ ComplexSelector SelectorParser::parse_complex_selector() {
     auto leading_combinator = try_parse_combinator();
 
     CompoundSelector first = parse_compound_selector();
+    if (first.simple_selectors.empty()) {
+        return result;
+    }
     ComplexSelector::Part first_part;
     first_part.compound = std::move(first);
     first_part.combinator = leading_combinator;
@@ -196,10 +205,15 @@ ComplexSelector SelectorParser::parse_complex_selector() {
 
         skip_whitespace();
         if (at_end() || current().type == CSSToken::Comma) {
+            result.parts.clear();
             break;
         }
 
         CompoundSelector next = parse_compound_selector();
+        if (next.simple_selectors.empty()) {
+            result.parts.clear();
+            break;
+        }
         ComplexSelector::Part part;
         part.compound = std::move(next);
         part.combinator = maybe_comb;
@@ -434,12 +448,17 @@ SimpleSelector SelectorParser::parse_attribute_selector() {
 
     skip_whitespace();
 
-    // Parse attribute value (string or ident)
+    // Parse attribute value (string, ident, or number-like token)
     if (!at_end()) {
         if (current().type == CSSToken::String) {
             ss.attr_value = current().value;
             advance();
         } else if (current().type == CSSToken::Ident) {
+            ss.attr_value = current().value;
+            advance();
+        } else if (current().type == CSSToken::Number ||
+                   current().type == CSSToken::Dimension ||
+                   current().type == CSSToken::Percentage) {
             ss.attr_value = current().value;
             advance();
         }

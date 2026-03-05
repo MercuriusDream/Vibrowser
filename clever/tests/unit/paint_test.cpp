@@ -41284,3 +41284,16 @@ TEST_F(PaintTest, TextWrapBalancePureText) {
     EXPECT_TRUE(result.success);
     EXPECT_NE(result.root, nullptr);
 }
+
+TEST_F(PaintTest, RenderHtmlScalesRasterByDevicePixelRatio) {
+    auto result = render_html(
+        "<div style='width:50px;height:20px;background:#000'>x</div>",
+        "https://example.com/",
+        120,
+        80,
+        2.0f);
+    ASSERT_TRUE(result.success);
+    ASSERT_NE(result.renderer, nullptr);
+    EXPECT_EQ(result.renderer->width(), 240);
+    EXPECT_EQ(result.renderer->height(), 160);
+}

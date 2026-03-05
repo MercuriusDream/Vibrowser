@@ -59,7 +59,7 @@ struct AffineTransform {
 
 class SoftwareRenderer {
 public:
-    SoftwareRenderer(int width, int height);
+    SoftwareRenderer(int width, int height, float device_pixel_ratio = 1.0f);
     ~SoftwareRenderer();
 
     // Render a display list to the pixel buffer
@@ -77,6 +77,9 @@ public:
     // Get dimensions
     int width() const { return width_; }
     int height() const { return height_; }
+    int pixels_width() const { return width_; }
+    int pixels_height() const { return height_; }
+    float device_pixel_ratio() const { return dpr_; }
 
     // Save as PPM image
     bool save_ppm(const std::string& filename) const;
@@ -89,6 +92,7 @@ public:
 
 private:
     int width_, height_;
+    float dpr_ = 1.0f;
     std::vector<uint8_t> pixels_;  // RGBA, row-major
     std::unique_ptr<TextRenderer> text_renderer_;
     std::stack<Rect> clip_stack_;

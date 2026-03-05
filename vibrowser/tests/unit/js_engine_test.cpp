@@ -1250,6 +1250,28 @@ TEST(JSTimers, SetIntervalReturnsId) {
     clever::js::flush_pending_timers(engine.context());
 }
 
+TEST(JSTimers, SetIntervalFiresAcrossMultipleFlushes) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    engine.evaluate(R"(
+        var ticks = 0;
+        setInterval(function() { ticks = ticks + 1; }, 0);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    int fired_once = clever::js::flush_ready_timers(engine.context(), 0);
+    auto after_first = engine.evaluate("ticks");
+    int fired_twice = clever::js::flush_ready_timers(engine.context(), 0);
+    auto after_second = engine.evaluate("ticks");
+
+    EXPECT_GT(fired_once, 0);
+    EXPECT_GT(fired_twice, 0);
+    EXPECT_EQ(after_first, "1");
+    EXPECT_EQ(after_second, "2");
+
+    clever::js::flush_pending_timers(engine.context());
+}
+
 TEST(JSTimers, ClearIntervalWorks) {
     clever::js::JSEngine engine;
     clever::js::install_timer_bindings(engine.context());
@@ -9466,6 +9488,74 @@ TEST(JSDom, MatchMediaAddEventListener) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
     clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MatchMediaResizeDispatchesChange) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var mql = matchMedia('(min-width: 1000px)');
+        var listenerCalls = 0;
+        var onchangeCalls = 0;
+        function onChange(ev) { if (ev && ev.type === 'change') listenerCalls++; }
+        mql.addEventListener('change', onChange);
+        mql.onchange = function(ev) { if (ev && ev.type === 'change') onchangeCalls++; };
+
+        innerWidth = 1200;
+        __dispatchMatchMediaResize();
+        var afterGrow = (mql.matches === true && listenerCalls === 1 && onchangeCalls === 1);
+
+        mql.removeEventListener('change', onChange);
+        innerWidth = 700;
+        __dispatchMatchMediaResize();
+        var afterShrink = (mql.matches === false && listenerCalls === 1 && onchangeCalls === 2);
+
+        String(afterGrow && afterShrink);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MatchMediaRemoveEventListenerStopsResizeChangeCallbacks) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 1200, 800);
+    auto setup = engine.evaluate(R"(
+        var calls = 0;
+        var mql = matchMedia('(min-width: 1000px)');
+        function onChange() { calls++; }
+        mql.addEventListener('change', onChange);
+        mql.removeEventListener('change', onChange);
+        'ok';
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(setup, "ok");
+
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 900, 800);
+    auto result = engine.evaluate("String(calls)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSDom, MatchMediaOnchangeReplacementDoesNotDuplicateCallbacks) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 1200, 800);
+    auto setup = engine.evaluate(R"(
+        var countA = 0;
+        var countB = 0;
+        var mql = matchMedia('(min-width: 1000px)');
+        mql.onchange = function() { countA++; };
+        mql.onchange = function() { countB++; };
+        'ok';
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(setup, "ok");
+
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 900, 800);
+    auto result = engine.evaluate("String(countA) + ',' + String(countB)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1");
 }
 
 // ============================================================================

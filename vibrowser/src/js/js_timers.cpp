@@ -206,10 +206,6 @@ int flush_ready_timers(JSContext* ctx, int max_delay_ms) {
         if (!entry.cancelled && entry.is_interval && entry.delay_ms <= max_delay_ms) {
             JSValue ret = JS_Call(ctx, entry.callback, JS_UNDEFINED, 0, nullptr);
             JS_FreeValue(ctx, ret);
-            // Don't free callback or mark cancelled — interval persists.
-            // But mark it so we don't fire it again in the same flush loop.
-            // We set delay to a sentinel value larger than any reasonable threshold.
-            entry.delay_ms = 999999;
             fired++;
         }
     }

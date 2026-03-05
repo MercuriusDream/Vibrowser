@@ -40,7 +40,8 @@ std::vector<float> make_gaussian_kernel(float radius, int& kernel_radius) {
 }  // namespace
 
 SoftwareRenderer::SoftwareRenderer(int width, int height, float dpr)
-    : width_(width), height_(height), dpr_(dpr),
+    : width_(width), height_(height),
+      dpr_((std::isfinite(dpr) && dpr >= 0.1f) ? dpr : 1.0f),
       pixels_(static_cast<size_t>(pixels_width()) * static_cast<size_t>(pixels_height()) * 4),
       text_renderer_(std::make_unique<TextRenderer>()) {
 }

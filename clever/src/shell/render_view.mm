@@ -1,5 +1,6 @@
 #import "render_view.h"
 #include <algorithm>
+#include <cmath>
 #include <QuartzCore/CABase.h>
 
 // Cubic bezier easing for CSS transitions (local copy to avoid render_pipeline dependency)
@@ -168,11 +169,19 @@ struct TextRegion {
         return;
     }
 
-    _imageWidth = renderer->width();
-    _imageHeight = renderer->height();
-    // Compute backing scale: the renderer may have rendered at 2x pixel density
-    _backingScale = self.window.backingScaleFactor;
-    if (_backingScale < 1.0) _backingScale = 1.0;
+    // Use physical pixel dimensions for the raster buffer.
+    _imageWidth = renderer->pixels_width();
+    _imageHeight = renderer->pixels_height();
+    // Prefer renderer DPR so content stays correctly scaled even if the window
+    // moves between displays after rasterization.
+    _backingScale = static_cast<CGFloat>(renderer->device_pixel_ratio());
+    if (!std::isfinite(_backingScale) || _backingScale < 1.0) {
+        CGFloat viewWidth = std::max<CGFloat>(1.0, self.bounds.size.width);
+        CGFloat inferredScale = static_cast<CGFloat>(_imageWidth) / viewWidth;
+        _backingScale = std::isfinite(inferredScale) && inferredScale >= 1.0
+            ? inferredScale
+            : 1.0;
+    }
     _contentHeight = _imageHeight / _backingScale; // logical points
 
     // Convert RGBA pixel buffer to CGImage.

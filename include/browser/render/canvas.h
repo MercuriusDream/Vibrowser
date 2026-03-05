@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,8 @@ struct Color {
 
 class Canvas {
  public:
+  static constexpr std::size_t kMaxPixelCount = 64U * 1024U * 1024U * 3U;
+
   Canvas() = default;
 
   Canvas(int width, int height) {
@@ -26,7 +29,29 @@ class Canvas {
     width_ = std::max(width, 0);
     height_ = std::max(height, 0);
 
-    const std::size_t pixel_count = static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_) * 3U;
+    const std::size_t width_size = static_cast<std::size_t>(width_);
+    const std::size_t height_size = static_cast<std::size_t>(height_);
+    constexpr std::size_t kChannels = 3U;
+
+    if (width_size == 0U || height_size == 0U) {
+      pixels_.clear();
+      return;
+    }
+
+    if (width_size > (std::numeric_limits<std::size_t>::max() / kChannels) / height_size) {
+      width_ = 0;
+      height_ = 0;
+      pixels_.clear();
+      return;
+    }
+
+    const std::size_t pixel_count = width_size * height_size * kChannels;
+    if (pixel_count > kMaxPixelCount) {
+      width_ = 0;
+      height_ = 0;
+      pixels_.clear();
+      return;
+    }
     pixels_.assign(pixel_count, 0);
   }
 
@@ -94,4 +119,3 @@ class Canvas {
 };
 
 }  // namespace browser::render
-

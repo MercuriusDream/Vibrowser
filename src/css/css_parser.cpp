@@ -326,9 +326,6 @@ bool parse_attribute_selector(
 
   AttributeOperator op = AttributeOperator::Exact;
   if (source[*cursor] == '=') {
-    if (name != "id" && name != "class") {
-      return false;
-    }
     ++(*cursor);
   } else if (source[*cursor] == '~') {
     if (name != "class") {
@@ -664,6 +661,69 @@ std::vector<std::string> split_selector_list(std::string_view source) {
   return selectors;
 }
 
+size_t find_matching_close_brace(std::string_view source, size_t open_brace) {
+  bool in_single_quote = false;
+  bool in_double_quote = false;
+  bool in_comment = false;
+  bool escaped = false;
+  int depth = 0;
+
+  for (size_t i = open_brace; i < source.size(); ++i) {
+    const char ch = source[i];
+    const char next = i + 1 < source.size() ? source[i + 1] : '\0';
+
+    if (in_comment) {
+      if (ch == '*' && next == '/') {
+        in_comment = false;
+        ++i;
+      }
+      continue;
+    }
+
+    if (!in_single_quote && !in_double_quote && ch == '/' && next == '*') {
+      in_comment = true;
+      ++i;
+      continue;
+    }
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if ((in_single_quote || in_double_quote) && ch == '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (!in_double_quote && ch == '\'') {
+      in_single_quote = !in_single_quote;
+      continue;
+    }
+    if (!in_single_quote && ch == '"') {
+      in_double_quote = !in_double_quote;
+      continue;
+    }
+
+    if (in_single_quote || in_double_quote) {
+      continue;
+    }
+
+    if (ch == '{') {
+      ++depth;
+      continue;
+    }
+    if (ch == '}') {
+      --depth;
+      if (depth == 0) {
+        return i;
+      }
+    }
+  }
+
+  return std::string_view::npos;
+}
+
 int compute_specificity(const std::string& selector) {
   ParsedSelector parsed_selector;
   if (!parse_selector(selector, &parsed_selector)) {
@@ -686,13 +746,97 @@ int compute_specificity(const std::string& selector) {
 std::vector<Declaration> parse_declarations(std::string_view block) {
   std::vector<Declaration> declarations;
 
+  auto find_semicolon = [](std::string_view chunk, size_t start) {
+    bool in_single_quote = false;
+    bool in_double_quote = false;
+    bool escaped = false;
+    int paren_depth = 0;
+
+    for (size_t i = start; i < chunk.size(); ++i) {
+      const char ch = chunk[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if ((in_single_quote || in_double_quote) && ch == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (!in_double_quote && ch == '\'') {
+        in_single_quote = !in_single_quote;
+        continue;
+      }
+      if (!in_single_quote && ch == '"') {
+        in_double_quote = !in_double_quote;
+        continue;
+      }
+      if (in_single_quote || in_double_quote) {
+        continue;
+      }
+      if (ch == '(') {
+        ++paren_depth;
+        continue;
+      }
+      if (ch == ')' && paren_depth > 0) {
+        --paren_depth;
+        continue;
+      }
+      if (ch == ';' && paren_depth == 0) {
+        return i;
+      }
+    }
+    return std::string_view::npos;
+  };
+
+  auto find_colon = [](std::string_view chunk) {
+    bool in_single_quote = false;
+    bool in_double_quote = false;
+    bool escaped = false;
+    int paren_depth = 0;
+
+    for (size_t i = 0; i < chunk.size(); ++i) {
+      const char ch = chunk[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if ((in_single_quote || in_double_quote) && ch == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (!in_double_quote && ch == '\'') {
+        in_single_quote = !in_single_quote;
+        continue;
+      }
+      if (!in_single_quote && ch == '"') {
+        in_double_quote = !in_double_quote;
+        continue;
+      }
+      if (in_single_quote || in_double_quote) {
+        continue;
+      }
+      if (ch == '(') {
+        ++paren_depth;
+        continue;
+      }
+      if (ch == ')' && paren_depth > 0) {
+        --paren_depth;
+        continue;
+      }
+      if (ch == ':' && paren_depth == 0) {
+        return i;
+      }
+    }
+    return std::string_view::npos;
+  };
+
   size_t cursor = 0;
   while (cursor < block.size()) {
-    const size_t semi = block.find(';', cursor);
+    const size_t semi = find_semicolon(block, cursor);
     const std::string_view chunk =
         semi == std::string_view::npos ? block.substr(cursor) : block.substr(cursor, semi - cursor);
 
-    const size_t colon = chunk.find(':');
+    const size_t colon = find_colon(chunk);
     if (colon != std::string_view::npos) {
       std::string property = to_lower_ascii(trim_copy(chunk.substr(0, colon)));
       std::string value = trim_copy(chunk.substr(colon + 1));
@@ -1608,12 +1752,18 @@ Stylesheet parse_css(const std::string& css) {
       break;
     }
 
-    const size_t close_brace = source.find('}', open_brace + 1);
+    const size_t close_brace = find_matching_close_brace(source, open_brace);
     if (close_brace == std::string_view::npos) {
       break;
     }
 
-    const std::vector<std::string> selectors = split_selector_list(source.substr(cursor, open_brace - cursor));
+    const std::string selector_text = trim_copy(source.substr(cursor, open_brace - cursor));
+    if (selector_text.empty() || selector_text.front() == '@') {
+      cursor = close_brace + 1;
+      continue;
+    }
+
+    const std::vector<std::string> selectors = split_selector_list(selector_text);
     const std::vector<Declaration> declarations =
         parse_declarations(source.substr(open_brace + 1, close_brace - open_brace - 1));
 

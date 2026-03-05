@@ -104,13 +104,15 @@ RenderResult render_html(const std::string& html, int viewport_width = 800, int 
 
 // Render HTML with a base URL for resolving relative links (CSS, images)
 RenderResult render_html(const std::string& html, const std::string& base_url,
-                         int viewport_width = 800, int viewport_height = 600);
+                         int viewport_width = 800, int viewport_height = 600,
+                         float device_pixel_ratio = 1.0f);
 
 // Render HTML with toggle state for interactive <details> elements
 // toggled_details: set of details_id values whose open state should be flipped
 RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height,
-                         const std::set<int>& toggled_details);
+                         const std::set<int>& toggled_details,
+                         float device_pixel_ratio = 1.0f);
 
 // Evaluate a @supports condition string (exposed for testing)
 bool evaluate_supports_condition(const std::string& condition);

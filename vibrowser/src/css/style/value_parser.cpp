@@ -39,14 +39,18 @@ int hex_digit(char c) {
 // Named color table
 const std::unordered_map<std::string, Color>& named_colors() {
     static const std::unordered_map<std::string, Color> colors = {
+        {"aliceblue",   {240, 248, 255, 255}},
         {"black",       {0, 0, 0, 255}},
+        {"brown",       {165, 42, 42, 255}},
         {"white",       {255, 255, 255, 255}},
         {"red",         {255, 0, 0, 255}},
         {"green",       {0, 128, 0, 255}},
         {"blue",        {0, 0, 255, 255}},
         {"yellow",      {255, 255, 0, 255}},
+        {"lightseagreen", {32, 178, 170, 255}},
         {"orange",      {255, 165, 0, 255}},
         {"purple",      {128, 0, 128, 255}},
+        {"rebeccapurple", {102, 51, 153, 255}},
         {"gray",        {128, 128, 128, 255}},
         {"grey",        {128, 128, 128, 255}},
         {"transparent", {0, 0, 0, 0}},
@@ -110,9 +114,11 @@ bool parse_calc_number(const std::string& s, size_t& pos, float& val, Length::Un
         u = Length::Unit::Rem;
     } else if (unit_candidate == "%") {
         u = Length::Unit::Percent;
-    } else if (unit_candidate == "vw" || unit_candidate == "dvw" || unit_candidate == "svw" || unit_candidate == "lvw") {
+    } else if (unit_candidate == "vw" || unit_candidate == "dvw" || unit_candidate == "svw" || unit_candidate == "lvw" ||
+               unit_candidate == "vi") {
         u = Length::Unit::Vw;
-    } else if (unit_candidate == "vh" || unit_candidate == "dvh" || unit_candidate == "svh" || unit_candidate == "lvh") {
+    } else if (unit_candidate == "vh" || unit_candidate == "dvh" || unit_candidate == "svh" || unit_candidate == "lvh" ||
+               unit_candidate == "vb") {
         u = Length::Unit::Vh;
     } else if (unit_candidate == "vmin") {
         u = Length::Unit::Vmin;
@@ -132,7 +138,7 @@ bool parse_calc_number(const std::string& s, size_t& pos, float& val, Length::Un
         u = Length::Unit::Cqmax;
     } else if (unit_candidate == "ch") {
         u = Length::Unit::Ch;
-    } else if (unit_candidate == "lh") {
+    } else if (unit_candidate == "lh" || unit_candidate == "rlh") {
         u = Length::Unit::Lh;
     } else if (unit_candidate == "deg") {
         val = num * 3.14159265358979f / 180.0f;
@@ -1189,20 +1195,77 @@ std::optional<Color> parse_color(const std::string& input) {
             };
         }
 
-        float vals[4] = {0, 0, 0, 255};
-        int count = parse_func_values(*args, vals, 4);
-        if (count < 3) return std::nullopt;
-
-        // If alpha is provided as 0-1 range (for rgba)
-        if (count == 4 && vals[3] <= 1.0f) {
-            vals[3] = vals[3] * 255.0f;
+        std::vector<std::string> tokens;
+        std::string current;
+        for (char c : *args) {
+            if (c == ',') c = ' ';
+            if (c == '/' || std::isspace(static_cast<unsigned char>(c))) {
+                if (!current.empty()) {
+                    tokens.push_back(current);
+                    current.clear();
+                }
+                if (c == '/') {
+                    tokens.push_back("/");
+                }
+                continue;
+            }
+            current.push_back(c);
+        }
+        if (!current.empty()) {
+            tokens.push_back(current);
         }
 
+        float rgb[3] = {0.0f, 0.0f, 0.0f};
+        float alpha = 255.0f;
+        bool alpha_mode = false;
+        int channel_index = 0;
+        bool alpha_seen = false;
+
+        auto parse_component = [](const std::string& token, bool alpha_component) -> std::optional<float> {
+            if (token.empty()) return std::nullopt;
+            bool is_percent = token.back() == '%';
+            std::string numeric = is_percent ? token.substr(0, token.size() - 1) : token;
+            float v = 0.0f;
+            try {
+                v = std::stof(numeric);
+            } catch (...) {
+                return std::nullopt;
+            }
+            if (alpha_component) {
+                if (is_percent) return (v / 100.0f) * 255.0f;
+                if (v <= 1.0f) return v * 255.0f;
+                return v;
+            }
+            if (is_percent) return (v / 100.0f) * 255.0f;
+            return v;
+        };
+
+        for (const auto& tok : tokens) {
+            if (tok == "/") {
+                alpha_mode = true;
+                continue;
+            }
+            if (!alpha_mode && channel_index < 3) {
+                auto component = parse_component(tok, false);
+                if (!component.has_value()) return std::nullopt;
+                rgb[channel_index++] = *component;
+                continue;
+            }
+            auto component = parse_component(tok, true);
+            if (!component.has_value()) return std::nullopt;
+            alpha = *component;
+            alpha_seen = true;
+            break;
+        }
+
+        if (channel_index < 3) return std::nullopt;
+        if (!alpha_seen) alpha = 255.0f;
+
         return Color{
-            static_cast<uint8_t>(std::clamp(vals[0], 0.0f, 255.0f)),
-            static_cast<uint8_t>(std::clamp(vals[1], 0.0f, 255.0f)),
-            static_cast<uint8_t>(std::clamp(vals[2], 0.0f, 255.0f)),
-            static_cast<uint8_t>(std::clamp(vals[3], 0.0f, 255.0f))
+            static_cast<uint8_t>(std::clamp(rgb[0], 0.0f, 255.0f)),
+            static_cast<uint8_t>(std::clamp(rgb[1], 0.0f, 255.0f)),
+            static_cast<uint8_t>(std::clamp(rgb[2], 0.0f, 255.0f)),
+            static_cast<uint8_t>(std::clamp(alpha, 0.0f, 255.0f))
         };
     }
 
@@ -2634,9 +2697,11 @@ std::optional<Length> parse_length(const std::string& input, const std::string& 
         return Length::rem(num);
     } else if (unit_str == "%") {
         return Length::percent(num);
-    } else if (unit_str == "vw" || unit_str == "dvw" || unit_str == "svw" || unit_str == "lvw") {
+    } else if (unit_str == "vw" || unit_str == "dvw" || unit_str == "svw" || unit_str == "lvw" ||
+               unit_str == "vi") {
         return Length::vw(num);
-    } else if (unit_str == "vh" || unit_str == "dvh" || unit_str == "svh" || unit_str == "lvh") {
+    } else if (unit_str == "vh" || unit_str == "dvh" || unit_str == "svh" || unit_str == "lvh" ||
+               unit_str == "vb") {
         return Length::vh(num);
     } else if (unit_str == "vmin") {
         return Length::vmin(num);
@@ -2656,7 +2721,7 @@ std::optional<Length> parse_length(const std::string& input, const std::string& 
         return Length::cqmax(num);
     } else if (unit_str == "ch") {
         return Length::ch(num);
-    } else if (unit_str == "lh") {
+    } else if (unit_str == "lh" || unit_str == "rlh") {
         return Length::lh(num);
     } else if (unit_str == "deg") {
         return Length::px(num * 3.14159265358979f / 180.0f);

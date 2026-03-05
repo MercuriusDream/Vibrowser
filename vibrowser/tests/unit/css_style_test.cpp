@@ -277,6 +277,24 @@ TEST(ValueParserTest, ParseColorRgbFunction) {
     EXPECT_EQ(c->a, 255);
 }
 
+TEST(ValueParserTest, ParseColorRgbPercentSpaceSeparatedWithSlashAlpha) {
+    auto c = parse_color("rgb(100% 50% 0% / 50%)");
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->r, 255);
+    EXPECT_TRUE(c->g == 127 || c->g == 128);
+    EXPECT_EQ(c->b, 0);
+    EXPECT_TRUE(c->a == 127 || c->a == 128);
+}
+
+TEST(ValueParserTest, ParseColorRgbPercentSpaceSeparated) {
+    auto c = parse_color("rgb(100% 0% 0%)");
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->r, 255);
+    EXPECT_EQ(c->g, 0);
+    EXPECT_EQ(c->b, 0);
+    EXPECT_EQ(c->a, 255);
+}
+
 // ===========================================================================
 // Test 14: parse_length("16px") -> Length::px(16)
 // ===========================================================================
@@ -323,6 +341,17 @@ TEST(SelectorMatcherTest, TypeSelectorMatchesTag) {
     EXPECT_TRUE(matcher.matches(elem, complex));
 
     elem.tag_name = "span";
+    EXPECT_FALSE(matcher.matches(elem, complex));
+}
+
+TEST(SelectorMatcherTest, EmptyCompoundDoesNotMatch) {
+    SelectorMatcher matcher;
+    ElementView elem;
+    elem.tag_name = "div";
+
+    CompoundSelector empty_compound;
+    auto complex = make_simple_complex(empty_compound);
+
     EXPECT_FALSE(matcher.matches(elem, complex));
 }
 
@@ -512,6 +541,20 @@ TEST(SelectorMatcherTest, AttributeSelector) {
     auto complex3 = make_simple_complex(compound3);
 
     EXPECT_TRUE(matcher.matches(elem, complex3));
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorParsesUnquotedNumericValue) {
+    auto list = parse_selector_list("td[colspan=2]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    const auto& simple = list.selectors[0].parts[0].compound.simple_selectors;
+    ASSERT_GE(simple.size(), 2u);
+
+    const auto& attr_sel = simple[1];
+    EXPECT_EQ(attr_sel.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(attr_sel.attr_name, "colspan");
+    EXPECT_EQ(attr_sel.attr_match, AttributeMatch::Exact);
+    EXPECT_EQ(attr_sel.attr_value, "2");
 }
 
 // ===========================================================================
@@ -709,6 +752,179 @@ TEST(StyleResolverTest, ResolveWithSingleStylesheet) {
     auto result = resolver.resolve(elem, parent);
 
     EXPECT_EQ(result.display, Display::Block);
+    EXPECT_EQ(result.color.r, 255);
+    EXPECT_EQ(result.color.g, 0);
+    EXPECT_EQ(result.color.b, 0);
+}
+
+TEST(StyleResolverTest, SelectorListUsesHighestMatchingSpecificityForCascadeRanking) {
+    const std::string css =
+        "div, #hero { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, AppliesSupportsRulesWhenConditionMatches) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+    SupportsRule supports;
+    supports.condition = "(display: grid)";
+
+    StyleRule rule;
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_type_sel("div"));
+    rule.selectors.selectors.push_back(make_simple_complex(compound));
+    rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    supports.rules.push_back(rule);
+    sheet.supports_rules.push_back(supports);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    ComputedStyle parent;
+
+    auto result = resolver.resolve(elem, parent);
+    EXPECT_EQ(result.color.r, 255);
+    EXPECT_EQ(result.color.g, 0);
+    EXPECT_EQ(result.color.b, 0);
+}
+
+TEST(StyleResolverTest, SupportsUnknownPropertyDoesNotMatch) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+    SupportsRule supports;
+    supports.condition = "(subgrid-layout: full)";
+
+    StyleRule rule;
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_type_sel("div"));
+    rule.selectors.selectors.push_back(make_simple_complex(compound));
+    rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    supports.rules.push_back(rule);
+    sheet.supports_rules.push_back(supports);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    ComputedStyle parent;
+
+    auto result = resolver.resolve(elem, parent);
+    EXPECT_EQ(result.color, parent.color);
+}
+
+TEST(StyleResolverTest, SupportsNotUnknownDisplayValueMatches) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+    SupportsRule supports;
+    supports.condition = "not (display: unknown-value)";
+
+    StyleRule rule;
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_type_sel("div"));
+    rule.selectors.selectors.push_back(make_simple_complex(compound));
+    rule.declarations.push_back(make_decl("color", "rgb(0, 0, 255)"));
+    supports.rules.push_back(rule);
+    sheet.supports_rules.push_back(supports);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    ComputedStyle parent;
+
+    auto result = resolver.resolve(elem, parent);
+    EXPECT_EQ(result.color.r, 0);
+    EXPECT_EQ(result.color.g, 0);
+    EXPECT_EQ(result.color.b, 255);
+}
+
+TEST(StyleResolverTest, SupportsEmptyConditionDoesNotMatch) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+    SupportsRule supports;
+    supports.condition = "";
+
+    StyleRule rule;
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_type_sel("div"));
+    rule.selectors.selectors.push_back(make_simple_complex(compound));
+    rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    supports.rules.push_back(rule);
+    sheet.supports_rules.push_back(supports);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    ComputedStyle parent;
+
+    auto result = resolver.resolve(elem, parent);
+    EXPECT_EQ(result.color, parent.color);
+}
+
+TEST(StyleResolverTest, UnknownMediaFeatureDoesNotMatch) {
+    StyleResolver resolver;
+    resolver.set_viewport(800.0f, 600.0f);
+
+    StyleSheet sheet;
+    MediaQuery mq;
+    mq.condition = "(unknown-feature: 1)";
+
+    StyleRule rule;
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_type_sel("div"));
+    rule.selectors.selectors.push_back(make_simple_complex(compound));
+    rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    mq.rules.push_back(rule);
+    sheet.media_queries.push_back(mq);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    ComputedStyle parent;
+
+    auto result = resolver.resolve(elem, parent);
+    EXPECT_EQ(result.color, parent.color);
+}
+
+TEST(StyleResolverTest, OrientationMediaFeatureMatchesPortrait) {
+    StyleResolver resolver;
+    resolver.set_viewport(600.0f, 800.0f);
+
+    StyleSheet sheet;
+    MediaQuery mq;
+    mq.condition = "(orientation: portrait)";
+
+    StyleRule rule;
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_type_sel("div"));
+    rule.selectors.selectors.push_back(make_simple_complex(compound));
+    rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    mq.rules.push_back(rule);
+    sheet.media_queries.push_back(mq);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    ComputedStyle parent;
+
+    auto result = resolver.resolve(elem, parent);
     EXPECT_EQ(result.color.r, 255);
     EXPECT_EQ(result.color.g, 0);
     EXPECT_EQ(result.color.b, 0);
@@ -1239,6 +1455,15 @@ TEST(SpecificityTest, ComplexSelectorSpecificity) {
     EXPECT_EQ(spec.c, 2);
 }
 
+TEST(SpecificityTest, HasPseudoUsesArgumentSpecificity) {
+    auto list = parse_selector_list("div:has(#inner)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto spec = compute_specificity(list.selectors[0]);
+    EXPECT_EQ(spec.a, 1);
+    EXPECT_EQ(spec.b, 0);
+    EXPECT_EQ(spec.c, 1);
+}
+
 // ============================================================================
 // border-radius parsing in cascade
 // ============================================================================
@@ -1699,6 +1924,23 @@ TEST(ValueParserTest, ParseLengthLh) {
     // 2lh with line-height=24px → 48px
     float px = l->to_px(16.0f, 16.0f, 24.0f);
     EXPECT_NEAR(px, 48.0f, 0.1f);
+}
+
+TEST(ValueParserTest, ParseLengthAliasUnitsViVbRlh) {
+    auto vi = parse_length("10vi");
+    ASSERT_TRUE(vi.has_value());
+    EXPECT_FLOAT_EQ(vi->value, 10.0f);
+    EXPECT_EQ(vi->unit, Length::Unit::Vw);
+
+    auto vb = parse_length("12vb");
+    ASSERT_TRUE(vb.has_value());
+    EXPECT_FLOAT_EQ(vb->value, 12.0f);
+    EXPECT_EQ(vb->unit, Length::Unit::Vh);
+
+    auto rlh = parse_length("2rlh");
+    ASSERT_TRUE(rlh.has_value());
+    EXPECT_FLOAT_EQ(rlh->value, 2.0f);
+    EXPECT_EQ(rlh->unit, Length::Unit::Lh);
 }
 
 // =============================================================================

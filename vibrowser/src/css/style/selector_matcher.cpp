@@ -214,6 +214,9 @@ bool SelectorMatcher::matches(const ElementView& element, const ComplexSelector&
 }
 
 bool SelectorMatcher::matches_compound(const ElementView& element, const CompoundSelector& compound) const {
+    if (compound.simple_selectors.empty()) {
+        return false;
+    }
     // All simple selectors in the compound must match
     for (const auto& simple : compound.simple_selectors) {
         if (!matches_simple(element, simple)) {
