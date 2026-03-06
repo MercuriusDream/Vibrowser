@@ -30,6 +30,12 @@ add_executable(vibrowser_net_tests
 target_link_libraries(vibrowser_net_tests PRIVATE vibrowser_net GTest::gtest_main)
 add_test(NAME net_tests COMMAND vibrowser_net_tests)
 
+add_executable(vibrowser_http2_tests
+    http2_test.cpp
+)
+target_link_libraries(vibrowser_http2_tests PRIVATE vibrowser_net GTest::gtest_main)
+add_test(NAME http2_tests COMMAND vibrowser_http2_tests)
+
 # Phase 2: DOM tests
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/dom_test.cpp")
     add_executable(vibrowser_dom_tests dom_test.cpp)

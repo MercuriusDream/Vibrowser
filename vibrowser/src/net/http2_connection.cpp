@@ -291,6 +291,7 @@ bool Http2Connection::handle_settings(const Frame& frame) {
         return true;
     }
 
+    const uint32_t prior_initial_window_size = remote_initial_window_size_;
     for (size_t i = 0; i + 6 <= frame.payload.size(); i += 6) {
         uint16_t id = (static_cast<uint16_t>(frame.payload[i]) << 8) |
                       static_cast<uint16_t>(frame.payload[i + 1]);
@@ -306,7 +307,20 @@ bool Http2Connection::handle_settings(const Frame& frame) {
         }
     }
 
-    return send_settings({});
+    if (remote_initial_window_size_ != prior_initial_window_size) {
+        const int64_t delta = static_cast<int64_t>(remote_initial_window_size_) -
+                              static_cast<int64_t>(prior_initial_window_size);
+        for (auto& [stream_id, stream] : streams_) {
+            (void)stream_id;
+            stream.send_window += delta;
+        }
+    }
+
+    Frame ack_frame;
+    ack_frame.type = FRAME_TYPE_SETTINGS;
+    ack_frame.flags = FLAG_ACK;
+    ack_frame.stream_id = 0;
+    return send_frame(ack_frame);
 }
 
 bool Http2Connection::handle_window_update(const Frame& frame) {
@@ -319,6 +333,9 @@ bool Http2Connection::handle_window_update(const Frame& frame) {
                          (static_cast<uint32_t>(frame.payload[2]) << 8) |
                          static_cast<uint32_t>(frame.payload[3]);
     increment &= 0x7FFFFFFF;
+    if (increment == 0) {
+        return false;
+    }
 
     if (frame.stream_id == 0) {
         connection_send_window_ += increment;

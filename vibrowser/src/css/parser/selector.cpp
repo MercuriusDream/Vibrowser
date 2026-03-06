@@ -16,17 +16,60 @@ std::string ascii_lower(std::string value) {
     return value;
 }
 
+Specificity compute_specificity_uncached(const ComplexSelector& selector);
+
 Specificity max_specificity_in_list(const SelectorList& list) {
     Specificity max_spec;
     bool has_value = false;
     for (const auto& selector : list.selectors) {
-        Specificity current = compute_specificity(selector);
+        Specificity current = selector_specificity(selector);
         if (!has_value || max_spec < current) {
             max_spec = current;
             has_value = true;
         }
     }
     return max_spec;
+}
+
+Specificity compute_specificity_uncached(const ComplexSelector& selector) {
+    Specificity spec;
+    for (const auto& part : selector.parts) {
+        for (const auto& ss : part.compound.simple_selectors) {
+            switch (ss.type) {
+                case SimpleSelectorType::Id:
+                    spec.a++;
+                    break;
+                case SimpleSelectorType::Class:
+                case SimpleSelectorType::Attribute:
+                    spec.b++;
+                    break;
+                case SimpleSelectorType::PseudoClass: {
+                    const std::string pseudo = ascii_lower(ss.value);
+                    if (pseudo == "where") {
+                        break;
+                    }
+                    if (pseudo == "is" || pseudo == "not" || pseudo == "has" ||
+                        pseudo == "matches" || pseudo == "-webkit-any") {
+                        Specificity inner = max_specificity_in_list(
+                            parse_selector_list(ss.argument));
+                        spec.a += inner.a;
+                        spec.b += inner.b;
+                        spec.c += inner.c;
+                        break;
+                    }
+                    spec.b++;
+                    break;
+                }
+                case SimpleSelectorType::Type:
+                case SimpleSelectorType::PseudoElement:
+                    spec.c++;
+                    break;
+                case SimpleSelectorType::Universal:
+                    break;
+            }
+        }
+    }
+    return spec;
 }
 
 } // namespace
@@ -46,48 +89,14 @@ bool Specificity::operator==(const Specificity& other) const {
 }
 
 Specificity compute_specificity(const ComplexSelector& selector) {
-    Specificity spec;
-    for (auto& part : selector.parts) {
-        for (auto& ss : part.compound.simple_selectors) {
-            switch (ss.type) {
-                case SimpleSelectorType::Id:
-                    spec.a++;
-                    break;
-                case SimpleSelectorType::Class:
-                case SimpleSelectorType::Attribute:
-                    spec.b++;
-                    break;
-                case SimpleSelectorType::PseudoClass:
-                    // :where() contributes 0.
-                    // :is()/:not() and aliases contribute their argument specificity.
-                    {
-                        const std::string pseudo = ascii_lower(ss.value);
-                        if (pseudo == "where") {
-                            break;
-                        }
-                        if (pseudo == "is" || pseudo == "not" || pseudo == "has" ||
-                            pseudo == "matches" || pseudo == "-webkit-any") {
-                            Specificity inner = max_specificity_in_list(
-                                parse_selector_list(ss.argument));
-                            spec.a += inner.a;
-                            spec.b += inner.b;
-                            spec.c += inner.c;
-                            break;
-                        }
-                        spec.b++;
-                    }
-                    break;
-                case SimpleSelectorType::Type:
-                case SimpleSelectorType::PseudoElement:
-                    spec.c++;
-                    break;
-                case SimpleSelectorType::Universal:
-                    // Universal selector does not contribute to specificity
-                    break;
-            }
-        }
+    return compute_specificity_uncached(selector);
+}
+
+Specificity selector_specificity(const ComplexSelector& selector) {
+    if (selector.specificity.has_value()) {
+        return *selector.specificity;
     }
-    return spec;
+    return compute_specificity_uncached(selector);
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +227,10 @@ ComplexSelector SelectorParser::parse_complex_selector() {
         part.compound = std::move(next);
         part.combinator = maybe_comb;
         result.parts.push_back(std::move(part));
+    }
+
+    if (!result.parts.empty()) {
+        result.specificity = compute_specificity_uncached(result);
     }
 
     return result;

@@ -31878,3 +31878,67 @@ TEST(HttpClient, CookieJarReplacementUpdatesDomainScopeV2056) {
     EXPECT_EQ(subdomain_after_host.find("session2056=host-again"), std::string::npos)
         << "Host-only replacement should stop subdomain serialization, got: " << subdomain_after_host;
 }
+
+TEST(HttpClient, CookieJarDefaultPathUsesRequestDirectoryV2057) {
+    CookieJar jar;
+    jar.set_from_header("dir2057=alpha", "example.com", "/docs/reference/index.html");
+
+    std::string same_directory = jar.get_cookie_header("example.com", "/docs/reference/chapter", false);
+    EXPECT_NE(same_directory.find("dir2057=alpha"), std::string::npos)
+        << "Cookie without Path should inherit the request directory, got: " << same_directory;
+
+    std::string parent_directory = jar.get_cookie_header("example.com", "/docs", false);
+    EXPECT_EQ(parent_directory.find("dir2057=alpha"), std::string::npos)
+        << "Default-path cookie should not widen above its request directory, got: "
+        << parent_directory;
+
+    std::string sibling_directory = jar.get_cookie_header("example.com", "/docs/other", false);
+    EXPECT_EQ(sibling_directory.find("dir2057=alpha"), std::string::npos)
+        << "Default-path cookie should not match sibling directories, got: " << sibling_directory;
+}
+
+TEST(HttpClient, CookieJarInvalidPathAttributeFallsBackToRequestDefaultPathV2057) {
+    CookieJar jar;
+    jar.set_from_header("fallback2057=beta; Path=relative", "example.com", "/app/settings/profile");
+
+    std::string request_scope = jar.get_cookie_header("example.com", "/app/settings/security", false);
+    EXPECT_NE(request_scope.find("fallback2057=beta"), std::string::npos)
+        << "Invalid Path attribute should fall back to the request default-path, got: "
+        << request_scope;
+
+    std::string root_scope = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_EQ(root_scope.find("fallback2057=beta"), std::string::npos)
+        << "Fallback path should not collapse to root scope, got: " << root_scope;
+}
+
+TEST(HttpClient, CookieJarHostOnlyAndDomainReplacementStayCoherentV2057) {
+    CookieJar jar;
+    jar.set_from_header("scope2057=host; Path=/app", "example.com", "/app/page");
+    jar.set_from_header("scope2057=domain; Domain=example.com; Path=/app", "example.com",
+                        "/app/page");
+
+    std::string exact = jar.get_cookie_header("example.com", "/app", false);
+    EXPECT_NE(exact.find("scope2057=domain"), std::string::npos)
+        << "Domain cookie should replace the host-only cookie for the same key, got: " << exact;
+    EXPECT_EQ(exact.find("scope2057=host"), std::string::npos)
+        << "Replaced host-only cookie should not remain serialized, got: " << exact;
+
+    std::string subdomain = jar.get_cookie_header("cdn.example.com", "/app", false);
+    EXPECT_NE(subdomain.find("scope2057=domain"), std::string::npos)
+        << "Domain replacement should widen scope to subdomains, got: " << subdomain;
+
+    jar.set_from_header("scope2057=host-again; Path=/app", "example.com", "/app/page");
+
+    std::string rewritten = jar.get_cookie_header("example.com", "/app", false);
+    EXPECT_NE(rewritten.find("scope2057=host-again"), std::string::npos)
+        << "Host-only cookie should replace the domain cookie for the same key, got: "
+        << rewritten;
+    EXPECT_EQ(rewritten.find("scope2057=domain"), std::string::npos)
+        << "Replaced domain cookie should not remain serialized on the origin host, got: "
+        << rewritten;
+
+    std::string subdomain_after_host = jar.get_cookie_header("cdn.example.com", "/app", false);
+    EXPECT_EQ(subdomain_after_host.find("scope2057=host-again"), std::string::npos)
+        << "Host-only replacement should remove the widened subdomain scope, got: "
+        << subdomain_after_host;
+}

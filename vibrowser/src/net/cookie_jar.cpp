@@ -34,6 +34,15 @@ std::string normalize_path(const std::string& path) {
     return path;
 }
 
+std::string default_path_from_request_path(const std::string& request_path) {
+    std::string normalized = normalize_path(request_path);
+    if (normalized == "/") return normalized;
+
+    size_t last_slash = normalized.rfind('/');
+    if (last_slash == std::string::npos || last_slash == 0) return "/";
+    return normalized.substr(0, last_slash);
+}
+
 } // anonymous namespace
 
 CookieJar& CookieJar::shared() {
@@ -42,11 +51,13 @@ CookieJar& CookieJar::shared() {
 }
 
 void CookieJar::set_from_header(const std::string& header_value,
-                                 const std::string& request_domain) {
+                                 const std::string& request_domain,
+                                 const std::string& request_path) {
     // Parse: name=value; Path=/; Domain=.example.com; Secure; HttpOnly
     Cookie cookie;
     cookie.domain = to_lower(request_domain);
-    cookie.path = "/";
+    std::string default_path = default_path_from_request_path(request_path);
+    cookie.path = default_path;
 
     // Split by semicolons
     std::istringstream iss(header_value);
@@ -87,7 +98,7 @@ void CookieJar::set_from_header(const std::string& header_value,
             cookie.domain = dom;
             cookie.host_only = false;
         } else if (attr_name == "path") {
-            cookie.path = normalize_path(attr_value);
+            cookie.path = !attr_value.empty() && attr_value[0] == '/' ? attr_value : default_path;
         } else if (attr_name == "secure") {
             cookie.secure = true;
         } else if (attr_name == "httponly") {
@@ -123,7 +134,9 @@ void CookieJar::set_from_header(const std::string& header_value,
     domain_cookies.erase(
         std::remove_if(domain_cookies.begin(), domain_cookies.end(),
                        [&](const Cookie& existing) {
-                           return existing.name == cookie.name && existing.path == cookie.path;
+                           return existing.name == cookie.name &&
+                                  existing.domain == cookie.domain &&
+                                  existing.path == cookie.path;
                        }),
         domain_cookies.end());
 

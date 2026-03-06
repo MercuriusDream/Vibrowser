@@ -9376,7 +9376,13 @@ TEST(JSDom, ServiceWorkerRegister) {
     engine.evaluate(R"(
         var swRegOk = false;
         navigator.serviceWorker.register('/sw.js').then(function(reg) {
-            swRegOk = reg.scope === '/' && reg.installing === null;
+            navigator.serviceWorker.getRegistration('/index.html').then(function(found) {
+                swRegOk = reg.scope === '/' &&
+                          reg.installing === null &&
+                          reg.active &&
+                          reg.active.scriptURL === '/sw.js' &&
+                          reg === found;
+            });
         });
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
@@ -9392,16 +9398,78 @@ TEST(JSDom, ServiceWorkerGetRegistrations) {
     clever::js::JSEngine engine;
     clever::js::install_dom_bindings(engine.context(), doc.get());
     engine.evaluate(R"(
-        var swRegsLen = -1;
-        navigator.serviceWorker.getRegistrations().then(function(regs) {
-            swRegsLen = regs.length;
+        var swRegsSummary = '';
+        navigator.serviceWorker.register('/sw.js').then(function(first) {
+            return navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).then(function(second) {
+                navigator.serviceWorker.getRegistrations().then(function(regs) {
+                    swRegsSummary = [
+                        regs.length,
+                        regs[0] === first,
+                        regs[1] === second,
+                        regs[1].scope,
+                        regs[1].active.scriptURL
+                    ].join(',');
+                });
+            });
         });
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     clever::js::flush_fetch_promise_jobs(engine.context());
-    auto result = engine.evaluate("String(swRegsLen)");
+    auto result = engine.evaluate("String(swRegsSummary)");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
-    EXPECT_EQ(result, "0");
+    EXPECT_EQ(result, "2,true,true,/app/,/app/sw.js");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ServiceWorkerReadySharesRegistrationState) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    engine.evaluate(R"(
+        var swReadySummary = '';
+        navigator.serviceWorker.ready.then(function(reg) {
+            swReadySummary = 'ready:' + reg.scope + ':' + reg.active.scriptURL;
+        });
+        navigator.serviceWorker.register('/sw.js').then(function(reg) {
+            navigator.serviceWorker.ready.then(function(readyReg) {
+                swReadySummary += '|same:' + String(reg === readyReg) +
+                                  '|controller:' + String(navigator.serviceWorker.controller === reg.active);
+            });
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("String(swReadySummary)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ready:/:/sw.js|same:true|controller:true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ServiceWorkerUnregisterUpdatesSharedState) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    engine.evaluate(R"(
+        var swUnregisterSummary = '';
+        navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).then(function(reg) {
+            reg.unregister().then(function(unregistered) {
+                navigator.serviceWorker.getRegistration('/app/page').then(function(found) {
+                    navigator.serviceWorker.getRegistrations().then(function(regs) {
+                        swUnregisterSummary = [
+                            unregistered,
+                            found === undefined,
+                            regs.length
+                        ].join(',');
+                    });
+                });
+            });
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("String(swUnregisterSummary)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true,0");
     clever::js::cleanup_dom_bindings(engine.context());
 }
 

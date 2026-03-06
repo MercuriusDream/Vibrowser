@@ -1,5 +1,6 @@
 #include <clever/paint/text_renderer.h>
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <climits>
 #include <cmath>
@@ -14,6 +15,9 @@
 namespace clever::paint {
 
 namespace {
+
+constexpr size_t kMaxFontCacheEntries = 128;
+constexpr size_t kMaxMeasurementCacheEntries = 1024;
 
 // ---- Web font registry ----
 // Maps normalized CSS font-family to registered CoreGraphics fonts, preserving
@@ -34,6 +38,11 @@ std::mutex& font_registry_mutex() {
     return mtx;
 }
 
+std::atomic<uint64_t>& font_registry_generation() {
+    static std::atomic<uint64_t> generation{1};
+    return generation;
+}
+
 // Normalize family name for lookup (lowercase, strip quotes)
 std::string normalize_family(const std::string& family) {
     std::string result;
@@ -45,10 +54,42 @@ std::string normalize_family(const std::string& family) {
     return result;
 }
 
+uint32_t float_bits(float value) {
+    uint32_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(value));
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+std::string font_cache_key(float font_size, const std::string& family,
+                           int font_weight, bool font_italic) {
+    const std::string normalized_family = normalize_family(family);
+    const bool use_web_font = !normalized_family.empty() && TextRenderer::has_registered_font(family);
+    const uint64_t generation = use_web_font ? font_registry_generation().load(std::memory_order_relaxed) : 0;
+    return normalized_family + "|" +
+           std::to_string(float_bits(font_size)) + "|" +
+           std::to_string(font_weight) + "|" +
+           (font_italic ? "1" : "0") + "|" +
+           (use_web_font ? "1" : "0") + "|" +
+           std::to_string(generation);
+}
+
+std::string measurement_cache_key(float font_size, const std::string& family,
+                                  int font_weight, bool font_italic,
+                                  float letter_spacing, float word_spacing,
+                                  const std::string& text) {
+    return font_cache_key(font_size, family, font_weight, font_italic) + "|" +
+           std::to_string(float_bits(letter_spacing)) + "|" +
+           std::to_string(float_bits(word_spacing)) + "|" +
+           std::to_string(text.size()) + "|" + text;
+}
+
 } // namespace
 
 TextRenderer::TextRenderer() = default;
-TextRenderer::~TextRenderer() = default;
+TextRenderer::~TextRenderer() {
+    clear_caches();
+}
 
 bool TextRenderer::register_font(const std::string& family_name,
                                   const std::vector<uint8_t>& font_data,
@@ -119,6 +160,7 @@ bool TextRenderer::register_font(const std::string& family_name,
         }
     }
     variants.push_back({graphics_font, weight, italic});
+    font_registry_generation().fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 
@@ -144,6 +186,7 @@ void TextRenderer::clear_registered_fonts() {
         }
     }
     registered_fonts().clear();
+    font_registry_generation().fetch_add(1, std::memory_order_relaxed);
 }
 
 // Helper: map a CSS-style font weight (100-900) to a CoreText weight value.
@@ -528,6 +571,71 @@ static CFDictionaryRef parse_font_variations(const std::string& settings) {
     return variations;
 }
 
+void TextRenderer::clear_caches() {
+    for (auto& [key, font] : font_cache_) {
+        (void)key;
+        if (font) {
+            CFRelease(font);
+        }
+    }
+    font_cache_.clear();
+    measurement_cache_.clear();
+}
+
+size_t TextRenderer::cached_font_count_for_testing() const {
+    return font_cache_.size();
+}
+
+size_t TextRenderer::cached_measurement_count_for_testing() const {
+    return measurement_cache_.size();
+}
+
+CTFontRef TextRenderer::get_cached_font(float font_size, const std::string& font_family,
+                                        int font_weight, bool font_italic) {
+    const std::string key = font_cache_key(font_size, font_family, font_weight, font_italic);
+    auto it = font_cache_.find(key);
+    if (it != font_cache_.end() && it->second) {
+        CFRetain(it->second);
+        return it->second;
+    }
+
+    CTFontRef base_font = create_web_font(font_family, static_cast<CGFloat>(font_size),
+                                          font_weight, font_italic);
+    if (!base_font) {
+        CFStringRef ct_font_name = font_name_for_family(font_family);
+        base_font = CTFontCreateWithName(ct_font_name, static_cast<CGFloat>(font_size), nullptr);
+    }
+    if (!base_font) {
+        base_font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, static_cast<CGFloat>(font_size), nullptr);
+    }
+    if (!base_font) {
+        return nullptr;
+    }
+
+    CTFontRef font = base_font;
+    const bool is_web_font = has_registered_font(font_family);
+    if (!is_web_font) {
+        CTFontSymbolicTraits traits = 0;
+        if (font_weight >= 600) traits |= kCTFontBoldTrait;
+        if (font_italic) traits |= kCTFontItalicTrait;
+
+        if (traits != 0) {
+            CTFontRef styled_font = CTFontCreateCopyWithSymbolicTraits(base_font, 0.0, nullptr, traits, traits);
+            if (styled_font) {
+                CFRelease(base_font);
+                font = styled_font;
+            }
+        }
+    }
+
+    if (font_cache_.size() >= kMaxFontCacheEntries) {
+        clear_caches();
+    }
+    font_cache_[key] = font;
+    CFRetain(font);
+    return font;
+}
+
 void TextRenderer::render_text(const std::string& text, float x, float y,
                                 float font_size, const Color& color,
                                 uint8_t* buffer, int buffer_width, int buffer_height,
@@ -545,35 +653,8 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
 
     if (font_size < 1.0f) font_size = 1.0f;
 
-    // Try registered web fonts first, then fall back to system fonts
-    CTFontRef base_font = create_web_font(font_family, static_cast<CGFloat>(font_size),
-                                            font_weight, font_italic);
-    if (!base_font) {
-        CFStringRef ct_font_name = font_name_for_family(font_family);
-        base_font = CTFontCreateWithName(ct_font_name, static_cast<CGFloat>(font_size), nullptr);
-    }
-    if (!base_font) {
-        base_font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, static_cast<CGFloat>(font_size), nullptr);
-    }
-    if (!base_font) return;
-
-    // Apply bold and italic traits (only for system fonts — web fonts already have the right variant)
-    CTFontRef font = base_font;
-    bool is_web_font = has_registered_font(font_family);
-    if (!is_web_font) {
-        CTFontSymbolicTraits traits = 0;
-        if (font_weight >= 600) traits |= kCTFontBoldTrait;
-        if (font_italic) traits |= kCTFontItalicTrait;
-
-        if (traits != 0) {
-            CTFontRef styled_font = CTFontCreateCopyWithSymbolicTraits(base_font, 0.0, nullptr, traits, traits);
-            if (styled_font) {
-                CFRelease(base_font);
-                font = styled_font;
-            }
-            // If trait application fails, fall back to base_font
-        }
-    }
+    CTFontRef font = get_cached_font(font_size, font_family, font_weight, font_italic);
+    if (!font) return;
 
     // Apply font-feature-settings via CoreText font descriptor
     if (!font_feature_settings.empty()) {
@@ -665,64 +746,7 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
 
 float TextRenderer::measure_text_width(const std::string& text, float font_size,
                                        const std::string& font_family) {
-    if (text.empty()) return 0.0f;
-    if (font_size < 1.0f) font_size = 1.0f;
-
-    // Try registered web fonts first
-    CTFontRef font = create_web_font(font_family, static_cast<CGFloat>(font_size));
-    if (!font) {
-        CFStringRef ct_font_name = font_name_for_family(font_family);
-        font = CTFontCreateWithName(ct_font_name, static_cast<CGFloat>(font_size), nullptr);
-    }
-    if (!font) return 0.0f;
-
-    CFStringRef cf_text = CFStringCreateWithBytes(
-        kCFAllocatorDefault,
-        reinterpret_cast<const UInt8*>(text.data()),
-        static_cast<CFIndex>(text.size()),
-        kCFStringEncodingUTF8,
-        false
-    );
-    if (!cf_text) {
-        CFRelease(font);
-        return 0.0f;
-    }
-
-    const void* keys[] = {kCTFontAttributeName};
-    const void* vals[] = {font};
-    CFDictionaryRef attrs = CFDictionaryCreate(
-        kCFAllocatorDefault, keys, vals, 1,
-        &kCFTypeDictionaryKeyCallBacks,
-        &kCFTypeDictionaryValueCallBacks
-    );
-
-    CFAttributedStringRef attr_str = CFAttributedStringCreate(kCFAllocatorDefault, cf_text, attrs);
-    if (!attr_str) {
-        CFRelease(attrs);
-        CFRelease(cf_text);
-        CFRelease(font);
-        return 0.0f;
-    }
-
-    CTLineRef line = CTLineCreateWithAttributedString(attr_str);
-    if (!line) {
-        CFRelease(attr_str);
-        CFRelease(attrs);
-        CFRelease(cf_text);
-        CFRelease(font);
-        return 0.0f;
-    }
-
-    CGFloat ascent, descent, leading;
-    double width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
-
-    CFRelease(line);
-    CFRelease(attr_str);
-    CFRelease(attrs);
-    CFRelease(cf_text);
-    CFRelease(font);
-
-    return static_cast<float>(width);
+    return measure_text_width(text, font_size, font_family, 400, false, 0.0f, 0.0f);
 }
 
 float TextRenderer::measure_text_width(const std::string& text, float font_size,
@@ -732,34 +756,16 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
     if (text.empty()) return 0.0f;
     if (font_size < 1.0f) font_size = 1.0f;
 
-    // Try registered web fonts first
-    CTFontRef base_font = create_web_font(font_family, static_cast<CGFloat>(font_size),
-                                            font_weight, font_italic);
-    if (!base_font) {
-        CFStringRef ct_font_name = font_name_for_family(font_family);
-        base_font = CTFontCreateWithName(ct_font_name, static_cast<CGFloat>(font_size), nullptr);
+    const std::string cache_key = measurement_cache_key(font_size, font_family, font_weight,
+                                                        font_italic, letter_spacing,
+                                                        word_spacing, text);
+    auto cached = measurement_cache_.find(cache_key);
+    if (cached != measurement_cache_.end()) {
+        return cached->second;
     }
-    if (!base_font) {
-        base_font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, static_cast<CGFloat>(font_size), nullptr);
-    }
-    if (!base_font) return 0.0f;
 
-    // Apply bold and italic traits (only for system fonts)
-    CTFontRef font = base_font;
-    bool is_web_font = has_registered_font(font_family);
-    if (!is_web_font) {
-        CTFontSymbolicTraits traits = 0;
-        if (font_weight >= 600) traits |= kCTFontBoldTrait;
-        if (font_italic) traits |= kCTFontItalicTrait;
-
-        if (traits != 0) {
-            CTFontRef styled_font = CTFontCreateCopyWithSymbolicTraits(base_font, 0.0, nullptr, traits, traits);
-            if (styled_font) {
-                CFRelease(base_font);
-                font = styled_font;
-            }
-        }
-    }
+    CTFontRef font = get_cached_font(font_size, font_family, font_weight, font_italic);
+    if (!font) return 0.0f;
 
     // Create attributed string
     CFStringRef cf_text = CFStringCreateWithBytes(
@@ -833,7 +839,12 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
         width += space_count * word_spacing;
     }
 
-    return static_cast<float>(width);
+    const float measured_width = static_cast<float>(width);
+    if (measurement_cache_.size() >= kMaxMeasurementCacheEntries) {
+        measurement_cache_.clear();
+    }
+    measurement_cache_[cache_key] = measured_width;
+    return measured_width;
 }
 
 } // namespace clever::paint
