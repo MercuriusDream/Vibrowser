@@ -4,6 +4,7 @@
 #import <QuartzCore/QuartzCore.h>
 
 #include <clever/paint/render_pipeline.h>
+#include <clever/paint/painter.h>
 #include <clever/paint/software_renderer.h>
 #include <clever/js/js_dom_bindings.h>
 #include <clever/js/js_engine.h>
@@ -104,6 +105,10 @@ static NSImage* browser_symbol_image(NSString* system_name) {
         [self.window makeFirstResponder:self];
     }
 }
+@end
+
+@interface BrowserTab ()
+- (std::unique_ptr<clever::layout::LayoutNode>&)layoutRoot;
 @end
 
 // =============================================================================
@@ -392,6 +397,55 @@ static std::string resolve_url_reference(const std::string& href, const std::str
         return base_url.substr(0, last_slash + 1) + href;
     }
     return href;
+}
+
+static void paint_tab_horizontal_viewport_slice(BrowserTab* tab, CGFloat documentScrollX) {
+    if (!tab || !tab.renderView) {
+        return;
+    }
+    auto& layoutRoot = [tab layoutRoot];
+    if (!layoutRoot) {
+        [tab.renderView setRenderedDocumentOriginX:0.0];
+        return;
+    }
+
+    NSRect bounds = tab.renderView.bounds;
+    int viewportWidth = static_cast<int>(std::round(bounds.size.width));
+    if (viewportWidth < 1) viewportWidth = 1;
+
+    CGFloat rendererScale = [tab.renderView rendererScale];
+    if (!std::isfinite(rendererScale) || rendererScale <= 0.0) {
+        rendererScale = 1.0;
+    }
+
+    int logicalRenderHeight = static_cast<int>(std::lround([tab.renderView baseHeight] / rendererScale));
+    if (logicalRenderHeight < 1) {
+        logicalRenderHeight = std::max(1, static_cast<int>(std::round(bounds.size.height)));
+    }
+
+    auto& root = *layoutRoot;
+    const bool savedIsScrollContainer = root.is_scroll_container;
+    const float savedScrollLeft = root.scroll_left;
+
+    root.is_scroll_container = true;
+    root.scroll_left = std::max(0.0f, static_cast<float>(documentScrollX));
+
+    clever::paint::Painter painter;
+    auto displayList = painter.paint(root,
+                                     static_cast<float>(logicalRenderHeight),
+                                     static_cast<float>(viewportWidth),
+                                     0.0f,
+                                     root.scroll_left);
+
+    root.scroll_left = savedScrollLeft;
+    root.is_scroll_container = savedIsScrollContainer;
+
+    clever::paint::SoftwareRenderer renderer(viewportWidth, logicalRenderHeight,
+                                             static_cast<float>(rendererScale));
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(displayList);
+    [tab.renderView updateWithRenderer:&renderer];
+    [tab.renderView setRenderedDocumentOriginX:std::max(0.0, documentScrollX)];
 }
 
 static void apply_browser_request_headers(clever::net::Request& req,
@@ -1735,6 +1789,7 @@ static std::string build_shell_message_html(const std::string& page_title,
         CGFloat viewY = [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(scroll_y)];
         tab.renderView.scrollOffsetX = viewX;
         tab.renderView.scrollOffset = viewY;
+        paint_tab_horizontal_viewport_slice(tab, static_cast<CGFloat>(scroll_x));
         [tab.renderView setNeedsDisplay:YES];
         clever::js::clear_pending_scroll(jsEngine->context());
     }
@@ -1763,6 +1818,7 @@ static std::string build_shell_message_html(const std::string& page_title,
     }
     tab.renderView.scrollOffsetX = [tab.renderView viewOffsetForDocumentX:documentX];
     tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:documentY];
+    paint_tab_horizontal_viewport_slice(tab, documentX);
     [tab.renderView setNeedsDisplay:YES];
 }
 
@@ -1836,6 +1892,7 @@ static std::string build_shell_message_html(const std::string& page_title,
         [tab setFocusedInputNode:nullptr];
 
         [tab.renderView updateWithRenderer:result.renderer.get()];
+        [tab.renderView setRenderedDocumentOriginX:0.0];
         [tab.renderView setLayoutRoot:result.root.get()];
         [tab.renderView updateLinks:result.links];
         [tab.renderView updateCursorRegions:result.cursor_regions];
@@ -1890,6 +1947,7 @@ static std::string build_shell_message_html(const std::string& page_title,
                     [tab.renderView viewOffsetForDocumentX:static_cast<CGFloat>(pendScrollX)];
                 tab.renderView.scrollOffset =
                     [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(pendScrollY)];
+                paint_tab_horizontal_viewport_slice(tab, static_cast<CGFloat>(pendScrollX));
                 clever::js::clear_pending_scroll(jsEngine->context());
             }
         }
@@ -2292,6 +2350,7 @@ static std::string build_shell_message_html(const std::string& page_title,
         auto fallback = clever::paint::render_html(error_html, "", renderWidth, renderHeight, renderDPR);
         if (fallback.success && fallback.renderer) {
             [tab.renderView updateWithRenderer:fallback.renderer.get()];
+            [tab.renderView setRenderedDocumentOriginX:0.0];
             [tab layoutRoot] = std::move(fallback.root);
             [tab.renderView setLayoutRoot:[tab layoutRoot].get()];
         }
@@ -2676,7 +2735,7 @@ static std::string build_shell_message_html(const std::string& page_title,
             deltaX:(CGFloat)deltaX
             deltaY:(CGFloat)deltaY
         isMomentum:(BOOL)isMomentum {
-    (void)deltaX; (void)deltaY; (void)isMomentum;
+    (void)deltaY; (void)isMomentum;
     // Update window scroll offsets using document-space CSS pixels.
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
@@ -2690,6 +2749,9 @@ static std::string build_shell_message_html(const std::string& page_title,
     clever::js::dispatch_scroll_event(ctx, vpW, vpH,
                                       static_cast<float>(documentScrollX),
                                       static_cast<float>(documentScrollY));
+    if (std::abs(deltaX) > 0.01) {
+        paint_tab_horizontal_viewport_slice(tab, documentScrollX);
+    }
 }
 
 - (void)renderView:(RenderView*)view didSubmitForm:(const clever::paint::FormData&)formData {

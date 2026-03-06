@@ -67,6 +67,9 @@ private:
     mutable std::mutex mutex_;
     std::condition_variable cv_;
     uint64_t next_delayed_task_sequence_ = 0;
+    bool waiting_for_work_ = false;
+    bool waiting_for_delayed_task_ = false;
+    TimePoint delayed_wait_deadline_{};
     std::atomic<int64_t> last_delayed_task_lag_ns_{0};
     std::atomic<bool> running_{false};
     std::atomic<bool> quit_requested_{false};

@@ -54,6 +54,8 @@ struct TextRegion {
     int _imageWidth;
     int _imageHeight;
     CGFloat _backingScale; // Retina scale factor (2.0 on HiDPI, 1.0 otherwise)
+    CGFloat _contentWidth;
+    CGFloat _renderedDocumentOriginX;
     std::vector<clever::paint::LinkRegion> _links;
     std::vector<clever::paint::CursorRegion> _cursorRegions;
     std::vector<TextRegion> _textRegions;
@@ -134,6 +136,8 @@ struct TextRegion {
         _cgImage = NULL;
         _imageWidth = 0;
         _imageHeight = 0;
+        _contentWidth = 0;
+        _renderedDocumentOriginX = 0;
         _scrollX = 0;
         _scrollY = 0;
         _draggingScrollbar = NO;
@@ -250,6 +254,30 @@ struct TextRegion {
 
 - (void)setLayoutRoot:(clever::layout::LayoutNode*)layoutRoot {
     _layoutRoot = layoutRoot;
+    CGFloat contentWidth = (_backingScale > 0.0)
+        ? (_imageWidth / _backingScale)
+        : 0.0;
+    if (_layoutRoot) {
+        float maxRight = 0.0f;
+        std::function<void(const clever::layout::LayoutNode&, float, float)> accumulateWidth =
+            [&](const clever::layout::LayoutNode& node, float parentAbsX, float parentAbsY) {
+                float absX = parentAbsX + node.geometry.x;
+                float absY = parentAbsY + node.geometry.y;
+                maxRight = std::max(maxRight, absX + node.geometry.margin_box_width());
+                for (const auto& child : node.children) {
+                    if (child) {
+                        accumulateWidth(*child, absX, absY);
+                    }
+                }
+            };
+        accumulateWidth(*_layoutRoot, 0.0f, 0.0f);
+        contentWidth = std::max<CGFloat>(
+            contentWidth,
+            std::max(std::max(_layoutRoot->geometry.width, _layoutRoot->scroll_content_width),
+                     maxRight));
+    }
+    _contentWidth = std::max<CGFloat>(0.0, contentWidth);
+    [self clampScrollOffsetsToContentBounds];
 }
 
 - (CGFloat)viewOffsetForRendererY:(CGFloat)rendererY {
@@ -265,9 +293,7 @@ struct TextRegion {
 }
 
 - (CGFloat)contentWidthInViewPoints {
-    return (_backingScale > 0.0)
-        ? (_imageWidth / _backingScale) * _pageScale
-        : 0.0;
+    return _contentWidth * _pageScale;
 }
 
 - (CGFloat)documentXForViewOffset:(CGFloat)viewOffset {
@@ -284,6 +310,10 @@ struct TextRegion {
 
 - (CGFloat)rendererScale {
     return _backingScale;
+}
+
+- (void)setRenderedDocumentOriginX:(CGFloat)documentX {
+    _renderedDocumentOriginX = std::max(0.0, documentX);
 }
 
 - (CGFloat)logicalXForViewX:(CGFloat)viewX {
@@ -486,6 +516,8 @@ struct TextRegion {
     if (_cgImage) { CGImageRelease(_cgImage); _cgImage = NULL; }
     _imageWidth = 0;
     _imageHeight = 0;
+    _contentWidth = 0;
+    _renderedDocumentOriginX = 0;
     _contentHeight = 0;
     _scrollOffset = 0;
     _scrollX = 0;
@@ -544,7 +576,8 @@ struct TextRegion {
     // divide by _backingScale to get the correct logical point dimensions.
     CGFloat img_w = (_imageWidth / _backingScale) * _pageScale;
     CGFloat img_h = (_imageHeight / _backingScale) * _pageScale;
-    CGFloat img_x = -_scrollX;
+    CGFloat imgOriginX = [self viewOffsetForDocumentX:_renderedDocumentOriginX];
+    CGFloat img_x = imgOriginX - _scrollX;
     CGFloat img_y = -_scrollOffset;
 
     CGContextRef cgctx = [[NSGraphicsContext currentContext] CGContext];
@@ -2260,7 +2293,8 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
     const CGFloat viewportWidth = std::max<CGFloat>(0.0, self.bounds.size.width);
     const CGFloat viewportHeight = std::max<CGFloat>(0.0, self.bounds.size.height);
 
-    int sourceX = static_cast<int>(std::lround((_scrollX / pageScale) * rendererScale));
+    CGFloat rasterDocumentOffsetX = std::max<CGFloat>(0.0, (_scrollX / pageScale) - _renderedDocumentOriginX);
+    int sourceX = static_cast<int>(std::lround(rasterDocumentOffsetX * rendererScale));
     int sourceY = static_cast<int>(std::lround((_scrollOffset / pageScale) * rendererScale));
     int sourceWidth = static_cast<int>(std::lround((viewportWidth / pageScale) * rendererScale));
     int sourceHeight = static_cast<int>(std::lround((viewportHeight / pageScale) * rendererScale));

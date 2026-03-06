@@ -59,7 +59,10 @@ private:
                                      const std::vector<ConditionalRuleContext>& active_conditional_contexts = {});
     void parse_nested_block(const std::string& parent_selector,
                             std::vector<Declaration>& out_declarations,
-                            std::vector<StyleRule>& out_nested_rules);
+                            std::vector<StyleRule>& out_nested_rules,
+                            const std::vector<std::string>& active_media_conditions = {},
+                            const std::vector<std::string>& active_supports_conditions = {},
+                            const std::vector<ConditionalRuleContext>& active_conditional_contexts = {});
 
     // Declarations
     Declaration parse_declaration();
@@ -1319,13 +1322,90 @@ static std::string resolve_nested_selector(const std::string& parent_selector,
 void StyleSheetParser::parse_nested_block(
         const std::string& parent_selector,
         std::vector<Declaration>& out_declarations,
-        std::vector<StyleRule>& out_nested_rules) {
+        std::vector<StyleRule>& out_nested_rules,
+        const std::vector<std::string>& active_media_conditions,
+        const std::vector<std::string>& active_supports_conditions,
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts) {
 
     while (!at_end() && current().type != CSSToken::RightBrace) {
         skip_whitespace();
         if (at_end() || current().type == CSSToken::RightBrace) break;
         if (current().type == CSSToken::Semicolon) {
             advance();
+            continue;
+        }
+
+        if (current().type == CSSToken::AtKeyword) {
+            std::string nested_keyword = current().value;
+            advance();
+
+            if (nested_keyword != "media" && nested_keyword != "supports") {
+                while (!at_end()) {
+                    if (current().type == CSSToken::Semicolon) {
+                        advance();
+                        break;
+                    }
+                    if (current().type == CSSToken::LeftBrace) {
+                        skip_block();
+                        break;
+                    }
+                    advance();
+                }
+                continue;
+            }
+
+            std::string nested_condition = consume_conditional_prelude();
+            if (at_end() || current().type != CSSToken::LeftBrace) {
+                if (!at_end() && current().type == CSSToken::Semicolon) {
+                    advance();
+                }
+                continue;
+            }
+
+            auto nested_media_conditions = active_media_conditions;
+            auto nested_supports_conditions = active_supports_conditions;
+            auto nested_conditional_contexts = active_conditional_contexts;
+            if (nested_keyword == "media") {
+                nested_media_conditions.push_back(nested_condition);
+                nested_conditional_contexts.push_back(
+                    {ConditionalRuleContext::Type::Media, nested_condition});
+            } else {
+                nested_supports_conditions.push_back(nested_condition);
+                nested_conditional_contexts.push_back(
+                    {ConditionalRuleContext::Type::Supports, nested_condition});
+            }
+
+            advance();
+
+            std::vector<Declaration> conditional_declarations;
+            std::vector<StyleRule> conditional_nested_rules;
+            parse_nested_block(parent_selector,
+                               conditional_declarations,
+                               conditional_nested_rules,
+                               nested_media_conditions,
+                               nested_supports_conditions,
+                               nested_conditional_contexts);
+
+            if (!at_end() && current().type == CSSToken::RightBrace) {
+                advance();
+            }
+
+            if (!conditional_declarations.empty()) {
+                StyleRule conditional_rule;
+                conditional_rule.selector_text = parent_selector;
+                conditional_rule.selectors = parse_selector_list(parent_selector);
+                conditional_rule.declarations = std::move(conditional_declarations);
+                conditional_rule.media_conditions = std::move(nested_media_conditions);
+                conditional_rule.supports_conditions = std::move(nested_supports_conditions);
+                conditional_rule.conditional_rule_contexts = std::move(nested_conditional_contexts);
+                if (!conditional_rule.selectors.selectors.empty()) {
+                    out_nested_rules.push_back(std::move(conditional_rule));
+                }
+            }
+
+            for (auto& conditional_nested_rule : conditional_nested_rules) {
+                out_nested_rules.push_back(std::move(conditional_nested_rule));
+            }
             continue;
         }
 
@@ -1368,7 +1448,12 @@ void StyleSheetParser::parse_nested_block(
             // Recursively parse the nested block (handles deeper nesting)
             StyleRule nested_rule;
             std::vector<StyleRule> deeper_rules;
-            parse_nested_block(resolved, nested_rule.declarations, deeper_rules);
+            parse_nested_block(resolved,
+                               nested_rule.declarations,
+                               deeper_rules,
+                               active_media_conditions,
+                               active_supports_conditions,
+                               active_conditional_contexts);
 
             // Skip '}'
             if (!at_end() && current().type == CSSToken::RightBrace) {
@@ -1377,6 +1462,9 @@ void StyleSheetParser::parse_nested_block(
 
             nested_rule.selector_text = resolved;
             nested_rule.selectors = parse_selector_list(resolved);
+            nested_rule.media_conditions = active_media_conditions;
+            nested_rule.supports_conditions = active_supports_conditions;
+            nested_rule.conditional_rule_contexts = active_conditional_contexts;
             out_nested_rules.push_back(std::move(nested_rule));
 
             // Append any deeper-nested rules (already fully resolved)
@@ -1432,7 +1520,12 @@ void StyleSheetParser::parse_qualified_rule(
     }
 
     std::vector<StyleRule> nested_rules;
-    parse_nested_block(sel_text, rule.declarations, nested_rules);
+    parse_nested_block(sel_text,
+                       rule.declarations,
+                       nested_rules,
+                       active_media_conditions,
+                       active_supports_conditions,
+                       active_conditional_contexts);
 
     if (!at_end() && current().type == CSSToken::RightBrace) {
         advance();
@@ -1446,9 +1539,6 @@ void StyleSheetParser::parse_qualified_rule(
     }
 
     for (auto& nested_rule : nested_rules) {
-        nested_rule.media_conditions = active_media_conditions;
-        nested_rule.supports_conditions = active_supports_conditions;
-        nested_rule.conditional_rule_contexts = active_conditional_contexts;
         out_rules.push_back(std::move(nested_rule));
     }
 }

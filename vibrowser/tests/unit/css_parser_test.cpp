@@ -933,6 +933,76 @@ TEST(CSSParserTest, NestedConditionalSiblingsKeepOrderAndOwnCombinedConditions) 
     EXPECT_EQ(wide_rule.conditional_rule_contexts[1].condition, "(orientation: landscape)");
 }
 
+TEST(CSSParserTest, NestedConditionalAtRulesInsideNestedStyleRulesRetainFullContextStack) {
+    auto sheet = parse_stylesheet(
+        "@media screen {"
+        "  .card {"
+        "    color: black;"
+        "    @supports (display: grid) {"
+        "      display: grid;"
+        "      @media (min-width: 768px) {"
+        "        & .item {"
+        "          color: red;"
+        "          @supports (grid-template-columns: subgrid) {"
+        "            display: subgrid;"
+        "          }"
+        "        }"
+        "      }"
+        "    }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 4u);
+
+    const auto& base_rule = sheet.media_queries[0].rules[0];
+    EXPECT_EQ(base_rule.selector_text, ".card");
+    EXPECT_EQ(base_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_TRUE(base_rule.supports_conditions.empty());
+    ASSERT_EQ(base_rule.conditional_rule_contexts.size(), 1u);
+    EXPECT_EQ(base_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(base_rule.conditional_rule_contexts[0].condition, "screen");
+
+    const auto& supports_rule = sheet.media_queries[0].rules[1];
+    EXPECT_EQ(supports_rule.selector_text, ".card");
+    EXPECT_EQ(supports_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_EQ(supports_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(supports_rule.conditional_rule_contexts.size(), 2u);
+    EXPECT_EQ(supports_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(supports_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(supports_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(supports_rule.conditional_rule_contexts[1].condition, "(display: grid)");
+
+    const auto& nested_rule = sheet.media_queries[0].rules[2];
+    EXPECT_EQ(nested_rule.selector_text, ".card .item");
+    EXPECT_EQ(nested_rule.media_conditions,
+              (std::vector<std::string>{"screen", "(min-width: 768px)"}));
+    EXPECT_EQ(nested_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(nested_rule.conditional_rule_contexts.size(), 3u);
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[1].condition, "(display: grid)");
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[2].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[2].condition, "(min-width: 768px)");
+
+    const auto& deep_supports_rule = sheet.media_queries[0].rules[3];
+    EXPECT_EQ(deep_supports_rule.selector_text, ".card .item");
+    EXPECT_EQ(deep_supports_rule.media_conditions,
+              (std::vector<std::string>{"screen", "(min-width: 768px)"}));
+    EXPECT_EQ(deep_supports_rule.supports_conditions,
+              (std::vector<std::string>{"(display: grid)", "(grid-template-columns: subgrid)"}));
+    ASSERT_EQ(deep_supports_rule.conditional_rule_contexts.size(), 4u);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[1].condition, "(display: grid)");
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[2].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[2].condition, "(min-width: 768px)");
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[3].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[3].condition, "(grid-template-columns: subgrid)");
+}
+
 // =============================================================================
 // @layer parsing
 // =============================================================================

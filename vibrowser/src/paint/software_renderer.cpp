@@ -47,16 +47,10 @@ template <typename T>
 void ensure_scratch_buffer(std::vector<T>& buffer, int& buffer_width, int& buffer_height,
                            size_t& allocation_count, int width, int height, size_t elements_per_pixel) {
     if (width <= 0 || height <= 0) {
-        buffer.clear();
-        buffer_width = 0;
-        buffer_height = 0;
         return;
     }
     const size_t required_size = static_cast<size_t>(width) * static_cast<size_t>(height) * elements_per_pixel;
-    const bool can_reuse_existing =
-        buffer_width >= width &&
-        buffer_height >= height &&
-        buffer.size() >= required_size;
+    const bool can_reuse_existing = buffer.size() >= required_size;
     if (!can_reuse_existing) {
         buffer_width = std::max(buffer_width, width);
         buffer_height = std::max(buffer_height, height);
@@ -66,6 +60,8 @@ void ensure_scratch_buffer(std::vector<T>& buffer, int& buffer_width, int& buffe
         ++allocation_count;
         return;
     }
+    buffer_width = std::max(buffer_width, width);
+    buffer_height = std::max(buffer_height, height);
     std::fill_n(buffer.begin(), required_size, T{});
 }
 }  // namespace

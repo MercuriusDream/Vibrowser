@@ -155,6 +155,7 @@ struct PixelTransition {
 - (void)clearContent;
 - (NSString*)selectedText;
 - (CGFloat)rendererScale;
+- (void)setRenderedDocumentOriginX:(CGFloat)documentX;
 - (CGFloat)viewOffsetForDocumentX:(CGFloat)documentX;
 - (CGFloat)documentXForViewOffset:(CGFloat)viewOffset;
 - (CGFloat)viewOffsetForDocumentY:(CGFloat)documentY;

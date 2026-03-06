@@ -61,6 +61,109 @@ std::string strip_fragment_from_url(const std::string& url) {
     return url.substr(0, fragment_pos);
 }
 
+std::string make_cache_key_fallback(std::string_view raw_url) {
+    std::string normalized(strip_fragment_from_url(std::string(raw_url)));
+    const size_t scheme_sep = normalized.find("://");
+    if (scheme_sep == std::string::npos) {
+        return normalized;
+    }
+
+    std::string scheme = normalized.substr(0, scheme_sep);
+    std::transform(scheme.begin(), scheme.end(), scheme.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if (scheme != "http" && scheme != "https") {
+        return normalized;
+    }
+
+    const size_t authority_start = scheme_sep + 3;
+    const size_t suffix_start = normalized.find_first_of("/?", authority_start);
+    const std::string authority = normalized.substr(
+        authority_start,
+        suffix_start == std::string::npos ? std::string::npos : suffix_start - authority_start);
+    if (authority.empty()) {
+        return normalized;
+    }
+
+    const size_t userinfo_sep = authority.rfind('@');
+    const std::string_view authority_host_port = userinfo_sep == std::string::npos
+                                                     ? std::string_view(authority)
+                                                     : std::string_view(authority).substr(userinfo_sep + 1);
+
+    std::string host;
+    std::optional<uint16_t> port;
+    if (!authority_host_port.empty() && authority_host_port.front() == '[') {
+        const size_t closing_bracket = authority_host_port.find(']');
+        if (closing_bracket == std::string_view::npos) {
+            return normalized;
+        }
+
+        host.assign(authority_host_port.substr(0, closing_bracket + 1));
+        if (closing_bracket + 1 < authority_host_port.size()) {
+            if (authority_host_port[closing_bracket + 1] != ':') {
+                return normalized;
+            }
+            const std::string_view port_text = authority_host_port.substr(closing_bracket + 2);
+            if (port_text.empty()) {
+                return normalized;
+            }
+            for (const char ch : port_text) {
+                if (!std::isdigit(static_cast<unsigned char>(ch))) {
+                    return normalized;
+                }
+            }
+            const unsigned long parsed_port = std::stoul(std::string(port_text));
+            if (parsed_port > 65535UL) {
+                return normalized;
+            }
+            port = static_cast<uint16_t>(parsed_port);
+        }
+    } else {
+        const size_t colon = authority_host_port.rfind(':');
+        if (colon == std::string_view::npos) {
+            host.assign(authority_host_port);
+        } else {
+            host.assign(authority_host_port.substr(0, colon));
+            const std::string_view port_text = authority_host_port.substr(colon + 1);
+            if (port_text.empty()) {
+                return normalized;
+            }
+            for (const char ch : port_text) {
+                if (!std::isdigit(static_cast<unsigned char>(ch))) {
+                    return normalized;
+                }
+            }
+            const unsigned long parsed_port = std::stoul(std::string(port_text));
+            if (parsed_port > 65535UL) {
+                return normalized;
+            }
+            port = static_cast<uint16_t>(parsed_port);
+        }
+    }
+
+    std::transform(host.begin(), host.end(), host.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if ((scheme == "http" && port == 80) || (scheme == "https" && port == 443)) {
+        port.reset();
+    }
+
+    std::string suffix = suffix_start == std::string::npos ? "/" : normalized.substr(suffix_start);
+    if (!suffix.empty() && suffix.front() == '?') {
+        suffix.insert(suffix.begin(), '/');
+    }
+
+    std::string normalized_authority;
+    if (userinfo_sep != std::string::npos) {
+        normalized_authority = authority.substr(0, userinfo_sep + 1);
+    }
+    normalized_authority += host;
+    if (port.has_value()) {
+        normalized_authority += ':';
+        normalized_authority += std::to_string(*port);
+    }
+
+    return scheme + "://" + normalized_authority + suffix;
+}
+
 std::string request_url_for_redirect_resolution(const Request& request) {
     if (!request.url.empty()) {
         if (auto parsed = clever::url::parse(request.url)) {
@@ -262,7 +365,7 @@ HttpCache& HttpCache::instance() {
 std::string HttpCache::make_cache_key(const std::string& url) {
     const auto parsed = clever::url::parse(url);
     if (!parsed.has_value()) {
-        return strip_fragment_from_url(url);
+        return make_cache_key_fallback(url);
     }
 
     clever::url::URL normalized = *parsed;

@@ -24607,6 +24607,49 @@ TEST_F(PaintTest, BackdropFilterBlurReusesScratchBuffersForSmallerPassesV2073) {
     EXPECT_EQ(reused_pixels, fresh_renderer.pixels());
 }
 
+TEST_F(PaintTest, filter_blur_scratch_reuses_capacity_for_repeated_smaller_backdrop_passes) {
+    DisplayList large_list;
+    large_list.fill_rect({0, 0, 24, 12}, {255, 0, 0, 255});
+    large_list.fill_rect({24, 0, 24, 12}, {0, 0, 255, 255});
+    large_list.apply_backdrop_filter({8, 0, 32, 12}, 9, 4.0f);
+
+    DisplayList smaller_area_list;
+    smaller_area_list.fill_rect({0, 0, 10, 6}, {255, 0, 0, 255});
+    smaller_area_list.fill_rect({10, 0, 10, 6}, {0, 0, 255, 255});
+    smaller_area_list.apply_backdrop_filter({4, 0, 12, 6}, 9, 4.0f);
+
+    DisplayList reshaped_same_area_list;
+    reshaped_same_area_list.fill_rect({0, 0, 6, 10}, {255, 0, 0, 255});
+    reshaped_same_area_list.fill_rect({6, 0, 6, 10}, {0, 0, 255, 255});
+    reshaped_same_area_list.apply_backdrop_filter({2, 0, 8, 10}, 9, 4.0f);
+
+    SoftwareRenderer renderer(48, 24);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(large_list);
+
+    const auto allocations_after_large = renderer.filter_blur_scratch_allocation_count_for_testing();
+    ASSERT_EQ(allocations_after_large, 1u);
+
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(smaller_area_list);
+    EXPECT_EQ(renderer.filter_blur_scratch_allocation_count_for_testing(), allocations_after_large);
+    const auto smaller_pixels = renderer.pixels();
+
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(reshaped_same_area_list);
+    EXPECT_EQ(renderer.filter_blur_scratch_allocation_count_for_testing(), allocations_after_large);
+    const auto reshaped_pixels = renderer.pixels();
+
+    SoftwareRenderer fresh_renderer(48, 24);
+    fresh_renderer.clear({255, 255, 255, 255});
+    fresh_renderer.render(smaller_area_list);
+    EXPECT_EQ(smaller_pixels, fresh_renderer.pixels());
+
+    fresh_renderer.clear({255, 255, 255, 255});
+    fresh_renderer.render(reshaped_same_area_list);
+    EXPECT_EQ(reshaped_pixels, fresh_renderer.pixels());
+}
+
 // ============================================================================
 // mask-composite: inline style
 // ============================================================================
@@ -31263,6 +31306,56 @@ TEST_F(PaintTest, DropShadowReusesScratchBuffersForSmallerPassesV2073) {
     fresh_renderer.clear({0, 0, 0, 0});
     fresh_renderer.render(small_list);
     EXPECT_EQ(reused_pixels, fresh_renderer.pixels());
+}
+
+TEST_F(PaintTest, drop_shadow_scratch_reuses_capacity_for_repeated_smaller_passes) {
+    DisplayList large_list;
+    large_list.fill_rect({12, 12, 20, 12}, {30, 120, 220, 255});
+    large_list.apply_drop_shadow({12, 12, 20, 12}, 6.0f, 4.0f, 3.0f, 0xCC000000);
+
+    DisplayList smaller_area_list;
+    smaller_area_list.fill_rect({12, 12, 12, 8}, {30, 120, 220, 255});
+    smaller_area_list.apply_drop_shadow({12, 12, 12, 8}, 6.0f, 4.0f, 3.0f, 0xCC000000);
+
+    DisplayList reshaped_same_area_list;
+    reshaped_same_area_list.fill_rect({12, 12, 8, 12}, {30, 120, 220, 255});
+    reshaped_same_area_list.apply_drop_shadow({12, 12, 8, 12}, 6.0f, 4.0f, 3.0f, 0xCC000000);
+
+    SoftwareRenderer renderer(56, 56);
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(large_list);
+
+    const auto alpha_allocations_after_large =
+        renderer.drop_shadow_alpha_scratch_allocation_count_for_testing();
+    const auto blur_allocations_after_large =
+        renderer.drop_shadow_blur_scratch_allocation_count_for_testing();
+    ASSERT_EQ(alpha_allocations_after_large, 1u);
+    ASSERT_EQ(blur_allocations_after_large, 1u);
+
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(smaller_area_list);
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(),
+              alpha_allocations_after_large);
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(),
+              blur_allocations_after_large);
+    const auto smaller_pixels = renderer.pixels();
+
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(reshaped_same_area_list);
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(),
+              alpha_allocations_after_large);
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(),
+              blur_allocations_after_large);
+    const auto reshaped_pixels = renderer.pixels();
+
+    SoftwareRenderer fresh_renderer(56, 56);
+    fresh_renderer.clear({0, 0, 0, 0});
+    fresh_renderer.render(smaller_area_list);
+    EXPECT_EQ(smaller_pixels, fresh_renderer.pixels());
+
+    fresh_renderer.clear({0, 0, 0, 0});
+    fresh_renderer.render(reshaped_same_area_list);
+    EXPECT_EQ(reshaped_pixels, fresh_renderer.pixels());
 }
 
 // ============================================================================

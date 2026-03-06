@@ -71,12 +71,25 @@ public:
         return scope_boundary_parse_count_;
     }
 
+    size_t conditional_rule_cache_size_for_testing() const {
+        return conditional_rule_cache_.size();
+    }
+
+    size_t conditional_rule_compute_count_for_testing() const {
+        return conditional_rule_compute_count_;
+    }
+
 private:
     struct MediaConditionCacheState {
         float viewport_width = 0.0f;
         float viewport_height = 0.0f;
         bool dark_mode = false;
         bool valid = false;
+    };
+
+    struct ConditionalRuleDecision {
+        bool matches = true;
+        bool depends_on_media = false;
     };
 
     // Evaluate a @media condition string against current viewport
@@ -108,11 +121,13 @@ private:
     mutable MediaConditionCacheState media_condition_cache_state_;
     mutable std::unordered_map<std::string, bool> media_condition_cache_;
     mutable std::unordered_map<std::string, bool> supports_condition_cache_;
+    mutable std::unordered_map<const StyleRule*, ConditionalRuleDecision> conditional_rule_cache_;
     mutable std::unordered_map<std::string, std::vector<Declaration>>
         inline_style_declaration_cache_;
     mutable std::unordered_map<std::string, SelectorList> scope_boundary_selector_cache_;
     mutable size_t inline_style_parse_count_ = 0;
     mutable size_t scope_boundary_parse_count_ = 0;
+    mutable size_t conditional_rule_compute_count_ = 0;
 };
 
 // Set/get the global dark mode flag used by light-dark() color function.

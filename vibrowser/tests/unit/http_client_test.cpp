@@ -21972,6 +21972,45 @@ TEST(HttpCacheTest, DefaultPortAliasesShareOneStoredEntryV2073) {
     cache.clear();
 }
 
+TEST(HttpCacheTest, CacheKeyDefaultPortAliasesStripFragmentsV2079) {
+    const std::string http_implicit =
+        HttpCache::make_cache_key("http://Example.com/docs#intro");
+    const std::string http_explicit =
+        HttpCache::make_cache_key("HTTP://example.com:80/docs#details");
+    const std::string https_implicit =
+        HttpCache::make_cache_key("https://Example.com/secure?q=1#top");
+    const std::string https_explicit =
+        HttpCache::make_cache_key("https://example.com:443/secure?q=1#bottom");
+
+    EXPECT_EQ(http_implicit, "http://example.com/docs");
+    EXPECT_EQ(http_implicit, http_explicit);
+    EXPECT_EQ(https_implicit, "https://example.com/secure?q=1");
+    EXPECT_EQ(https_implicit, https_explicit);
+    EXPECT_NE(http_implicit, https_implicit);
+}
+
+TEST(HttpCacheTest, RemoveDefaultPortAliasEvictsCanonicalEntryV2079) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry entry;
+    entry.url = "https://cache.v2079.test:443/content/article?id=9#summary";
+    entry.body = "canonical-default-port-entry";
+    entry.status = 200;
+    entry.max_age_seconds = 3600;
+    entry.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(entry);
+    ASSERT_TRUE(cache.lookup("https://cache.v2079.test/content/article?id=9#details").has_value());
+
+    cache.remove("https://cache.v2079.test/content/article?id=9#footer");
+
+    EXPECT_FALSE(cache.lookup("https://cache.v2079.test:443/content/article?id=9#summary").has_value());
+    EXPECT_EQ(cache.entry_count(), 0u);
+
+    cache.clear();
+}
+
 TEST(HttpCacheTest, NonDefaultPortsRemainDistinctCacheEntriesV2073) {
     auto& cache = HttpCache::instance();
     cache.clear();

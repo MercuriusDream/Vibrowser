@@ -6394,6 +6394,10 @@ TEST(JSWorker, MessagePumpDeliversQueuedMessages) {
 
     std::this_thread::sleep_for(20ms);
 
+    auto next_turn_result = engine.evaluate("__workerResult");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn_result, "pending");
+
     engine.evaluate("0");
     ASSERT_FALSE(engine.has_error()) << engine.last_error();
 
@@ -6406,6 +6410,8 @@ TEST(JSWorker, MessagePumpDeliversQueuedMessages) {
 }
 
 TEST(JSWorker, MessageDeliveryDoesNotReenterCurrentTurn) {
+    using namespace std::chrono_literals;
+
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
 
@@ -6424,14 +6430,29 @@ TEST(JSWorker, MessageDeliveryDoesNotReenterCurrentTurn) {
     ASSERT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(inline_result, "after-post");
 
-    auto delivered = poll_js_value_until_not(engine, "__workerOrder.join(',')", "after-post");
-    EXPECT_EQ(delivered, "after-post,worker:echo:hello");
+    std::this_thread::sleep_for(20ms);
+
+    auto next_turn_result = engine.evaluate(R"(
+        __workerOrder.push('next-turn');
+        __workerOrder.join(',')
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn_result, "after-post,next-turn");
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "after-post,next-turn,worker:echo:hello");
 
     engine.evaluate("__worker.terminate(); __worker = null;");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
 }
 
 TEST(JSWorker, MicrotasksFlushBeforeQueuedWorkerDelivery) {
+    using namespace std::chrono_literals;
+
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
 
@@ -6451,8 +6472,21 @@ TEST(JSWorker, MicrotasksFlushBeforeQueuedWorkerDelivery) {
     ASSERT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(inline_result, "after-post");
 
-    auto delivered = poll_js_value_until_not(engine, "__workerOrder.join(',')", "after-post,microtask");
-    EXPECT_EQ(delivered, "after-post,microtask,worker:echo:hello");
+    std::this_thread::sleep_for(20ms);
+
+    auto next_turn_result = engine.evaluate(R"(
+        __workerOrder.push('next-turn');
+        __workerOrder.join(',')
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn_result, "after-post,microtask,next-turn");
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "after-post,microtask,next-turn,worker:echo:hello");
 
     engine.evaluate("__worker.terminate(); __worker = null;");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
@@ -6607,6 +6641,10 @@ TEST(JSWorker, MessagePumpDeliversWorkerError) {
     EXPECT_EQ(post_result, "pending");
 
     std::this_thread::sleep_for(20ms);
+
+    auto next_turn_result = engine.evaluate("__workerError");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn_result, "pending");
 
     engine.evaluate("0");
     ASSERT_FALSE(engine.has_error()) << engine.last_error();

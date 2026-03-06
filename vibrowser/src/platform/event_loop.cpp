@@ -18,15 +18,20 @@ void EventLoop::post_task(Task task) {
 
 void EventLoop::post_delayed_task(Task task, std::chrono::milliseconds delay) {
     const auto run_at = Clock::now() + delay;
+    bool should_wake_runner = false;
     {
         std::lock_guard lock(mutex_);
+        should_wake_runner = waiting_for_work_
+            || (waiting_for_delayed_task_ && run_at < delayed_wait_deadline_);
         delayed_tasks_.push(DelayedTask{
             run_at,
             next_delayed_task_sequence_++,
             std::move(task)
         });
     }
-    cv_.notify_one();
+    if (should_wake_runner) {
+        cv_.notify_one();
+    }
 }
 
 void EventLoop::move_ready_delayed_tasks_locked(TimePoint now, std::deque<Task>* ready_tasks) {
@@ -67,16 +72,20 @@ void EventLoop::run() {
         // - The next delayed task to become ready
         // - quit_requested_
         if (!delayed_tasks_.empty()) {
-            auto next_time = delayed_tasks_.top().run_at;
-            cv_.wait_until(lock, next_time, [this, next_time]() {
+            delayed_wait_deadline_ = delayed_tasks_.top().run_at;
+            waiting_for_delayed_task_ = true;
+            cv_.wait_until(lock, delayed_wait_deadline_, [this]() {
                 return !tasks_.empty() || quit_requested_.load()
                     || delayed_tasks_.empty()
-                    || delayed_tasks_.top().run_at != next_time;
+                    || delayed_tasks_.top().run_at < delayed_wait_deadline_;
             });
+            waiting_for_delayed_task_ = false;
         } else {
+            waiting_for_work_ = true;
             cv_.wait(lock, [this]() {
-                return !tasks_.empty() || quit_requested_.load();
+                return !tasks_.empty() || !delayed_tasks_.empty() || quit_requested_.load();
             });
+            waiting_for_work_ = false;
         }
     }
 

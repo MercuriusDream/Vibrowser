@@ -203,12 +203,14 @@ TEST(EventLoopTest, PostTaskWakesUpRunFromBlocking) {
 
 TEST(EventLoopTest, EarlierDelayedTaskWakesRun) {
     EventLoop loop;
-    std::atomic<bool> earlier_task_executed{false};
+    std::atomic<int> execution_order{0};
     std::atomic<long long> elapsed_ms{-1};
     constexpr auto kInitialDelay = 700ms;
     constexpr auto kInsertedDelay = 20ms;
 
-    loop.post_delayed_task([]() {}, kInitialDelay);
+    loop.post_delayed_task([&]() {
+        execution_order.fetch_add(10, std::memory_order_relaxed);
+    }, kInitialDelay);
 
     auto start = std::chrono::steady_clock::now();
     std::thread runner([&loop]() {
@@ -223,13 +225,13 @@ TEST(EventLoopTest, EarlierDelayedTaskWakesRun) {
                              std::chrono::steady_clock::now() - start)
                              .count(),
             std::memory_order_relaxed);
-        earlier_task_executed.store(true, std::memory_order_relaxed);
+        execution_order.fetch_add(1, std::memory_order_relaxed);
         loop.quit();
     }, kInsertedDelay);
 
     runner.join();
 
-    ASSERT_TRUE(earlier_task_executed.load(std::memory_order_relaxed));
+    ASSERT_EQ(execution_order.load(std::memory_order_relaxed), 1);
     EXPECT_GE(elapsed_ms.load(std::memory_order_relaxed), 60);
     EXPECT_LT(elapsed_ms.load(std::memory_order_relaxed), 500);
 }
@@ -273,6 +275,23 @@ TEST(EventLoopTest, RecordsLagForLateDelayedTask) {
     EXPECT_TRUE(executed);
     EXPECT_GE(loop.last_delayed_task_lag(), 40ms);
     EXPECT_LT(loop.last_delayed_task_lag(), 500ms);
+}
+
+TEST(EventLoopTest, SameDeadlineDelayedTasksPreserveFIFOOrder) {
+    EventLoop loop;
+    std::vector<int> order;
+
+    loop.post_delayed_task([&order]() { order.push_back(1); }, 30ms);
+    loop.post_delayed_task([&order]() { order.push_back(2); }, 30ms);
+    loop.post_delayed_task([&order]() { order.push_back(3); }, 30ms);
+
+    std::this_thread::sleep_for(80ms);
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_EQ(order[0], 1);
+    EXPECT_EQ(order[1], 2);
+    EXPECT_EQ(order[2], 3);
 }
 
 // ---------------------------------------------------------------------------
