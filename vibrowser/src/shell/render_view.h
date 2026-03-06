@@ -12,20 +12,25 @@
 // scrollable container bounds, and a copy of the rendered pixels so we
 // can composite the element at the "stuck" position during scroll.
 struct StickyElementInfo {
-    float abs_y;           // absolute Y of the element in page coordinates (pixels)
-    float height;          // border-box height of the element (pixels)
-    float top_offset;      // CSS `top` value in pixels (the stick threshold)
-    float container_top;   // top of the scrollable container (pixels)
-    float container_bottom;// bottom of the scrollable container (pixels)
-    float container_scroll_y; // scroll_top of the sticky container (pixels)
-    float container_x;     // x position of the scroll container in page coordinates (pixels)
-    float container_y;     // y position of the scroll container in page coordinates (pixels)
-    bool is_page_sticky;   // true when relative to viewport (page scroll), false for container-relative sticky
+    float abs_y = 0;           // absolute Y of the element in page coordinates (CSS pixels)
+    float height = 0;          // border-box height of the element (CSS pixels)
+    float top_offset = 0;      // CSS `top` value in CSS pixels
+    float container_top = 0;   // top of the scrollable container (CSS pixels)
+    float container_bottom = 0;// bottom of the scrollable container (CSS pixels)
+    float container_scroll_x = 0; // scroll_left of the sticky container (CSS pixels)
+    float container_scroll_y = 0; // scroll_top of the sticky container (CSS pixels)
+    float container_x = 0;     // x position of the scroll container in page coordinates (CSS pixels)
+    float container_y = 0;     // y position of the scroll container in page coordinates (CSS pixels)
+    bool is_page_sticky = true;   // true when relative to viewport (page scroll), false for container-relative sticky
     // Pixel data for the sticky element's region (RGBA, row-major)
     std::vector<uint8_t> pixels;
-    int pixel_x;           // x position in the rendered buffer
-    int pixel_width;       // width in pixels
-    int pixel_height;      // height in pixels
+    int pixel_x = 0;           // x position in the rendered buffer
+    int pixel_width = 0;       // width in pixels
+    int pixel_height = 0;      // height in pixels
+    float renderer_dpr = 1.0f; // DPR used when this overlay snapshot was captured
+    float logical_x = 0;       // overlay x in CSS pixels
+    float logical_width = 0;   // overlay width in CSS pixels
+    float logical_height = 0;  // overlay height in CSS pixels
 };
 
 // Info about a position:fixed element extracted after layout + render.
@@ -33,13 +38,16 @@ struct StickyElementInfo {
 // move when the page scrolls. We extract their rendered pixels and
 // composite them at their viewport-relative position during drawRect.
 struct FixedElementInfo {
-    // Viewport-relative position in renderer pixel coords
-    float viewport_x;      // X position in viewport (renderer pixels)
-    float viewport_y;      // Y position in viewport (renderer pixels)
+    // Viewport-relative position in CSS/page coordinates.
+    float viewport_x = 0;      // X position in viewport (CSS pixels)
+    float viewport_y = 0;      // Y position in viewport (CSS pixels)
     // Pixel data for the fixed element's region (RGBA, row-major)
     std::vector<uint8_t> pixels;
-    int pixel_width;       // width in pixels
-    int pixel_height;      // height in pixels
+    int pixel_width = 0;       // width in pixels
+    int pixel_height = 0;      // height in pixels
+    float renderer_dpr = 1.0f; // DPR used when this overlay snapshot was captured
+    float logical_width = 0;   // overlay width in CSS pixels
+    float logical_height = 0;  // overlay height in CSS pixels
 };
 
 // Pixel-based CSS transition: crossfade between old and new rendered state.
@@ -74,7 +82,7 @@ struct PixelTransition {
 - (void)renderView:(RenderView*)view didToggleDetails:(int)detailsId;
 - (void)renderView:(RenderView*)view didSelectOption:(NSString*)optionText
            atIndex:(int)index forSelectNamed:(NSString*)name;
-// Dispatches a JS "click" event to the DOM element at the given pixel coordinates.
+// Dispatches a JS "click" event to the DOM element at the given CSS/page coordinates.
 // Returns YES if event.preventDefault() was called by a JS handler.
 - (BOOL)renderView:(RenderView*)view didClickElementAtX:(float)x y:(float)y;
 // Called when the user finishes editing an inline text input overlay.
@@ -82,7 +90,7 @@ struct PixelTransition {
 - (void)renderView:(RenderView*)view didFinishEditingInputWithValue:(NSString*)value;
 // Called when the user types each character in the overlay (for live "input" events).
 - (void)renderView:(RenderView*)view didChangeInputValue:(NSString*)value;
-// Called when the mouse moves, for hover state management.
+// Called when the mouse moves, for hover state management, in CSS/page coordinates.
 - (void)renderView:(RenderView*)view didMoveMouseAtX:(float)x y:(float)y;
 // Dispatches a JS keyboard event (keydown/keyup) to the focused DOM element.
 // Returns YES if event.preventDefault() was called by a JS handler.
@@ -96,10 +104,10 @@ struct PixelTransition {
        ctrlKey:(BOOL)ctrlKey
        metaKey:(BOOL)metaKey
       shiftKey:(BOOL)shiftKey;
-// Dispatches a JS "contextmenu" event to the DOM element at the given pixel coordinates.
+// Dispatches a JS "contextmenu" event to the DOM element at the given CSS/page coordinates.
 // Returns YES if event.preventDefault() was called by a JS handler.
 - (BOOL)renderView:(RenderView*)view didContextMenuAtX:(float)x y:(float)y;
-// Dispatches a JS "dblclick" event to the DOM element at the given pixel coordinates.
+// Dispatches a JS "dblclick" event to the DOM element at the given CSS/page coordinates.
 // Returns YES if event.preventDefault() was called by a JS handler.
 - (BOOL)renderView:(RenderView*)view didDoubleClickAtX:(float)x y:(float)y;
 // Called when wheel/trackpad scrolling updates the view scroll position.
@@ -118,6 +126,7 @@ struct PixelTransition {
 @interface RenderView : NSView
 
 @property (nonatomic) CGFloat scrollOffset;
+@property (nonatomic) CGFloat scrollOffsetX;
 @property (nonatomic) CGFloat contentHeight;
 @property (nonatomic) CGFloat pageScale;
 @property (nonatomic, weak) id<RenderViewDelegate> delegate;
@@ -145,6 +154,11 @@ struct PixelTransition {
 - (void)updateSelectClickRegions:(const std::vector<clever::paint::SelectClickRegion>&)regions;
 - (void)clearContent;
 - (NSString*)selectedText;
+- (CGFloat)rendererScale;
+- (CGFloat)viewOffsetForDocumentX:(CGFloat)documentX;
+- (CGFloat)documentXForViewOffset:(CGFloat)viewOffset;
+- (CGFloat)viewOffsetForDocumentY:(CGFloat)documentY;
+- (CGFloat)documentYForViewOffset:(CGFloat)viewOffset;
 - (CGFloat)viewOffsetForRendererY:(CGFloat)rendererY;
 - (CGFloat)rendererYForViewOffset:(CGFloat)viewOffset;
 

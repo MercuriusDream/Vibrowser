@@ -23,7 +23,8 @@ struct Cookie {
 class CookieJar {
 public:
     // Parse and store cookies from a Set-Cookie header value
-    void set_from_header(const std::string& header_value, const std::string& request_domain);
+    void set_from_header(const std::string& header_value, const std::string& request_domain,
+                         const std::string& request_path = "/");
 
     // Get a Cookie header value for a given URL
     // is_same_site: true if the request is to the same site as the page origin

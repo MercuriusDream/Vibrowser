@@ -4,7 +4,6 @@ extern "C" {
 #include <quickjs.h>
 }
 
-#include <chrono>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -34,6 +33,10 @@ struct WorkerState {
 // Static map of context → WorkerState (avoids overwriting JS_SetContextOpaque)
 static std::unordered_map<JSContext*, std::unique_ptr<WorkerState>> g_worker_states;
 static std::mutex g_worker_states_mutex;
+
+static std::shared_ptr<WorkerThread>* get_worker_handle(JSValueConst value) {
+    return static_cast<std::shared_ptr<WorkerThread>*>(JS_GetOpaque(value, worker_class_id));
+}
 
 // Get or create WorkerState for a context
 WorkerState* get_worker_state(JSContext* ctx) {
@@ -354,21 +357,21 @@ static JSValue message_event_constructor(JSContext* ctx, JSValueConst /*new_targ
 // =========================================================================
 
 static void worker_finalizer(JSRuntime* /*rt*/, JSValue val) {
-    WorkerThread* worker = static_cast<WorkerThread*>(JS_GetOpaque(val, worker_class_id));
-    if (worker) {
-        worker->terminate();
+    auto* worker_handle = get_worker_handle(val);
+    if (worker_handle) {
+        if (*worker_handle) {
+            (*worker_handle)->terminate();
+        }
         // Remove from global state map to release JS references
         std::lock_guard<std::mutex> lock(g_worker_states_mutex);
         for (auto& [ctx, state] : g_worker_states) {
-            auto it = state->workers.find(worker);
+            auto it = state->workers.find(worker_handle->get());
             if (it != state->workers.end()) {
-                if (!JS_IsUndefined(it->second.js_object)) {
-                    JS_FreeValue(ctx, it->second.js_object);
-                }
                 state->workers.erase(it);
                 break;
             }
         }
+        delete worker_handle;
     }
 }
 
@@ -377,10 +380,11 @@ static void worker_finalizer(JSRuntime* /*rt*/, JSValue val) {
 // =========================================================================
 
 static JSValue worker_post_message(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
-    WorkerThread* worker = static_cast<WorkerThread*>(JS_GetOpaque(this_val, worker_class_id));
-    if (!worker) {
+    auto* worker_handle = get_worker_handle(this_val);
+    if (!worker_handle || !*worker_handle) {
         return JS_ThrowTypeError(ctx, "Invalid worker object");
     }
+    WorkerThread* worker = worker_handle->get();
     if (worker->is_terminated()) {
         return JS_UNDEFINED;
     }
@@ -400,7 +404,7 @@ static JSValue worker_post_message(JSContext* ctx, JSValueConst this_val, int ar
     }
 
     // Post message to worker
-    worker->post_message_to_main(json_data, ports_json);
+    worker->post_message_to_worker(json_data, ports_json);
 
     return JS_UNDEFINED;
 }
@@ -410,10 +414,11 @@ static JSValue worker_post_message(JSContext* ctx, JSValueConst this_val, int ar
 // =========================================================================
 
 static JSValue worker_terminate(JSContext* ctx, JSValueConst this_val, int /*argc*/, JSValueConst* /*argv*/) {
-    WorkerThread* worker = static_cast<WorkerThread*>(JS_GetOpaque(this_val, worker_class_id));
-    if (!worker) {
+    auto* worker_handle = get_worker_handle(this_val);
+    if (!worker_handle || !*worker_handle) {
         return JS_ThrowTypeError(ctx, "Invalid worker object");
     }
+    WorkerThread* worker = worker_handle->get();
     if (worker->is_terminated()) {
         return JS_UNDEFINED;
     }
@@ -443,7 +448,16 @@ static JSValue worker_constructor(JSContext* ctx, JSValueConst /*new_target*/, i
     auto worker = std::make_shared<WorkerThread>(url);
 
     // Get module fetcher from context (placeholder for now)
-    auto module_fetcher = [](const std::string& /*url*/) -> std::string {
+    auto module_fetcher = [](const std::string& url) -> std::string {
+        if (url.starts_with("__inline:")) {
+            return url.substr(9);
+        }
+        if (url.starts_with("data:")) {
+            auto comma_pos = url.find(',');
+            if (comma_pos != std::string::npos) {
+                return url.substr(comma_pos + 1);
+            }
+        }
         return "";
     };
 
@@ -455,8 +469,9 @@ static JSValue worker_constructor(JSContext* ctx, JSValueConst /*new_target*/, i
         return JS_EXCEPTION;
     }
 
-    WorkerThread* worker_ptr = worker.get();
-    JS_SetOpaque(worker_obj, worker_ptr);
+    auto* worker_handle = new std::shared_ptr<WorkerThread>(worker);
+    WorkerThread* worker_ptr = worker_handle->get();
+    JS_SetOpaque(worker_obj, worker_handle);
 
     // Store the worker in the context state
     WorkerState* state = get_worker_state(ctx);
@@ -504,7 +519,7 @@ static JSValue worker_self_post_message(JSContext* ctx, JSValueConst /*this_val*
         return JS_EXCEPTION;
     }
 
-    worker->post_message_to_worker(json_data, ports_json);
+    worker->post_message_to_main(json_data, ports_json);
 
     return JS_UNDEFINED;
 }
@@ -721,39 +736,37 @@ void WorkerThread::worker_main() {
 
     // Message loop
     while (!should_terminate_) {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
-        queue_cv_.wait_for(lock, std::chrono::milliseconds(100),
-                          [this]() { return !main_to_worker_.empty() || should_terminate_; });
+        WorkerMessage msg;
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            queue_cv_.wait(lock, [this]() { return !main_to_worker_.empty() || should_terminate_; });
 
-        if (should_terminate_) {
-            break;
-        }
-
-        if (!main_to_worker_.empty()) {
-            WorkerMessage msg = main_to_worker_.front();
-            main_to_worker_.pop();
-            lock.unlock();
-
-            JSValue data = parse_message_data(worker_ctx_, msg.data);
-            JSValue event_obj = make_message_event(worker_ctx_, "message", data, "", self_obj, msg.ports, false, false);
-            JSValue onmessage = JS_GetPropertyStr(worker_ctx_, self_obj, "onmessage");
-            if (JS_IsFunction(worker_ctx_, onmessage)) {
-                JSValue call_result = JS_Call(worker_ctx_, onmessage, self_obj, 1, &event_obj);
-                if (JS_IsException(call_result)) {
-                    WorkerMessage error_msg = worker_error_from_exception(worker_ctx_, "Uncaught exception in worker");
-                    if (error_msg.filename.empty()) {
-                        error_msg.filename = script_url_;
-                    }
-                    error_msg.ports = "[]";
-                    post_error_to_main(error_msg.data, error_msg.filename, error_msg.lineno, error_msg.name);
-                    dispatch_worker_error(worker_ctx_, self_obj, error_msg);
-                }
-                JS_FreeValue(worker_ctx_, call_result);
+            if (should_terminate_) {
+                break;
             }
-            JS_FreeValue(worker_ctx_, onmessage);
-            JS_FreeValue(worker_ctx_, event_obj);
-            JS_FreeValue(worker_ctx_, data);
+
+            msg = main_to_worker_.front();
+            main_to_worker_.pop();
         }
+
+        JSValue data = parse_message_data(worker_ctx_, msg.data);
+        JSValue event_obj = make_message_event(worker_ctx_, "message", data, "", self_obj, msg.ports, false, false);
+        JSValue onmessage = JS_GetPropertyStr(worker_ctx_, self_obj, "onmessage");
+        if (JS_IsFunction(worker_ctx_, onmessage)) {
+            JSValue call_result = JS_Call(worker_ctx_, onmessage, self_obj, 1, &event_obj);
+            if (JS_IsException(call_result)) {
+                WorkerMessage error_msg = worker_error_from_exception(worker_ctx_, "Uncaught exception in worker");
+                if (error_msg.filename.empty()) {
+                    error_msg.filename = script_url_;
+                }
+                error_msg.ports = "[]";
+                post_error_to_main(error_msg.data, error_msg.filename, error_msg.lineno, error_msg.name);
+                dispatch_worker_error(worker_ctx_, self_obj, error_msg);
+            }
+            JS_FreeValue(worker_ctx_, call_result);
+        }
+        JS_FreeValue(worker_ctx_, onmessage);
+        JS_FreeValue(worker_ctx_, event_obj);
     }
 
     std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -863,7 +876,6 @@ void process_worker_messages(JSContext* ctx) {
             }
             JS_FreeValue(ctx, onmessage);
             JS_FreeValue(ctx, event_obj);
-            JS_FreeValue(ctx, data);
         }
 
         // Clean up finished workers

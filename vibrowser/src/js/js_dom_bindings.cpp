@@ -107,6 +107,12 @@ struct DOMState {
                        std::unordered_map<std::string, std::vector<EventListenerEntry>>> listeners;
     // The context that owns this state (for freeing listener JSValues)
     JSContext* ctx = nullptr;
+    // Reusable event helper functions installed once per context.
+    JSValue event_prevent_default_fn = JS_UNDEFINED;
+    JSValue event_stop_propagation_fn = JS_UNDEFINED;
+    JSValue event_stop_immediate_propagation_fn = JS_UNDEFINED;
+    JSValue event_composed_path_fn = JS_UNDEFINED;
+    JSValue event_get_modifier_state_fn = JS_UNDEFINED;
     // document.cookie storage: name -> value
     std::map<std::string, std::string> cookies;
 
@@ -277,6 +283,8 @@ struct DOMState {
         std::vector<JSValue> mutation_records;  // array of MutationRecord objects
     };
     std::vector<DOMState::PendingMutation> pending_mutations;
+    bool mutation_observer_delivery_scheduled = false;
+    bool mutation_observer_delivery_running = false;
 
     int viewport_width = 800, viewport_height = 600;
 
@@ -333,9 +341,10 @@ static void notify_mutation_observers(JSContext* ctx,
                                       clever::html::SimpleNode* previous_sibling,
                                       clever::html::SimpleNode* next_sibling,
                                       const std::string& attr_name = "",
-                                      const std::string& old_value = "");
+                                      const std::string* old_value = nullptr);
 // Forward declaration for flushing queued MutationObserver microtasks (defined later)
 static void flush_mutation_observers(JSContext* ctx, DOMState* state);
+static void schedule_mutation_observer_delivery(JSContext* ctx, DOMState* state);
 
 static void js_url_finalizer(JSRuntime* /*rt*/, JSValue val) {
     auto* state = static_cast<URLState*>(JS_GetOpaque(val, url_class_id));
@@ -620,24 +629,29 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
     const char* str = JS_ToCString(ctx, argv[0]);
     if (str) {
         auto* state = get_dom_state(ctx);
+        const bool is_text_node = (node->type == clever::html::SimpleNode::Text);
 
         // Collect removed children for childList mutation records
         std::vector<clever::html::SimpleNode*> removed_children;
-        for (auto& child : node->children) {
-            removed_children.push_back(child.get());
+        if (!is_text_node) {
+            for (auto& child : node->children) {
+                removed_children.push_back(child.get());
+            }
         }
 
-        // For text nodes being modified directly (characterData mutation)
-        bool is_text_node = (node->type == clever::html::SimpleNode::Text);
         std::string old_data = is_text_node ? node->data : "";
-
-        node->children.clear();
-        auto text_node = std::make_unique<clever::html::SimpleNode>();
-        text_node->type = clever::html::SimpleNode::Text;
-        text_node->data = str;
-        text_node->parent = node;
-        clever::html::SimpleNode* text_raw = text_node.get();
-        node->children.push_back(std::move(text_node));
+        clever::html::SimpleNode* text_raw = nullptr;
+        if (is_text_node) {
+            node->data = str;
+        } else {
+            node->children.clear();
+            auto text_node = std::make_unique<clever::html::SimpleNode>();
+            text_node->type = clever::html::SimpleNode::Text;
+            text_node->data = str;
+            text_node->parent = node;
+            text_raw = text_node.get();
+            node->children.push_back(std::move(text_node));
+        }
         JS_FreeCString(ctx, str);
 
         if (state) {
@@ -647,7 +661,7 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
                 // Text node: fire characterData mutation
                 std::vector<clever::html::SimpleNode*> empty;
                 notify_mutation_observers(ctx, state, "characterData", node,
-                                          empty, empty, nullptr, nullptr, "", old_data);
+                                          empty, empty, nullptr, nullptr, "", &old_data);
             } else {
                 // Element node: fire childList for removed + added children
                 if (!removed_children.empty() || text_raw) {
@@ -657,7 +671,6 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
                 }
             }
 
-            flush_mutation_observers(ctx, state);
         }
     }
     return JS_UNDEFINED;
@@ -783,7 +796,6 @@ static JSValue js_element_set_inner_text(JSContext* ctx, JSValueConst this_val,
             added.push_back(child.get());
         notify_mutation_observers(ctx, state, "childList", node,
                                   added, removed_children, nullptr, nullptr);
-        flush_mutation_observers(ctx, state);
     }
     return JS_UNDEFINED;
 }
@@ -850,7 +862,6 @@ static JSValue js_element_set_inner_html(JSContext* ctx, JSValueConst this_val,
                 notify_mutation_observers(ctx, state, "childList", node,
                                           added_children, removed_children,
                                           nullptr, nullptr);
-                flush_mutation_observers(ctx, state);
             }
         }
     }
@@ -2246,13 +2257,16 @@ static JSValue js_element_set_attribute(JSContext* ctx, JSValueConst this_val,
         auto* state = get_dom_state(ctx);
 
         // Capture old value for mutation record
-        std::string old_value;
+        const std::string* old_value = nullptr;
+        std::string old_value_storage;
         if (state) {
             for (auto& entry : state->mutation_observers) {
                 if (entry.record_attribute_old_value) {
                     auto it = entry.old_attribute_values[node].find(name);
                     if (it != entry.old_attribute_values[node].end()) {
-                        old_value = it->second;
+                        old_value_storage = it->second;
+                        old_value = &old_value_storage;
+                        break;
                     }
                 }
             }
@@ -2274,7 +2288,6 @@ static JSValue js_element_set_attribute(JSContext* ctx, JSValueConst this_val,
                 }
             }
 
-            flush_mutation_observers(ctx, state);
         }
     }
     if (name) JS_FreeCString(ctx, name);
@@ -2327,7 +2340,6 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
                     std::vector<clever::html::SimpleNode*> empty;
                     notify_mutation_observers(ctx, state, "childList", parent_node,
                                             added_nodes, empty, prev_sibling, next_sibling);
-                    flush_mutation_observers(ctx, state);
                 }
 
                 return wrap_element(ctx, child_node);
@@ -2358,8 +2370,6 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
             std::vector<clever::html::SimpleNode*> empty;
             notify_mutation_observers(ctx, state, "childList", parent_node,
                                     added, empty, prev_sibling, next_sibling);
-            flush_mutation_observers(ctx, state);
-
             return wrap_element(ctx, child_node);
         }
     }
@@ -2389,8 +2399,6 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
                 std::vector<clever::html::SimpleNode*> empty;
                 notify_mutation_observers(ctx, state, "childList", parent_node,
                                         added, empty, prev_sibling, next_sibling);
-                flush_mutation_observers(ctx, state);
-
                 return wrap_element(ctx, child_node);
             }
         }
@@ -2437,8 +2445,6 @@ static JSValue js_element_remove_child(JSContext* ctx, JSValueConst this_val,
             std::vector<clever::html::SimpleNode*> empty;
             notify_mutation_observers(ctx, state, "childList", parent_node,
                                     empty, removed, prev_sibling, next_sibling);
-            flush_mutation_observers(ctx, state);
-
             return wrap_element(ctx, child_node);
         }
     }
@@ -2693,13 +2699,15 @@ static JSValue js_element_remove_attribute(JSContext* ctx,
             std::string old_attr_value = it->value;
 
             // Also look up tracked old value from observers (may differ if attr was changed)
-            std::string final_old = old_attr_value;
+            const std::string* final_old = &old_attr_value;
+            std::string tracked_old_storage;
             if (state) {
                 for (auto& entry : state->mutation_observers) {
                     if (entry.record_attribute_old_value) {
                         auto map_it = entry.old_attribute_values[node].find(name_str);
                         if (map_it != entry.old_attribute_values[node].end()) {
-                            final_old = map_it->second;
+                            tracked_old_storage = map_it->second;
+                            final_old = &tracked_old_storage;
                             break;
                         }
                     }
@@ -2716,7 +2724,12 @@ static JSValue js_element_remove_attribute(JSContext* ctx,
                 notify_mutation_observers(ctx, state, "attributes", node,
                                           empty, empty, nullptr, nullptr,
                                           name_str, final_old);
-                flush_mutation_observers(ctx, state);
+
+                for (auto& entry : state->mutation_observers) {
+                    if (entry.record_attribute_old_value) {
+                        entry.old_attribute_values[node].erase(name_str);
+                    }
+                }
             }
             break;
         }
@@ -5152,8 +5165,6 @@ static JSValue js_element_insert_before(JSContext* ctx, JSValueConst this_val,
         std::vector<clever::html::SimpleNode*> empty;
         notify_mutation_observers(ctx, state, "childList", parent_node,
                                   added, empty, prev_sib, nullptr);
-        flush_mutation_observers(ctx, state);
-
         return wrap_element(ctx, new_node);
     }
 
@@ -5199,8 +5210,6 @@ static JSValue js_element_insert_before(JSContext* ctx, JSValueConst this_val,
     std::vector<clever::html::SimpleNode*> empty;
     notify_mutation_observers(ctx, state, "childList", parent_node,
                               added, empty, prev_sibling, next_sibling);
-    flush_mutation_observers(ctx, state);
-
     return wrap_element(ctx, new_node);
 }
 
@@ -5264,8 +5273,6 @@ static JSValue js_element_replace_child(JSContext* ctx, JSValueConst this_val,
     std::vector<clever::html::SimpleNode*> removed = { old_child };
     notify_mutation_observers(ctx, state, "childList", parent_node,
                               added, removed, prev_sibling, next_sibling);
-    flush_mutation_observers(ctx, state);
-
     // Return the old child (per DOM spec)
     return wrap_element(ctx, old_child);
 }
@@ -5585,7 +5592,8 @@ static JSValue create_mutation_record(JSContext* ctx,
                                       clever::html::SimpleNode* previous_sibling,
                                       clever::html::SimpleNode* next_sibling,
                                       const std::string& attr_name = "",
-                                      const std::string& old_value = "") {
+                                      bool include_old_value = false,
+                                      const std::string* old_value = nullptr) {
     JSValue record = JS_NewObject(ctx);
 
     JS_SetPropertyStr(ctx, record, "type", JS_NewString(ctx, type.c_str()));
@@ -5619,7 +5627,16 @@ static JSValue create_mutation_record(JSContext* ctx,
                          JS_NewString(ctx, attr_name.c_str()));
         JS_SetPropertyStr(ctx, record, "attributeNamespace", JS_NULL);
         JS_SetPropertyStr(ctx, record, "oldValue",
-                         !old_value.empty() ? JS_NewString(ctx, old_value.c_str()) : JS_NULL);
+                         include_old_value
+                             ? (old_value ? JS_NewString(ctx, old_value->c_str()) : JS_NULL)
+                             : JS_NULL);
+    } else if (type == "characterData") {
+        JS_SetPropertyStr(ctx, record, "attributeName", JS_NULL);
+        JS_SetPropertyStr(ctx, record, "attributeNamespace", JS_NULL);
+        JS_SetPropertyStr(ctx, record, "oldValue",
+                         include_old_value
+                             ? (old_value ? JS_NewString(ctx, old_value->c_str()) : JS_NULL)
+                             : JS_NULL);
     } else {
         JS_SetPropertyStr(ctx, record, "attributeName", JS_NULL);
         JS_SetPropertyStr(ctx, record, "attributeNamespace", JS_NULL);
@@ -5627,6 +5644,26 @@ static JSValue create_mutation_record(JSContext* ctx,
     }
 
     return record;
+}
+
+static JSValue mutation_observer_delivery_job(JSContext* ctx,
+                                              int /*argc*/,
+                                              JSValueConst* /*argv*/) {
+    auto* state = get_dom_state(ctx);
+    flush_mutation_observers(ctx, state);
+    return JS_UNDEFINED;
+}
+
+static void schedule_mutation_observer_delivery(JSContext* ctx, DOMState* state) {
+    if (!state || state->pending_mutations.empty() ||
+        state->mutation_observer_delivery_scheduled) {
+        return;
+    }
+    state->mutation_observer_delivery_scheduled = true;
+    if (JS_EnqueueJob(ctx, mutation_observer_delivery_job, 0, nullptr) < 0) {
+        state->mutation_observer_delivery_scheduled = false;
+        flush_mutation_observers(ctx, state);
+    }
 }
 
 // Helper: notify all mutation observers of a mutation
@@ -5639,8 +5676,10 @@ static void notify_mutation_observers(JSContext* ctx,
                                       clever::html::SimpleNode* previous_sibling,
                                       clever::html::SimpleNode* next_sibling,
                                       const std::string& attr_name,
-                                      const std::string& old_value) {
+                                      const std::string* old_value) {
     if (!state || !target) return;
+
+    bool queued_record = false;
 
     for (auto& entry : state->mutation_observers) {
         bool should_notify = false;
@@ -5683,18 +5722,37 @@ static void notify_mutation_observers(JSContext* ctx,
         if (!matches) continue;
 
         // Create mutation record
+        bool include_old_value = false;
+        if (type == "attributes") {
+            include_old_value = entry.record_attribute_old_value;
+        } else if (type == "characterData") {
+            include_old_value = entry.record_character_data_old_value;
+        }
+
         JSValue record = create_mutation_record(ctx, type, target,
                                               added_nodes, removed_nodes,
                                               previous_sibling, next_sibling,
-                                              attr_name, old_value);
+                                              attr_name, include_old_value, old_value);
+        queued_record = true;
 
-        // Queue for async delivery
-        DOMState::PendingMutation pm;
-        pm.observer_obj = JS_DupValue(ctx, entry.observer_obj);
-        pm.callback = JS_DupValue(ctx, entry.callback);
-        pm.mutation_records.push_back(record);
-        state->pending_mutations.push_back(std::move(pm));
+        bool appended_to_pending_batch = false;
+        for (auto& pending : state->pending_mutations) {
+            if (!JS_StrictEq(ctx, pending.observer_obj, entry.observer_obj)) continue;
+            pending.mutation_records.push_back(record);
+            appended_to_pending_batch = true;
+            break;
+        }
+
+        if (!appended_to_pending_batch) {
+            DOMState::PendingMutation pm;
+            pm.observer_obj = JS_DupValue(ctx, entry.observer_obj);
+            pm.callback = JS_DupValue(ctx, entry.callback);
+            pm.mutation_records.push_back(record);
+            state->pending_mutations.push_back(std::move(pm));
+        }
     }
+
+    if (queued_record) schedule_mutation_observer_delivery(ctx, state);
 }
 
 // Helper: flush all pending mutation callbacks.
@@ -5702,40 +5760,33 @@ static void notify_mutation_observers(JSContext* ctx,
 // queued and delivered in subsequent rounds rather than causing infinite recursion.
 static void flush_mutation_observers(JSContext* ctx, DOMState* state) {
     if (!state) return;
+    if (state->mutation_observer_delivery_running) return;
 
-    // Re-entrancy guard: if already flushing, callback-triggered mutations
-    // will be picked up by the outer flush loop's next iteration.
-    static thread_local int flush_depth = 0;
-    if (flush_depth > 0) return;
+    state->mutation_observer_delivery_scheduled = false;
+    state->mutation_observer_delivery_running = true;
 
-    flush_depth++;
-    // Up to 8 rounds to handle cascaded mutations from callbacks
-    for (int round = 0; round < 8 && !state->pending_mutations.empty(); ++round) {
-        // Snapshot and clear the queue so callback-triggered mutations get queued
-        // separately and processed in the next iteration of this loop.
-        auto batch = std::move(state->pending_mutations);
-        state->pending_mutations.clear();
+    auto batch = std::move(state->pending_mutations);
+    state->pending_mutations.clear();
 
-        for (auto& pm : batch) {
-            // Create array of mutation records for this callback batch
-            JSValue records_arr = JS_NewArray(ctx);
-            for (size_t i = 0; i < pm.mutation_records.size(); ++i) {
-                JS_SetPropertyUint32(ctx, records_arr, static_cast<uint32_t>(i),
-                                   pm.mutation_records[i]);
-            }
-
-            // Call the callback with (records, observer)
-            JSValue args[2] = { records_arr, pm.observer_obj };
-            JSValue ret = JS_Call(ctx, pm.callback, JS_UNDEFINED, 2, args);
-            if (JS_IsException(ret)) {
-                JS_FreeValue(ctx, ret);
-            }
-            JS_FreeValue(ctx, args[0]);
-            JS_FreeValue(ctx, pm.observer_obj);
-            JS_FreeValue(ctx, pm.callback);
+    for (auto& pm : batch) {
+        JSValue records_arr = JS_NewArray(ctx);
+        for (size_t i = 0; i < pm.mutation_records.size(); ++i) {
+            JS_SetPropertyUint32(ctx, records_arr, static_cast<uint32_t>(i),
+                                 pm.mutation_records[i]);
         }
+
+        JSValue args[2] = { records_arr, pm.observer_obj };
+        JSValue ret = JS_Call(ctx, pm.callback, JS_UNDEFINED, 2, args);
+        if (JS_IsException(ret)) {
+            JS_FreeValue(ctx, ret);
+        }
+        JS_FreeValue(ctx, args[0]);
+        JS_FreeValue(ctx, pm.observer_obj);
+        JS_FreeValue(ctx, pm.callback);
     }
-    flush_depth--;
+
+    state->mutation_observer_delivery_running = false;
+    if (!state->pending_mutations.empty()) schedule_mutation_observer_delivery(ctx, state);
 }
 
 static void js_mutation_observer_finalizer(JSRuntime* rt, JSValue val) {
@@ -5884,6 +5935,21 @@ static JSValue js_mutation_observer_disconnect(JSContext* ctx,
             state->mutation_observers.erase(it);
             break;
         }
+    }
+
+    auto pending_it = state->pending_mutations.begin();
+    while (pending_it != state->pending_mutations.end()) {
+        if (!JS_StrictEq(ctx, pending_it->observer_obj, this_val)) {
+            ++pending_it;
+            continue;
+        }
+
+        for (auto& record : pending_it->mutation_records) {
+            JS_FreeValue(ctx, record);
+        }
+        JS_FreeValue(ctx, pending_it->observer_obj);
+        JS_FreeValue(ctx, pending_it->callback);
+        pending_it = state->pending_mutations.erase(pending_it);
     }
 
     return JS_UNDEFINED;
@@ -17619,6 +17685,7 @@ void install_dom_bindings(JSContext* ctx,
         var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
         if (tag !== 'dialog') return;
         if (arguments.length) this.__dialogReturnValue = (returnValue === undefined || returnValue === null) ? '' : String(returnValue);
+        if (!this.hasAttribute('open')) return undefined;
         this.removeAttribute('open');
         // Dispatch 'close' event (non-bubbling, non-cancelable)
         try {
@@ -23030,6 +23097,115 @@ void set_pending_scroll(JSContext* ctx, double scroll_x, double scroll_y) {
 // Event dispatch
 // =========================================================================
 
+static JSValue js_event_prevent_default(JSContext* ctx, JSValueConst this_val,
+                                        int /*argc*/, JSValueConst* /*argv*/) {
+    JS_SetPropertyStr(ctx, this_val, "defaultPrevented", JS_TRUE);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_event_stop_propagation(JSContext* ctx, JSValueConst this_val,
+                                         int /*argc*/, JSValueConst* /*argv*/) {
+    JS_SetPropertyStr(ctx, this_val, "__stopped", JS_TRUE);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_event_stop_immediate_propagation(JSContext* ctx, JSValueConst this_val,
+                                                   int /*argc*/, JSValueConst* /*argv*/) {
+    JS_SetPropertyStr(ctx, this_val, "__stopped", JS_TRUE);
+    JS_SetPropertyStr(ctx, this_val, "__immediate_stopped", JS_TRUE);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_event_composed_path(JSContext* ctx, JSValueConst this_val,
+                                      int /*argc*/, JSValueConst* /*argv*/) {
+    JSValue path = JS_GetPropertyStr(ctx, this_val, "__composedPathArray");
+    if (JS_IsUndefined(path) || JS_IsNull(path) || JS_IsException(path)) {
+        JS_FreeValue(ctx, path);
+        return JS_NewArray(ctx);
+    }
+
+    JSValue length_val = JS_GetPropertyStr(ctx, path, "length");
+    uint32_t length = 0;
+    if (!JS_IsException(length_val)) {
+        JS_ToUint32(ctx, &length, length_val);
+    }
+    JS_FreeValue(ctx, length_val);
+
+    JSValue result = JS_NewArray(ctx);
+    for (uint32_t i = 0; i < length; ++i) {
+        JS_SetPropertyUint32(ctx, result, i, JS_GetPropertyUint32(ctx, path, i));
+    }
+
+    JS_FreeValue(ctx, path);
+    return result;
+}
+
+static JSValue js_event_get_modifier_state(JSContext* ctx, JSValueConst this_val,
+                                           int argc, JSValueConst* argv) {
+    if (argc < 1) {
+        return JS_FALSE;
+    }
+
+    const char* key = JS_ToCString(ctx, argv[0]);
+    if (!key) {
+        return JS_FALSE;
+    }
+
+    const char* property_name = nullptr;
+    if (std::strcmp(key, "Control") == 0) {
+        property_name = "ctrlKey";
+    } else if (std::strcmp(key, "Shift") == 0) {
+        property_name = "shiftKey";
+    } else if (std::strcmp(key, "Alt") == 0) {
+        property_name = "altKey";
+    } else if (std::strcmp(key, "Meta") == 0) {
+        property_name = "metaKey";
+    }
+    JS_FreeCString(ctx, key);
+
+    if (!property_name) {
+        return JS_FALSE;
+    }
+
+    return JS_GetPropertyStr(ctx, this_val, property_name);
+}
+
+static void ensure_event_helper_functions(JSContext* ctx, DOMState* state) {
+    if (!state) return;
+    if (!JS_IsUndefined(state->event_prevent_default_fn)) return;
+
+    state->event_prevent_default_fn =
+        JS_NewCFunction(ctx, js_event_prevent_default, "preventDefault", 0);
+    state->event_stop_propagation_fn =
+        JS_NewCFunction(ctx, js_event_stop_propagation, "stopPropagation", 0);
+    state->event_stop_immediate_propagation_fn =
+        JS_NewCFunction(ctx, js_event_stop_immediate_propagation, "stopImmediatePropagation", 0);
+    state->event_composed_path_fn =
+        JS_NewCFunction(ctx, js_event_composed_path, "composedPath", 0);
+    state->event_get_modifier_state_fn =
+        JS_NewCFunction(ctx, js_event_get_modifier_state, "getModifierState", 1);
+}
+
+static void install_event_methods(JSContext* ctx, JSValue event_obj,
+                                  bool include_modifier_state) {
+    auto* state = get_dom_state(ctx);
+    if (!state) return;
+
+    ensure_event_helper_functions(ctx, state);
+    JS_SetPropertyStr(ctx, event_obj, "preventDefault",
+        JS_DupValue(ctx, state->event_prevent_default_fn));
+    JS_SetPropertyStr(ctx, event_obj, "stopPropagation",
+        JS_DupValue(ctx, state->event_stop_propagation_fn));
+    JS_SetPropertyStr(ctx, event_obj, "stopImmediatePropagation",
+        JS_DupValue(ctx, state->event_stop_immediate_propagation_fn));
+    JS_SetPropertyStr(ctx, event_obj, "composedPath",
+        JS_DupValue(ctx, state->event_composed_path_fn));
+    if (include_modifier_state) {
+        JS_SetPropertyStr(ctx, event_obj, "getModifierState",
+            JS_DupValue(ctx, state->event_get_modifier_state_fn));
+    }
+}
+
 // Helper: create a standard event object with all propagation methods
 static JSValue create_event_object(JSContext* ctx,
                                     const std::string& event_type,
@@ -23052,33 +23228,7 @@ static JSValue create_event_object(JSContext* ctx,
     // Hidden propagation state
     JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
-
-    // Install methods via eval
-    const char* method_code = R"JS(
-        (function() {
-            var evt = this;
-            evt.preventDefault = function() { evt.defaultPrevented = true; };
-            evt.stopPropagation = function() { evt.__stopped = true; };
-            evt.stopImmediatePropagation = function() {
-                evt.__stopped = true;
-                evt.__immediate_stopped = true;
-            };
-            evt.composedPath = function() {
-                var arr = evt.__composedPathArray;
-                if (!arr) return [];
-                var result = [];
-                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
-                return result;
-            };
-        })
-    )JS";
-    JSValue setup_fn = JS_Eval(ctx, method_code, std::strlen(method_code),
-                                "<event-setup>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsFunction(ctx, setup_fn)) {
-        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
-        JS_FreeValue(ctx, setup_ret);
-    }
-    JS_FreeValue(ctx, setup_fn);
+    install_event_methods(ctx, event_obj, false);
 
     return event_obj;
 }
@@ -23142,40 +23292,60 @@ static JSValue create_mouse_event_object(JSContext* ctx,
     // Hidden propagation state
     JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
+    install_event_methods(ctx, event_obj, true);
 
-    // Install methods via eval
-    const char* method_code = R"JS(
-        (function() {
-            var evt = this;
-            evt.preventDefault = function() { evt.defaultPrevented = true; };
-            evt.stopPropagation = function() { evt.__stopped = true; };
-            evt.stopImmediatePropagation = function() {
-                evt.__stopped = true;
-                evt.__immediate_stopped = true;
-            };
-            evt.composedPath = function() {
-                var arr = evt.__composedPathArray;
-                if (!arr) return [];
-                var result = [];
-                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
-                return result;
-            };
-            evt.getModifierState = function(key) {
-                if (key === 'Control') return evt.ctrlKey;
-                if (key === 'Shift') return evt.shiftKey;
-                if (key === 'Alt') return evt.altKey;
-                if (key === 'Meta') return evt.metaKey;
-                return false;
-            };
-        })
-    )JS";
-    JSValue setup_fn = JS_Eval(ctx, method_code, std::strlen(method_code),
-                                "<mouse-event-setup>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsFunction(ctx, setup_fn)) {
-        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
-        JS_FreeValue(ctx, setup_ret);
-    }
-    JS_FreeValue(ctx, setup_fn);
+    return event_obj;
+}
+
+static JSValue create_keyboard_event_object(JSContext* ctx,
+                                             const std::string& event_type,
+                                             bool bubbles, bool cancelable,
+                                             const KeyboardEventInit& init) {
+    JSValue event_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "type",
+        JS_NewString(ctx, event_type.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "bubbles",
+        JS_NewBool(ctx, bubbles));
+    JS_SetPropertyStr(ctx, event_obj, "cancelable",
+        JS_NewBool(ctx, cancelable));
+    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "eventPhase",
+        JS_NewInt32(ctx, 0)); // NONE
+    JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_TRUE); // browser-dispatched
+
+    // KeyboardEvent-specific properties
+    JS_SetPropertyStr(ctx, event_obj, "key",
+        JS_NewString(ctx, init.key.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "code",
+        JS_NewString(ctx, init.code.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "keyCode",
+        JS_NewInt32(ctx, init.key_code));
+    JS_SetPropertyStr(ctx, event_obj, "charCode",
+        JS_NewInt32(ctx, init.char_code));
+    JS_SetPropertyStr(ctx, event_obj, "which",
+        JS_NewInt32(ctx, init.key_code));
+    JS_SetPropertyStr(ctx, event_obj, "location",
+        JS_NewInt32(ctx, init.location));
+    JS_SetPropertyStr(ctx, event_obj, "altKey",
+        JS_NewBool(ctx, init.alt_key));
+    JS_SetPropertyStr(ctx, event_obj, "ctrlKey",
+        JS_NewBool(ctx, init.ctrl_key));
+    JS_SetPropertyStr(ctx, event_obj, "metaKey",
+        JS_NewBool(ctx, init.meta_key));
+    JS_SetPropertyStr(ctx, event_obj, "shiftKey",
+        JS_NewBool(ctx, init.shift_key));
+    JS_SetPropertyStr(ctx, event_obj, "repeat",
+        JS_NewBool(ctx, init.repeat));
+    JS_SetPropertyStr(ctx, event_obj, "isComposing",
+        JS_NewBool(ctx, init.is_composing));
+
+    // Hidden propagation state
+    JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
+    install_event_methods(ctx, event_obj, true);
 
     return event_obj;
 }
@@ -23250,86 +23420,8 @@ bool dispatch_keyboard_event(JSContext* ctx, clever::html::SimpleNode* target,
     bool bubbles = true;
     bool cancelable = true;
 
-    // Create the event object with standard Event properties
-    JSValue event_obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, event_obj, "type",
-        JS_NewString(ctx, event_type.c_str()));
-    JS_SetPropertyStr(ctx, event_obj, "bubbles",
-        JS_NewBool(ctx, bubbles));
-    JS_SetPropertyStr(ctx, event_obj, "cancelable",
-        JS_NewBool(ctx, cancelable));
-    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
-    JS_SetPropertyStr(ctx, event_obj, "eventPhase",
-        JS_NewInt32(ctx, 0)); // NONE
-    JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
-    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
-    JS_SetPropertyStr(ctx, event_obj, "timeStamp",
-        JS_NewFloat64(ctx, 0));
-    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_TRUE); // browser-dispatched
-
-    // KeyboardEvent-specific properties
-    JS_SetPropertyStr(ctx, event_obj, "key",
-        JS_NewString(ctx, init.key.c_str()));
-    JS_SetPropertyStr(ctx, event_obj, "code",
-        JS_NewString(ctx, init.code.c_str()));
-    JS_SetPropertyStr(ctx, event_obj, "keyCode",
-        JS_NewInt32(ctx, init.key_code));
-    JS_SetPropertyStr(ctx, event_obj, "charCode",
-        JS_NewInt32(ctx, init.char_code));
-    JS_SetPropertyStr(ctx, event_obj, "which",
-        JS_NewInt32(ctx, init.key_code)); // 'which' defaults to keyCode
-    JS_SetPropertyStr(ctx, event_obj, "location",
-        JS_NewInt32(ctx, init.location));
-    JS_SetPropertyStr(ctx, event_obj, "altKey",
-        JS_NewBool(ctx, init.alt_key));
-    JS_SetPropertyStr(ctx, event_obj, "ctrlKey",
-        JS_NewBool(ctx, init.ctrl_key));
-    JS_SetPropertyStr(ctx, event_obj, "metaKey",
-        JS_NewBool(ctx, init.meta_key));
-    JS_SetPropertyStr(ctx, event_obj, "shiftKey",
-        JS_NewBool(ctx, init.shift_key));
-    JS_SetPropertyStr(ctx, event_obj, "repeat",
-        JS_NewBool(ctx, init.repeat));
-    JS_SetPropertyStr(ctx, event_obj, "isComposing",
-        JS_NewBool(ctx, init.is_composing));
-
-    // Hidden propagation state
-    JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
-    JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
-
-    // Install methods (preventDefault, stopPropagation, getModifierState, etc.)
-    const char* method_code = R"JS(
-        (function() {
-            var evt = this;
-            evt.preventDefault = function() { evt.defaultPrevented = true; };
-            evt.stopPropagation = function() { evt.__stopped = true; };
-            evt.stopImmediatePropagation = function() {
-                evt.__stopped = true;
-                evt.__immediate_stopped = true;
-            };
-            evt.composedPath = function() {
-                var arr = evt.__composedPathArray;
-                if (!arr) return [];
-                var result = [];
-                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
-                return result;
-            };
-            evt.getModifierState = function(key) {
-                if (key === 'Control') return evt.ctrlKey;
-                if (key === 'Shift') return evt.shiftKey;
-                if (key === 'Alt') return evt.altKey;
-                if (key === 'Meta') return evt.metaKey;
-                return false;
-            };
-        })
-    )JS";
-    JSValue setup_fn = JS_Eval(ctx, method_code, std::strlen(method_code),
-                                "<keyboard-event-dispatch-setup>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsFunction(ctx, setup_fn)) {
-        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
-        JS_FreeValue(ctx, setup_ret);
-    }
-    JS_FreeValue(ctx, setup_fn);
+    JSValue event_obj = create_keyboard_event_object(
+        ctx, event_type, bubbles, cancelable, init);
 
     bool default_prevented = dispatch_event_propagated(
         ctx, state, target, event_obj, event_type, bubbles);
@@ -23873,6 +23965,27 @@ void cleanup_dom_bindings(JSContext* ctx) {
     }
     state->resize_observers.clear();
 
+    for (auto& mo : state->mutation_observers) {
+        JS_FreeValue(ctx, mo.callback);
+        JS_FreeValue(ctx, mo.observer_obj);
+    }
+    state->mutation_observers.clear();
+
+    for (auto& pending : state->pending_mutations) {
+        for (auto& record : pending.mutation_records) {
+            JS_FreeValue(ctx, record);
+        }
+        JS_FreeValue(ctx, pending.callback);
+        JS_FreeValue(ctx, pending.observer_obj);
+    }
+    state->pending_mutations.clear();
+
+    JS_FreeValue(ctx, state->event_prevent_default_fn);
+    JS_FreeValue(ctx, state->event_stop_propagation_fn);
+    JS_FreeValue(ctx, state->event_stop_immediate_propagation_fn);
+    JS_FreeValue(ctx, state->event_composed_path_fn);
+    JS_FreeValue(ctx, state->event_get_modifier_state_fn);
+
     delete state;
 
     // Clear the pointer from the global object so it can't be used again
@@ -23913,12 +24026,15 @@ const std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*>*
     return &state->shadow_roots;
 }
 
-void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h, float scroll_y) {
+void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h,
+                           float scroll_x, float scroll_y) {
     auto* state = get_dom_state(ctx);
     if (!state) return;
 
-    // Update window.scrollY
+    // Update window scroll offsets in CSS pixels before firing listeners.
     JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "scrollX", JS_NewFloat64(ctx, scroll_x));
+    JS_SetPropertyStr(ctx, global, "pageXOffset", JS_NewFloat64(ctx, scroll_x));
     JS_SetPropertyStr(ctx, global, "scrollY", JS_NewFloat64(ctx, scroll_y));
     JS_SetPropertyStr(ctx, global, "pageYOffset", JS_NewFloat64(ctx, scroll_y));
 
