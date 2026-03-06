@@ -15,16 +15,25 @@ namespace clever::js {
 
 namespace {
 
+void run_timer(JSContext* ctx, struct TimerState& state, int id);
+
 struct TimerEntry {
     int id = 0;
+    int scheduled_task_id = 0;
     JSValue callback = JS_UNDEFINED;
     std::string code;
+    clever::platform::TimerScheduler::Duration delay { clever::platform::TimerScheduler::Duration::zero() };
+    clever::platform::TimerScheduler::TimePoint scheduled_fire_time {
+        clever::platform::TimerScheduler::Duration::zero()
+    };
     bool is_interval = false;
     bool cancelled = false;
 };
 
 struct TimerState {
     clever::platform::TimerScheduler scheduler;
+    clever::platform::TimerScheduler::TimePoint now { clever::platform::TimerScheduler::Duration::zero() };
+    int next_timer_id = 1;
     std::unordered_map<int, std::shared_ptr<TimerEntry>> timers;
 };
 
@@ -56,6 +65,14 @@ void release_timer_entry(JSContext* ctx, const std::shared_ptr<TimerEntry>& entr
     entry->cancelled = true;
 }
 
+void schedule_timer(JSContext* ctx, TimerState& state, const std::shared_ptr<TimerEntry>& entry,
+    clever::platform::TimerScheduler::Duration delay)
+{
+    entry->scheduled_task_id = state.scheduler.schedule_timeout(delay, [ctx, &state, id = entry->id]() {
+        run_timer(ctx, state, id);
+    });
+}
+
 void cleanup_timer(JSContext* ctx, TimerState& state, int id) {
     auto it = state.timers.find(id);
     if (it == state.timers.end()) {
@@ -72,6 +89,7 @@ void run_timer(JSContext* ctx, TimerState& state, int id) {
     }
 
     auto entry = it->second;
+    entry->scheduled_task_id = 0;
     if (entry->cancelled) {
         cleanup_timer(ctx, state, id);
         return;
@@ -86,15 +104,38 @@ void run_timer(JSContext* ctx, TimerState& state, int id) {
             JS_EVAL_TYPE_GLOBAL);
         JS_FreeValue(ctx, result);
     } else if (!JS_IsUndefined(entry->callback)) {
-        JSValue result = JS_Call(ctx, entry->callback, JS_UNDEFINED, 0, nullptr);
+        // Keep the JS function alive even if clearTimeout/clearInterval runs inside it.
+        JSValue callback = JS_DupValue(ctx, entry->callback);
+        JSValue result = JS_Call(ctx, callback, JS_UNDEFINED, 0, nullptr);
         JS_FreeValue(ctx, result);
+        JS_FreeValue(ctx, callback);
     }
 
     drain_pending_jobs(ctx);
 
     if (!entry->is_interval || entry->cancelled) {
         cleanup_timer(ctx, state, id);
+        return;
     }
+
+    if (state.timers.find(id) == state.timers.end()) {
+        return;
+    }
+
+    if (entry->delay <= clever::platform::TimerScheduler::Duration::zero()) {
+        entry->scheduled_fire_time = state.now;
+    } else {
+        do {
+            entry->scheduled_fire_time += entry->delay;
+        } while (entry->scheduled_fire_time <= state.now);
+    }
+
+    auto next_delay = entry->scheduled_fire_time - state.now;
+    if (next_delay < clever::platform::TimerScheduler::Duration::zero()) {
+        next_delay = clever::platform::TimerScheduler::Duration::zero();
+    }
+
+    schedule_timer(ctx, state, entry, next_delay);
 }
 
 JSValue js_set_timeout(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
@@ -110,6 +151,9 @@ JSValue js_set_timeout(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSVa
     auto delay_ms = std::chrono::milliseconds(std::max(delay, 0));
 
     auto entry = std::make_shared<TimerEntry>();
+    entry->id = state->next_timer_id++;
+    entry->delay = delay_ms;
+    entry->scheduled_fire_time = state->now + delay_ms;
     if (JS_IsString(argv[0])) {
         const char* code = JS_ToCString(ctx, argv[0]);
         if (code) {
@@ -122,12 +166,9 @@ JSValue js_set_timeout(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSVa
         return JS_NewInt32(ctx, 0);
     }
 
-    int id = state->scheduler.schedule_timeout(delay_ms, [ctx, state, entry]() {
-        run_timer(ctx, *state, entry->id);
-    });
-    entry->id = id;
-    state->timers[id] = entry;
-    return JS_NewInt32(ctx, id);
+    state->timers[entry->id] = entry;
+    schedule_timer(ctx, *state, entry, delay_ms);
+    return JS_NewInt32(ctx, entry->id);
 }
 
 JSValue js_set_interval(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
@@ -143,15 +184,15 @@ JSValue js_set_interval(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSV
     auto interval = std::chrono::milliseconds(std::max(delay, 0));
 
     auto entry = std::make_shared<TimerEntry>();
+    entry->id = state->next_timer_id++;
     entry->callback = JS_DupValue(ctx, argv[0]);
+    entry->delay = interval;
+    entry->scheduled_fire_time = state->now + interval;
     entry->is_interval = true;
 
-    int id = state->scheduler.schedule_interval(interval, [ctx, state, entry]() {
-        run_timer(ctx, *state, entry->id);
-    });
-    entry->id = id;
-    state->timers[id] = entry;
-    return JS_NewInt32(ctx, id);
+    state->timers[entry->id] = entry;
+    schedule_timer(ctx, *state, entry, interval);
+    return JS_NewInt32(ctx, entry->id);
 }
 
 JSValue js_clear_timer(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
@@ -162,7 +203,11 @@ JSValue js_clear_timer(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSVa
 
     int id = 0;
     JS_ToInt32(ctx, &id, argv[0]);
-    state->scheduler.cancel(id);
+    auto it = state->timers.find(id);
+    if (it != state->timers.end() && it->second->scheduled_task_id != 0) {
+        state->scheduler.cancel(it->second->scheduled_task_id);
+        it->second->scheduled_task_id = 0;
+    }
     cleanup_timer(ctx, *state, id);
     return JS_UNDEFINED;
 }
@@ -192,7 +237,9 @@ int flush_ready_timers(JSContext* ctx, int max_delay_ms) {
     if (!state) {
         return 0;
     }
-    return static_cast<int>(state->scheduler.run_ready(std::chrono::milliseconds(std::max(max_delay_ms, 0))));
+    auto advance = std::chrono::milliseconds(std::max(max_delay_ms, 0));
+    state->now += advance;
+    return static_cast<int>(state->scheduler.run_ready(advance));
 }
 
 void cleanup_timers(JSContext* ctx) {

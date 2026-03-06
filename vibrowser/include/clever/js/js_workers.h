@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <atomic>
 #include <memory>
 #include <queue>
 #include <mutex>
@@ -85,8 +86,8 @@ private:
     std::mutex queue_mutex_;
     std::condition_variable queue_cv_;
 
-    bool should_terminate_ = false;
-    bool finished_ = false;
+    std::atomic<bool> should_terminate_ { false };
+    std::atomic<bool> finished_ { false };
     std::function<std::string(const std::string&)> module_fetcher_;
 };
 

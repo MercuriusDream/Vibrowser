@@ -137,9 +137,9 @@ private:
 
     // Low-level: connect, send request, read response
     std::optional<Response> do_request(const Request& request);
-    int connect_to(const std::string& host, uint16_t port);
-    bool send_all(int fd, const uint8_t* data, size_t len);
-    std::optional<std::vector<uint8_t>> recv_response(int fd);
+    int connect_to(const std::string& host, uint16_t port, const Request* request);
+    bool send_all(int fd, const uint8_t* data, size_t len, const Request& request);
+    std::optional<std::vector<uint8_t>> recv_response(int fd, const Request& request);
 
     // Build a Response from a CacheEntry
     static Response response_from_cache(const CacheEntry& entry);

@@ -8,6 +8,10 @@ MessageChannel::MessageChannel(MessagePipe pipe)
     : pipe_(std::move(pipe)) {}
 
 bool MessageChannel::send(const Message& msg) {
+    if (msg.payload.size() > kMaxSerializedPayloadBytes) {
+        return false;
+    }
+
     // Wire format: type(4) + request_id(4) + payload_len(4) + payload(N)
     // All multi-byte integers in big-endian (handled by Serializer).
     Serializer s;
@@ -42,6 +46,7 @@ std::optional<Message> MessageChannel::receive() {
     msg.request_id = d.read_u32();
     uint32_t payload_len = d.read_u32();
 
+    if (payload_len > kMaxSerializedPayloadBytes) return std::nullopt;
     if (d.remaining() < payload_len) return std::nullopt;
 
     if (payload_len > 0) {

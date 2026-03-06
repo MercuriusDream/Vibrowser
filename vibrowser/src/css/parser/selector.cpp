@@ -2,6 +2,7 @@
 #include <clever/css/parser/tokenizer.h>
 #include <algorithm>
 #include <cctype>
+#include <unordered_map>
 
 namespace clever::css {
 
@@ -29,6 +30,31 @@ bool should_cache_function_selector_list(std::string_view pseudo_name) {
            pseudo == "matches" || pseudo == "-webkit-any";
 }
 
+struct FunctionSelectorListCacheEntry {
+    std::shared_ptr<const SelectorList> list;
+};
+
+FunctionSelectorListCacheEntry& function_selector_list_cache_entry(std::string_view pseudo_name,
+                                                                   std::string_view argument) {
+    static std::unordered_map<std::string, FunctionSelectorListCacheEntry> cache;
+
+    std::string cache_key = ascii_lower(std::string(pseudo_name));
+    cache_key += '\n';
+    cache_key.append(argument.data(), argument.size());
+
+    auto it = cache.find(cache_key);
+    if (it != cache.end() && it->second.list) {
+        return it->second;
+    }
+
+    auto compiled_list = std::make_shared<SelectorList>(parse_selector_list(argument));
+    auto& entry = cache[cache_key];
+    if (!entry.list) {
+        entry.list = std::move(compiled_list);
+    }
+    return entry;
+}
+
 Specificity max_specificity_in_list(const SelectorList& list) {
     Specificity max_spec;
     bool has_value = false;
@@ -42,7 +68,40 @@ Specificity max_specificity_in_list(const SelectorList& list) {
     return max_spec;
 }
 
+RightmostSelectorKey compute_rightmost_match_key(const ComplexSelector& selector) {
+    if (selector.parts.empty()) {
+        return {};
+    }
+
+    const auto& simple_selectors = selector.parts.back().compound.simple_selectors;
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::Id) {
+            return {RightmostSelectorKeyType::Id, simple.value};
+        }
+    }
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::Class) {
+            return {RightmostSelectorKeyType::Class, simple.value};
+        }
+    }
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::Type) {
+            return {RightmostSelectorKeyType::Type, simple.value};
+        }
+    }
+
+    return {};
+}
+
 } // namespace
+
+std::shared_ptr<const SelectorList> compile_function_selector_list(std::string_view pseudo_name,
+                                                                   std::string_view argument) {
+    if (!should_cache_function_selector_list(pseudo_name)) {
+        return {};
+    }
+    return function_selector_list_cache_entry(pseudo_name, argument).list;
+}
 
 // ---------------------------------------------------------------------------
 // Specificity
@@ -59,9 +118,13 @@ bool Specificity::operator==(const Specificity& other) const {
 }
 
 Specificity compute_specificity(const ComplexSelector& selector) {
+    if (selector.precomputed_specificity.has_value()) {
+        return *selector.precomputed_specificity;
+    }
+
     Specificity spec;
-    for (auto& part : selector.parts) {
-        for (auto& ss : part.compound.simple_selectors) {
+    for (const auto& part : selector.parts) {
+        for (const auto& ss : part.compound.simple_selectors) {
             switch (ss.type) {
                 case SimpleSelectorType::Id:
                     spec.a++;
@@ -81,10 +144,10 @@ Specificity compute_specificity(const ComplexSelector& selector) {
                         if (pseudo == "is" || pseudo == "not" || pseudo == "has" ||
                             pseudo == "matches" || pseudo == "-webkit-any") {
                             const SelectorList* inner_list = cached_function_selector_list(ss);
-                            SelectorList parsed_list;
+                            std::shared_ptr<const SelectorList> compiled_list;
                             if (!inner_list) {
-                                parsed_list = parse_selector_list(ss.argument);
-                                inner_list = &parsed_list;
+                                compiled_list = compile_function_selector_list(ss.value, ss.argument);
+                                inner_list = compiled_list.get();
                             }
                             Specificity inner = max_specificity_in_list(*inner_list);
                             spec.a += inner.a;
@@ -175,6 +238,7 @@ SelectorList SelectorParser::parse() {
 
     ComplexSelector first = parse_complex_selector();
     if (!first.parts.empty()) {
+        first.precomputed_specificity = compute_specificity(first);
         list.selectors.push_back(std::move(first));
     }
 
@@ -187,6 +251,7 @@ SelectorList SelectorParser::parse() {
                 if (!at_end()) {
                     ComplexSelector next = parse_complex_selector();
                     if (!next.parts.empty()) {
+                        next.precomputed_specificity = compute_specificity(next);
                         list.selectors.push_back(std::move(next));
                     }
                 }
@@ -238,6 +303,7 @@ ComplexSelector SelectorParser::parse_complex_selector() {
         result.parts.push_back(std::move(part));
     }
 
+    result.rightmost_match_key = compute_rightmost_match_key(result);
     return result;
 }
 
@@ -399,10 +465,8 @@ CompoundSelector SelectorParser::parse_compound_selector() {
                         advance();
                     }
                     ss.argument = args;
-                    if (should_cache_function_selector_list(ss.value)) {
-                        ss.parsed_selector_list =
-                            std::make_shared<SelectorList>(parse_selector_list(ss.argument));
-                    }
+                    ss.parsed_selector_list =
+                        compile_function_selector_list(ss.value, ss.argument);
                     compound.simple_selectors.push_back(std::move(ss));
                 } else {
                     SimpleSelector ss;
@@ -487,6 +551,15 @@ SimpleSelector SelectorParser::parse_attribute_selector() {
     }
 
     skip_whitespace();
+
+    if (!at_end() && current().type == CSSToken::Ident) {
+        const std::string flag = ascii_lower(current().value);
+        if (flag == "i" || flag == "s") {
+            ss.argument = flag;
+            advance();
+            skip_whitespace();
+        }
+    }
 
     // Skip to closing ']'
     while (!at_end() && current().type != CSSToken::RightBracket) {
