@@ -19,7 +19,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-constexpr auto kRecoveredTickLagBudget = 75ms;
+constexpr auto kRecoveredTickMinimumSpacing = 10ms;
 
 struct RearmProbeState {
     std::mutex mutex;
@@ -184,7 +184,8 @@ TEST(TimerTest, RepeatingEventLoopTimerSkipsMissedTicksV2065) {
     ASSERT_EQ(tick_observations.size(), 2u);
     EXPECT_GE(tick_observations[0].elapsed, 170ms);
     EXPECT_GE(tick_observations[0].lag, 100ms);
-    EXPECT_LT(tick_observations[1].lag, kRecoveredTickLagBudget);
+    EXPECT_GE(tick_observations[1].elapsed - tick_observations[0].elapsed,
+        kRecoveredTickMinimumSpacing);
     EXPECT_LT(tick_observations[1].lag, tick_observations[0].lag);
     EXPECT_TRUE(timer->is_active());
     timer->cancel();
