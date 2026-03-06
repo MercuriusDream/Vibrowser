@@ -191,10 +191,13 @@ struct Timer::Impl {
 
     static void schedule_repeating(const std::shared_ptr<RepeatingState>& state,
         std::chrono::steady_clock::time_point expected_run_at) {
-        auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(
-            expected_run_at - std::chrono::steady_clock::now());
+        const auto remaining = expected_run_at - std::chrono::steady_clock::now();
+        auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(remaining);
         if (delay < std::chrono::milliseconds::zero()) {
             delay = std::chrono::milliseconds::zero();
+        } else if (delay < remaining) {
+            // Round positive fractional delays up so recovered intervals do not fire early.
+            delay += std::chrono::milliseconds(1);
         }
 
         {
