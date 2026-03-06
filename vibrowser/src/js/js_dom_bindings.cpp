@@ -3965,6 +3965,11 @@ static JSValue make_dom_rect(JSContext* ctx, double x, double y,
     return rect;
 }
 
+static float layout_border_box_width(const DOMState::LayoutRect& rect);
+static float layout_border_box_height(const DOMState::LayoutRect& rect);
+static float layout_client_width(const DOMState::LayoutRect& rect);
+static float layout_client_height(const DOMState::LayoutRect& rect);
+
 // =========================================================================
 // element.getBoundingClientRect()
 //
@@ -4151,10 +4156,8 @@ static JSValue js_element_dimension_getter(JSContext* ctx,
     if (it == state->layout_geometry.end()) return JS_NewFloat64(ctx, 0);
 
     auto& lr = it->second;
-    // offsetWidth/offsetHeight = border box (border + padding + content)
     float border_box_w = lr.border_left + lr.padding_left + lr.width + lr.padding_right + lr.border_right;
     float border_box_h = lr.border_top + lr.padding_top + lr.height + lr.padding_bottom + lr.border_bottom;
-    // clientWidth/clientHeight = padding box (padding + content, no border)
     float client_w = lr.padding_left + lr.width + lr.padding_right;
     float client_h = lr.padding_top + lr.height + lr.padding_bottom;
 
@@ -4225,16 +4228,18 @@ static JSValue js_element_dimension_setter(JSContext* ctx,
     auto it = state->layout_geometry.find(static_cast<void*>(node));
     if (it != state->layout_geometry.end()) {
         auto& lr = it->second;
+        const float client_w = layout_client_width(lr);
+        const float client_h = layout_client_height(lr);
         if (magic == 6) {
             // scrollTop setter
             float max_scroll = lr.is_scroll_container
-                ? std::max(0.0f, lr.scroll_content_height - lr.height)
+                ? std::max(0.0f, lr.scroll_content_height - client_h)
                 : 0.0f;
             lr.scroll_top = static_cast<float>(std::min(val, static_cast<double>(max_scroll)));
         } else if (magic == 7) {
             // scrollLeft setter
             float max_scroll = lr.is_scroll_container
-                ? std::max(0.0f, lr.scroll_content_width - lr.width)
+                ? std::max(0.0f, lr.scroll_content_width - client_w)
                 : 0.0f;
             lr.scroll_left = static_cast<float>(std::min(val, static_cast<double>(max_scroll)));
         }
@@ -4263,6 +4268,22 @@ static std::string format_px(float v) {
     char buf[64];
     std::snprintf(buf, sizeof(buf), "%.2fpx", static_cast<double>(v));
     return buf;
+}
+
+static float layout_border_box_width(const DOMState::LayoutRect& rect) {
+    return std::max(0.0f, rect.width);
+}
+
+static float layout_border_box_height(const DOMState::LayoutRect& rect) {
+    return std::max(0.0f, rect.height);
+}
+
+static float layout_client_width(const DOMState::LayoutRect& rect) {
+    return std::max(0.0f, layout_border_box_width(rect) - rect.border_left - rect.border_right);
+}
+
+static float layout_client_height(const DOMState::LayoutRect& rect) {
+    return std::max(0.0f, layout_border_box_height(rect) - rect.border_top - rect.border_bottom);
 }
 
 // getPropertyValue for computed-style objects: checks layout_geometry first
@@ -23291,11 +23312,19 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr) {
 
             if (node.dom_node) {
                 DOMState::LayoutRect rect;
+                const float horizontal_box_edges = node.geometry.border.left
+                    + node.geometry.padding.left
+                    + node.geometry.padding.right
+                    + node.geometry.border.right;
+                const float vertical_box_edges = node.geometry.border.top
+                    + node.geometry.padding.top
+                    + node.geometry.padding.bottom
+                    + node.geometry.border.bottom;
                 // x/y = content-box origin (absolute page coordinates)
                 rect.x = nx + node.geometry.border.left + node.geometry.padding.left;
                 rect.y = ny + node.geometry.border.top + node.geometry.padding.top;
-                rect.width = node.geometry.width;
-                rect.height = node.geometry.height;
+                rect.width = std::max(0.0f, node.geometry.width - horizontal_box_edges);
+                rect.height = std::max(0.0f, node.geometry.height - vertical_box_edges);
                 rect.border_left = node.geometry.border.left;
                 rect.border_top = node.geometry.border.top;
                 rect.border_right = node.geometry.border.right;

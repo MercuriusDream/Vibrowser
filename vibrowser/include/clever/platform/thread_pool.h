@@ -38,7 +38,7 @@ public:
 private:
     void worker_loop();
 
-    std::vector<std::jthread> workers_;
+    std::vector<std::thread> workers_;
     std::deque<std::function<void()>> tasks_;
     mutable std::mutex mutex_;
     std::condition_variable cv_;

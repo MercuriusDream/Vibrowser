@@ -12,6 +12,7 @@ struct Cookie {
     std::string value;
     std::string domain;
     std::string path = "/";
+    bool host_only = true;
     bool secure = false;
     bool http_only = false;
     std::string same_site;  // "Strict", "Lax", "None"
@@ -45,7 +46,7 @@ private:
     // domain -> list of cookies
     std::unordered_map<std::string, std::vector<Cookie>> cookies_;
 
-    bool domain_matches(const std::string& cookie_domain, const std::string& request_domain) const;
+    bool domain_matches(const Cookie& cookie, const std::string& request_domain) const;
     bool path_matches(const std::string& cookie_path, const std::string& request_path) const;
 };
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <clever/layout/box.h>
 #include <functional>
+#include <unordered_map>
 
 namespace clever::layout {
 
@@ -29,6 +30,7 @@ private:
 
     float compute_width(LayoutNode& node, float containing_width);
     float compute_height(LayoutNode& node, float containing_height = -1);
+    float measure_intrinsic_width(const LayoutNode& node, bool max_content, int depth = 0);
 
     // Block layout: position children vertically
     void position_block_children(LayoutNode& node);
@@ -59,9 +61,25 @@ private:
                          int font_weight, bool is_italic, bool is_monospace,
                          float letter_spacing) const;
 
+    struct IntrinsicWidthCacheKey {
+        const LayoutNode* node = nullptr;
+        bool max_content = false;
+        float specified_width = 0;
+
+        bool operator==(const IntrinsicWidthCacheKey& other) const {
+            return node == other.node && max_content == other.max_content
+                && specified_width == other.specified_width;
+        }
+    };
+
+    struct IntrinsicWidthCacheKeyHash {
+        size_t operator()(const IntrinsicWidthCacheKey& key) const;
+    };
+
     float viewport_width_ = 0;
     float viewport_height_ = 0;
     TextMeasureFn text_measurer_;
+    std::unordered_map<IntrinsicWidthCacheKey, float, IntrinsicWidthCacheKeyHash> intrinsic_width_cache_;
 };
 
 } // namespace clever::layout

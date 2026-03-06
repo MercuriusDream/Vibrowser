@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <sstream>
+#include <functional>
 #include <clever/css/style/style_resolver.h>
 
 namespace clever::layout {
@@ -165,10 +166,22 @@ float LayoutEngine::avg_char_width(float font_size, const std::string& font_fami
 
 // ---------------------------------------------------------------------------
 
+size_t LayoutEngine::IntrinsicWidthCacheKeyHash::operator()(const IntrinsicWidthCacheKey& key) const {
+    size_t seed = std::hash<const LayoutNode*>{}(key.node);
+    seed ^= std::hash<bool>{}(key.max_content) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= std::hash<float>{}(key.specified_width) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
+}
+
 // Measure intrinsic content width for min-content/max-content sizing
-static float measure_intrinsic_width(const LayoutNode& node, bool max_content,
-                                      const TextMeasureFn* measurer, int depth = 0) {
+float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_content, int depth) {
     if (depth > 256) return 0;
+
+    IntrinsicWidthCacheKey cache_key{&node, max_content, node.specified_width};
+    auto cache_it = intrinsic_width_cache_.find(cache_key);
+    if (cache_it != intrinsic_width_cache_.end()) return cache_it->second;
+
+    const TextMeasureFn* measurer = text_measurer_ ? &text_measurer_ : nullptr;
     float width = 0;
     if (node.specified_width >= 0) {
         width = std::max(width, node.specified_width);
@@ -246,7 +259,7 @@ static float measure_intrinsic_width(const LayoutNode& node, bool max_content,
     } else {
         for (auto& child : node.children) {
             if (child->content_visibility == 1) continue;
-            float cw = measure_intrinsic_width(*child, max_content, measurer, depth + 1);
+            float cw = measure_intrinsic_width(*child, max_content, depth + 1);
             if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||
                 child->display == DisplayType::InlineBlock) {
                 children_width += cw; // inline: sum widths
@@ -257,7 +270,9 @@ static float measure_intrinsic_width(const LayoutNode& node, bool max_content,
     }
     float padding_border = node.geometry.padding.left + node.geometry.padding.right +
                            node.geometry.border.left + node.geometry.border.right;
-    return std::max(width, children_width) + padding_border;
+    float measured = std::max(width, children_width) + padding_border;
+    intrinsic_width_cache_.emplace(cache_key, measured);
+    return measured;
 }
 
 // Measure intrinsic content height for min-content/max-content sizing
@@ -323,6 +338,7 @@ static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
 }
 
 void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewport_height) {
+    intrinsic_width_cache_.clear();
     viewport_width_ = viewport_width;
     viewport_height_ = viewport_height;
     root.geometry.x = 0;
@@ -331,9 +347,8 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
     // Resolve intrinsic sizing keywords for root: -2=min-content, -3=max-content, -4=fit-content, -5=fit-content(N)
     if (root.specified_width <= -2 && root.specified_width >= -5) {
         int kw = static_cast<int>(root.specified_width);
-        const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
-        float min_w = measure_intrinsic_width(root, false, mp);
-        float max_w = measure_intrinsic_width(root, true, mp);
+        float min_w = measure_intrinsic_width(root, false);
+        float max_w = measure_intrinsic_width(root, true);
         if (kw == -2) {
             root.specified_width = min_w;
         } else if (kw == -3) {
@@ -387,11 +402,13 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
         case LayoutMode::None:
             root.geometry.width = 0;
             root.geometry.height = 0;
+            intrinsic_width_cache_.clear();
             return;
         default:
             layout_block(root, viewport_width);
             break;
     }
+    intrinsic_width_cache_.clear();
 }
 
 // Aspect-ratio resolution:
@@ -445,9 +462,8 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
     // Resolve intrinsic sizing keywords: -2=min-content, -3=max-content, -4=fit-content, -5=fit-content(N)
     if (node.specified_width <= -2 && node.specified_width >= -5) {
         int kw = static_cast<int>(node.specified_width);
-        const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
-        float min_w = measure_intrinsic_width(node, false, mp);
-        float max_w = measure_intrinsic_width(node, true, mp);
+        float min_w = measure_intrinsic_width(node, false);
+        float max_w = measure_intrinsic_width(node, true);
         if (kw == -2) {
             node.specified_width = min_w;
         } else if (kw == -3) {
@@ -477,9 +493,8 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
                || node.mode == LayoutMode::InlineBlock) {
         // CSS shrink-to-fit:
         // min(max(min-content-width, available-width), max-content-width).
-        const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
-        float min_content_w = measure_intrinsic_width(node, /*max_content=*/false, mp);
-        float max_content_w = measure_intrinsic_width(node, /*max_content=*/true, mp);
+        float min_content_w = measure_intrinsic_width(node, /*max_content=*/false);
+        float max_content_w = measure_intrinsic_width(node, /*max_content=*/true);
         float horiz_margins = 0;
         if (!is_margin_auto(node.geometry.margin.left)) horiz_margins += node.geometry.margin.left;
         if (!is_margin_auto(node.geometry.margin.right)) horiz_margins += node.geometry.margin.right;
@@ -522,9 +537,22 @@ float LayoutEngine::compute_height(LayoutNode& node, float containing_height) {
 
     // Resolve deferred calc/percent height
     if (node.css_height.has_value()) {
+        auto calc_depends_on_parent_height = [&](const auto& self,
+                                                  const std::shared_ptr<clever::css::CalcExpr>& expr) -> bool {
+            if (!expr) {
+                return false;
+            }
+            if (expr->op == clever::css::CalcExpr::Op::Value) {
+                return expr->leaf.unit == clever::css::Length::Unit::Percent;
+            }
+            return self(self, expr->left) || self(self, expr->right);
+        };
+
         bool depends_on_parent_height =
             node.css_height->unit == clever::css::Length::Unit::Percent ||
-            node.css_height->unit == clever::css::Length::Unit::Calc;
+            (node.css_height->unit == clever::css::Length::Unit::Calc
+                && calc_depends_on_parent_height(calc_depends_on_parent_height,
+                                                node.css_height->calc_expr));
         if (!(depends_on_parent_height && !has_definite_cb_height)) {
             float resolved = node.css_height->to_px(cb_height);
             node.specified_height = resolved;
@@ -2913,13 +2941,13 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             } else {
                 // Avoid using stale geometry from prior layout passes.
                 // With auto main-size and auto flex-basis, fall back to intrinsic size.
-                const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
                 if (is_row) {
-                    float intrinsic_w = measure_intrinsic_width(*child, true, mp);
+                    float intrinsic_w = measure_intrinsic_width(*child, true);
                     intrinsic_w -= child->geometry.padding.left + child->geometry.padding.right
                                  + child->geometry.border.left + child->geometry.border.right;
                     basis = intrinsic_w;
                 } else {
+                    const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
                     float intrinsic_h = measure_intrinsic_height(*child, true, mp);
                     intrinsic_h -= child->geometry.padding.top + child->geometry.padding.bottom
                                  + child->geometry.border.top + child->geometry.border.bottom;
@@ -3243,8 +3271,7 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                     if (eff_align == 4) {
                         child->geometry.width = containing_width;
                     } else {
-                        const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
-                        float intrinsic_w = measure_intrinsic_width(*child, true, mp);
+                        float intrinsic_w = measure_intrinsic_width(*child, true);
                         intrinsic_w += child->geometry.padding.left + child->geometry.padding.right
                                     + child->geometry.border.left + child->geometry.border.right;
                         child->geometry.width = std::min(intrinsic_w, containing_width);
@@ -3673,9 +3700,8 @@ void LayoutEngine::position_absolute_children(LayoutNode& node) {
         } else if (child.pos_left_set && child.pos_right_set) {
             child.geometry.width = ref_w - child.pos_left - child.pos_right;
         } else {
-            const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
-            float min_content_w = measure_intrinsic_width(child, /*max_content=*/false, mp);
-            float max_content_w = measure_intrinsic_width(child, /*max_content=*/true, mp);
+            float min_content_w = measure_intrinsic_width(child, /*max_content=*/false);
+            float max_content_w = measure_intrinsic_width(child, /*max_content=*/true);
             float horiz_margins = 0;
             if (!is_margin_auto(child.geometry.margin.left)) horiz_margins += child.geometry.margin.left;
             if (!is_margin_auto(child.geometry.margin.right)) horiz_margins += child.geometry.margin.right;
@@ -5656,8 +5682,6 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
 
     bool is_fixed_layout = (node.table_layout == 1);
 
-    const TextMeasureFn* intrinsic_measurer = text_measurer_ ? &text_measurer_ : nullptr;
-
     if (is_fixed_layout) {
         // ---- Fixed table layout (CSS 2.1 Section 17.5.2.1) ----
         // Column widths are determined from the first row only.
@@ -5714,7 +5738,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                     width_hint = cell->css_width->to_px(available_for_cols);
                 } else {
                     bool cell_nowrap = (cell->white_space == 1);
-                    width_hint = measure_intrinsic_width(*cell, cell_nowrap, intrinsic_measurer);
+                    width_hint = measure_intrinsic_width(*cell, cell_nowrap);
                 }
 
                 if (width_hint > 0 && span == 1 && col_idx < num_cols) {

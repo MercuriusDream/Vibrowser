@@ -9578,15 +9578,34 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     if (style.height_keyword != 0) {
         layout_node->specified_height = static_cast<float>(style.height_keyword); // -2, -3, or -4
     } else if (!style.height.is_auto()) {
-        if (style.height.unit == clever::css::Length::Unit::Calc ||
-            style.height.unit == clever::css::Length::Unit::Percent) {
+        if (style.height.unit == clever::css::Length::Unit::Percent) {
             layout_node->css_height = style.height;
             if (tag_lower == "html" || tag_lower == "body") {
                 // Root-level percentage heights must resolve against the viewport.
                 layout_node->specified_height = style.height.to_px(clever::css::Length::s_viewport_h);
             } else {
-                // Defer percent/calc height resolution until containing block height is definite.
+                // Defer percentage height resolution until containing block height is definite.
                 layout_node->specified_height = -1.0f;
+            }
+        } else if (style.height.unit == clever::css::Length::Unit::Calc) {
+            layout_node->css_height = style.height;
+            const auto calc_depends_on_percent = [&](const auto& self,
+                                                     const std::shared_ptr<clever::css::CalcExpr>& expr) -> bool {
+                if (!expr) {
+                    return false;
+                }
+                if (expr->op == clever::css::CalcExpr::Op::Value) {
+                    return expr->leaf.unit == clever::css::Length::Unit::Percent;
+                }
+                return self(self, expr->left) || self(self, expr->right);
+            };
+            if (tag_lower == "html" || tag_lower == "body") {
+                layout_node->specified_height = style.height.to_px(
+                    clever::css::Length::s_viewport_h, 16.0f, lh_px);
+            } else if (calc_depends_on_percent(calc_depends_on_percent, style.height.calc_expr)) {
+                layout_node->specified_height = -1.0f;
+            } else {
+                layout_node->specified_height = style.height.to_px(fs, 16.0f, lh_px);
             }
         } else if (style.height.unit == clever::css::Length::Unit::Em ||
                    style.height.unit == clever::css::Length::Unit::Ch ||
