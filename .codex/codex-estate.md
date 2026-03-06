@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 2063 — Remove Keyboard Dispatch Eval | Cap MessageChannel Frames | Fix HTTP2 Receive Window Accounting | Short-Circuit Dirty Flag Propagation | Memoize Auto-Table Cell Width Hints | Canonicalize Inline Style Cache Keys
+**Current Focus**: Cycle 2064 — Remove WebSocket Close Sleep Polling | Canonicalize HTTP Cache Keys Without Fragments | Stop Reparsing Functional Selector Arguments | Memoize Max-Content Width Measurements | Reuse Filter Scratch Buffers In Software Renderer | Fix Horizontal Scroll And Sticky Overlay DPR Parity
 **Momentum**: C2007 complete — render views now prefer renderer DPR over transient window scale, with successful vibrowser app build and targeted DPR/JS regressions passing. From C1995 to C2007: 12 implementation cycles advanced.
-**Cycle**: 2063
+**Cycle**: 2064
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -2485,3 +2485,9 @@ Future cycles will append fresh entries with the corrected format from `.codex/o
 - Summary: Remove Keyboard Dispatch Eval | Cap MessageChannel Frames | Fix HTTP2 Receive Window Accounting | Short-Circuit Dirty Flag Propagation | Memoize Auto-Table Cell Width Hints | Canonicalize Inline Style Cache Keys
 - Planner output: `.codex/orchestrator/state/runs/cycle-2063/plan.json`
 - Verification report: `.codex/orchestrator/state/runs/cycle-2063/verifier.json`
+
+### Cycle 2064 — 2026-03-06 20:31:41 +0900
+- Runtime: main `gpt-5.4/high` (fast=1), workers `gpt-5.4/medium` (fast=1)
+- Summary: Remove WebSocket Close Sleep Polling | Canonicalize HTTP Cache Keys Without Fragments | Stop Reparsing Functional Selector Arguments | Memoize Max-Content Width Measurements | Reuse Filter Scratch Buffers In Software Renderer | Fix Horizontal Scroll And Sticky Overlay DPR Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2064/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2064/verifier.json`

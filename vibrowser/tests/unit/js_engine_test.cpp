@@ -5950,6 +5950,47 @@ TEST(JSWorker, MessagePumpDeliversQueuedMessages) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
 }
 
+TEST(JSWorker, MessagePumpDoesNotWaitForPollingSliceV2065) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerResult = e.data; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    const auto deadline = std::chrono::steady_clock::now() + 80ms;
+    std::string delivered = "pending";
+    while (std::chrono::steady_clock::now() < deadline) {
+        engine.evaluate("0");
+        ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+        delivered = engine.evaluate("__workerResult");
+        ASSERT_FALSE(engine.has_error()) << engine.last_error();
+        if (delivered == "echo:hello") {
+            break;
+        }
+
+        std::this_thread::sleep_for(1ms);
+    }
+
+    EXPECT_EQ(delivered, "echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
 TEST(JSWorker, MessagePumpDeliversWorkerError) {
     using namespace std::chrono_literals;
 

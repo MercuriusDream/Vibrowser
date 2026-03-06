@@ -2094,4 +2094,85 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
 - (int)baseWidth { return _baseWidth; }
 - (int)baseHeight { return _baseHeight; }
 
+- (NSData*)rendererViewportPNGData {
+    if (_basePixels.empty() || _baseWidth <= 0 || _baseHeight <= 0) {
+        return nil;
+    }
+
+    const CGFloat rendererScale =
+        (std::isfinite(_backingScale) && _backingScale > 0.0) ? _backingScale : 1.0;
+    const CGFloat pageScale =
+        (std::isfinite(_pageScale) && _pageScale > 0.0) ? _pageScale : 1.0;
+    const CGFloat viewportWidth = std::max<CGFloat>(0.0, self.bounds.size.width);
+    const CGFloat viewportHeight = std::max<CGFloat>(0.0, self.bounds.size.height);
+
+    int sourceX = static_cast<int>(std::lround((_scrollX / pageScale) * rendererScale));
+    int sourceY = static_cast<int>(std::lround((_scrollOffset / pageScale) * rendererScale));
+    int sourceWidth = static_cast<int>(std::lround((viewportWidth / pageScale) * rendererScale));
+    int sourceHeight = static_cast<int>(std::lround((viewportHeight / pageScale) * rendererScale));
+
+    sourceX = std::max(0, std::min(sourceX, _baseWidth));
+    sourceY = std::max(0, std::min(sourceY, _baseHeight));
+    sourceWidth = std::max(1, std::min(sourceWidth, _baseWidth - sourceX));
+    sourceHeight = std::max(1, std::min(sourceHeight, _baseHeight - sourceY));
+
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef sourceContext = CGBitmapContextCreate(
+        const_cast<uint8_t*>(_basePixels.data()),
+        _baseWidth,
+        _baseHeight,
+        8,
+        _baseWidth * 4,
+        colorSpace,
+        static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast) | kCGBitmapByteOrder32Big
+    );
+    if (!sourceContext) {
+        CGColorSpaceRelease(colorSpace);
+        return nil;
+    }
+
+    CGImageRef sourceImage = CGBitmapContextCreateImage(sourceContext);
+    CGContextRelease(sourceContext);
+    if (!sourceImage) {
+        CGColorSpaceRelease(colorSpace);
+        return nil;
+    }
+
+    CGContextRef exportContext = CGBitmapContextCreate(
+        nullptr,
+        sourceWidth,
+        sourceHeight,
+        8,
+        sourceWidth * 4,
+        colorSpace,
+        static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast) | kCGBitmapByteOrder32Big
+    );
+    if (!exportContext) {
+        CGImageRelease(sourceImage);
+        CGColorSpaceRelease(colorSpace);
+        return nil;
+    }
+
+    CGContextTranslateCTM(exportContext, -sourceX, sourceHeight + sourceY);
+    CGContextScaleCTM(exportContext, 1.0, -1.0);
+    CGContextDrawImage(exportContext,
+                       CGRectMake(0, 0, _baseWidth, _baseHeight),
+                       sourceImage);
+
+    CGImageRef exportImage = CGBitmapContextCreateImage(exportContext);
+    CGContextRelease(exportContext);
+    CGImageRelease(sourceImage);
+    CGColorSpaceRelease(colorSpace);
+    if (!exportImage) {
+        return nil;
+    }
+
+    NSBitmapImageRep* rep = [[NSBitmapImageRep alloc] initWithCGImage:exportImage];
+    CGImageRelease(exportImage);
+    if (!rep) {
+        return nil;
+    }
+    return [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+}
+
 @end

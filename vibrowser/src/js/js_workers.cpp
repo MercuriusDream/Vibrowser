@@ -4,7 +4,6 @@ extern "C" {
 #include <quickjs.h>
 }
 
-#include <chrono>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -737,38 +736,37 @@ void WorkerThread::worker_main() {
 
     // Message loop
     while (!should_terminate_) {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
-        queue_cv_.wait_for(lock, std::chrono::milliseconds(100),
-                          [this]() { return !main_to_worker_.empty() || should_terminate_; });
+        WorkerMessage msg;
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            queue_cv_.wait(lock, [this]() { return !main_to_worker_.empty() || should_terminate_; });
 
-        if (should_terminate_) {
-            break;
-        }
-
-        if (!main_to_worker_.empty()) {
-            WorkerMessage msg = main_to_worker_.front();
-            main_to_worker_.pop();
-            lock.unlock();
-
-            JSValue data = parse_message_data(worker_ctx_, msg.data);
-            JSValue event_obj = make_message_event(worker_ctx_, "message", data, "", self_obj, msg.ports, false, false);
-            JSValue onmessage = JS_GetPropertyStr(worker_ctx_, self_obj, "onmessage");
-            if (JS_IsFunction(worker_ctx_, onmessage)) {
-                JSValue call_result = JS_Call(worker_ctx_, onmessage, self_obj, 1, &event_obj);
-                if (JS_IsException(call_result)) {
-                    WorkerMessage error_msg = worker_error_from_exception(worker_ctx_, "Uncaught exception in worker");
-                    if (error_msg.filename.empty()) {
-                        error_msg.filename = script_url_;
-                    }
-                    error_msg.ports = "[]";
-                    post_error_to_main(error_msg.data, error_msg.filename, error_msg.lineno, error_msg.name);
-                    dispatch_worker_error(worker_ctx_, self_obj, error_msg);
-                }
-                JS_FreeValue(worker_ctx_, call_result);
+            if (should_terminate_) {
+                break;
             }
-            JS_FreeValue(worker_ctx_, onmessage);
-            JS_FreeValue(worker_ctx_, event_obj);
+
+            msg = main_to_worker_.front();
+            main_to_worker_.pop();
         }
+
+        JSValue data = parse_message_data(worker_ctx_, msg.data);
+        JSValue event_obj = make_message_event(worker_ctx_, "message", data, "", self_obj, msg.ports, false, false);
+        JSValue onmessage = JS_GetPropertyStr(worker_ctx_, self_obj, "onmessage");
+        if (JS_IsFunction(worker_ctx_, onmessage)) {
+            JSValue call_result = JS_Call(worker_ctx_, onmessage, self_obj, 1, &event_obj);
+            if (JS_IsException(call_result)) {
+                WorkerMessage error_msg = worker_error_from_exception(worker_ctx_, "Uncaught exception in worker");
+                if (error_msg.filename.empty()) {
+                    error_msg.filename = script_url_;
+                }
+                error_msg.ports = "[]";
+                post_error_to_main(error_msg.data, error_msg.filename, error_msg.lineno, error_msg.name);
+                dispatch_worker_error(worker_ctx_, self_obj, error_msg);
+            }
+            JS_FreeValue(worker_ctx_, call_result);
+        }
+        JS_FreeValue(worker_ctx_, onmessage);
+        JS_FreeValue(worker_ctx_, event_obj);
     }
 
     std::lock_guard<std::mutex> lock(queue_mutex_);

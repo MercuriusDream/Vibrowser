@@ -1,13 +1,50 @@
+#include <clever/platform/event_loop.h>
 #include <clever/platform/timer.h>
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
+using clever::platform::EventLoop;
+using clever::platform::Timer;
 using clever::platform::TimerScheduler;
 using namespace std::chrono_literals;
+
+namespace {
+
+struct RearmProbeState {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool callback_started = false;
+    bool release_callback = false;
+};
+
+struct RearmProbeCallback {
+    std::shared_ptr<RearmProbeState> state;
+    std::atomic<int>* ticks = nullptr;
+
+    RearmProbeCallback(std::shared_ptr<RearmProbeState> state_, std::atomic<int>* ticks_)
+        : state(std::move(state_))
+        , ticks(ticks_) {}
+
+    void operator()() const {
+        ticks->fetch_add(1, std::memory_order_relaxed);
+
+        std::unique_lock lock(state->mutex);
+        state->callback_started = true;
+        state->cv.notify_all();
+        state->cv.wait(lock, [&]() { return state->release_callback; });
+    }
+};
+
+} // namespace
 
 TEST(TimerSchedulerTest, TimeoutsFireInDueTimeThenInsertionOrder) {
     TimerScheduler scheduler;
@@ -99,4 +136,68 @@ TEST(TimerSchedulerTest, IntervalCatchUpKeepsOriginalCadenceAfterCoarseAdvance) 
     EXPECT_EQ(scheduler.run_ready(9ms), 0u);
     EXPECT_EQ(scheduler.run_ready(1ms), 1u);
     EXPECT_EQ(ticks, (std::vector<int> { 1, 2, 3 }));
+}
+
+TEST(TimerTest, RepeatingEventLoopTimerSkipsMissedTicksV2065) {
+    EventLoop loop;
+    std::vector<std::chrono::milliseconds> tick_offsets;
+    std::mutex tick_mutex;
+
+    auto start = std::chrono::steady_clock::now();
+    loop.post_task([&]() {
+        std::this_thread::sleep_for(185ms);
+    });
+
+    auto timer = Timer::repeating(loop, 50ms, [&]() {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start);
+        bool should_quit = false;
+        {
+            std::lock_guard lock(tick_mutex);
+            tick_offsets.push_back(elapsed);
+            should_quit = tick_offsets.size() == 2;
+        }
+        if (should_quit) {
+            loop.quit();
+        }
+    });
+
+    std::thread runner([&]() { loop.run(); });
+    runner.join();
+
+    ASSERT_EQ(tick_offsets.size(), 2u);
+    EXPECT_GE(tick_offsets[0], 170ms);
+    EXPECT_LT(tick_offsets[1] - tick_offsets[0], 40ms);
+    EXPECT_LT(tick_offsets[1], 240ms);
+    EXPECT_TRUE(timer->is_active());
+    timer->cancel();
+}
+
+TEST(TimerTest, CancelledRepeatingEventLoopTimerDoesNotRearmV2065) {
+    EventLoop loop;
+    auto probe_state = std::make_shared<RearmProbeState>();
+    std::atomic<int> ticks { 0 };
+
+    auto timer = Timer::repeating(loop, 40ms, RearmProbeCallback { probe_state, &ticks });
+    std::thread runner([&]() { loop.run(); });
+
+    {
+        std::unique_lock lock(probe_state->mutex);
+        ASSERT_TRUE(probe_state->cv.wait_for(lock, 500ms, [&]() { return probe_state->callback_started; }));
+    }
+
+    timer->cancel();
+    {
+        std::lock_guard lock(probe_state->mutex);
+        probe_state->release_callback = true;
+    }
+    probe_state->cv.notify_all();
+
+    std::this_thread::sleep_for(15ms);
+    EXPECT_EQ(loop.pending_count(), 0u);
+    EXPECT_EQ(ticks.load(std::memory_order_relaxed), 1);
+    EXPECT_FALSE(timer->is_active());
+
+    loop.quit();
+    runner.join();
 }

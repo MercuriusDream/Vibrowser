@@ -143,6 +143,14 @@ size_t inline_style_cache_size_for_testing();
 uint64_t inline_style_cache_hit_count_for_testing();
 uint64_t inline_style_cache_miss_count_for_testing();
 
+// Decoded image cache stats (exposed for testing)
+void reset_image_cache_for_testing();
+void set_image_cache_max_bytes_for_testing(size_t max_bytes);
+size_t image_cache_size_for_testing();
+size_t image_cache_bytes_for_testing();
+uint64_t image_cache_hit_count_for_testing();
+uint64_t image_cache_miss_count_for_testing();
+
 // CSS Transition easing functions (exposed for testing)
 float ease_linear(float t);
 float ease_ease(float t);

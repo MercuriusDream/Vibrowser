@@ -324,10 +324,6 @@ bool Http2Connection::handle_settings(const Frame& frame) {
         }
     }
 
-    if (header_table_size.has_value()) {
-        encoder_.set_max_dynamic_table_size(*header_table_size);
-    }
-
     if (has_initial_window_update) {
         int64_t delta = static_cast<int64_t>(new_remote_initial_window_size) -
                         static_cast<int64_t>(remote_initial_window_size_);
@@ -341,7 +337,23 @@ bool Http2Connection::handle_settings(const Frame& frame) {
             if (updated_window > kMaxFlowControlWindowSize) {
                 return false;
             }
-            stream.send_window = updated_window;
+        }
+    }
+
+    if (header_table_size.has_value()) {
+        encoder_.set_max_dynamic_table_size(*header_table_size);
+    }
+
+    if (has_initial_window_update) {
+        int64_t delta = static_cast<int64_t>(new_remote_initial_window_size) -
+                        static_cast<int64_t>(remote_initial_window_size_);
+        for (auto& [stream_id, stream] : streams_) {
+            (void)stream_id;
+            if (stream.state == StreamState::Closed) {
+                continue;
+            }
+
+            stream.send_window += delta;
         }
 
         remote_initial_window_size_ = new_remote_initial_window_size;
@@ -368,18 +380,22 @@ bool Http2Connection::handle_window_update(const Frame& frame) {
         return false;
     }
 
+    std::lock_guard<std::mutex> lock(stream_mutex_);
+
     if (frame.stream_id == 0) {
         if (connection_send_window_ > (kMaxFlowControlWindowSize - increment)) {
             return false;
         }
-        connection_send_window_ += increment;
+        int64_t updated_connection_window = connection_send_window_ + increment;
+        connection_send_window_ = updated_connection_window;
     } else {
         auto it = streams_.find(frame.stream_id);
         if (it != streams_.end()) {
             if (it->second.send_window > (kMaxFlowControlWindowSize - increment)) {
                 return false;
             }
-            it->second.send_window += increment;
+            int64_t updated_stream_window = it->second.send_window + increment;
+            it->second.send_window = updated_stream_window;
         }
     }
 

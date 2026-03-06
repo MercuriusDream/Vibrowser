@@ -23,6 +23,12 @@ void reset_text_width_cache_stats_for_testing();
 size_t text_width_cache_size_for_testing();
 uint64_t text_width_cache_hit_count_for_testing();
 uint64_t text_width_cache_miss_count_for_testing();
+void reset_image_cache_for_testing();
+void set_image_cache_max_bytes_for_testing(size_t max_bytes);
+size_t image_cache_size_for_testing();
+size_t image_cache_bytes_for_testing();
+uint64_t image_cache_hit_count_for_testing();
+uint64_t image_cache_miss_count_for_testing();
 }
 
 // ============================================================================
@@ -39785,6 +39791,90 @@ TEST_F(PaintTest, InlineStyleCacheDoesNotLeakAcrossDifferentDeclarationSets) {
     check(*result.root);
     EXPECT_TRUE(found_red_box);
     EXPECT_TRUE(found_blue_box);
+}
+
+TEST_F(PaintTest, ImageCacheReusesRepeatedDataUriDecodeV2065) {
+    reset_image_cache_for_testing();
+
+    const std::string html =
+        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J3JlZCcvPjwvc3ZnPg=='></body></html>";
+
+    auto first = render_html(html, 64, 64);
+    ASSERT_TRUE(first.success) << first.error;
+    ASSERT_NE(first.renderer, nullptr);
+
+    const auto misses_after_first = image_cache_miss_count_for_testing();
+    const auto hits_after_first = image_cache_hit_count_for_testing();
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_GE(misses_after_first, 1u);
+
+    auto first_pixel = first.renderer->get_pixel(12, 12);
+    EXPECT_GT(first_pixel.r, 200);
+    EXPECT_LT(first_pixel.g, 80);
+    EXPECT_LT(first_pixel.b, 80);
+
+    auto second = render_html(html, 64, 64);
+    ASSERT_TRUE(second.success) << second.error;
+    ASSERT_NE(second.renderer, nullptr);
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_after_first);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_after_first);
+
+    auto second_pixel = second.renderer->get_pixel(12, 12);
+    EXPECT_GT(second_pixel.r, 200);
+    EXPECT_LT(second_pixel.g, 80);
+    EXPECT_LT(second_pixel.b, 80);
+
+    reset_image_cache_for_testing();
+}
+
+TEST_F(PaintTest, ImageCacheTouchKeepsHotEntryReusableV2065) {
+    reset_image_cache_for_testing();
+    set_image_cache_max_bytes_for_testing(8);
+
+    const std::string red_html =
+        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J3JlZCcvPjwvc3ZnPg=='></body></html>";
+    const std::string green_html =
+        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J2dyZWVuJy8+PC9zdmc+'></body></html>";
+    const std::string blue_html =
+        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J2JsdWUnLz48L3N2Zz4='></body></html>";
+
+    ASSERT_TRUE(render_html(red_html, 64, 64).success);
+    ASSERT_TRUE(render_html(green_html, 64, 64).success);
+    EXPECT_EQ(image_cache_size_for_testing(), 2u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 8u);
+
+    const auto hits_before_touch = image_cache_hit_count_for_testing();
+    ASSERT_TRUE(render_html(red_html, 64, 64).success);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_before_touch);
+
+    ASSERT_TRUE(render_html(blue_html, 64, 64).success);
+    EXPECT_EQ(image_cache_size_for_testing(), 2u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 8u);
+
+    const auto misses_before_hot_reuse = image_cache_miss_count_for_testing();
+    const auto hits_before_hot_reuse = image_cache_hit_count_for_testing();
+    ASSERT_TRUE(render_html(red_html, 64, 64).success);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_before_hot_reuse);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_before_hot_reuse);
+
+    const auto misses_before_cold_reload = image_cache_miss_count_for_testing();
+    ASSERT_TRUE(render_html(green_html, 64, 64).success);
+    EXPECT_GT(image_cache_miss_count_for_testing(), misses_before_cold_reload);
+
+    reset_image_cache_for_testing();
 }
 
 TEST(WebFontRegistration, FontDisplayPropertyCollected) {

@@ -82,6 +82,10 @@ static NSImage* browser_symbol_image(NSString* system_name) {
     return nil;
 }
 
+@interface RenderView (ScreenshotExport)
+- (NSData*)rendererViewportPNGData;
+@end
+
 @interface AddressBarTextField : NSTextField
 @end
 
@@ -4083,17 +4087,10 @@ do_render:
     [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse result) {
         if (result != NSModalResponseOK || !panel.URL) return;
 
-        // Capture the render view content as a bitmap
         BrowserTab* tab = [self activeTab];
         if (!tab || !tab.renderView) return;
 
-        NSView* view = tab.renderView;
-        NSBitmapImageRep* rep = [view bitmapImageRepForCachingDisplayInRect:view.bounds];
-        if (!rep) return;
-        [view cacheDisplayInRect:view.bounds toBitmapImageRep:rep];
-
-        NSData* pngData = [rep representationUsingType:NSBitmapImageFileTypePNG
-                                            properties:@{}];
+        NSData* pngData = [tab.renderView rendererViewportPNGData];
         if (pngData) {
             [pngData writeToURL:panel.URL atomically:YES];
         }

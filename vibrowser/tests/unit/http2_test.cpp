@@ -256,6 +256,39 @@ TEST(Http2ConnectionTest, SettingsInitialWindowRejectsOverflowV2062) {
     close(fds[1]);
 }
 
+TEST(Http2ConnectionTest, SettingsInvalidInitialWindowDoesNotPartiallyApplyV2065) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    {
+        Http2Connection connection(fds[0]);
+        connection.remote_initial_window_size_ = 65535;
+        connection.encoder_.set_max_dynamic_table_size(4096);
+        connection.streams_[1].state = Http2Connection::StreamState::Open;
+        connection.streams_[1].send_window = 2048;
+
+        Http2Connection::Frame frame;
+        frame.type = Http2Connection::FRAME_TYPE_SETTINGS;
+        frame.stream_id = 0;
+        frame.payload = {
+            0x00, Http2Connection::SETTINGS_HEADER_TABLE_SIZE,
+            0x00, 0x00, 0x20, 0x00,
+            0x00, Http2Connection::SETTINGS_INITIAL_WINDOW_SIZE,
+            0x80, 0x00, 0x00, 0x00
+        };
+
+        ASSERT_FALSE(connection.handle_settings(frame));
+        EXPECT_EQ(connection.encoder_.max_dynamic_table_size(), 4096u);
+        EXPECT_EQ(connection.remote_initial_window_size_, 65535u);
+        EXPECT_EQ(connection.streams_[1].send_window, 2048);
+
+        uint8_t raw_frame[9];
+        EXPECT_EQ(::recv(fds[1], raw_frame, sizeof(raw_frame), MSG_DONTWAIT), -1);
+    }
+
+    close(fds[1]);
+}
+
 TEST(Http2ConnectionTest, DataFramesDecrementReceiveWindowsWithoutEarlyWindowUpdate) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
@@ -284,6 +317,35 @@ TEST(Http2ConnectionTest, DataFramesDecrementReceiveWindowsWithoutEarlyWindowUpd
     }
 
     close(fds[1]);
+}
+
+TEST(Http2ConnectionTest, WindowUpdateOverflowDoesNotMutateStateV2065) {
+    Http2Connection connection(-1);
+    connection.connection_send_window_ = Http2Connection::kMaxFlowControlWindowSize - 10;
+    connection.streams_[1].state = Http2Connection::StreamState::Open;
+    connection.streams_[1].send_window = Http2Connection::kMaxFlowControlWindowSize - 12;
+
+    Http2Connection::Frame connection_frame;
+    connection_frame.type = Http2Connection::FRAME_TYPE_WINDOW_UPDATE;
+    connection_frame.stream_id = 0;
+    connection_frame.payload = {0x00, 0x00, 0x00, 0x20};
+
+    ASSERT_FALSE(connection.handle_window_update(connection_frame));
+    EXPECT_EQ(connection.connection_send_window_,
+              Http2Connection::kMaxFlowControlWindowSize - 10);
+    EXPECT_EQ(connection.streams_[1].send_window,
+              Http2Connection::kMaxFlowControlWindowSize - 12);
+
+    Http2Connection::Frame stream_frame;
+    stream_frame.type = Http2Connection::FRAME_TYPE_WINDOW_UPDATE;
+    stream_frame.stream_id = 1;
+    stream_frame.payload = {0x00, 0x00, 0x00, 0x20};
+
+    ASSERT_FALSE(connection.handle_window_update(stream_frame));
+    EXPECT_EQ(connection.connection_send_window_,
+              Http2Connection::kMaxFlowControlWindowSize - 10);
+    EXPECT_EQ(connection.streams_[1].send_window,
+              Http2Connection::kMaxFlowControlWindowSize - 12);
 }
 
 TEST(Http2ConnectionTest, DataFramesEmitThresholdedWindowUpdatesAfterConsumption) {
