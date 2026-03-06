@@ -1,5 +1,6 @@
 #include <clever/net/http_client.h>
 #include <clever/net/cookie_jar.h>
+#include <clever/url/url.h>
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -35,6 +36,38 @@ struct PooledTlsConn {
 
 std::map<std::string, std::deque<PooledTlsConn>> g_tls_pool;
 std::mutex g_tls_pool_mutex;
+
+std::string request_url_for_redirect_resolution(const Request& request) {
+    if (!request.url.empty()) {
+        return request.url;
+    }
+
+    clever::url::URL url;
+    url.scheme = (request.use_tls || request.port == 443) ? "https" : "http";
+    url.host = request.host;
+    if ((url.scheme == "http" && request.port != 80) ||
+        (url.scheme == "https" && request.port != 443)) {
+        url.port = request.port;
+    }
+    url.path = request.path.empty() ? "/" : request.path;
+    url.query = request.query;
+    return url.serialize();
+}
+
+std::optional<std::string> resolve_redirect_url(const Request& request,
+                                                const std::string& location) {
+    const auto base = clever::url::parse(request_url_for_redirect_resolution(request));
+    if (!base.has_value()) {
+        return std::nullopt;
+    }
+
+    const auto resolved = clever::url::parse(location, &*base);
+    if (!resolved.has_value()) {
+        return std::nullopt;
+    }
+
+    return resolved->serialize();
+}
 
 std::unique_ptr<TlsSocket> acquire_tls_conn(const std::string& host, uint16_t port, int& fd) {
     fd = -1;
@@ -985,16 +1018,9 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
                 return resp;  // No Location header, return as-is
             }
 
-            std::string new_url = *location;
-
-            // Handle relative URLs
-            if (new_url.find("://") == std::string::npos) {
-                // Relative URL: prepend scheme + host
-                std::string scheme = (current.port == 443) ? "https://" : "http://";
-                if (new_url.front() != '/') {
-                    new_url = "/" + new_url;
-                }
-                new_url = scheme + current.host + new_url;
+            const auto new_url = resolve_redirect_url(current, *location);
+            if (!new_url.has_value()) {
+                return resp;
             }
 
             // For 303, change method to GET
@@ -1003,7 +1029,7 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
                 current.body.clear();
             }
 
-            current.url = new_url;
+            current.url = *new_url;
             current.parse_url();
             ++redirects;
             was_redirected = true;

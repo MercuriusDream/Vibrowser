@@ -277,6 +277,8 @@ struct DOMState {
         std::vector<JSValue> mutation_records;  // array of MutationRecord objects
     };
     std::vector<DOMState::PendingMutation> pending_mutations;
+    bool mutation_observer_delivery_scheduled = false;
+    bool mutation_observer_delivery_running = false;
 
     int viewport_width = 800, viewport_height = 600;
 
@@ -336,6 +338,7 @@ static void notify_mutation_observers(JSContext* ctx,
                                       const std::string& old_value = "");
 // Forward declaration for flushing queued MutationObserver microtasks (defined later)
 static void flush_mutation_observers(JSContext* ctx, DOMState* state);
+static void schedule_mutation_observer_delivery(JSContext* ctx, DOMState* state);
 
 static void js_url_finalizer(JSRuntime* /*rt*/, JSValue val) {
     auto* state = static_cast<URLState*>(JS_GetOpaque(val, url_class_id));
@@ -657,7 +660,6 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
                 }
             }
 
-            flush_mutation_observers(ctx, state);
         }
     }
     return JS_UNDEFINED;
@@ -783,7 +785,6 @@ static JSValue js_element_set_inner_text(JSContext* ctx, JSValueConst this_val,
             added.push_back(child.get());
         notify_mutation_observers(ctx, state, "childList", node,
                                   added, removed_children, nullptr, nullptr);
-        flush_mutation_observers(ctx, state);
     }
     return JS_UNDEFINED;
 }
@@ -850,7 +851,6 @@ static JSValue js_element_set_inner_html(JSContext* ctx, JSValueConst this_val,
                 notify_mutation_observers(ctx, state, "childList", node,
                                           added_children, removed_children,
                                           nullptr, nullptr);
-                flush_mutation_observers(ctx, state);
             }
         }
     }
@@ -2274,7 +2274,6 @@ static JSValue js_element_set_attribute(JSContext* ctx, JSValueConst this_val,
                 }
             }
 
-            flush_mutation_observers(ctx, state);
         }
     }
     if (name) JS_FreeCString(ctx, name);
@@ -2327,7 +2326,6 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
                     std::vector<clever::html::SimpleNode*> empty;
                     notify_mutation_observers(ctx, state, "childList", parent_node,
                                             added_nodes, empty, prev_sibling, next_sibling);
-                    flush_mutation_observers(ctx, state);
                 }
 
                 return wrap_element(ctx, child_node);
@@ -2358,8 +2356,6 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
             std::vector<clever::html::SimpleNode*> empty;
             notify_mutation_observers(ctx, state, "childList", parent_node,
                                     added, empty, prev_sibling, next_sibling);
-            flush_mutation_observers(ctx, state);
-
             return wrap_element(ctx, child_node);
         }
     }
@@ -2389,8 +2385,6 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
                 std::vector<clever::html::SimpleNode*> empty;
                 notify_mutation_observers(ctx, state, "childList", parent_node,
                                         added, empty, prev_sibling, next_sibling);
-                flush_mutation_observers(ctx, state);
-
                 return wrap_element(ctx, child_node);
             }
         }
@@ -2437,8 +2431,6 @@ static JSValue js_element_remove_child(JSContext* ctx, JSValueConst this_val,
             std::vector<clever::html::SimpleNode*> empty;
             notify_mutation_observers(ctx, state, "childList", parent_node,
                                     empty, removed, prev_sibling, next_sibling);
-            flush_mutation_observers(ctx, state);
-
             return wrap_element(ctx, child_node);
         }
     }
@@ -2716,7 +2708,6 @@ static JSValue js_element_remove_attribute(JSContext* ctx,
                 notify_mutation_observers(ctx, state, "attributes", node,
                                           empty, empty, nullptr, nullptr,
                                           name_str, final_old);
-                flush_mutation_observers(ctx, state);
             }
             break;
         }
@@ -5152,8 +5143,6 @@ static JSValue js_element_insert_before(JSContext* ctx, JSValueConst this_val,
         std::vector<clever::html::SimpleNode*> empty;
         notify_mutation_observers(ctx, state, "childList", parent_node,
                                   added, empty, prev_sib, nullptr);
-        flush_mutation_observers(ctx, state);
-
         return wrap_element(ctx, new_node);
     }
 
@@ -5199,8 +5188,6 @@ static JSValue js_element_insert_before(JSContext* ctx, JSValueConst this_val,
     std::vector<clever::html::SimpleNode*> empty;
     notify_mutation_observers(ctx, state, "childList", parent_node,
                               added, empty, prev_sibling, next_sibling);
-    flush_mutation_observers(ctx, state);
-
     return wrap_element(ctx, new_node);
 }
 
@@ -5264,8 +5251,6 @@ static JSValue js_element_replace_child(JSContext* ctx, JSValueConst this_val,
     std::vector<clever::html::SimpleNode*> removed = { old_child };
     notify_mutation_observers(ctx, state, "childList", parent_node,
                               added, removed, prev_sibling, next_sibling);
-    flush_mutation_observers(ctx, state);
-
     // Return the old child (per DOM spec)
     return wrap_element(ctx, old_child);
 }
@@ -5629,6 +5614,26 @@ static JSValue create_mutation_record(JSContext* ctx,
     return record;
 }
 
+static JSValue mutation_observer_delivery_job(JSContext* ctx,
+                                              int /*argc*/,
+                                              JSValueConst* /*argv*/) {
+    auto* state = get_dom_state(ctx);
+    flush_mutation_observers(ctx, state);
+    return JS_UNDEFINED;
+}
+
+static void schedule_mutation_observer_delivery(JSContext* ctx, DOMState* state) {
+    if (!state || state->pending_mutations.empty() ||
+        state->mutation_observer_delivery_scheduled) {
+        return;
+    }
+    state->mutation_observer_delivery_scheduled = true;
+    if (JS_EnqueueJob(ctx, mutation_observer_delivery_job, 0, nullptr) < 0) {
+        state->mutation_observer_delivery_scheduled = false;
+        flush_mutation_observers(ctx, state);
+    }
+}
+
 // Helper: notify all mutation observers of a mutation
 static void notify_mutation_observers(JSContext* ctx,
                                       DOMState* state,
@@ -5641,6 +5646,8 @@ static void notify_mutation_observers(JSContext* ctx,
                                       const std::string& attr_name,
                                       const std::string& old_value) {
     if (!state || !target) return;
+
+    bool queued_record = false;
 
     for (auto& entry : state->mutation_observers) {
         bool should_notify = false;
@@ -5687,14 +5694,26 @@ static void notify_mutation_observers(JSContext* ctx,
                                               added_nodes, removed_nodes,
                                               previous_sibling, next_sibling,
                                               attr_name, old_value);
+        queued_record = true;
 
-        // Queue for async delivery
-        DOMState::PendingMutation pm;
-        pm.observer_obj = JS_DupValue(ctx, entry.observer_obj);
-        pm.callback = JS_DupValue(ctx, entry.callback);
-        pm.mutation_records.push_back(record);
-        state->pending_mutations.push_back(std::move(pm));
+        bool appended_to_pending_batch = false;
+        for (auto& pending : state->pending_mutations) {
+            if (!JS_StrictEq(ctx, pending.observer_obj, entry.observer_obj)) continue;
+            pending.mutation_records.push_back(record);
+            appended_to_pending_batch = true;
+            break;
+        }
+
+        if (!appended_to_pending_batch) {
+            DOMState::PendingMutation pm;
+            pm.observer_obj = JS_DupValue(ctx, entry.observer_obj);
+            pm.callback = JS_DupValue(ctx, entry.callback);
+            pm.mutation_records.push_back(record);
+            state->pending_mutations.push_back(std::move(pm));
+        }
     }
+
+    if (queued_record) schedule_mutation_observer_delivery(ctx, state);
 }
 
 // Helper: flush all pending mutation callbacks.
@@ -5702,40 +5721,33 @@ static void notify_mutation_observers(JSContext* ctx,
 // queued and delivered in subsequent rounds rather than causing infinite recursion.
 static void flush_mutation_observers(JSContext* ctx, DOMState* state) {
     if (!state) return;
+    if (state->mutation_observer_delivery_running) return;
 
-    // Re-entrancy guard: if already flushing, callback-triggered mutations
-    // will be picked up by the outer flush loop's next iteration.
-    static thread_local int flush_depth = 0;
-    if (flush_depth > 0) return;
+    state->mutation_observer_delivery_scheduled = false;
+    state->mutation_observer_delivery_running = true;
 
-    flush_depth++;
-    // Up to 8 rounds to handle cascaded mutations from callbacks
-    for (int round = 0; round < 8 && !state->pending_mutations.empty(); ++round) {
-        // Snapshot and clear the queue so callback-triggered mutations get queued
-        // separately and processed in the next iteration of this loop.
-        auto batch = std::move(state->pending_mutations);
-        state->pending_mutations.clear();
+    auto batch = std::move(state->pending_mutations);
+    state->pending_mutations.clear();
 
-        for (auto& pm : batch) {
-            // Create array of mutation records for this callback batch
-            JSValue records_arr = JS_NewArray(ctx);
-            for (size_t i = 0; i < pm.mutation_records.size(); ++i) {
-                JS_SetPropertyUint32(ctx, records_arr, static_cast<uint32_t>(i),
-                                   pm.mutation_records[i]);
-            }
-
-            // Call the callback with (records, observer)
-            JSValue args[2] = { records_arr, pm.observer_obj };
-            JSValue ret = JS_Call(ctx, pm.callback, JS_UNDEFINED, 2, args);
-            if (JS_IsException(ret)) {
-                JS_FreeValue(ctx, ret);
-            }
-            JS_FreeValue(ctx, args[0]);
-            JS_FreeValue(ctx, pm.observer_obj);
-            JS_FreeValue(ctx, pm.callback);
+    for (auto& pm : batch) {
+        JSValue records_arr = JS_NewArray(ctx);
+        for (size_t i = 0; i < pm.mutation_records.size(); ++i) {
+            JS_SetPropertyUint32(ctx, records_arr, static_cast<uint32_t>(i),
+                                 pm.mutation_records[i]);
         }
+
+        JSValue args[2] = { records_arr, pm.observer_obj };
+        JSValue ret = JS_Call(ctx, pm.callback, JS_UNDEFINED, 2, args);
+        if (JS_IsException(ret)) {
+            JS_FreeValue(ctx, ret);
+        }
+        JS_FreeValue(ctx, args[0]);
+        JS_FreeValue(ctx, pm.observer_obj);
+        JS_FreeValue(ctx, pm.callback);
     }
-    flush_depth--;
+
+    state->mutation_observer_delivery_running = false;
+    if (!state->pending_mutations.empty()) schedule_mutation_observer_delivery(ctx, state);
 }
 
 static void js_mutation_observer_finalizer(JSRuntime* rt, JSValue val) {
@@ -23872,6 +23884,21 @@ void cleanup_dom_bindings(JSContext* ctx) {
         JS_FreeValue(ctx, ro.observer_obj);
     }
     state->resize_observers.clear();
+
+    for (auto& mo : state->mutation_observers) {
+        JS_FreeValue(ctx, mo.callback);
+        JS_FreeValue(ctx, mo.observer_obj);
+    }
+    state->mutation_observers.clear();
+
+    for (auto& pending : state->pending_mutations) {
+        for (auto& record : pending.mutation_records) {
+            JS_FreeValue(ctx, record);
+        }
+        JS_FreeValue(ctx, pending.callback);
+        JS_FreeValue(ctx, pending.observer_obj);
+    }
+    state->pending_mutations.clear();
 
     delete state;
 

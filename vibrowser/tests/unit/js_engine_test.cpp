@@ -4,7 +4,9 @@
 #include <clever/js/js_window.h>
 #include <clever/html/tree_builder.h>
 #include <gtest/gtest.h>
+#include <chrono>
 #include <string>
+#include <thread>
 
 // ============================================================================
 // 1. JSEngine basic initialization and destruction
@@ -3232,6 +3234,69 @@ TEST(JSDom, MutationObserverStub) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, MutationObserverFlushesAtCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto inline_order = engine.evaluate(R"(
+        globalThis.moOrder = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moOrder.push('observer:' + records.length);
+        });
+        observer.observe(target, { attributes: true, childList: true });
+
+        target.setAttribute('data-step', '1');
+        moOrder.push('after-set-attr');
+        target.appendChild(document.createElement('span'));
+        moOrder.push('after-append');
+
+        moOrder.join(',')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_order, "after-set-attr,after-append");
+
+    auto checkpoint_order = engine.evaluate("moOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(checkpoint_order, "after-set-attr,after-append,observer:2");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverBatchesSynchronousMutations) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.moBatches = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moBatches.push(records.map(function(record) {
+                return record.type + ':' + record.attributeName;
+            }).join(','));
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-first', '1');
+        target.setAttribute('data-second', '2');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto batch_count = engine.evaluate("String(moBatches.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_count, "1");
+
+    auto batch_records = engine.evaluate("moBatches[0]");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_records, "attributes:data-first,attributes:data-second");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // ============================================================================
 // IntersectionObserver stub
 // ============================================================================
@@ -5453,6 +5518,72 @@ TEST(JSWorker, DISABLED_MultipleWorkersCoexist) {
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "11,110");
+}
+
+TEST(JSWorker, MessagePumpDeliversQueuedMessages) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerResult = e.data; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    std::this_thread::sleep_for(20ms);
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, MessagePumpDeliversWorkerError) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerError = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function() { throw new Error("boom from worker"); }');
+        __worker.onerror = function(e) { __workerError = e.message; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerError;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    std::this_thread::sleep_for(20ms);
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerError");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "boom from worker");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
 }
 
 // ============================================================================
