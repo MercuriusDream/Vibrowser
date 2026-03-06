@@ -8,6 +8,11 @@
 namespace clever::paint {
 
 namespace {
+constexpr float kMinSoftwareShadowSigma = 0.5f;
+// Hard cap to keep hostile CSS shadows from ballooning software raster work.
+constexpr float kBoxShadowBlurRadiusCap = SoftwareRenderer::kMaxBoxShadowBlurRadius;
+constexpr float kBoxShadowWorkRegionMultiplier = SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+
 int reflect_coordinate(int value, int limit) {
     if (limit <= 1) return 0;
     const int period = limit * 2 - 2;
@@ -1020,13 +1025,26 @@ void SoftwareRenderer::draw_box_shadow(const Rect& shadow_rect, const Rect& elem
     // The CSS blur radius maps to the Gaussian sigma as: sigma = blur_radius / 2.
     // This follows the CSS spec where the blur radius is approximately 2*sigma.
 
-    int x0 = std::max(0, static_cast<int>(std::floor(shadow_rect.x)));
-    int y0 = std::max(0, static_cast<int>(std::floor(shadow_rect.y)));
-    int x1 = std::min(pixels_width(), static_cast<int>(std::ceil(shadow_rect.x + shadow_rect.width)));
-    int y1 = std::min(pixels_height(), static_cast<int>(std::ceil(shadow_rect.y + shadow_rect.height)));
+    const float safe_blur_radius = std::clamp(
+        std::isfinite(blur_radius) ? blur_radius : 0.0f,
+        0.0f, kBoxShadowBlurRadiusCap);
+    const float safe_expand = std::ceil(safe_blur_radius * kBoxShadowWorkRegionMultiplier);
 
-    float sigma = blur_radius / 2.0f;
-    if (sigma < 0.5f) sigma = 0.5f;
+    const float limited_left = std::max(shadow_rect.x, element_rect.x - safe_expand);
+    const float limited_top = std::max(shadow_rect.y, element_rect.y - safe_expand);
+    const float limited_right = std::min(shadow_rect.x + shadow_rect.width,
+                                         element_rect.x + element_rect.width + safe_expand);
+    const float limited_bottom = std::min(shadow_rect.y + shadow_rect.height,
+                                          element_rect.y + element_rect.height + safe_expand);
+
+    int x0 = std::max(0, static_cast<int>(std::floor(limited_left)));
+    int y0 = std::max(0, static_cast<int>(std::floor(limited_top)));
+    int x1 = std::min(pixels_width(), static_cast<int>(std::ceil(limited_right)));
+    int y1 = std::min(pixels_height(), static_cast<int>(std::ceil(limited_bottom)));
+    if (x0 >= x1 || y0 >= y1) return;
+
+    float sigma = safe_blur_radius / 2.0f;
+    if (sigma < kMinSoftwareShadowSigma) sigma = kMinSoftwareShadowSigma;
 
     // Precompute 1 / (sigma * sqrt(2)) for the Gaussian CDF (erf approximation)
     float inv_sigma_sqrt2 = 1.0f / (sigma * 1.41421356f);

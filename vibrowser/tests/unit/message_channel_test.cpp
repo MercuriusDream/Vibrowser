@@ -3840,3 +3840,28 @@ TEST(MessageChannelTest, MessageChannelV181_2_HandlerReceivesCorrectPayload) {
     EXPECT_EQ(captured_payload[4], 0x01);
     EXPECT_EQ(captured_payload[5], 0x81);
 }
+
+TEST(MessageChannelTest, RejectOversizedPayloadOnSend) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+
+    Message msg;
+    msg.type = 77;
+    msg.request_id = 123;
+    msg.payload.resize(clever::ipc::kMaxSerializedPayloadBytes + 1, 0xAB);
+
+    EXPECT_FALSE(sender.send(msg));
+}
+
+TEST(MessageChannelTest, RejectMalformedIncomingPayloadLengthBeyondLimit) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel receiver(std::move(pb));
+
+    Serializer s;
+    s.write_u32(88);
+    s.write_u32(456);
+    s.write_u32(static_cast<uint32_t>(clever::ipc::kMaxSerializedPayloadBytes + 1));
+
+    ASSERT_TRUE(pa.send(s.take_data()));
+    EXPECT_FALSE(receiver.receive().has_value());
+}

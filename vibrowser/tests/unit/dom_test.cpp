@@ -380,6 +380,115 @@ TEST(DomNode, DirtyFlagPropagation) {
     EXPECT_NE(grandparent->dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
 }
 
+TEST(DomNode, DirtyFlagPropagationStopsWhenAncestorsAlreadyHaveStyle) {
+    auto root = std::make_unique<Element>("div");
+    auto branch = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("p");
+    Node* branch_ptr = branch.get();
+    Node* child_ptr = child.get();
+
+    branch->append_child(std::move(child));
+    root->append_child(std::move(branch));
+
+    child_ptr->mark_dirty(DirtyFlags::Style);
+
+    branch_ptr->clear_dirty();
+    child_ptr->clear_dirty();
+    EXPECT_NE(root->dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(branch_ptr->dirty_flags(), DirtyFlags::None);
+    EXPECT_EQ(child_ptr->dirty_flags(), DirtyFlags::None);
+
+    child_ptr->mark_dirty(DirtyFlags::Style);
+
+    EXPECT_NE(child_ptr->dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(branch_ptr->dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(root->dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+TEST(DomNode, DirtyFlagPropagationStopsWhenAncestorsAlreadyHaveLayout) {
+    auto root = std::make_unique<Element>("div");
+    auto branch = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("p");
+    Node* branch_ptr = branch.get();
+    Node* child_ptr = child.get();
+
+    branch->append_child(std::move(child));
+    root->append_child(std::move(branch));
+
+    child_ptr->mark_dirty(DirtyFlags::Layout);
+
+    branch_ptr->clear_dirty();
+    child_ptr->clear_dirty();
+    EXPECT_NE(root->dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+
+    child_ptr->mark_dirty(DirtyFlags::Layout);
+
+    EXPECT_NE(child_ptr->dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(branch_ptr->dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(root->dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+TEST(DomNode, DirtyFlagPropagationStopsWhenAncestorsAlreadyHavePaint) {
+    auto root = std::make_unique<Element>("div");
+    auto branch = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("p");
+    Node* branch_ptr = branch.get();
+    Node* child_ptr = child.get();
+
+    branch->append_child(std::move(child));
+    root->append_child(std::move(branch));
+
+    child_ptr->mark_dirty(DirtyFlags::Paint);
+
+    branch_ptr->clear_dirty();
+    child_ptr->clear_dirty();
+    EXPECT_NE(root->dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+
+    child_ptr->mark_dirty(DirtyFlags::Paint);
+
+    EXPECT_NE(child_ptr->dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_NE(branch_ptr->dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_NE(root->dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+TEST(DomNode, DirtyFlagPropagationStopsWhenAncestorsAlreadyHaveCombinedFlags) {
+    auto root = std::make_unique<Element>("div");
+    auto branch = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("p");
+    Node* branch_ptr = branch.get();
+    Node* child_ptr = child.get();
+
+    branch->append_child(std::move(child));
+    root->append_child(std::move(branch));
+
+    const DirtyFlags flags = DirtyFlags::Style | DirtyFlags::Layout | DirtyFlags::Paint;
+    child_ptr->mark_dirty(flags);
+
+    branch_ptr->clear_dirty();
+    child_ptr->clear_dirty();
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Style, DirtyFlags::Style);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Layout, DirtyFlags::Layout);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Paint, DirtyFlags::Paint);
+
+    child_ptr->mark_dirty(flags);
+
+    EXPECT_EQ(child_ptr->dirty_flags() & DirtyFlags::Style, DirtyFlags::Style);
+    EXPECT_EQ(child_ptr->dirty_flags() & DirtyFlags::Layout, DirtyFlags::Layout);
+    EXPECT_EQ(child_ptr->dirty_flags() & DirtyFlags::Paint, DirtyFlags::Paint);
+    EXPECT_EQ(branch_ptr->dirty_flags() & DirtyFlags::Style, DirtyFlags::Style);
+    EXPECT_EQ(branch_ptr->dirty_flags() & DirtyFlags::Layout, DirtyFlags::Layout);
+    EXPECT_EQ(branch_ptr->dirty_flags() & DirtyFlags::Paint, DirtyFlags::Paint);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Style, DirtyFlags::Style);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Layout, DirtyFlags::Layout);
+    EXPECT_EQ(root->dirty_flags() & DirtyFlags::Paint, DirtyFlags::Paint);
+}
+
 TEST(DomNode, ClearDirty) {
     Element elem("div");
     elem.mark_dirty(DirtyFlags::Layout);

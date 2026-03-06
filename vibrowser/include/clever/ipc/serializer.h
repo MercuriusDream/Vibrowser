@@ -7,6 +7,8 @@
 
 namespace clever::ipc {
 
+inline constexpr size_t kMaxSerializedPayloadBytes = 16 * 1024 * 1024;
+
 class Serializer {
 public:
     void write_u8(uint8_t value);

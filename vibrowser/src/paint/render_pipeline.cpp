@@ -2209,7 +2209,34 @@ struct StyleDecl {
     std::string value;
 };
 
-std::vector<StyleDecl> parse_inline_style(const std::string& style_str) {
+thread_local std::unordered_map<std::string, std::vector<StyleDecl>> g_inline_style_cache;
+thread_local uint64_t g_inline_style_cache_hits = 0;
+thread_local uint64_t g_inline_style_cache_misses = 0;
+
+std::string canonicalize_inline_style_cache_key(const std::string& style_str) {
+    std::string key;
+    std::istringstream iss(style_str);
+    std::string token;
+    while (std::getline(iss, token, ';')) {
+        auto colon = token.find(':');
+        if (colon == std::string::npos) continue;
+        std::string prop = trim(to_lower(token.substr(0, colon)));
+        std::string val = trim(token.substr(colon + 1));
+        auto imp = val.find("!important");
+        if (imp == std::string::npos) imp = val.find("! important");
+        if (imp != std::string::npos) {
+            val = trim(val.substr(0, imp));
+        }
+        if (prop.empty() || val.empty()) continue;
+        key += prop;
+        key += ':';
+        key += val;
+        key += ';';
+    }
+    return key;
+}
+
+std::vector<StyleDecl> parse_inline_style_uncached(const std::string& style_str) {
     std::vector<StyleDecl> decls;
     std::istringstream iss(style_str);
     std::string token;
@@ -2231,6 +2258,20 @@ std::vector<StyleDecl> parse_inline_style(const std::string& style_str) {
         }
     }
     return decls;
+}
+
+const std::vector<StyleDecl>& parse_inline_style(const std::string& style_str) {
+    const std::string cache_key = canonicalize_inline_style_cache_key(style_str);
+    auto it = g_inline_style_cache.find(cache_key);
+    if (it != g_inline_style_cache.end()) {
+        ++g_inline_style_cache_hits;
+        return it->second;
+    }
+
+    ++g_inline_style_cache_misses;
+    auto [inserted_it, _] =
+        g_inline_style_cache.emplace(cache_key, parse_inline_style_uncached(style_str));
+    return inserted_it->second;
 }
 
 // Parse linear-gradient() into angle and color stops
@@ -2599,13 +2640,14 @@ static std::string resolve_css_var(const std::string& val, const clever::css::Co
 
 void apply_inline_style(clever::css::ComputedStyle& style, const std::string& style_attr,
                         const clever::css::ComputedStyle* parent_style = nullptr) {
-    auto decls = parse_inline_style(style_attr);
+    const auto& decls = parse_inline_style(style_attr);
     // Default parent for inherit: use a default-constructed style if no parent provided
     clever::css::ComputedStyle default_parent;
     default_parent.z_index = clever::layout::Z_INDEX_AUTO;
     const auto& parent = parent_style ? *parent_style : default_parent;
 
-    for (auto& d : decls) {
+    for (const auto& decl : decls) {
+        auto d = decl;
         // Store custom properties (--foo: value)
         if (d.property.size() > 2 && d.property[0] == '-' && d.property[1] == '-') {
             style.custom_properties[d.property] = resolve_css_env(d.value);
@@ -7370,7 +7412,7 @@ std::optional<clever::net::Response> fetch_with_redirects(
 
         // Store cookies from response
         for (auto& cookie_val : response->headers.get_all("set-cookie")) {
-            jar.set_from_header(cookie_val, req.host);
+            jar.set_from_header(cookie_val, req.host, req.path);
         }
 
         if (response->status == 301 || response->status == 302 ||
@@ -16882,6 +16924,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height, float dpr) {
     const float normalized_dpr = (std::isfinite(dpr) && dpr >= 0.1f) ? dpr : 1.0f;
     g_render_dpr = normalized_dpr;
+    g_inline_style_cache.clear();
     const int device_viewport_width = std::max(1, viewport_width);
     const int device_viewport_height = std::max(1, viewport_height);
     int layout_viewport_width = device_viewport_width;
@@ -18325,6 +18368,24 @@ JSImageData fetch_image_for_js(const std::string& url) {
         out.height = img.height;
     }
     return out;
+}
+
+void reset_inline_style_cache_stats_for_testing() {
+    g_inline_style_cache.clear();
+    g_inline_style_cache_hits = 0;
+    g_inline_style_cache_misses = 0;
+}
+
+size_t inline_style_cache_size_for_testing() {
+    return g_inline_style_cache.size();
+}
+
+uint64_t inline_style_cache_hit_count_for_testing() {
+    return g_inline_style_cache_hits;
+}
+
+uint64_t inline_style_cache_miss_count_for_testing() {
+    return g_inline_style_cache_misses;
 }
 
 } // namespace clever::paint

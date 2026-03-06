@@ -4,7 +4,36 @@
 #include <clever/js/js_window.h>
 #include <clever/html/tree_builder.h>
 #include <gtest/gtest.h>
+
+extern "C" {
+#include <quickjs.h>
+}
+
+#include <chrono>
 #include <string>
+#include <thread>
+
+namespace {
+
+JSValue js_advance_host_timers(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
+    int delay_ms = 0;
+    if (argc >= 1) {
+        JS_ToInt32(ctx, &delay_ms, argv[0]);
+    }
+    return JS_NewInt32(ctx, clever::js::flush_ready_timers(ctx, delay_ms));
+}
+
+void install_js_timer_test_helpers(JSContext* ctx) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(
+        ctx,
+        global,
+        "__advanceHostTimers",
+        JS_NewCFunction(ctx, js_advance_host_timers, "__advanceHostTimers", 1));
+    JS_FreeValue(ctx, global);
+}
+
+} // namespace
 
 // ============================================================================
 // 1. JSEngine basic initialization and destruction
@@ -1349,6 +1378,59 @@ TEST(JSTimers, IntervalSchedulingStaysAlignedAfterCoarseAdvance) {
 
     EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 1), 1);
     EXPECT_EQ(engine.evaluate("ticks"), "2");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
+TEST(JSTimers, IntervalAvoidsCallbackDrift) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    install_js_timer_test_helpers(engine.context());
+    engine.evaluate(R"(
+        var ticks = [];
+        var id = setInterval(function() {
+            ticks.push(ticks.length + 1);
+            if (ticks.length === 1) {
+                __advanceHostTimers(35);
+            }
+            if (ticks.length === 2) {
+                clearInterval(id);
+            }
+        }, 10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 10), 1);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 4), 0);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 1), 1);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1,2");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
+TEST(JSTimers, ClearedIntervalDoesNotRescheduleAfterCallback) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    install_js_timer_test_helpers(engine.context());
+    engine.evaluate(R"(
+        var ticks = 0;
+        var id = setInterval(function() {
+            ticks = ticks + 1;
+            clearInterval(id);
+            __advanceHostTimers(100);
+        }, 10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 10), 1);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 100), 0);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
 
     clever::js::cleanup_timers(engine.context());
 }
@@ -3232,6 +3314,69 @@ TEST(JSDom, MutationObserverStub) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, MutationObserverFlushesAtCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto inline_order = engine.evaluate(R"(
+        globalThis.moOrder = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moOrder.push('observer:' + records.length);
+        });
+        observer.observe(target, { attributes: true, childList: true });
+
+        target.setAttribute('data-step', '1');
+        moOrder.push('after-set-attr');
+        target.appendChild(document.createElement('span'));
+        moOrder.push('after-append');
+
+        moOrder.join(',')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_order, "after-set-attr,after-append");
+
+    auto checkpoint_order = engine.evaluate("moOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(checkpoint_order, "after-set-attr,after-append,observer:2");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverBatchesSynchronousMutations) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.moBatches = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moBatches.push(records.map(function(record) {
+                return record.type + ':' + record.attributeName;
+            }).join(','));
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-first', '1');
+        target.setAttribute('data-second', '2');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto batch_count = engine.evaluate("String(moBatches.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_count, "1");
+
+    auto batch_records = engine.evaluate("moBatches[0]");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_records, "attributes:data-first,attributes:data-second");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // ============================================================================
 // IntersectionObserver stub
 // ============================================================================
@@ -4563,6 +4708,104 @@ TEST(JSEventPropagation, ComposedPathReturnsAncestorChain) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, EventObjectMethodsStillWorkWithoutPerDispatchEvalV2062) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='parent'><button id='child'>x</button></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        var eventLog = '';
+        var parent = document.getElementById('parent');
+        var child = document.getElementById('child');
+
+        child.addEventListener('click', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.push('mutated');
+            var secondPath = e.composedPath();
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            eventLog = [
+                e.defaultPrevented,
+                e.__stopped,
+                e.__immediate_stopped,
+                firstPath.length === secondPath.length + 1,
+                secondPath.length >= 4,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'child',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent'
+            ].join('|');
+        });
+
+        child.addEventListener('click', function() {
+            eventLog += '|unexpected-second-listener';
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* child_node = find_node_by_id(doc.get(), "child");
+    ASSERT_NE(child_node, nullptr);
+
+    bool prevented = clever::js::dispatch_event(engine.context(), child_node, "click");
+    EXPECT_TRUE(prevented);
+    EXPECT_EQ(engine.evaluate("eventLog"), "true|true|true|true|true|true|true");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MouseEventObjectMethodsStillWorkWithoutPerDispatchEvalV2062) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='parent'><button id='child'>x</button></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        var mouseLog = '';
+        var parent = document.getElementById('parent');
+        var child = document.getElementById('child');
+
+        child.addEventListener('mousedown', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.pop();
+            var secondPath = e.composedPath();
+            e.stopPropagation();
+            e.preventDefault();
+            mouseLog = [
+                e.getModifierState('Control'),
+                e.getModifierState('Shift'),
+                e.getModifierState('Alt'),
+                e.getModifierState('Meta'),
+                e.getModifierState('CapsLock'),
+                e.defaultPrevented,
+                e.__stopped,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'child',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent',
+                e.clientX,
+                e.clientY,
+                secondPath.length >= 4
+            ].join('|');
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* child_node = find_node_by_id(doc.get(), "child");
+    ASSERT_NE(child_node, nullptr);
+
+    bool prevented = clever::js::dispatch_mouse_event(
+        engine.context(), child_node, "mousedown",
+        12.0, 34.0, 56.0, 78.0,
+        1, 1,
+        true, false, true, false,
+        2);
+    EXPECT_TRUE(prevented);
+    EXPECT_EQ(engine.evaluate("mouseLog"), "true|false|true|false|false|true|true|true|true|12|34|true");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // Test: addEventListener with options object {capture: true}
 TEST(JSEventPropagation, AddEventListenerWithOptionsObject) {
     auto doc = clever::html::parse(
@@ -5455,6 +5698,72 @@ TEST(JSWorker, DISABLED_MultipleWorkersCoexist) {
     EXPECT_EQ(result, "11,110");
 }
 
+TEST(JSWorker, MessagePumpDeliversQueuedMessages) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerResult = e.data; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    std::this_thread::sleep_for(20ms);
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, MessagePumpDeliversWorkerError) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerError = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function() { throw new Error("boom from worker"); }');
+        __worker.onerror = function(e) { __workerError = e.message; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerError;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    std::this_thread::sleep_for(20ms);
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerError");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "boom from worker");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
 // ============================================================================
 // Cycle 220: Modern DOM Manipulation Methods
 // ============================================================================
@@ -5905,6 +6214,90 @@ TEST(JSDom, KeyboardEventConstructor) {
         "})()");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result2, "|0|false");
+
+    auto doc_with_input = clever::html::parse(
+        "<html><body><div id='parent'><input id='field'></div></body></html>");
+    ASSERT_NE(doc_with_input, nullptr);
+
+    clever::js::cleanup_dom_bindings(engine.context());
+    clever::js::install_dom_bindings(engine.context(), doc_with_input.get());
+
+    engine.evaluate(R"(
+        var keyboardDispatchLog = [];
+        var keyboardBubbleLog = [];
+        var parent = document.getElementById('parent');
+        var field = document.getElementById('field');
+
+        parent.addEventListener('keydown', function(e) {
+            keyboardBubbleLog.push(e.type + ':' + e.key);
+        });
+
+        field.addEventListener('keydown', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.pop();
+            var secondPath = e.composedPath();
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            keyboardDispatchLog.push([
+                e.key,
+                e.code,
+                e.keyCode,
+                e.charCode,
+                e.which,
+                e.location,
+                e.repeat,
+                e.isComposing,
+                e.getModifierState('Control'),
+                e.getModifierState('Shift'),
+                e.getModifierState('Alt'),
+                e.getModifierState('Meta'),
+                e.getModifierState('CapsLock'),
+                e.defaultPrevented,
+                e.__stopped,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'field',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent',
+                secondPath.length >= 4,
+                firstPath.length + 1 === secondPath.length
+            ].join('|'));
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* field_node = find_node_by_id(doc_with_input.get(), "field");
+    ASSERT_NE(field_node, nullptr);
+
+    clever::js::KeyboardEventInit enter_init;
+    enter_init.key = "Enter";
+    enter_init.code = "Enter";
+    enter_init.key_code = 13;
+    enter_init.char_code = 13;
+    enter_init.location = 1;
+    enter_init.ctrl_key = true;
+    enter_init.repeat = true;
+    bool enter_prevented = clever::js::dispatch_keyboard_event(
+        engine.context(), field_node, "keydown", enter_init);
+    EXPECT_TRUE(enter_prevented);
+
+    clever::js::KeyboardEventInit letter_init;
+    letter_init.key = "a";
+    letter_init.code = "KeyA";
+    letter_init.key_code = 65;
+    letter_init.char_code = 97;
+    letter_init.location = 0;
+    letter_init.alt_key = true;
+    letter_init.meta_key = true;
+    letter_init.is_composing = true;
+    bool letter_prevented = clever::js::dispatch_keyboard_event(
+        engine.context(), field_node, "keydown", letter_init);
+    EXPECT_FALSE(letter_prevented);
+
+    EXPECT_EQ(
+        engine.evaluate("keyboardDispatchLog.join(';')"),
+        "Enter|Enter|13|13|13|1|true|false|true|false|false|false|false|true|true|true|true|true|true;"
+        "a|KeyA|65|97|65|0|false|true|false|false|true|true|false|false|false|true|true|true|true");
+    EXPECT_EQ(engine.evaluate("keyboardBubbleLog.join(';')"), "keydown:a");
 
     clever::js::cleanup_dom_bindings(engine.context());
 }
