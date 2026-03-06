@@ -1,5 +1,6 @@
 #include <clever/net/request.h>
 #include <clever/net/cookie_jar.h>
+#include <sys/socket.h>
 #include <algorithm>
 #include <cctype>
 #include <sstream>
@@ -34,6 +35,34 @@ Method string_to_method(const std::string& str) {
     if (upper == "PATCH")   return Method::PATCH;
 
     return Method::GET;  // default
+}
+
+void RequestCancellationState::cancel() {
+    cancelled.store(true, std::memory_order_relaxed);
+    int fd = -1;
+    {
+        std::lock_guard<std::mutex> lock(active_fd_mutex);
+        fd = active_fd;
+    }
+    if (fd >= 0) {
+        ::shutdown(fd, SHUT_RDWR);
+    }
+}
+
+bool RequestCancellationState::is_cancelled() const {
+    return cancelled.load(std::memory_order_relaxed);
+}
+
+void RequestCancellationState::set_active_fd(int fd) {
+    std::lock_guard<std::mutex> lock(active_fd_mutex);
+    active_fd = fd;
+}
+
+void RequestCancellationState::clear_active_fd(int fd) {
+    std::lock_guard<std::mutex> lock(active_fd_mutex);
+    if (fd < 0 || active_fd == fd) {
+        active_fd = -1;
+    }
 }
 
 void Request::parse_url() {
@@ -110,6 +139,16 @@ void Request::parse_url() {
     // Ensure path is at least "/"
     if (path.empty()) {
         path = "/";
+    }
+}
+
+bool Request::is_cancelled() const {
+    return cancellation_state && cancellation_state->is_cancelled();
+}
+
+void Request::cancel() const {
+    if (cancellation_state) {
+        cancellation_state->cancel();
     }
 }
 

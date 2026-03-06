@@ -2460,11 +2460,11 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
             // text-overflow: ellipsis — use actual font metrics for accurate truncation.
             const float text_width = s_text_measurer.measure_text_width(
                 text_to_render, effective_font_size, node.font_family,
-                eff_weight, eff_italic, node.letter_spacing);
+                eff_weight, eff_italic, node.letter_spacing, node.word_spacing);
             if (text_width > container_width && container_width > 0.0f) {
                 const float ellipsis_width = s_text_measurer.measure_text_width(
                     ellipsis_str, effective_font_size, node.font_family,
-                    eff_weight, eff_italic, node.letter_spacing);
+                    eff_weight, eff_italic, node.letter_spacing, node.word_spacing);
                 const float available_width = std::max(0.0f, container_width - ellipsis_width);
 
                 // Binary search for the number of UTF-8 characters that fit.
@@ -2485,7 +2485,7 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
                         size_t cut_bytes = char_ends[mid - 1];
                         const float w = s_text_measurer.measure_text_width(
                             text_to_render.substr(0, cut_bytes), effective_font_size, node.font_family,
-                            eff_weight, eff_italic, node.letter_spacing);
+                            eff_weight, eff_italic, node.letter_spacing, node.word_spacing);
                         if (w <= available_width) lo = mid;
                         else hi = mid - 1;
                     }
@@ -2497,7 +2497,7 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
             // text-overflow: fade — apply a trailing gradient fade when content overflows.
             const float text_width = s_text_measurer.measure_text_width(
                 text_to_render, effective_font_size, node.font_family,
-                eff_weight, eff_italic, node.letter_spacing);
+                eff_weight, eff_italic, node.letter_spacing, node.word_spacing);
             if (text_width > container_width && container_width > 0.0f) {
                 needs_fade = true;
                 // Fade covers the last 25% of the container (or up to 3em, whichever is smaller).

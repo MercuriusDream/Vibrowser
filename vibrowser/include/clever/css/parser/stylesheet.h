@@ -22,10 +22,23 @@ struct Declaration {
     bool important = false;
 };
 
+struct ConditionalRuleContext {
+    enum class Type {
+        Media,
+        Supports,
+    };
+
+    Type type;
+    std::string condition;
+};
+
 struct StyleRule {
     SelectorList selectors;
     std::vector<Declaration> declarations;
     std::string selector_text;  // original selector text
+    std::vector<std::string> media_conditions;
+    std::vector<std::string> supports_conditions;
+    std::vector<ConditionalRuleContext> conditional_rule_contexts;
     // CSS @layer metadata used by cascade ordering.
     bool in_layer = false;
     size_t layer_order = 0;

@@ -3,20 +3,40 @@
 
 namespace clever::ipc {
 
+static void check_payload_size(size_t len, const char* operation, const char* type_name) {
+    if (len > kMaxSerializedPayloadBytes) {
+        throw std::runtime_error(
+            std::string("IPC ") + operation + " " + type_name + " payload exceeds limit of " +
+            std::to_string(kMaxSerializedPayloadBytes) + " bytes");
+    }
+}
+
+static void check_serialized_size(size_t current_size, size_t additional_size) {
+    if (additional_size > kMaxSerializedPayloadBytes ||
+        current_size > kMaxSerializedPayloadBytes - additional_size) {
+        throw std::runtime_error(
+            std::string("IPC serialized payload exceeds limit of ") +
+            std::to_string(kMaxSerializedPayloadBytes) + " bytes");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Serializer
 // ---------------------------------------------------------------------------
 
 void Serializer::write_u8(uint8_t value) {
+    check_serialized_size(buffer_.size(), sizeof(value));
     buffer_.push_back(value);
 }
 
 void Serializer::write_u16(uint16_t value) {
+    check_serialized_size(buffer_.size(), sizeof(value));
     buffer_.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
     buffer_.push_back(static_cast<uint8_t>(value & 0xFF));
 }
 
 void Serializer::write_u32(uint32_t value) {
+    check_serialized_size(buffer_.size(), sizeof(value));
     buffer_.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
     buffer_.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
     buffer_.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
@@ -24,6 +44,7 @@ void Serializer::write_u32(uint32_t value) {
 }
 
 void Serializer::write_u64(uint64_t value) {
+    check_serialized_size(buffer_.size(), sizeof(value));
     buffer_.push_back(static_cast<uint8_t>((value >> 56) & 0xFF));
     buffer_.push_back(static_cast<uint8_t>((value >> 48) & 0xFF));
     buffer_.push_back(static_cast<uint8_t>((value >> 40) & 0xFF));
@@ -57,12 +78,16 @@ void Serializer::write_bool(bool value) {
 }
 
 void Serializer::write_string(std::string_view str) {
+    check_payload_size(str.size(), "write", "string");
+    check_serialized_size(buffer_.size(), sizeof(uint32_t) + str.size());
     write_u32(static_cast<uint32_t>(str.size()));
     const auto* bytes = reinterpret_cast<const uint8_t*>(str.data());
     buffer_.insert(buffer_.end(), bytes, bytes + str.size());
 }
 
 void Serializer::write_bytes(const uint8_t* data, size_t len) {
+    check_payload_size(len, "write", "bytes");
+    check_serialized_size(buffer_.size(), sizeof(uint32_t) + len);
     write_u32(static_cast<uint32_t>(len));
     if (data != nullptr && len > 0) {
         buffer_.insert(buffer_.end(), data, data + len);
@@ -151,6 +176,7 @@ bool Deserializer::read_bool() {
 
 std::string Deserializer::read_string() {
     uint32_t len = read_u32();
+    check_payload_size(len, "read", "string");
     check_remaining(len);
     std::string result(reinterpret_cast<const char*>(data_ + offset_), len);
     offset_ += len;
@@ -159,6 +185,7 @@ std::string Deserializer::read_string() {
 
 std::vector<uint8_t> Deserializer::read_bytes() {
     uint32_t len = read_u32();
+    check_payload_size(len, "read", "bytes");
     check_remaining(len);
     std::vector<uint8_t> result(data_ + offset_, data_ + offset_ + len);
     offset_ += len;

@@ -8,6 +8,11 @@
 namespace clever::paint {
 
 namespace {
+constexpr float kMinSoftwareShadowSigma = 0.5f;
+// Hard cap to keep hostile CSS shadows from ballooning software raster work.
+constexpr float kBoxShadowBlurRadiusCap = SoftwareRenderer::kMaxBoxShadowBlurRadius;
+constexpr float kBoxShadowWorkRegionMultiplier = SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+
 int reflect_coordinate(int value, int limit) {
     if (limit <= 1) return 0;
     const int period = limit * 2 - 2;
@@ -36,6 +41,32 @@ std::vector<float> make_gaussian_kernel(float radius, int& kernel_radius) {
         for (float& w : kernel) w /= sum;
     }
     return kernel;
+}
+
+template <typename T>
+void ensure_scratch_buffer(std::vector<T>& buffer, int& buffer_width, int& buffer_height,
+                           size_t& allocation_count, int width, int height, size_t elements_per_pixel) {
+    if (width <= 0 || height <= 0) {
+        buffer.clear();
+        buffer_width = 0;
+        buffer_height = 0;
+        return;
+    }
+    const size_t required_size = static_cast<size_t>(width) * static_cast<size_t>(height) * elements_per_pixel;
+    const bool can_reuse_existing =
+        buffer_width >= width &&
+        buffer_height >= height &&
+        buffer.size() >= required_size;
+    if (!can_reuse_existing) {
+        buffer_width = std::max(buffer_width, width);
+        buffer_height = std::max(buffer_height, height);
+        const size_t allocation_size =
+            static_cast<size_t>(buffer_width) * static_cast<size_t>(buffer_height) * elements_per_pixel;
+        buffer.assign(allocation_size, T{});
+        ++allocation_count;
+        return;
+    }
+    std::fill_n(buffer.begin(), required_size, T{});
 }
 }  // namespace
 
@@ -1020,13 +1051,26 @@ void SoftwareRenderer::draw_box_shadow(const Rect& shadow_rect, const Rect& elem
     // The CSS blur radius maps to the Gaussian sigma as: sigma = blur_radius / 2.
     // This follows the CSS spec where the blur radius is approximately 2*sigma.
 
-    int x0 = std::max(0, static_cast<int>(std::floor(shadow_rect.x)));
-    int y0 = std::max(0, static_cast<int>(std::floor(shadow_rect.y)));
-    int x1 = std::min(pixels_width(), static_cast<int>(std::ceil(shadow_rect.x + shadow_rect.width)));
-    int y1 = std::min(pixels_height(), static_cast<int>(std::ceil(shadow_rect.y + shadow_rect.height)));
+    const float safe_blur_radius = std::clamp(
+        std::isfinite(blur_radius) ? blur_radius : 0.0f,
+        0.0f, kBoxShadowBlurRadiusCap);
+    const float safe_expand = std::ceil(safe_blur_radius * kBoxShadowWorkRegionMultiplier);
 
-    float sigma = blur_radius / 2.0f;
-    if (sigma < 0.5f) sigma = 0.5f;
+    const float limited_left = std::max(shadow_rect.x, element_rect.x - safe_expand);
+    const float limited_top = std::max(shadow_rect.y, element_rect.y - safe_expand);
+    const float limited_right = std::min(shadow_rect.x + shadow_rect.width,
+                                         element_rect.x + element_rect.width + safe_expand);
+    const float limited_bottom = std::min(shadow_rect.y + shadow_rect.height,
+                                          element_rect.y + element_rect.height + safe_expand);
+
+    int x0 = std::max(0, static_cast<int>(std::floor(limited_left)));
+    int y0 = std::max(0, static_cast<int>(std::floor(limited_top)));
+    int x1 = std::min(pixels_width(), static_cast<int>(std::ceil(limited_right)));
+    int y1 = std::min(pixels_height(), static_cast<int>(std::ceil(limited_bottom)));
+    if (x0 >= x1 || y0 >= y1) return;
+
+    float sigma = safe_blur_radius / 2.0f;
+    if (sigma < kMinSoftwareShadowSigma) sigma = kMinSoftwareShadowSigma;
 
     // Precompute 1 / (sigma * sqrt(2)) for the Gaussian CDF (erf approximation)
     float inv_sigma_sqrt2 = 1.0f / (sigma * 1.41421356f);
@@ -1849,8 +1893,10 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
         std::vector<float> kernel = make_gaussian_kernel(radius, kernel_radius);
         if (kernel.empty()) return;
 
-        // Temporary buffer for intermediate results (same size as region, RGBA, float precision)
-        std::vector<float> temp(rw * rh * 4, 0.0f);
+        ensure_scratch_buffer(filter_blur_scratch_, filter_blur_scratch_width_,
+                              filter_blur_scratch_height_, filter_blur_scratch_allocations_,
+                              rw, rh, 4);
+        std::vector<float>& temp = filter_blur_scratch_;
 
         // --- Horizontal pass: read from pixels_, write to temp ---
         for (int py = y0; py < y1; py++) {
@@ -2013,7 +2059,10 @@ void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blu
     uint8_t sc_b = static_cast<uint8_t>(shadow_color & 0xFF);
 
     // Step 1: Create alpha silhouette of the element, offset by (offset_x, offset_y)
-    std::vector<uint8_t> shadow_alpha(ew * eh, 0);
+    ensure_scratch_buffer(drop_shadow_alpha_scratch_, drop_shadow_alpha_scratch_width_,
+                          drop_shadow_alpha_scratch_height_, drop_shadow_alpha_scratch_allocations_,
+                          ew, eh, 1);
+    std::vector<uint8_t>& shadow_alpha = drop_shadow_alpha_scratch_;
     int ox = static_cast<int>(offset_x);
     int oy = static_cast<int>(offset_y);
 
@@ -2047,7 +2096,10 @@ void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blu
             int y1 = y0 + eh;
             int rw = x1 - x0;
             int rh = y1 - y0;
-            std::vector<float> temp(ew * eh, 0.0f);
+            ensure_scratch_buffer(drop_shadow_blur_scratch_, drop_shadow_blur_scratch_width_,
+                                  drop_shadow_blur_scratch_height_, drop_shadow_blur_scratch_allocations_,
+                                  ew, eh, 1);
+            std::vector<float>& temp = drop_shadow_blur_scratch_;
 
             // Horizontal pass
             for (int py = y0; py < y1; py++) {

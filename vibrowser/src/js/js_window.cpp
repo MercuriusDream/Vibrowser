@@ -11,6 +11,7 @@ extern "C" {
 #include <chrono>
 #include <limits>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <cctype>
@@ -2181,17 +2182,20 @@ static JSValue js_history_get_state(JSContext* ctx, JSValueConst /*this_val*/,
 }
 
 // =========================================================================
-// Web Workers API — simplified synchronous model
+// Web Workers API — simplified same-thread model
 //
 // The Worker creates a SEPARATE QuickJS runtime+context but runs on the
-// SAME thread (synchronous model). When main calls worker.postMessage(),
-// the worker script is evaluated in the worker context and the worker's
-// onmessage handler is invoked synchronously. Messages sent by the worker
-// via self.postMessage() are collected and dispatched to the main thread's
-// onmessage handler after the worker script returns.
+// SAME thread. When main calls worker.postMessage(), the worker script is
+// evaluated in the worker context and the worker's onmessage handler runs
+// immediately there, but messages sent by the worker are deferred onto the
+// main runtime checkpoint so page JS is not reentered inline.
 // =========================================================================
 
 static JSClassID worker_class_id = 0;
+
+struct WindowWorkerCheckpointState {
+    std::vector<JSValue> queued_workers;
+};
 
 struct WorkerState {
     std::string script_url;   // URL of the worker script
@@ -2206,10 +2210,12 @@ struct WorkerState {
 
     bool terminated = false;
     bool script_loaded = false;
+    bool delivery_queued = false;
 
     // Event handlers (stored as JSValue in the MAIN context)
     JSValue onmessage = JS_UNDEFINED;
     JSValue onerror = JS_UNDEFINED;
+    JSValue worker_object = JS_UNDEFINED;
 
     // The main context (needed for dispatching events back)
     JSContext* main_ctx = nullptr;
@@ -2219,6 +2225,40 @@ struct WorkerState {
 
 static WorkerState* get_worker_state(JSValueConst this_val) {
     return static_cast<WorkerState*>(JS_GetOpaque(this_val, worker_class_id));
+}
+
+static WindowWorkerCheckpointState* get_window_worker_checkpoint_state(JSContext* ctx,
+                                                                       bool create_if_missing) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue val = JS_GetPropertyStr(ctx, global, "__window_worker_checkpoint_state_ptr");
+
+    WindowWorkerCheckpointState* state = nullptr;
+    if (JS_IsNumber(val)) {
+        int64_t ptr = 0;
+        JS_ToInt64(ctx, &ptr, val);
+        state = reinterpret_cast<WindowWorkerCheckpointState*>(static_cast<uintptr_t>(ptr));
+    } else if (create_if_missing) {
+        state = new WindowWorkerCheckpointState();
+        JS_SetPropertyStr(ctx, global, "__window_worker_checkpoint_state_ptr",
+                          JS_NewInt64(ctx, reinterpret_cast<int64_t>(state)));
+    }
+
+    JS_FreeValue(ctx, val);
+    JS_FreeValue(ctx, global);
+    return state;
+}
+
+static void queue_window_worker_delivery(WorkerState* state) {
+    if (!state || !state->main_ctx || state->terminated || state->delivery_queued ||
+        JS_IsUndefined(state->worker_object)) {
+        return;
+    }
+
+    auto* checkpoint_state = get_window_worker_checkpoint_state(state->main_ctx, true);
+    if (!checkpoint_state) return;
+
+    checkpoint_state->queued_workers.push_back(JS_DupValue(state->main_ctx, state->worker_object));
+    state->delivery_queued = true;
 }
 
 // ---- Worker context: self.postMessage (worker -> main) ----
@@ -2442,6 +2482,30 @@ static void dispatch_from_worker(WorkerState* state, JSContext* main_ctx,
     }
 }
 
+static void process_window_worker_messages_impl(JSContext* ctx) {
+    auto* checkpoint_state = get_window_worker_checkpoint_state(ctx, false);
+    if (!checkpoint_state || checkpoint_state->queued_workers.empty()) {
+        return;
+    }
+
+    std::vector<JSValue> queued_workers = std::move(checkpoint_state->queued_workers);
+    checkpoint_state->queued_workers.clear();
+
+    for (JSValue worker_obj : queued_workers) {
+        auto* state = get_worker_state(worker_obj);
+        if (state) {
+            state->delivery_queued = false;
+            if (state->terminated) {
+                std::lock_guard<std::mutex> lock(state->mtx);
+                state->from_worker.clear();
+            } else {
+                dispatch_from_worker(state, ctx, worker_obj);
+            }
+        }
+        JS_FreeValue(ctx, worker_obj);
+    }
+}
+
 // ---- Worker finalizer ----
 
 static void js_worker_finalizer(JSRuntime* /*rt*/, JSValue val) {
@@ -2453,6 +2517,8 @@ static void js_worker_finalizer(JSRuntime* /*rt*/, JSValue val) {
                 JS_FreeValue(state->main_ctx, state->onmessage);
             if (!JS_IsUndefined(state->onerror))
                 JS_FreeValue(state->main_ctx, state->onerror);
+            if (!JS_IsUndefined(state->worker_object))
+                JS_FreeValue(state->main_ctx, state->worker_object);
         }
         // Tear down worker runtime
         // Note: We skip JS_FreeContext/JS_FreeRuntime because QuickJS
@@ -2473,6 +2539,7 @@ static void js_worker_gc_mark(JSRuntime* rt, JSValueConst val,
     if (!state) return;
     JS_MarkValue(rt, state->onmessage, mark_func);
     JS_MarkValue(rt, state->onerror, mark_func);
+    JS_MarkValue(rt, state->worker_object, mark_func);
 }
 
 static JSClassDef worker_class_def = {
@@ -2534,6 +2601,7 @@ static JSValue js_worker_constructor(JSContext* ctx, JSValueConst new_target,
         }
     }
 
+    state->worker_object = JS_DupValue(ctx, obj);
     JS_SetOpaque(obj, state);
     return obj;
 }
@@ -2571,11 +2639,9 @@ static JSValue js_worker_post_message(JSContext* ctx, JSValueConst this_val,
         JS_FreeValue(ctx, json_str);
     }
 
-    // Dispatch the message to the worker context synchronously
+    // Dispatch the message to the worker context synchronously.
     dispatch_to_worker(state, json_data);
-
-    // After the worker script runs, collect any messages it sent back
-    dispatch_from_worker(state, ctx, this_val);
+    queue_window_worker_delivery(state);
 
     return JS_UNDEFINED;
 }
@@ -2588,6 +2654,11 @@ static JSValue js_worker_terminate(JSContext* ctx, JSValueConst this_val,
     if (!state) return JS_ThrowTypeError(ctx, "not a Worker");
 
     state->terminated = true;
+    state->delivery_queued = false;
+    {
+        std::lock_guard<std::mutex> lock(state->mtx);
+        state->from_worker.clear();
+    }
 
     // Skip JS_FreeContext/JS_FreeRuntime — see comment in finalizer
     state->worker_ctx = nullptr;
@@ -4306,6 +4377,10 @@ static void install_text_decoder(JSContext* ctx) {
 // =========================================================================
 // Public API
 // =========================================================================
+
+void process_window_worker_messages(JSContext* ctx) {
+    process_window_worker_messages_impl(ctx);
+}
 
 void install_window_bindings(JSContext* ctx, const std::string& url,
                               int width, int height,
