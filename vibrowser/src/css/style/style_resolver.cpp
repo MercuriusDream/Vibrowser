@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <limits>
 #include <sstream>
+#include <unordered_map>
 
 namespace clever::css {
 
@@ -44,6 +45,100 @@ std::string to_lower(const std::string& s) {
     std::transform(result.begin(), result.end(), result.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return result;
+}
+
+Specificity selector_specificity(const ComplexSelector& selector) {
+    if (selector.precomputed_specificity.has_value()) {
+        return *selector.precomputed_specificity;
+    }
+    return compute_specificity(selector);
+}
+
+bool matches_rightmost_selector_key(const ElementView& element, const ComplexSelector& selector) {
+    switch (selector.rightmost_match_key.type) {
+        case RightmostSelectorKeyType::None:
+            return true;
+        case RightmostSelectorKeyType::Type:
+            return element.tag_name == selector.rightmost_match_key.value;
+        case RightmostSelectorKeyType::Class:
+            return std::find(element.classes.begin(),
+                             element.classes.end(),
+                             selector.rightmost_match_key.value) != element.classes.end();
+        case RightmostSelectorKeyType::Id:
+            return element.id == selector.rightmost_match_key.value;
+    }
+
+    return true;
+}
+
+struct RuleBuckets {
+    std::vector<size_t> unkeyed_rule_indices;
+    std::unordered_map<std::string, std::vector<size_t>> type_rule_indices;
+    std::unordered_map<std::string, std::vector<size_t>> class_rule_indices;
+    std::unordered_map<std::string, std::vector<size_t>> id_rule_indices;
+};
+
+RuleBuckets build_rule_buckets(const std::vector<StyleRule>& rules) {
+    RuleBuckets buckets;
+    for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
+        const auto& rule = rules[rule_index];
+        for (const auto& selector : rule.selectors.selectors) {
+            switch (selector.rightmost_match_key.type) {
+                case RightmostSelectorKeyType::None:
+                    buckets.unkeyed_rule_indices.push_back(rule_index);
+                    break;
+                case RightmostSelectorKeyType::Type:
+                    buckets.type_rule_indices[selector.rightmost_match_key.value].push_back(rule_index);
+                    break;
+                case RightmostSelectorKeyType::Class:
+                    buckets.class_rule_indices[selector.rightmost_match_key.value].push_back(rule_index);
+                    break;
+                case RightmostSelectorKeyType::Id:
+                    buckets.id_rule_indices[selector.rightmost_match_key.value].push_back(rule_index);
+                    break;
+            }
+        }
+    }
+    return buckets;
+}
+
+void mark_bucket_candidates(const std::vector<size_t>& bucket_indices,
+                            std::vector<bool>& candidate_rules) {
+    for (size_t rule_index : bucket_indices) {
+        candidate_rules[rule_index] = true;
+    }
+}
+
+std::vector<bool> collect_candidate_rules(const std::vector<StyleRule>& rules,
+                                          const ElementView& element) {
+    std::vector<bool> candidate_rules(rules.size(), false);
+    if (rules.empty()) {
+        return candidate_rules;
+    }
+
+    RuleBuckets buckets = build_rule_buckets(rules);
+    mark_bucket_candidates(buckets.unkeyed_rule_indices, candidate_rules);
+
+    auto type_it = buckets.type_rule_indices.find(element.tag_name);
+    if (type_it != buckets.type_rule_indices.end()) {
+        mark_bucket_candidates(type_it->second, candidate_rules);
+    }
+
+    if (!element.id.empty()) {
+        auto id_it = buckets.id_rule_indices.find(element.id);
+        if (id_it != buckets.id_rule_indices.end()) {
+            mark_bucket_candidates(id_it->second, candidate_rules);
+        }
+    }
+
+    for (const auto& class_name : element.classes) {
+        auto class_it = buckets.class_rule_indices.find(class_name);
+        if (class_it != buckets.class_rule_indices.end()) {
+            mark_bucket_candidates(class_it->second, candidate_rules);
+        }
+    }
+
+    return candidate_rules;
 }
 
 // Get the string value from a declaration's ComponentValue vector
@@ -7451,16 +7546,23 @@ ComputedStyle StyleResolver::resolve(
     }
 
     // Parse inline style declarations from style="" attribute
-    std::vector<Declaration> inline_decls;
+    const std::vector<Declaration>* inline_decls = nullptr;
     for (const auto& attr : element.attributes) {
         if (to_lower(attr.first) == "style") {
-            inline_decls = parse_declaration_block(attr.second);
+            auto cached_inline_decls = inline_style_declaration_cache_.find(attr.second);
+            if (cached_inline_decls == inline_style_declaration_cache_.end()) {
+                cached_inline_decls = inline_style_declaration_cache_
+                    .emplace(attr.second, parse_declaration_block(attr.second))
+                    .first;
+                ++inline_style_parse_count_;
+            }
+            inline_decls = &cached_inline_decls->second;
             break;
         }
     }
 
     // Cascade matched stylesheet rules + inline declarations
-    if (!matched_rules.empty() || !inline_decls.empty()) {
+    if (!matched_rules.empty() || inline_decls != nullptr) {
         struct PrioritizedDecl {
             const Declaration* decl;
             Specificity specificity;
@@ -7473,7 +7575,8 @@ ComputedStyle StyleResolver::resolve(
         };
 
         std::vector<PrioritizedDecl> all_decls;
-        all_decls.reserve(matched_rules.size() * 4 + inline_decls.size());
+        all_decls.reserve(matched_rules.size() * 4 +
+                          (inline_decls != nullptr ? inline_decls->size() : 0));
 
         // First stylesheet is the UA sheet in our render pipeline.
         const StyleRule* ua_begin = nullptr;
@@ -7507,18 +7610,20 @@ ComputedStyle StyleResolver::resolve(
         // Keep them in their own cascade tier so inline normal beats all rule
         // normal declarations, and inline !important beats author !important.
         const Specificity inline_specificity{1000000, 0, 0};
-        for (size_t i = 0; i < inline_decls.size(); ++i) {
-            const auto& decl = inline_decls[i];
-            all_decls.push_back({
-                &decl,
-                inline_specificity,
-                i,
-                decl.important,
-                false,
-                0,
-                false,
-                true
-            });
+        if (inline_decls != nullptr) {
+            for (size_t i = 0; i < inline_decls->size(); ++i) {
+                const auto& decl = (*inline_decls)[i];
+                all_decls.push_back({
+                    &decl,
+                    inline_specificity,
+                    i,
+                    decl.important,
+                    false,
+                    0,
+                    false,
+                    true
+                });
+            }
         }
 
         std::stable_sort(all_decls.begin(), all_decls.end(),
@@ -8030,12 +8135,20 @@ void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
                                         const ElementView& element,
                                         std::vector<MatchedRule>& result,
                                         size_t& source_order) const {
-    for (const auto& rule : rules) {
+    std::vector<bool> candidate_rules = collect_candidate_rules(rules, element);
+    for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
+        if (!candidate_rules[rule_index]) {
+            continue;
+        }
+        const auto& rule = rules[rule_index];
         bool matched_any = false;
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
+            if (!matches_rightmost_selector_key(element, complex_sel)) {
+                continue;
+            }
             if (matcher_.matches(element, complex_sel)) {
-                Specificity spec = compute_specificity(complex_sel);
+                Specificity spec = selector_specificity(complex_sel);
                 if (!matched_any || best_specificity < spec) {
                     best_specificity = spec;
                 }
@@ -8056,11 +8169,17 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
                                                const std::string& pseudo_name,
                                                std::vector<MatchedRule>& result,
                                                size_t& source_order) const {
-    for (const auto& rule : rules) {
+    std::vector<bool> candidate_rules = collect_candidate_rules(rules, element);
+    for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
+        if (!candidate_rules[rule_index]) {
+            continue;
+        }
+        const auto& rule = rules[rule_index];
         bool matched_any = false;
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
             if (complex_sel.parts.empty()) continue;
+            if (!matches_rightmost_selector_key(element, complex_sel)) continue;
 
             const auto& last_compound = complex_sel.parts.back().compound;
             bool has_pseudo = false;
@@ -8090,7 +8209,7 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
             }
 
             if (matches) {
-                Specificity spec = compute_specificity(complex_sel);
+                Specificity spec = selector_specificity(complex_sel);
                 if (!matched_any || best_specificity < spec) {
                     best_specificity = spec;
                 }

@@ -93,10 +93,15 @@ std::unique_ptr<Node> Node::remove_child(Node& child) {
 }
 
 void Node::mark_dirty(DirtyFlags flags) {
-    dirty_ = dirty_ | flags;
-    // Propagate to ancestors
-    if (parent_) {
-        parent_->mark_dirty(flags);
+    Node* current = this;
+    while (current) {
+        const auto current_bits = static_cast<uint8_t>(current->dirty_);
+        const auto requested_bits = static_cast<uint8_t>(flags);
+        if ((current_bits & requested_bits) == requested_bits) {
+            return;
+        }
+        current->dirty_ = current->dirty_ | flags;
+        current = current->parent_;
     }
 }
 

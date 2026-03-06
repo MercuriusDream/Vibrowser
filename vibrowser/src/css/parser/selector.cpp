@@ -42,6 +42,31 @@ Specificity max_specificity_in_list(const SelectorList& list) {
     return max_spec;
 }
 
+RightmostSelectorKey compute_rightmost_match_key(const ComplexSelector& selector) {
+    if (selector.parts.empty()) {
+        return {};
+    }
+
+    const auto& simple_selectors = selector.parts.back().compound.simple_selectors;
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::Id) {
+            return {RightmostSelectorKeyType::Id, simple.value};
+        }
+    }
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::Class) {
+            return {RightmostSelectorKeyType::Class, simple.value};
+        }
+    }
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::Type) {
+            return {RightmostSelectorKeyType::Type, simple.value};
+        }
+    }
+
+    return {};
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -59,9 +84,13 @@ bool Specificity::operator==(const Specificity& other) const {
 }
 
 Specificity compute_specificity(const ComplexSelector& selector) {
+    if (selector.precomputed_specificity.has_value()) {
+        return *selector.precomputed_specificity;
+    }
+
     Specificity spec;
-    for (auto& part : selector.parts) {
-        for (auto& ss : part.compound.simple_selectors) {
+    for (const auto& part : selector.parts) {
+        for (const auto& ss : part.compound.simple_selectors) {
             switch (ss.type) {
                 case SimpleSelectorType::Id:
                     spec.a++;
@@ -175,6 +204,7 @@ SelectorList SelectorParser::parse() {
 
     ComplexSelector first = parse_complex_selector();
     if (!first.parts.empty()) {
+        first.precomputed_specificity = compute_specificity(first);
         list.selectors.push_back(std::move(first));
     }
 
@@ -187,6 +217,7 @@ SelectorList SelectorParser::parse() {
                 if (!at_end()) {
                     ComplexSelector next = parse_complex_selector();
                     if (!next.parts.empty()) {
+                        next.precomputed_specificity = compute_specificity(next);
                         list.selectors.push_back(std::move(next));
                     }
                 }
@@ -238,6 +269,7 @@ ComplexSelector SelectorParser::parse_complex_selector() {
         result.parts.push_back(std::move(part));
     }
 
+    result.rightmost_match_key = compute_rightmost_match_key(result);
     return result;
 }
 
@@ -487,6 +519,15 @@ SimpleSelector SelectorParser::parse_attribute_selector() {
     }
 
     skip_whitespace();
+
+    if (!at_end() && current().type == CSSToken::Ident) {
+        const std::string flag = ascii_lower(current().value);
+        if (flag == "i" || flag == "s") {
+            ss.argument = flag;
+            advance();
+            skip_whitespace();
+        }
+    }
 
     // Skip to closing ']'
     while (!at_end() && current().type != CSSToken::RightBracket) {

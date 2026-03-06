@@ -8,14 +8,144 @@
 #include <clever/layout/box.h>
 #include <clever/layout/layout_engine.h>
 #include <gtest/gtest.h>
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <set>
 #include <string>
+#include <thread>
+#include <vector>
+
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 using namespace clever::paint;
 using namespace clever::layout;
+
+namespace clever::paint {
+void reset_text_width_cache_stats_for_testing();
+size_t text_width_cache_size_for_testing();
+uint64_t text_width_cache_hit_count_for_testing();
+uint64_t text_width_cache_miss_count_for_testing();
+void reset_text_line_layout_cache_for_testing();
+size_t text_line_layout_cache_size_for_testing();
+uint64_t text_line_layout_cache_hit_count_for_testing();
+uint64_t text_line_layout_cache_miss_count_for_testing();
+uint64_t text_line_layout_creation_count_for_testing();
+void reset_image_cache_for_testing();
+void set_image_cache_max_bytes_for_testing(size_t max_bytes);
+size_t image_cache_size_for_testing();
+size_t image_cache_bytes_for_testing();
+uint64_t image_cache_hit_count_for_testing();
+uint64_t image_cache_miss_count_for_testing();
+}
+
+namespace {
+
+#ifndef _WIN32
+class ScopedImageResponseServer {
+public:
+    explicit ScopedImageResponseServer(std::string body)
+        : body_(std::move(body)) {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) return;
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, 8) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~ScopedImageResponseServer() {
+        if (listen_fd_ >= 0) {
+            ::shutdown(listen_fd_, SHUT_RDWR);
+            ::close(listen_fd_);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+private:
+    void run() {
+        while (true) {
+            int client_fd = ::accept(listen_fd_, nullptr, nullptr);
+            if (client_fd < 0) return;
+
+            std::string request;
+            char buffer[1024];
+            while (request.find("\r\n\r\n") == std::string::npos) {
+                ssize_t n = ::recv(client_fd, buffer, sizeof(buffer), 0);
+                if (n <= 0) {
+                    ::close(client_fd);
+                    return;
+                }
+                request.append(buffer, static_cast<size_t>(n));
+            }
+
+            const std::string response =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: image/svg+xml\r\n"
+                "Content-Length: " + std::to_string(body_.size()) + "\r\n"
+                "Connection: close\r\n\r\n" + body_;
+
+            size_t total_sent = 0;
+            while (total_sent < response.size()) {
+                ssize_t sent = ::send(
+                    client_fd,
+                    response.data() + total_sent,
+                    response.size() - total_sent,
+                    0);
+                if (sent <= 0) break;
+                total_sent += static_cast<size_t>(sent);
+            }
+
+            ::shutdown(client_fd, SHUT_RDWR);
+            ::close(client_fd);
+        }
+    }
+
+    int listen_fd_ = -1;
+    uint16_t port_ = 0;
+    std::thread server_thread_;
+    std::string body_;
+};
+#endif
+
+} // namespace
 
 // ============================================================================
 // 1. DisplayList: fill_rect adds command
@@ -6095,6 +6225,15 @@ TEST(CSSGrid, CascadeParsed) {
 // PaintTest fixture for <input type="range"> slider tests
 // ============================================================================
 class PaintTest : public ::testing::Test {};
+
+static const LayoutNode* find_node_by_id(const LayoutNode& node, const std::string& id) {
+    if (node.element_id == id) return &node;
+    for (const auto& child : node.children) {
+        if (!child) continue;
+        if (const auto* match = find_node_by_id(*child, id)) return match;
+    }
+    return nullptr;
+}
 
 // ============================================================================
 // InputRangeDefaultRender: default <input type="range"> renders successfully
@@ -24401,6 +24540,29 @@ TEST_F(PaintTest, BackdropFilterNotInherited) {
     EXPECT_TRUE(found) << "Should find span with empty backdrop_filters (not inherited)";
 }
 
+TEST_F(PaintTest, BackdropFilterBlurReusesScratchBuffersV2064) {
+    DisplayList list;
+    list.fill_rect({0, 0, 12, 24}, {255, 0, 0, 255});
+    list.fill_rect({12, 0, 12, 24}, {0, 0, 255, 255});
+    list.apply_backdrop_filter({6, 0, 12, 24}, 9, 4.0f);
+
+    SoftwareRenderer renderer(24, 24);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(list);
+
+    const auto first_pixels = renderer.pixels();
+    const auto mixed_pixel = renderer.get_pixel(11, 12);
+    EXPECT_GT(mixed_pixel.r, 0);
+    EXPECT_GT(mixed_pixel.b, 0);
+    EXPECT_EQ(renderer.filter_blur_scratch_allocation_count_for_testing(), 1u);
+
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(list);
+
+    EXPECT_EQ(renderer.filter_blur_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(first_pixels, renderer.pixels());
+}
+
 // ============================================================================
 // mask-composite: inline style
 // ============================================================================
@@ -30971,6 +31133,42 @@ TEST_F(PaintTest, FilterDropShadowWithColor) {
     EXPECT_EQ((ds_color >> 16) & 0xFF, 0xFF) << "drop-shadow color R should be 255";
     EXPECT_EQ((ds_color >> 8) & 0xFF, 0x00) << "drop-shadow color G should be 0";
     EXPECT_EQ(ds_color & 0xFF, 0x00) << "drop-shadow color B should be 0";
+}
+
+TEST_F(PaintTest, DropShadowPixelsStayStableWithScratchReuseV2064) {
+    DisplayList list;
+    list.fill_rect({12, 12, 14, 14}, {30, 120, 220, 255});
+    list.apply_drop_shadow({12, 12, 14, 14}, 5.0f, 4.0f, 3.0f, 0xCC000000);
+
+    SoftwareRenderer renderer(48, 48);
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(list);
+
+    const auto first_pixels = renderer.pixels();
+    const auto element_pixel = renderer.get_pixel(18, 18);
+    bool found_shadow_pixel = false;
+    for (int y = 26; y < 40 && !found_shadow_pixel; ++y) {
+        for (int x = 26; x < 40 && !found_shadow_pixel; ++x) {
+            if (x >= 12 && x < 26 && y >= 12 && y < 26) continue;
+            const auto shadow_pixel = renderer.get_pixel(x, y);
+            if (shadow_pixel.a > 0) {
+                found_shadow_pixel = true;
+            }
+        }
+    }
+    EXPECT_EQ(element_pixel.r, 30);
+    EXPECT_EQ(element_pixel.g, 120);
+    EXPECT_EQ(element_pixel.b, 220);
+    EXPECT_TRUE(found_shadow_pixel);
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(), 1u);
+
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(list);
+
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(first_pixels, renderer.pixels());
 }
 
 // ============================================================================
@@ -39615,6 +39813,330 @@ TEST(WebFontRegistration, ClearRegisteredFonts) {
     EXPECT_FALSE(TextRenderer::has_registered_font("AnyFont"));
 }
 
+TEST_F(PaintTest, TextWidthCacheReusesRepeatedMeasurements) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+
+    TextRenderer renderer;
+    float first = renderer.measure_text_width("Cache me", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    float second = renderer.measure_text_width("Cache me", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+
+    EXPECT_GT(first, 0.0f);
+    EXPECT_FLOAT_EQ(first, second);
+    EXPECT_EQ(text_width_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextWidthCacheClearsOnRegisteredFontReset) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+
+    TextRenderer renderer;
+    float first = renderer.measure_text_width("Reset me", 16.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    ASSERT_GT(first, 0.0f);
+    ASSERT_EQ(text_width_cache_size_for_testing(), 1u);
+    ASSERT_EQ(text_width_cache_miss_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+    EXPECT_EQ(text_width_cache_size_for_testing(), 0u);
+
+    float second = renderer.measure_text_width("Reset me", 16.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    EXPECT_FLOAT_EQ(first, second);
+    EXPECT_EQ(text_width_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 0u);
+
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererReusesRepeatedLineLayoutV2068) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_line_layout_cache_for_testing();
+
+    TextRenderer renderer;
+    std::vector<uint8_t> buffer(256 * 64 * 4, 0);
+
+    renderer.render_text("Cache this line", 8.0f, 12.0f, 18.0f, {0, 0, 0, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+    renderer.render_text("Cache this line", 8.0f, 12.0f, 18.0f, {0, 0, 0, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 1u);
+
+    reset_text_line_layout_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererCacheInvalidatesAfterFontRegistryChangeV2068) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_line_layout_cache_for_testing();
+
+    TextRenderer renderer;
+    std::vector<uint8_t> buffer(256 * 64 * 4, 0);
+
+    renderer.render_text("Invalidate this line", 8.0f, 12.0f, 16.0f, {0, 0, 0, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+    ASSERT_EQ(text_line_layout_cache_size_for_testing(), 1u);
+    ASSERT_EQ(text_line_layout_cache_miss_count_for_testing(), 1u);
+    ASSERT_EQ(text_line_layout_creation_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 0u);
+
+    renderer.render_text("Invalidate this line", 8.0f, 12.0f, 16.0f, {0, 0, 0, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 0u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 2u);
+
+    reset_text_line_layout_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, InlineStyleCacheReusesParsedDeclarations) {
+    reset_inline_style_cache_stats_for_testing();
+
+    auto result = render_html(
+        "<html><body>"
+        "<div style='width:20px;height:20px;background:red;'></div>"
+        "<div style='width:20px;height:20px;background:red;'></div>"
+        "</body></html>",
+        120, 120);
+
+    ASSERT_TRUE(result.success) << result.error;
+    EXPECT_EQ(inline_style_cache_size_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_hit_count_for_testing(), 1u);
+}
+
+TEST_F(PaintTest, InlineStyleCacheCanonicalizesWhitespaceAndTrailingSemicolons) {
+    reset_inline_style_cache_stats_for_testing();
+
+    auto result = render_html(
+        "<html><body>"
+        "<div style='width:20px;height:20px;background:red'></div>"
+        "<div style=' width : 20px ; height:20px ; background : red ; '></div>"
+        "</body></html>",
+        120, 120);
+
+    ASSERT_TRUE(result.success) << result.error;
+    EXPECT_EQ(inline_style_cache_size_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_hit_count_for_testing(), 1u);
+}
+
+TEST_F(PaintTest, InlineStyleCacheDoesNotLeakAcrossDifferentDeclarationSets) {
+    reset_inline_style_cache_stats_for_testing();
+
+    auto result = render_html(
+        "<html><body>"
+        "<div id='red-box' style='width:20px;height:20px;background:red;'></div>"
+        "<div id='blue-box' style='width:20px;height:20px;background:blue;'></div>"
+        "</body></html>",
+        120, 120);
+
+    ASSERT_TRUE(result.success) << result.error;
+    EXPECT_EQ(inline_style_cache_size_for_testing(), 2u);
+    EXPECT_EQ(inline_style_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(inline_style_cache_hit_count_for_testing(), 0u);
+
+    bool found_red_box = false;
+    bool found_blue_box = false;
+    std::function<void(const clever::layout::LayoutNode&)> check =
+        [&](const clever::layout::LayoutNode& node) {
+        if (node.element_id == "red-box") {
+            EXPECT_EQ(node.background_color, 0xFFFF0000u);
+            found_red_box = true;
+        }
+        if (node.element_id == "blue-box") {
+            EXPECT_EQ(node.background_color, 0xFF0000FFu);
+            found_blue_box = true;
+        }
+        for (const auto& child : node.children) check(*child);
+    };
+    check(*result.root);
+    EXPECT_TRUE(found_red_box);
+    EXPECT_TRUE(found_blue_box);
+}
+
+TEST_F(PaintTest, ImageCacheReusesRepeatedDataUriDecodeV2065) {
+    reset_image_cache_for_testing();
+
+    const std::string html =
+        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J3JlZCcvPjwvc3ZnPg=='></body></html>";
+
+    auto first = render_html(html, 64, 64);
+    ASSERT_TRUE(first.success) << first.error;
+    ASSERT_NE(first.renderer, nullptr);
+
+    const auto misses_after_first = image_cache_miss_count_for_testing();
+    const auto hits_after_first = image_cache_hit_count_for_testing();
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_GE(misses_after_first, 1u);
+
+    auto first_pixel = first.renderer->get_pixel(12, 12);
+    EXPECT_GT(first_pixel.r, 200);
+    EXPECT_LT(first_pixel.g, 80);
+    EXPECT_LT(first_pixel.b, 80);
+
+    auto second = render_html(html, 64, 64);
+    ASSERT_TRUE(second.success) << second.error;
+    ASSERT_NE(second.renderer, nullptr);
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_after_first);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_after_first);
+
+    auto second_pixel = second.renderer->get_pixel(12, 12);
+    EXPECT_GT(second_pixel.r, 200);
+    EXPECT_LT(second_pixel.g, 80);
+    EXPECT_LT(second_pixel.b, 80);
+
+    reset_image_cache_for_testing();
+}
+
+TEST_F(PaintTest, ImageCacheTouchKeepsHotEntryReusableV2065) {
+    reset_image_cache_for_testing();
+    set_image_cache_max_bytes_for_testing(8);
+
+    const std::string red_html =
+        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J3JlZCcvPjwvc3ZnPg=='></body></html>";
+    const std::string green_html =
+        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J2dyZWVuJy8+PC9zdmc+'></body></html>";
+    const std::string blue_html =
+        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J2JsdWUnLz48L3N2Zz4='></body></html>";
+
+    ASSERT_TRUE(render_html(red_html, 64, 64).success);
+    ASSERT_TRUE(render_html(green_html, 64, 64).success);
+    EXPECT_EQ(image_cache_size_for_testing(), 2u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 8u);
+
+    const auto hits_before_touch = image_cache_hit_count_for_testing();
+    ASSERT_TRUE(render_html(red_html, 64, 64).success);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_before_touch);
+
+    ASSERT_TRUE(render_html(blue_html, 64, 64).success);
+    EXPECT_EQ(image_cache_size_for_testing(), 2u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 8u);
+
+    const auto misses_before_hot_reuse = image_cache_miss_count_for_testing();
+    const auto hits_before_hot_reuse = image_cache_hit_count_for_testing();
+    ASSERT_TRUE(render_html(red_html, 64, 64).success);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_before_hot_reuse);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_before_hot_reuse);
+
+    const auto misses_before_cold_reload = image_cache_miss_count_for_testing();
+    ASSERT_TRUE(render_html(green_html, 64, 64).success);
+    EXPECT_GT(image_cache_miss_count_for_testing(), misses_before_cold_reload);
+
+    reset_image_cache_for_testing();
+}
+
+TEST_F(PaintTest, ImageCacheTreatsFragmentVariantsAsSameResourceV2069) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Local POSIX socket fixture is not available on Windows.";
+#else
+    reset_image_cache_for_testing();
+
+    const std::string svg =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>"
+        "<rect width='1' height='1' fill='red'/></svg>";
+    ScopedImageResponseServer server(svg);
+    ASSERT_TRUE(server.is_valid());
+
+    const std::string base_url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/image.svg";
+    const std::string first_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "#hero'></body></html>";
+    const std::string second_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "#thumb'></body></html>";
+
+    auto first = render_html(first_html, 64, 64);
+    ASSERT_TRUE(first.success) << first.error;
+    ASSERT_NE(first.renderer, nullptr);
+
+    const auto misses_after_first = image_cache_miss_count_for_testing();
+    const auto hits_after_first = image_cache_hit_count_for_testing();
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_GE(misses_after_first, 1u);
+
+    auto second = render_html(second_html, 64, 64);
+    ASSERT_TRUE(second.success) << second.error;
+    ASSERT_NE(second.renderer, nullptr);
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_after_first);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_after_first);
+
+    reset_image_cache_for_testing();
+#endif
+}
+
+TEST_F(PaintTest, ImageCacheStillSeparatesQueryVariantsV2069) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Local POSIX socket fixture is not available on Windows.";
+#else
+    reset_image_cache_for_testing();
+
+    const std::string svg =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>"
+        "<rect width='1' height='1' fill='blue'/></svg>";
+    ScopedImageResponseServer server(svg);
+    ASSERT_TRUE(server.is_valid());
+
+    const std::string base_url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/image.svg";
+    const std::string first_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "?variant=1#hero'></body></html>";
+    const std::string second_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "?variant=2#hero'></body></html>";
+
+    auto first = render_html(first_html, 64, 64);
+    ASSERT_TRUE(first.success) << first.error;
+    ASSERT_NE(first.renderer, nullptr);
+
+    const auto misses_after_first = image_cache_miss_count_for_testing();
+    const auto hits_after_first = image_cache_hit_count_for_testing();
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_GE(misses_after_first, 1u);
+
+    auto second = render_html(second_html, 64, 64);
+    ASSERT_TRUE(second.success) << second.error;
+    ASSERT_NE(second.renderer, nullptr);
+
+    EXPECT_EQ(image_cache_size_for_testing(), 2u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 8u);
+    EXPECT_GT(image_cache_miss_count_for_testing(), misses_after_first);
+    EXPECT_GE(image_cache_hit_count_for_testing(), hits_after_first);
+
+    reset_image_cache_for_testing();
+#endif
+}
+
 TEST(WebFontRegistration, FontDisplayPropertyCollected) {
     auto result = render_html(
         "<html><head><style>"
@@ -41604,6 +42126,85 @@ TEST_F(PaintTest, TextWrapBalancePureText) {
     EXPECT_NE(result.root, nullptr);
 }
 
+TEST_F(PaintTest, BoxShadowBlurClampCapsOversizedRadiusV2062) {
+    const Rect element_rect{96.0f, 96.0f, 32.0f, 32.0f};
+    const float huge_blur = 5000.0f;
+    const float huge_expand = huge_blur * SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+    const float capped_blur = SoftwareRenderer::kMaxBoxShadowBlurRadius;
+    const float capped_expand = capped_blur * SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+
+    SoftwareRenderer huge_renderer(256, 256);
+    huge_renderer.clear({255, 255, 255, 255});
+    DisplayList huge_shadow;
+    huge_shadow.fill_box_shadow(
+        {element_rect.x - huge_expand, element_rect.y - huge_expand,
+         element_rect.width + huge_expand * 2.0f, element_rect.height + huge_expand * 2.0f},
+        element_rect, {0, 0, 0, 255}, huge_blur, 0.0f);
+    huge_renderer.render(huge_shadow);
+
+    SoftwareRenderer capped_renderer(256, 256);
+    capped_renderer.clear({255, 255, 255, 255});
+    DisplayList capped_shadow;
+    capped_shadow.fill_box_shadow(
+        {element_rect.x - capped_expand, element_rect.y - capped_expand,
+         element_rect.width + capped_expand * 2.0f, element_rect.height + capped_expand * 2.0f},
+        element_rect, {0, 0, 0, 255}, capped_blur, 0.0f);
+    capped_renderer.render(capped_shadow);
+
+    const struct {
+        int x;
+        int y;
+    } samples[] = {{0, 0}, {72, 112}, {96, 112}, {140, 112}, {255, 255}};
+
+    for (const auto& sample : samples) {
+        const auto huge_pixel = huge_renderer.get_pixel(sample.x, sample.y);
+        const auto capped_pixel = capped_renderer.get_pixel(sample.x, sample.y);
+        EXPECT_EQ(huge_pixel.r, capped_pixel.r) << "r mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(huge_pixel.g, capped_pixel.g) << "g mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(huge_pixel.b, capped_pixel.b) << "b mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(huge_pixel.a, capped_pixel.a) << "a mismatch at (" << sample.x << "," << sample.y << ")";
+    }
+}
+
+TEST_F(PaintTest, BoxShadowBlurClampKeepsNormalShadowPixelsV2062) {
+    const Rect element_rect{90.0f, 90.0f, 48.0f, 48.0f};
+    const float normal_blur = 12.0f;
+    const float exact_expand = normal_blur * SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+    const float oversized_expand = 400.0f;
+
+    SoftwareRenderer exact_renderer(256, 256);
+    exact_renderer.clear({255, 255, 255, 255});
+    DisplayList exact_shadow;
+    exact_shadow.fill_box_shadow(
+        {element_rect.x - exact_expand, element_rect.y - exact_expand,
+         element_rect.width + exact_expand * 2.0f, element_rect.height + exact_expand * 2.0f},
+        element_rect, {0, 0, 0, 200}, normal_blur, 0.0f);
+    exact_renderer.render(exact_shadow);
+
+    SoftwareRenderer oversized_renderer(256, 256);
+    oversized_renderer.clear({255, 255, 255, 255});
+    DisplayList oversized_shadow;
+    oversized_shadow.fill_box_shadow(
+        {element_rect.x - oversized_expand, element_rect.y - oversized_expand,
+         element_rect.width + oversized_expand * 2.0f, element_rect.height + oversized_expand * 2.0f},
+        element_rect, {0, 0, 0, 200}, normal_blur, 0.0f);
+    oversized_renderer.render(oversized_shadow);
+
+    const struct {
+        int x;
+        int y;
+    } samples[] = {{32, 32}, {84, 114}, {114, 114}, {148, 114}, {220, 220}};
+
+    for (const auto& sample : samples) {
+        const auto exact_pixel = exact_renderer.get_pixel(sample.x, sample.y);
+        const auto oversized_pixel = oversized_renderer.get_pixel(sample.x, sample.y);
+        EXPECT_EQ(exact_pixel.r, oversized_pixel.r) << "r mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(exact_pixel.g, oversized_pixel.g) << "g mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(exact_pixel.b, oversized_pixel.b) << "b mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(exact_pixel.a, oversized_pixel.a) << "a mismatch at (" << sample.x << "," << sample.y << ")";
+    }
+}
+
 TEST(RenderPipeline, InvalidDprFallsBackToOne) {
     auto result = render_html("<html><body>ok</body></html>", 320, 200, 0.0f);
     ASSERT_TRUE(result.success);
@@ -41621,4 +42222,99 @@ TEST(RenderPipeline, NonFiniteDprFallsBackToOne) {
     EXPECT_EQ(result.renderer->dpr(), 1.0f);
     EXPECT_EQ(result.renderer->pixels_width(), 200);
     EXPECT_GE(result.renderer->pixels_height(), 120);
+}
+
+TEST_F(PaintTest, InterpolateSizeAllowKeywordsEnablesWidthTransitionV2067) {
+    // Keep the transition long enough that slower CI machines still observe
+    // an in-flight width instead of the completed endpoint on the next render.
+    const std::string final_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-final-width" style="display:inline-block;width:max-content;">
+          <span style="display:inline-block;width:140px;height:12px;background:red;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto final_result = render_html(final_html, 400, 200);
+    ASSERT_TRUE(final_result.success);
+    ASSERT_NE(final_result.root, nullptr);
+    const auto* final_node = find_node_by_id(*final_result.root, "v2067-final-width");
+    ASSERT_NE(final_node, nullptr);
+    const float final_width = final_node->geometry.width;
+    ASSERT_GT(final_width, 100.0f);
+
+    const std::string initial_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-allow-width"
+             style="display:inline-block;width:40px;transition:width 1s linear;interpolate-size:allow-keywords;">
+          <span style="display:inline-block;width:140px;height:12px;background:red;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto first = render_html(initial_html, 400, 200);
+    ASSERT_TRUE(first.success);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+
+    const std::string transitioned_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-allow-width"
+             style="display:inline-block;width:max-content;transition:width 1s linear;interpolate-size:allow-keywords;">
+          <span style="display:inline-block;width:140px;height:12px;background:red;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto second = render_html(transitioned_html, 400, 200);
+    ASSERT_TRUE(second.success);
+    ASSERT_NE(second.root, nullptr);
+
+    const auto* transitioned_node = find_node_by_id(*second.root, "v2067-allow-width");
+    ASSERT_NE(transitioned_node, nullptr);
+    EXPECT_GT(transitioned_node->geometry.width, 40.0f);
+    EXPECT_LT(transitioned_node->geometry.width, final_width - 1.0f);
+}
+
+TEST_F(PaintTest, InterpolateSizeDefaultKeepsIntrinsicTransitionDiscreteV2067) {
+    const std::string final_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-discrete-final" style="display:inline-block;width:max-content;">
+          <span style="display:inline-block;width:140px;height:12px;background:blue;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto final_result = render_html(final_html, 400, 200);
+    ASSERT_TRUE(final_result.success);
+    ASSERT_NE(final_result.root, nullptr);
+    const auto* final_node = find_node_by_id(*final_result.root, "v2067-discrete-final");
+    ASSERT_NE(final_node, nullptr);
+    const float final_width = final_node->geometry.width;
+    ASSERT_GT(final_width, 100.0f);
+
+    const std::string initial_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-discrete-width"
+             style="display:inline-block;width:40px;transition:width 1s linear;">
+          <span style="display:inline-block;width:140px;height:12px;background:blue;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto first = render_html(initial_html, 400, 200);
+    ASSERT_TRUE(first.success);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+
+    const std::string transitioned_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-discrete-width"
+             style="display:inline-block;width:max-content;transition:width 1s linear;">
+          <span style="display:inline-block;width:140px;height:12px;background:blue;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto second = render_html(transitioned_html, 400, 200);
+    ASSERT_TRUE(second.success);
+    ASSERT_NE(second.root, nullptr);
+
+    const auto* transitioned_node = find_node_by_id(*second.root, "v2067-discrete-width");
+    ASSERT_NE(transitioned_node, nullptr);
+    EXPECT_NEAR(transitioned_node->geometry.width, final_width, 1.0f);
 }

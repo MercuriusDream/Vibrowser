@@ -71,7 +71,8 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr);
 // Dispatch scroll event and update IntersectionObservers when viewport scrolls.
 // Call when the viewport scroll position changes (e.g., during browser scrolling).
 // Fires 'scroll' event listeners on window and re-evaluates intersection state.
-void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h, float scroll_y);
+void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h,
+                           float scroll_x, float scroll_y);
 
 // Fire IntersectionObserver callbacks using cached layout geometry.
 // Call after populate_layout_geometry(). Computes intersection against viewport.

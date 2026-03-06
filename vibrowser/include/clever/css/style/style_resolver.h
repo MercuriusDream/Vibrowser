@@ -55,6 +55,14 @@ public:
     // Set viewport dimensions for @media query evaluation
     void set_viewport(float width, float height);
 
+    size_t inline_style_cache_size_for_testing() const {
+        return inline_style_declaration_cache_.size();
+    }
+
+    size_t inline_style_parse_count_for_testing() const {
+        return inline_style_parse_count_;
+    }
+
 private:
     struct MediaConditionCacheState {
         float viewport_width = 0.0f;
@@ -91,6 +99,9 @@ private:
     mutable MediaConditionCacheState media_condition_cache_state_;
     mutable std::unordered_map<std::string, bool> media_condition_cache_;
     mutable std::unordered_map<std::string, bool> supports_condition_cache_;
+    mutable std::unordered_map<std::string, std::vector<Declaration>>
+        inline_style_declaration_cache_;
+    mutable size_t inline_style_parse_count_ = 0;
 };
 
 // Set/get the global dark mode flag used by light-dark() color function.

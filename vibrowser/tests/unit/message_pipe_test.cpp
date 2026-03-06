@@ -1,5 +1,7 @@
 #include <clever/ipc/message_pipe.h>
 #include <gtest/gtest.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 #include <cstdint>
 #include <cstring>
 #include <numeric>
@@ -3738,4 +3740,28 @@ TEST(MessagePipeTest, MessagePipeV181_3_SendSingleByteManyTimes) {
         ASSERT_EQ(received->size(), 1u);
         EXPECT_EQ((*received)[0], static_cast<uint8_t>(i));
     }
+}
+
+TEST(MessagePipeTest, ReceiveRejectsOversizedFramePrefixV2066) {
+    auto [sender, receiver] = MessagePipe::create_pair();
+
+    const uint32_t oversized_len =
+        htonl(static_cast<uint32_t>(clever::ipc::kMaxMessagePipeFrameBytes + 1));
+    ASSERT_EQ(::write(sender.fd(), &oversized_len, sizeof(oversized_len)),
+              static_cast<ssize_t>(sizeof(oversized_len)));
+
+    auto received = receiver.receive();
+    EXPECT_FALSE(received.has_value());
+    EXPECT_FALSE(receiver.is_open());
+}
+
+TEST(MessagePipeTest, SendRejectsOversizedRawPayloadV2066) {
+    auto [sender, receiver] = MessagePipe::create_pair();
+
+    EXPECT_FALSE(sender.send(nullptr, clever::ipc::kMaxMessagePipeFrameBytes + 1));
+    EXPECT_TRUE(sender.is_open());
+
+    sender.close();
+    auto received = receiver.receive();
+    EXPECT_FALSE(received.has_value());
 }

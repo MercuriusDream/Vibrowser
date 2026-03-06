@@ -18,12 +18,14 @@ struct Cookie {
     std::string same_site;  // "Strict", "Lax", "None"
     // 0 = session cookie (no expiry); otherwise epoch seconds
     int64_t expires_at = 0;
+    uint64_t creation_index = 0;
 };
 
 class CookieJar {
 public:
     // Parse and store cookies from a Set-Cookie header value
-    void set_from_header(const std::string& header_value, const std::string& request_domain);
+    void set_from_header(const std::string& header_value, const std::string& request_domain,
+                         const std::string& request_path = "/");
 
     // Get a Cookie header value for a given URL
     // is_same_site: true if the request is to the same site as the page origin
@@ -45,6 +47,7 @@ private:
     mutable std::mutex mutex_;
     // domain -> list of cookies
     std::unordered_map<std::string, std::vector<Cookie>> cookies_;
+    uint64_t next_cookie_creation_index_ = 0;
 
     bool domain_matches(const Cookie& cookie, const std::string& request_domain) const;
     bool path_matches(const std::string& cookie_path, const std::string& request_path) const;
