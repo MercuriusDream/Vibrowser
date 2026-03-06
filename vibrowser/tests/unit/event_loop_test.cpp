@@ -238,19 +238,22 @@ TEST(EventLoopTest, EarlierDelayedTaskBecomesRunnableWithoutWaitingForOlderDeadl
     EventLoop loop;
     std::vector<int> order;
 
-    loop.post_delayed_task([&order]() { order.push_back(2); }, 250ms);
+    constexpr auto kOlderDelay = 1000ms;
+    constexpr auto kInsertedDelay = 20ms;
 
-    std::this_thread::sleep_for(40ms);
-    loop.post_delayed_task([&order]() { order.push_back(1); }, 20ms);
+    loop.post_delayed_task([&order]() { order.push_back(2); }, kOlderDelay);
 
-    std::this_thread::sleep_for(40ms);
+    std::this_thread::sleep_for(50ms);
+    loop.post_delayed_task([&order]() { order.push_back(1); }, kInsertedDelay);
+
+    std::this_thread::sleep_for(80ms);
     loop.run_pending();
 
     ASSERT_EQ(order.size(), 1u);
     EXPECT_EQ(order[0], 1);
     EXPECT_EQ(loop.pending_count(), 1u);
 
-    std::this_thread::sleep_for(220ms);
+    std::this_thread::sleep_for(kOlderDelay);
     loop.run_pending();
 
     ASSERT_EQ(order.size(), 2u);
