@@ -341,7 +341,7 @@ static void notify_mutation_observers(JSContext* ctx,
                                       clever::html::SimpleNode* previous_sibling,
                                       clever::html::SimpleNode* next_sibling,
                                       const std::string& attr_name = "",
-                                      const std::string& old_value = "");
+                                      const std::string* old_value = nullptr);
 // Forward declaration for flushing queued MutationObserver microtasks (defined later)
 static void flush_mutation_observers(JSContext* ctx, DOMState* state);
 static void schedule_mutation_observer_delivery(JSContext* ctx, DOMState* state);
@@ -629,24 +629,29 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
     const char* str = JS_ToCString(ctx, argv[0]);
     if (str) {
         auto* state = get_dom_state(ctx);
+        const bool is_text_node = (node->type == clever::html::SimpleNode::Text);
 
         // Collect removed children for childList mutation records
         std::vector<clever::html::SimpleNode*> removed_children;
-        for (auto& child : node->children) {
-            removed_children.push_back(child.get());
+        if (!is_text_node) {
+            for (auto& child : node->children) {
+                removed_children.push_back(child.get());
+            }
         }
 
-        // For text nodes being modified directly (characterData mutation)
-        bool is_text_node = (node->type == clever::html::SimpleNode::Text);
         std::string old_data = is_text_node ? node->data : "";
-
-        node->children.clear();
-        auto text_node = std::make_unique<clever::html::SimpleNode>();
-        text_node->type = clever::html::SimpleNode::Text;
-        text_node->data = str;
-        text_node->parent = node;
-        clever::html::SimpleNode* text_raw = text_node.get();
-        node->children.push_back(std::move(text_node));
+        clever::html::SimpleNode* text_raw = nullptr;
+        if (is_text_node) {
+            node->data = str;
+        } else {
+            node->children.clear();
+            auto text_node = std::make_unique<clever::html::SimpleNode>();
+            text_node->type = clever::html::SimpleNode::Text;
+            text_node->data = str;
+            text_node->parent = node;
+            text_raw = text_node.get();
+            node->children.push_back(std::move(text_node));
+        }
         JS_FreeCString(ctx, str);
 
         if (state) {
@@ -656,7 +661,7 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
                 // Text node: fire characterData mutation
                 std::vector<clever::html::SimpleNode*> empty;
                 notify_mutation_observers(ctx, state, "characterData", node,
-                                          empty, empty, nullptr, nullptr, "", old_data);
+                                          empty, empty, nullptr, nullptr, "", &old_data);
             } else {
                 // Element node: fire childList for removed + added children
                 if (!removed_children.empty() || text_raw) {
@@ -2252,13 +2257,16 @@ static JSValue js_element_set_attribute(JSContext* ctx, JSValueConst this_val,
         auto* state = get_dom_state(ctx);
 
         // Capture old value for mutation record
-        std::string old_value;
+        const std::string* old_value = nullptr;
+        std::string old_value_storage;
         if (state) {
             for (auto& entry : state->mutation_observers) {
                 if (entry.record_attribute_old_value) {
                     auto it = entry.old_attribute_values[node].find(name);
                     if (it != entry.old_attribute_values[node].end()) {
-                        old_value = it->second;
+                        old_value_storage = it->second;
+                        old_value = &old_value_storage;
+                        break;
                     }
                 }
             }
@@ -2691,13 +2699,15 @@ static JSValue js_element_remove_attribute(JSContext* ctx,
             std::string old_attr_value = it->value;
 
             // Also look up tracked old value from observers (may differ if attr was changed)
-            std::string final_old = old_attr_value;
+            const std::string* final_old = &old_attr_value;
+            std::string tracked_old_storage;
             if (state) {
                 for (auto& entry : state->mutation_observers) {
                     if (entry.record_attribute_old_value) {
                         auto map_it = entry.old_attribute_values[node].find(name_str);
                         if (map_it != entry.old_attribute_values[node].end()) {
-                            final_old = map_it->second;
+                            tracked_old_storage = map_it->second;
+                            final_old = &tracked_old_storage;
                             break;
                         }
                     }
@@ -2714,6 +2724,12 @@ static JSValue js_element_remove_attribute(JSContext* ctx,
                 notify_mutation_observers(ctx, state, "attributes", node,
                                           empty, empty, nullptr, nullptr,
                                           name_str, final_old);
+
+                for (auto& entry : state->mutation_observers) {
+                    if (entry.record_attribute_old_value) {
+                        entry.old_attribute_values[node].erase(name_str);
+                    }
+                }
             }
             break;
         }
@@ -5576,7 +5592,8 @@ static JSValue create_mutation_record(JSContext* ctx,
                                       clever::html::SimpleNode* previous_sibling,
                                       clever::html::SimpleNode* next_sibling,
                                       const std::string& attr_name = "",
-                                      const std::string& old_value = "") {
+                                      bool include_old_value = false,
+                                      const std::string* old_value = nullptr) {
     JSValue record = JS_NewObject(ctx);
 
     JS_SetPropertyStr(ctx, record, "type", JS_NewString(ctx, type.c_str()));
@@ -5610,7 +5627,16 @@ static JSValue create_mutation_record(JSContext* ctx,
                          JS_NewString(ctx, attr_name.c_str()));
         JS_SetPropertyStr(ctx, record, "attributeNamespace", JS_NULL);
         JS_SetPropertyStr(ctx, record, "oldValue",
-                         !old_value.empty() ? JS_NewString(ctx, old_value.c_str()) : JS_NULL);
+                         include_old_value
+                             ? (old_value ? JS_NewString(ctx, old_value->c_str()) : JS_NULL)
+                             : JS_NULL);
+    } else if (type == "characterData") {
+        JS_SetPropertyStr(ctx, record, "attributeName", JS_NULL);
+        JS_SetPropertyStr(ctx, record, "attributeNamespace", JS_NULL);
+        JS_SetPropertyStr(ctx, record, "oldValue",
+                         include_old_value
+                             ? (old_value ? JS_NewString(ctx, old_value->c_str()) : JS_NULL)
+                             : JS_NULL);
     } else {
         JS_SetPropertyStr(ctx, record, "attributeName", JS_NULL);
         JS_SetPropertyStr(ctx, record, "attributeNamespace", JS_NULL);
@@ -5650,7 +5676,7 @@ static void notify_mutation_observers(JSContext* ctx,
                                       clever::html::SimpleNode* previous_sibling,
                                       clever::html::SimpleNode* next_sibling,
                                       const std::string& attr_name,
-                                      const std::string& old_value) {
+                                      const std::string* old_value) {
     if (!state || !target) return;
 
     bool queued_record = false;
@@ -5696,10 +5722,17 @@ static void notify_mutation_observers(JSContext* ctx,
         if (!matches) continue;
 
         // Create mutation record
+        bool include_old_value = false;
+        if (type == "attributes") {
+            include_old_value = entry.record_attribute_old_value;
+        } else if (type == "characterData") {
+            include_old_value = entry.record_character_data_old_value;
+        }
+
         JSValue record = create_mutation_record(ctx, type, target,
                                               added_nodes, removed_nodes,
                                               previous_sibling, next_sibling,
-                                              attr_name, old_value);
+                                              attr_name, include_old_value, old_value);
         queued_record = true;
 
         bool appended_to_pending_batch = false;
@@ -5902,6 +5935,21 @@ static JSValue js_mutation_observer_disconnect(JSContext* ctx,
             state->mutation_observers.erase(it);
             break;
         }
+    }
+
+    auto pending_it = state->pending_mutations.begin();
+    while (pending_it != state->pending_mutations.end()) {
+        if (!JS_StrictEq(ctx, pending_it->observer_obj, this_val)) {
+            ++pending_it;
+            continue;
+        }
+
+        for (auto& record : pending_it->mutation_records) {
+            JS_FreeValue(ctx, record);
+        }
+        JS_FreeValue(ctx, pending_it->observer_obj);
+        JS_FreeValue(ctx, pending_it->callback);
+        pending_it = state->pending_mutations.erase(pending_it);
     }
 
     return JS_UNDEFINED;

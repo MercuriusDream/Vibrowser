@@ -348,6 +348,95 @@ TEST(Http2ConnectionTest, WindowUpdateOverflowDoesNotMutateStateV2065) {
               Http2Connection::kMaxFlowControlWindowSize - 12);
 }
 
+TEST(Http2ConnectionTest, ContinuationStreamMismatchIsRejectedV2066) {
+    Http2Connection connection(-1);
+    connection.streams_[1].state = Http2Connection::StreamState::Open;
+
+    HeaderMap headers;
+    headers.set(":status", "200");
+    headers.set("content-type", "text/plain");
+    headers.set("cache-control", "max-age=60");
+    auto encoded = connection.encoder_.encode_header_list(headers);
+    ASSERT_GT(encoded.size(), 1u);
+
+    const size_t split = encoded.size() / 2;
+
+    Http2Connection::Frame headers_frame;
+    headers_frame.type = Http2Connection::FRAME_TYPE_HEADERS;
+    headers_frame.stream_id = 1;
+    headers_frame.payload.assign(encoded.begin(), encoded.begin() + split);
+
+    std::optional<Response> response;
+    ASSERT_TRUE(connection.handle_headers_or_continuation(headers_frame, response, 1));
+    ASSERT_TRUE(connection.continuation_expected_);
+    ASSERT_EQ(connection.continuation_stream_id_, 1u);
+
+    const auto pending_block = connection.continuation_header_block_;
+    const auto decoder_dynamic_table_size = connection.decoder_.dynamic_table_size();
+
+    Http2Connection::Frame continuation_frame;
+    continuation_frame.type = Http2Connection::FRAME_TYPE_CONTINUATION;
+    continuation_frame.flags = Http2Connection::FLAG_END_HEADERS;
+    continuation_frame.stream_id = 3;
+    continuation_frame.payload.assign(encoded.begin() + split, encoded.end());
+
+    ASSERT_FALSE(connection.handle_headers_or_continuation(continuation_frame, response, 1));
+    EXPECT_FALSE(response.has_value());
+    EXPECT_TRUE(connection.continuation_expected_);
+    EXPECT_EQ(connection.continuation_stream_id_, 1u);
+    EXPECT_EQ(connection.continuation_header_block_, pending_block);
+    EXPECT_EQ(connection.decoder_.dynamic_table_size(), decoder_dynamic_table_size);
+    EXPECT_FALSE(connection.streams_[1].headers_received);
+}
+
+TEST(Http2ConnectionTest, InterleavedHeadersDuringContinuationFailsCleanlyV2066) {
+    Http2Connection connection(-1);
+    connection.streams_[1].state = Http2Connection::StreamState::Open;
+    connection.streams_[3].state = Http2Connection::StreamState::Open;
+    connection.streams_[3].response_headers.set(":status", "418");
+
+    HeaderMap initial_headers;
+    initial_headers.set(":status", "200");
+    initial_headers.set("content-type", "text/plain");
+    initial_headers.set("etag", "\"alpha\"");
+    auto initial_encoded = connection.encoder_.encode_header_list(initial_headers);
+    ASSERT_GT(initial_encoded.size(), 1u);
+
+    Http2Connection::Frame initial_frame;
+    initial_frame.type = Http2Connection::FRAME_TYPE_HEADERS;
+    initial_frame.stream_id = 1;
+    initial_frame.payload.assign(initial_encoded.begin(),
+                                 initial_encoded.begin() + (initial_encoded.size() / 2));
+
+    std::optional<Response> response;
+    ASSERT_TRUE(connection.handle_headers_or_continuation(initial_frame, response, 1));
+    ASSERT_TRUE(connection.continuation_expected_);
+
+    const auto pending_block = connection.continuation_header_block_;
+    const auto decoder_dynamic_table_size = connection.decoder_.dynamic_table_size();
+    const auto prior_stream3_headers = connection.streams_[3].response_headers;
+
+    HeaderMap interleaved_headers;
+    interleaved_headers.set(":status", "204");
+    auto interleaved_encoded = connection.encoder_.encode_header_list(interleaved_headers);
+
+    Http2Connection::Frame interleaved_frame;
+    interleaved_frame.type = Http2Connection::FRAME_TYPE_HEADERS;
+    interleaved_frame.flags = Http2Connection::FLAG_END_HEADERS;
+    interleaved_frame.stream_id = 3;
+    interleaved_frame.payload = interleaved_encoded;
+
+    ASSERT_FALSE(connection.handle_headers_or_continuation(interleaved_frame, response, 1));
+    EXPECT_FALSE(response.has_value());
+    EXPECT_TRUE(connection.continuation_expected_);
+    EXPECT_EQ(connection.continuation_stream_id_, 1u);
+    EXPECT_EQ(connection.continuation_header_block_, pending_block);
+    EXPECT_EQ(connection.decoder_.dynamic_table_size(), decoder_dynamic_table_size);
+    EXPECT_EQ(connection.streams_[3].response_headers.get(":status"),
+              prior_stream3_headers.get(":status"));
+    EXPECT_FALSE(connection.streams_[3].headers_received);
+}
+
 TEST(Http2ConnectionTest, DataFramesEmitThresholdedWindowUpdatesAfterConsumption) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);

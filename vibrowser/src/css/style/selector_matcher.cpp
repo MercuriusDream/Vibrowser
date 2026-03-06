@@ -833,7 +833,10 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 }
                 return false;
             } else if (name == "active") {
-                // Active pseudo-class not yet tracked.
+                // Check for active-state attributes set by the UI layer.
+                for (const auto& [n, v] : element.attributes) {
+                    if (n == "data-vibrowser-active" || n == "data-clever-active") return true;
+                }
                 return false;
             } else if (name == "visited") {
                 // Privacy-preserving fallback: without browser history state,

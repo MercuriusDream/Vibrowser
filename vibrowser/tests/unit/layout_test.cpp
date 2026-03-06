@@ -1760,6 +1760,56 @@ TEST(LayoutEngineTest, ShrinkWrapWidthStillMatchesIntrinsicContent) {
     EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 0.1f);
 }
 
+TEST(LayoutEngineTest, InlineBlockShrinkWrapAvoidsRedundantRelayoutV2066) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+
+    auto child = make_block("div");
+    child->specified_width = 80.0f;
+    child->specified_height = 24.0f;
+    child->geometry.margin.left = 18.0f;
+    inline_block->append_child(std::move(child));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    auto* laid_out_inline_block = root->children[0].get();
+    EXPECT_FLOAT_EQ(laid_out_inline_block->geometry.width, 80.0f);
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, InlineFormattingShrinkWrapAvoidsRedundantRelayoutV2066) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+
+    auto child = make_block("div");
+    child->specified_width = 90.0f;
+    child->specified_height = 20.0f;
+    child->geometry.margin.left = 14.0f;
+    inline_block->append_child(std::move(child));
+
+    root->append_child(make_text("lead ", 16.0f));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    auto* laid_out_inline_block = root->children[1].get();
+    EXPECT_FLOAT_EQ(laid_out_inline_block->geometry.width, 90.0f);
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
 TEST(LayoutEngineTest, FitContentIgnoresFloatedDescendantsForIntrinsicWidth) {
     auto root = make_block("div");
 

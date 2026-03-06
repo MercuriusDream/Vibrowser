@@ -5244,6 +5244,48 @@ TEST(SelectorMatcherTest, FocusVisiblePseudoClass) {
 }
 
 // ============================================================================
+// Cycle 2066: :active matches elements with UI-injected active-state attributes
+// ============================================================================
+TEST(SelectorMatcherTest, ActivePseudoClassMatchesBrowserStateAttributesV2066) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "active";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView vibrowser_elem;
+    vibrowser_elem.tag_name = "button";
+    vibrowser_elem.attributes.push_back({"data-vibrowser-active", ""});
+    EXPECT_TRUE(matcher.matches(vibrowser_elem, complex));
+
+    ElementView clever_elem;
+    clever_elem.tag_name = "button";
+    clever_elem.attributes.push_back({"data-clever-active", ""});
+    EXPECT_TRUE(matcher.matches(clever_elem, complex));
+}
+
+TEST(SelectorMatcherTest, ActivePseudoClassDoesNotMatchWithoutStateV2066) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "button";
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "active";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    EXPECT_FALSE(matcher.matches(elem, complex));
+}
+
+// ============================================================================
 // Cycle 422: :first-child / :last-child / :only-child structural pseudo-classes
 // ============================================================================
 TEST(SelectorMatcherTest, FirstChildPseudoClass) {

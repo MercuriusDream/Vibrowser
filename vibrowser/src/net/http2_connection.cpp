@@ -417,6 +417,15 @@ bool Http2Connection::handle_headers_or_continuation(const Frame& frame,
         return false;
     }
 
+    if (continuation_expected_) {
+        if (frame.type != FRAME_TYPE_CONTINUATION ||
+            frame.stream_id != continuation_stream_id_) {
+            return false;
+        }
+    } else if (frame.type == FRAME_TYPE_CONTINUATION) {
+        return false;
+    }
+
     if (frame.type == FRAME_TYPE_HEADERS) {
         continuation_header_block_ = frame.payload;
         continuation_expected_ = !(frame.flags & FLAG_END_HEADERS);
@@ -564,6 +573,10 @@ std::optional<Response> Http2Connection::make_http2_request(const Request& reque
     while (true) {
         auto frame = recv_frame();
         if (!frame) {
+            return std::nullopt;
+        }
+
+        if (continuation_expected_ && frame->type != FRAME_TYPE_CONTINUATION) {
             return std::nullopt;
         }
 

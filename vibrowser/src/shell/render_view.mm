@@ -207,6 +207,7 @@ struct TextRegion {
     }
     _contentHeight = _imageHeight / _backingScale; // logical points
     [self clampScrollOffsetsToContentBounds];
+    [self reflowTextInputOverlay];
 
     // Convert RGBA pixel buffer to CGImage.
     // Our pixel buffer is top-left origin (row 0 = top of page).
@@ -327,6 +328,7 @@ struct TextRegion {
 - (void)setPageScale:(CGFloat)pageScale {
     _pageScale = std::max(0.25, std::min(4.0, pageScale));
     [self clampScrollOffsetsToContentBounds];
+    [self reflowTextInputOverlay];
 }
 
 - (void)updateLinks:(const std::vector<clever::paint::LinkRegion>&)links {
@@ -1803,19 +1805,8 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
 
     _overlayBufferBounds = bufferBounds;
     _overlayIsPassword = isPassword;
-
-    // Convert buffer-pixel coords to view coords
-    NSRect fieldRect = [self viewRectForRendererRect:bufferBounds];
-    CGFloat vx = fieldRect.origin.x;
-    CGFloat vy = fieldRect.origin.y;
-    CGFloat vw = fieldRect.size.width;
+    NSRect fieldRect = [self overlayFrameForBufferBounds:bufferBounds];
     CGFloat vh = fieldRect.size.height;
-
-    // Clamp to view bounds
-    if (vw < 40) vw = 40;
-    if (vh < 16) vh = 16;
-
-    fieldRect = NSMakeRect(vx, vy, vw, vh);
 
     if (isPassword) {
         _overlaySecureField = [[NSSecureTextField alloc] initWithFrame:fieldRect];
@@ -1851,6 +1842,30 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
     dispatch_async(dispatch_get_main_queue(), ^{
         [activeField selectText:nil];
     });
+}
+
+- (NSRect)overlayFrameForBufferBounds:(const clever::paint::Rect&)bufferBounds {
+    NSRect fieldRect = [self viewRectForRendererRect:bufferBounds];
+    CGFloat vx = fieldRect.origin.x;
+    CGFloat vy = fieldRect.origin.y;
+    CGFloat vw = fieldRect.size.width;
+    CGFloat vh = fieldRect.size.height;
+
+    if (vw < 40) vw = 40;
+    if (vh < 16) vh = 16;
+
+    return NSMakeRect(vx, vy, vw, vh);
+}
+
+- (void)reflowTextInputOverlay {
+    NSTextField* activeField = _overlayIsPassword ? _overlaySecureField : _overlayTextField;
+    if (!activeField) {
+        return;
+    }
+
+    NSRect fieldRect = [self overlayFrameForBufferBounds:_overlayBufferBounds];
+    activeField.frame = fieldRect;
+    activeField.font = [NSFont systemFontOfSize:std::max(11.0, fieldRect.size.height * 0.55)];
 }
 
 - (void)dismissTextInputOverlay {

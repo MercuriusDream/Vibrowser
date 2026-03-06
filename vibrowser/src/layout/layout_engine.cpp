@@ -1603,10 +1603,12 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                     layout_block(*child, layout_width, shrink_wrap_width);
                     float used_width = inline_block_used_width_from_children(*child);
                     if (std::abs(used_width - child->geometry.width) > kMarginCollapseEpsilon) {
-                        ++inline_block_shrink_wrap_relayout_count_;
                         float relayout_width = compute_width(*child, used_width);
-                        child->geometry.width = relayout_width;
-                        layout_block(*child, used_width, relayout_width);
+                        if (std::abs(relayout_width - child->geometry.width) > kMarginCollapseEpsilon) {
+                            ++inline_block_shrink_wrap_relayout_count_;
+                            child->geometry.width = relayout_width;
+                            layout_block(*child, used_width, relayout_width);
+                        }
                     }
                 }
                 break;
@@ -2364,10 +2366,12 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 layout_block(*child, containing_width, shrink_wrap_width);
                 float used_width = inline_block_used_width_from_children(*child);
                 if (std::abs(used_width - child->geometry.width) > kMarginCollapseEpsilon) {
-                    ++inline_block_shrink_wrap_relayout_count_;
                     float relayout_width = compute_width(*child, used_width);
-                    child->geometry.width = relayout_width;
-                    layout_block(*child, used_width, relayout_width);
+                    if (std::abs(relayout_width - child->geometry.width) > kMarginCollapseEpsilon) {
+                        ++inline_block_shrink_wrap_relayout_count_;
+                        child->geometry.width = relayout_width;
+                        layout_block(*child, used_width, relayout_width);
+                    }
                 }
             }
         } else {

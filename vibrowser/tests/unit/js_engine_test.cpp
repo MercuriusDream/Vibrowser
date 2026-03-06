@@ -3596,6 +3596,84 @@ TEST(JSDom, MutationObserverBatchesSynchronousMutations) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, MutationObserverAttributeOldValueAndTakeRecordsV2066) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto result = engine.evaluate(R"(
+        var target = document.getElementById('target');
+        var callbackCount = 0;
+        var observer = new MutationObserver(function() {
+            callbackCount++;
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-empty', '');
+        target.setAttribute('data-empty', 'filled');
+        var noOldValue = observer.takeRecords().map(function(record) {
+            return record.attributeName + ':' + String(record.oldValue);
+        }).join('|');
+
+        observer.observe(target, { attributes: true, attributeOldValue: true });
+        target.setAttribute('data-empty', '');
+        target.setAttribute('data-empty', 'filled-again');
+        var withOldValue = observer.takeRecords().map(function(record) {
+            return record.attributeName + ':' + (record.oldValue === null ? '<null>' : '[' + record.oldValue + ']');
+        }).join('|');
+
+        target.setAttribute('data-stale', 'queued');
+        observer.disconnect();
+        var afterDisconnect = observer.takeRecords().length;
+
+        [noOldValue, withOldValue, String(afterDisconnect), String(callbackCount)].join('||');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "data-empty:null|data-empty:null||data-empty:[filled]|data-empty:[]||0||0");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverCharacterDataOldValueRespectsOptionsV2066) {
+    auto doc = clever::html::parse("<html><body><div id='target'>before</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto result = engine.evaluate(R"(
+        var text = document.getElementById('target').firstChild;
+        var callbackCount = 0;
+        var observer = new MutationObserver(function() {
+            callbackCount++;
+        });
+        observer.observe(text, { characterData: true });
+
+        text.textContent = 'after-no-old';
+        var withoutOldValue = observer.takeRecords().map(function(record) {
+            return record.type + ':' + String(record.oldValue);
+        }).join('|');
+
+        observer.observe(text, { characterData: true, characterDataOldValue: true });
+        text.textContent = 'after-with-old';
+        var withOldValue = observer.takeRecords().map(function(record) {
+            return record.type + ':' + (record.oldValue === null ? '<null>' : '[' + record.oldValue + ']');
+        }).join('|');
+
+        text.textContent = 'queued-then-drained';
+        var drained = observer.takeRecords().map(function(record) {
+            return record.oldValue === null ? '<null>' : '[' + record.oldValue + ']';
+        }).join('|');
+        var afterDrain = observer.takeRecords().length;
+
+        [withoutOldValue, withOldValue, drained, String(afterDrain), String(callbackCount)].join('||');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "characterData:null||characterData:[after-no-old]||[after-with-old]||0||0");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // ============================================================================
 // IntersectionObserver stub
 // ============================================================================
