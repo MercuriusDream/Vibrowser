@@ -144,6 +144,63 @@ std::string collapse_whitespace(const std::string& text, int white_space, bool w
     return text;
 }
 
+struct PreparedTextMetrics {
+    std::string text;
+    float font_size = 0.0f;
+};
+
+PreparedTextMetrics prepare_text_for_measurement(const LayoutNode& node) {
+    PreparedTextMetrics prepared{node.text_content, node.font_size};
+
+    if (node.text_transform == 2) { // uppercase
+        std::transform(prepared.text.begin(), prepared.text.end(),
+                       prepared.text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    } else if (node.text_transform == 3) { // lowercase
+        std::transform(prepared.text.begin(), prepared.text.end(),
+                       prepared.text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    } else if (node.text_transform == 1) { // capitalize
+        bool cap_next = true;
+        for (char& c : prepared.text) {
+            if (c == ' ') {
+                cap_next = true;
+            } else if (cap_next) {
+                c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                cap_next = false;
+            }
+        }
+    }
+
+    if (node.tag_name != "br") {
+        prepared.text = collapse_whitespace(prepared.text, node.white_space, node.white_space_pre,
+                                            node.white_space_collapse);
+    }
+
+    if (node.font_variant == 1) {
+        int lower_count = 0;
+        int upper_count = 0;
+        for (char c : prepared.text) {
+            if (std::islower(static_cast<unsigned char>(c))) {
+                lower_count++;
+            } else if (std::isupper(static_cast<unsigned char>(c))) {
+                upper_count++;
+            }
+        }
+        int total_alpha = lower_count + upper_count;
+        if (total_alpha > 0) {
+            float lower_ratio = static_cast<float>(lower_count) / static_cast<float>(total_alpha);
+            float blend = lower_ratio * 0.8f + (1.0f - lower_ratio);
+            prepared.font_size = node.font_size * blend;
+        }
+        std::transform(prepared.text.begin(), prepared.text.end(),
+                       prepared.text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    }
+
+    return prepared;
+}
+
 // Helper to apply min/max width and height constraints to element dimensions
 inline void apply_min_max_constraints(LayoutNode& node) {
     // Clamp width to min/max bounds
@@ -269,13 +326,16 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
         width = std::max(width, node.specified_width);
     }
     if (node.is_text && !node.text_content.empty()) {
+        PreparedTextMetrics prepared = prepare_text_for_measurement(node);
+        const std::string& text_for_measurement = prepared.text;
+        float measurement_font_size = prepared.font_size;
         if (max_content) {
             // max-content: no wrapping, full text width.
             // Expand tab characters per tab-size, then add word-spacing per space.
             std::string expanded;
-            expanded.reserve(node.text_content.size());
+            expanded.reserve(text_for_measurement.size());
             int space_count = 0;
-            for (char c : node.text_content) {
+            for (char c : text_for_measurement) {
                 if (c == '\t' && node.tab_size > 0) {
                     for (int t = 0; t < node.tab_size; ++t) expanded += ' ';
                     space_count++;
@@ -285,12 +345,12 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
                 }
             }
             if (measurer && *measurer) {
-                width = (*measurer)(expanded, node.font_size, node.font_family,
+                width = (*measurer)(expanded, measurement_font_size, node.font_family,
                                     node.font_weight, node.font_italic, node.letter_spacing);
                 // word-spacing adds extra width per inter-word space
                 if (node.word_spacing != 0.0f) width += node.word_spacing * static_cast<float>(space_count);
             } else {
-                float char_w = node.font_size * 0.6f;
+                float char_w = measurement_font_size * 0.6f;
                 width = static_cast<float>(expanded.size()) * char_w;
                 if (node.word_spacing != 0.0f) width += node.word_spacing * static_cast<float>(space_count);
             }
@@ -299,10 +359,10 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
             float longest_word = 0;
             if (measurer && *measurer) {
                 std::string cur_word;
-                for (char c : node.text_content) {
+                for (char c : text_for_measurement) {
                     if (c == ' ' || c == '\t' || c == '\n') {
                         if (!cur_word.empty()) {
-                            float w = (*measurer)(cur_word, node.font_size, node.font_family,
+                            float w = (*measurer)(cur_word, measurement_font_size, node.font_family,
                                                   node.font_weight, node.font_italic, node.letter_spacing);
                             longest_word = std::max(longest_word, w);
                             cur_word.clear();
@@ -312,14 +372,14 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
                     }
                 }
                 if (!cur_word.empty()) {
-                    float w = (*measurer)(cur_word, node.font_size, node.font_family,
+                    float w = (*measurer)(cur_word, measurement_font_size, node.font_family,
                                           node.font_weight, node.font_italic, node.letter_spacing);
                     longest_word = std::max(longest_word, w);
                 }
             } else {
-                float char_w = node.font_size * 0.6f;
+                float char_w = measurement_font_size * 0.6f;
                 float cur_word = 0;
-                for (char c : node.text_content) {
+                for (char c : text_for_measurement) {
                     if (c == ' ' || c == '\t' || c == '\n') {
                         longest_word = std::max(longest_word, cur_word);
                         cur_word = 0;
@@ -1153,59 +1213,9 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
             node.geometry.height = 0;
             return;
         }
-        std::string layout_text = node.text_content;
-        // Apply text-transform before measuring
-        if (node.text_transform == 2) { // uppercase
-            std::transform(layout_text.begin(), layout_text.end(),
-                           layout_text.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-        } else if (node.text_transform == 3) { // lowercase
-            std::transform(layout_text.begin(), layout_text.end(),
-                           layout_text.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        } else if (node.text_transform == 1) { // capitalize
-            bool cap_next = true;
-            for (size_t i = 0; i < layout_text.size(); i++) {
-                if (layout_text[i] == ' ') {
-                    cap_next = true;
-                } else if (cap_next) {
-                    layout_text[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(layout_text[i])));
-                    cap_next = false;
-                }
-            }
-        }
-
-        // Apply CSS white-space collapsing before measuring and font-variant processing.
-        // Skip for <br> elements — their newline must be preserved regardless of white-space.
-        if (node.tag_name != "br") {
-            layout_text = collapse_whitespace(layout_text, node.white_space, node.white_space_pre, node.white_space_collapse);
-        }
-
-        // font-variant: small-caps — measure per-character width since
-        // originally-lowercase letters render at 80% font size while
-        // originally-uppercase letters render at 100%.
-        float effective_font_size = node.font_size;
-        if (node.font_variant == 1) {
-            // Compute a blended effective font size based on the ratio of
-            // lowercase vs uppercase characters in the original text.
-            int lower_count = 0;
-            int upper_count = 0;
-            for (char c : layout_text) {
-                if (std::islower(static_cast<unsigned char>(c))) lower_count++;
-                else if (std::isupper(static_cast<unsigned char>(c))) upper_count++;
-            }
-            int total_alpha = lower_count + upper_count;
-            if (total_alpha > 0) {
-                float lower_ratio = static_cast<float>(lower_count) / static_cast<float>(total_alpha);
-                // Blend: lowercase chars use 80% size, uppercase use 100%
-                float blend = lower_ratio * 0.8f + (1.0f - lower_ratio) * 1.0f;
-                effective_font_size = node.font_size * blend;
-            }
-            // Transform text to uppercase for display (small-caps shows all caps)
-            std::transform(layout_text.begin(), layout_text.end(),
-                           layout_text.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-        }
+        PreparedTextMetrics prepared = prepare_text_for_measurement(node);
+        const std::string& layout_text = prepared.text;
+        float effective_font_size = prepared.font_size;
 
         float char_width = avg_char_width(effective_font_size, node.font_family, node.font_weight,
                                           node.font_italic, node.is_monospace, node.letter_spacing);

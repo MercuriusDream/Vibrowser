@@ -145,7 +145,7 @@ struct Timer::Impl {
     EventLoop& loop;
     std::chrono::milliseconds interval;
     Callback callback;
-    std::shared_ptr<std::atomic<bool>> cancelled;
+    std::shared_ptr<std::atomic<bool>> active;
     std::shared_ptr<RepeatingState> repeating_state;
     bool repeating;
 
@@ -153,19 +153,20 @@ struct Timer::Impl {
         : loop(loop_)
         , interval(interval_)
         , callback(std::move(callback_))
-        , cancelled(std::make_shared<std::atomic<bool>>(false))
+        , active(std::make_shared<std::atomic<bool>>(true))
         , repeating_state(repeating_ ? std::make_shared<RepeatingState>(loop_, interval_, callback) : nullptr)
         , repeating(repeating_) {}
 
     void schedule_one_shot() {
         auto cb = callback;
-        auto cancelled_flag = cancelled;
+        auto active_flag = active;
 
         loop.post_delayed_task(
-            [cb, cancelled_flag]() {
-                if (!cancelled_flag->load()) {
-                    cb();
+            [cb, active_flag]() {
+                if (!active_flag->exchange(false)) {
+                    return;
                 }
+                cb();
             },
             interval);
     }
@@ -254,8 +255,8 @@ void Timer::cancel() {
         impl_->repeating_state->cancelled = true;
     }
 
-    if (impl_->cancelled) {
-        impl_->cancelled->store(true);
+    if (impl_->active) {
+        impl_->active->store(false);
     }
 }
 
@@ -267,7 +268,7 @@ bool Timer::is_active() const {
         std::lock_guard lock(impl_->repeating_state->mutex);
         return !impl_->repeating_state->cancelled;
     }
-    return impl_->cancelled && !impl_->cancelled->load();
+    return impl_->active && impl_->active->load();
 }
 
 } // namespace clever::platform

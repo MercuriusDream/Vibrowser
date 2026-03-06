@@ -32328,6 +32328,53 @@ TEST(HttpClient, CookieDefaultPathUsesRequestDirectory) {
         << "Cookie should not leak outside the derived default directory, got: " << sibling;
 }
 
+TEST(CookieJarTest, LongestPathCookieAppearsFirstForDuplicateNamesV2069) {
+    CookieJar jar;
+    jar.set_from_header("session2069=root; Path=/", "ordering2069.example.com");
+    jar.set_from_header("session2069=app; Path=/app", "ordering2069.example.com");
+    jar.set_from_header("session2069=deep; Path=/app/settings", "ordering2069.example.com");
+
+    std::string header = jar.get_cookie_header("ordering2069.example.com",
+                                               "/app/settings/privacy", false);
+    EXPECT_EQ(header, "session2069=deep; session2069=app; session2069=root")
+        << "More specific path cookies should appear before broader duplicates, got: " << header;
+}
+
+TEST(CookieJarTest, CookieHeaderOrderingStaysStableAcrossDomainBucketsV2069) {
+    CookieJar jar;
+    jar.set_from_header("theme2069=subdomain; Domain=api.ordering2069.example.com; Path=/app",
+                        "api.ordering2069.example.com");
+    jar.set_from_header("theme2069=parent; Domain=ordering2069.example.com; Path=/app",
+                        "api.ordering2069.example.com");
+    jar.set_from_header("lang2069=en; Domain=ordering2069.example.com; Path=/app",
+                        "api.ordering2069.example.com");
+
+    std::string header = jar.get_cookie_header("api.ordering2069.example.com", "/app/dashboard",
+                                               false);
+    std::string repeated = jar.get_cookie_header("api.ordering2069.example.com", "/app/dashboard",
+                                                 false);
+    EXPECT_EQ(header, "theme2069=subdomain; theme2069=parent; lang2069=en")
+        << "Cookie header ordering should stay deterministic without reordering equally scoped "
+           "cookies away from their creation order, got: "
+        << header;
+    EXPECT_EQ(repeated, header)
+        << "Repeated serialization should keep the same cookie order, got: " << repeated;
+}
+
+TEST(CookieJarTest, EqualScopeDuplicateNamesPreserveCreationOrderV2069) {
+    CookieJar jar;
+    jar.set_from_header("tenant2069=parent; Domain=ordering2069.example.com; Path=/app",
+                        "api.ordering2069.example.com");
+    jar.set_from_header("tenant2069=host; Path=/app", "api.ordering2069.example.com");
+
+    std::string header = jar.get_cookie_header("api.ordering2069.example.com", "/app/dashboard",
+                                               false);
+    EXPECT_EQ(header, "tenant2069=parent; tenant2069=host")
+        << "Equal-path duplicate names should keep creation order instead of preferring host-only "
+           "cookies, got: "
+        << header;
+}
+
 TEST(HttpClient, CookieDefaultPathMatchesNestedRequests) {
     CookieJar::shared().clear();
 

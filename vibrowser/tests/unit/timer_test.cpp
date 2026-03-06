@@ -191,6 +191,58 @@ TEST(TimerTest, RepeatingEventLoopTimerSkipsMissedTicksV2065) {
     timer->cancel();
 }
 
+TEST(TimerTest, OneShotEventLoopTimerBecomesInactiveAfterFireV2069) {
+    EventLoop loop;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool fired = false;
+    bool active_after_callback = true;
+    std::unique_ptr<Timer> timer;
+
+    timer = Timer::one_shot(loop, 20ms, [&]() {
+        {
+            std::lock_guard lock(mutex);
+            fired = true;
+            active_after_callback = timer->is_active();
+        }
+        cv.notify_all();
+        loop.quit();
+    });
+
+    std::thread runner([&]() { loop.run(); });
+
+    {
+        std::unique_lock lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, 500ms, [&]() { return fired; }));
+    }
+
+    runner.join();
+
+    EXPECT_FALSE(active_after_callback);
+    EXPECT_FALSE(timer->is_active());
+}
+
+TEST(TimerTest, CancelledOneShotEventLoopTimerStaysInactiveWithoutCallbackV2069) {
+    EventLoop loop;
+    std::atomic<int> callbacks { 0 };
+
+    auto timer = Timer::one_shot(loop, 40ms, [&]() {
+        callbacks.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    std::thread runner([&]() { loop.run(); });
+
+    timer->cancel();
+    EXPECT_FALSE(timer->is_active());
+
+    std::this_thread::sleep_for(80ms);
+    EXPECT_EQ(callbacks.load(std::memory_order_relaxed), 0);
+    EXPECT_FALSE(timer->is_active());
+
+    loop.quit();
+    runner.join();
+}
+
 TEST(TimerTest, CancelledRepeatingEventLoopTimerDoesNotRearmV2065) {
     EventLoop loop;
     auto probe_state = std::make_shared<RearmProbeState>();

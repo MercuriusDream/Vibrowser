@@ -5,6 +5,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace clever::layout;
 
@@ -1578,7 +1579,7 @@ TEST(LayoutEngineTest, MaxContentMemoizesRepeatedSubtreeMeasurementsV2064) {
     LayoutEngine engine;
     engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
                                  int, bool, float) {
-        if (measured == "alpha    beta") {
+        if (measured == "alpha beta") {
             max_content_measurements++;
         } else if (measured == "alpha" || measured == "beta") {
             word_measurements++;
@@ -1588,8 +1589,9 @@ TEST(LayoutEngineTest, MaxContentMemoizesRepeatedSubtreeMeasurementsV2064) {
 
     engine.compute(*root, 500.0f, 600.0f);
 
-    EXPECT_EQ(max_content_measurements, 1)
-        << "fit-content sizing and inline-block shrink-wrap should share one cached max-content subtree walk";
+    EXPECT_EQ(max_content_measurements, 2)
+        << "fit-content sizing should reuse the memoized max-content subtree walk, leaving only "
+           "one additional full-text measurement for the final inline layout";
     EXPECT_EQ(word_measurements, 2)
         << "fit-content root sizing and inline-block shrink-wrap should share the cached min-content width";
     EXPECT_GT(root->children[0]->geometry.width, 0.0f);
@@ -3417,6 +3419,54 @@ TEST(LayoutEngineTest, SmallCapsMeasurementDoesNotRewriteNodeTextV2062) {
     EXPECT_EQ(measured_texts.back(), "HELLO");
     EXPECT_NEAR(measured_font_sizes.back(), 12.8f, 0.001f);
     EXPECT_EQ(root->text_content, "hello");
+}
+
+TEST(LayoutEngineTest, TextTransformContributesToIntrinsicWidthV2069) {
+    auto root = make_text("wow", 16.0f);
+    root->specified_width = -3.0f; // max-content
+    root->text_transform = 2;      // uppercase
+
+    LayoutEngine engine;
+    std::vector<std::string> measured_texts;
+    engine.set_text_measurer([&](const std::string& measured, float, const std::string&,
+                                 int, bool, float) -> float {
+        measured_texts.push_back(measured);
+        if (measured == "WOW") return 42.0f;
+        if (measured == "wow") return 15.0f;
+        return 0.0f;
+    });
+
+    engine.compute(*root, 400.0f, 200.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 42.0f);
+    EXPECT_EQ(root->text_content, "wow");
+    EXPECT_FALSE(measured_texts.empty());
+    EXPECT_EQ(measured_texts.front(), "WOW");
+}
+
+TEST(LayoutEngineTest, SmallCapsIntrinsicWidthUsesRenderedGlyphMetricsV2069) {
+    auto root = make_text("Abc", 16.0f);
+    root->specified_width = -3.0f; // max-content
+    root->font_variant = 1;        // small-caps
+
+    LayoutEngine engine;
+    std::vector<std::string> measured_texts;
+    std::vector<float> measured_font_sizes;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) -> float {
+        measured_texts.push_back(measured);
+        measured_font_sizes.push_back(font_size);
+        return static_cast<float>(measured.size()) * font_size;
+    });
+
+    engine.compute(*root, 400.0f, 200.0f);
+
+    ASSERT_FALSE(measured_texts.empty());
+    ASSERT_FALSE(measured_font_sizes.empty());
+    EXPECT_EQ(measured_texts.front(), "ABC");
+    EXPECT_NEAR(measured_font_sizes.front(), 16.0f * (0.8f * (2.0f / 3.0f) + 1.0f / 3.0f), 0.001f);
+    EXPECT_NEAR(root->geometry.width, 3.0f * measured_font_sizes.front(), 0.001f);
+    EXPECT_EQ(root->text_content, "Abc");
 }
 
 // ===========================================================================

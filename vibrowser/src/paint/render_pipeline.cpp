@@ -7621,6 +7621,12 @@ static size_t s_image_cache_max_bytes = IMAGE_CACHE_DEFAULT_MAX_BYTES;
 static uint64_t s_image_cache_hits = 0;
 static uint64_t s_image_cache_misses = 0;
 
+static std::string normalize_decoded_image_cache_key(const std::string& url) {
+    const size_t fragment_pos = url.find('#');
+    if (fragment_pos == std::string::npos) return url;
+    return url.substr(0, fragment_pos);
+}
+
 // Internal helpers — callers must hold s_image_cache_mutex
 static void image_cache_remove_from_order_locked(const std::string& url) {
     auto order_it = std::find(s_image_cache_order.begin(), s_image_cache_order.end(), url);
@@ -7909,26 +7915,28 @@ static bool base64_decode_bytes(const std::string& input, std::vector<uint8_t>& 
 DecodedImage fetch_and_decode_image(const std::string& url) {
     DecodedImage result;
     if (url.empty()) return result;
+    const std::string cache_url = normalize_decoded_image_cache_key(url);
+    if (cache_url.empty()) return result;
 
     // Check cache first (thread-safe)
     {
         std::lock_guard<std::mutex> lock(s_image_cache_mutex);
-        auto cache_it = s_image_cache.find(url);
+        auto cache_it = s_image_cache.find(cache_url);
         if (cache_it != s_image_cache.end()) {
             ++s_image_cache_hits;
-            image_cache_touch(url);
+            image_cache_touch(cache_url);
             return cache_it->second;
         }
         ++s_image_cache_misses;
     }
 
     // Handle data: URIs (e.g., data:image/png;base64,iVBOR...)
-    if (url.size() > 5 && to_lower(url.substr(0, 5)) == "data:") {
-        auto comma_pos = url.find(',');
-        if (comma_pos == std::string::npos || comma_pos + 1 >= url.size()) return result;
+    if (cache_url.size() > 5 && to_lower(cache_url.substr(0, 5)) == "data:") {
+        auto comma_pos = cache_url.find(',');
+        if (comma_pos == std::string::npos || comma_pos + 1 >= cache_url.size()) return result;
 
-        std::string metadata = to_lower(url.substr(5, comma_pos - 5));
-        std::string payload = url.substr(comma_pos + 1);
+        std::string metadata = to_lower(cache_url.substr(5, comma_pos - 5));
+        std::string payload = cache_url.substr(comma_pos + 1);
 
         bool is_base64 = (metadata.find("base64") != std::string::npos);
         bool is_svg = (metadata.find("image/svg") != std::string::npos);
@@ -7944,7 +7952,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
                 svg_text = payload;
             }
             result = decode_svg_image(svg_text.c_str(), svg_text.size());
-            if (result.pixels) image_cache_store(url, result);
+            if (result.pixels) image_cache_store(cache_url, result);
             return result;
         }
 
@@ -7959,7 +7967,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
 #ifdef __APPLE__
         result = decode_image_native(raw_bytes.data(), raw_bytes.size());
         if (result.pixels) {
-            image_cache_store(url, result);
+            image_cache_store(cache_url, result);
             return result;
         }
 #endif
@@ -7972,12 +7980,12 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
             result.height = h;
             result.pixels = std::make_shared<std::vector<uint8_t>>(data, data + w * h * 4);
             stbi_image_free(data);
-            image_cache_store(url, result);
+            image_cache_store(cache_url, result);
         }
         return result;
     }
 
-    auto response = fetch_with_redirects(url, "image/*", 10);
+    auto response = fetch_with_redirects(cache_url, "image/*", 10);
     if (!response || response->status >= 400) return result;
 
     const auto& body = response->body;
@@ -7987,7 +7995,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
     {
         bool is_svg = false;
         // Check URL extension
-        std::string url_lower = to_lower(url);
+        std::string url_lower = to_lower(cache_url);
         auto q_pos = url_lower.find('?');
         std::string path_part = (q_pos != std::string::npos) ? url_lower.substr(0, q_pos) : url_lower;
         if (path_part.size() >= 4 && path_part.substr(path_part.size() - 4) == ".svg") {
@@ -8012,7 +8020,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
             std::string svg_text(body.begin(), body.end());
             result = decode_svg_image(svg_text.c_str(), svg_text.size());
             if (result.pixels) {
-                image_cache_store(url, result);
+                image_cache_store(cache_url, result);
                 return result;
             }
         }
@@ -8023,7 +8031,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
     result = decode_image_native(
         reinterpret_cast<const uint8_t*>(body.data()), body.size());
     if (result.pixels) {
-        image_cache_store(url, result);
+        image_cache_store(cache_url, result);
         return result;
     }
 #endif
@@ -8044,7 +8052,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
     stbi_image_free(data);
 
     // Cache the decoded result
-    image_cache_store(url, result);
+    image_cache_store(cache_url, result);
 
     return result;
 }
@@ -16801,9 +16809,10 @@ void prefetch_images_parallel(const std::vector<std::string>& urls) {
         std::lock_guard<std::mutex> lock(s_image_cache_mutex);
         std::unordered_set<std::string> seen;
         for (auto& url : urls) {
-            if (seen.count(url)) continue;
-            seen.insert(url);
-            if (s_image_cache.find(url) != s_image_cache.end()) continue;
+            const std::string cache_url = normalize_decoded_image_cache_key(url);
+            if (cache_url.empty() || seen.count(cache_url)) continue;
+            seen.insert(cache_url);
+            if (s_image_cache.find(cache_url) != s_image_cache.end()) continue;
             to_fetch.push_back(url);
         }
     }

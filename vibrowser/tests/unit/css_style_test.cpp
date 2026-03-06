@@ -1294,6 +1294,52 @@ TEST(StyleResolverTest, CachedSupportsQueriesStayCorrectAcrossMultipleElements) 
     EXPECT_EQ(span_style.color, (Color{0, 0, 255, 255}));
 }
 
+TEST(StyleResolverTest, InlineStyleCacheReusesParsedDeclarationBlockV2069) {
+    StyleResolver resolver;
+
+    ElementView first;
+    first.tag_name = "div";
+    first.attributes.push_back({"style", "color: rgb(255, 0, 0); display: block;"});
+
+    ElementView second;
+    second.tag_name = "div";
+    second.attributes.push_back({"style", "color: rgb(255, 0, 0); display: block;"});
+
+    ComputedStyle parent;
+    auto first_style = resolver.resolve(first, parent);
+    auto second_style = resolver.resolve(second, parent);
+
+    EXPECT_EQ(first_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(second_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(first_style.display, Display::Block);
+    EXPECT_EQ(second_style.display, Display::Block);
+    EXPECT_EQ(resolver.inline_style_cache_size_for_testing(), 1u);
+    EXPECT_EQ(resolver.inline_style_parse_count_for_testing(), 1u);
+}
+
+TEST(StyleResolverTest, InlineStyleCacheSeparatesDistinctAttributeStringsV2069) {
+    StyleResolver resolver;
+
+    ElementView first;
+    first.tag_name = "div";
+    first.attributes.push_back({"style", "color: rgb(255, 0, 0); display: block;"});
+
+    ElementView second;
+    second.tag_name = "div";
+    second.attributes.push_back({"style", "color: rgb(0, 0, 255); display: inline;"});
+
+    ComputedStyle parent;
+    auto first_style = resolver.resolve(first, parent);
+    auto second_style = resolver.resolve(second, parent);
+
+    EXPECT_EQ(first_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(second_style.color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(first_style.display, Display::Block);
+    EXPECT_EQ(second_style.display, Display::Inline);
+    EXPECT_EQ(resolver.inline_style_cache_size_for_testing(), 2u);
+    EXPECT_EQ(resolver.inline_style_parse_count_for_testing(), 2u);
+}
+
 // ===========================================================================
 // Test 29: StyleResolver: inherited properties (color, font-size)
 // ===========================================================================

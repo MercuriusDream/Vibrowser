@@ -144,6 +144,7 @@ void CookieJar::set_from_header(const std::string& header_value,
         return;
     }
 
+    cookie.creation_index = next_cookie_creation_index_++;
     domain_cookies.push_back(std::move(cookie));
 }
 
@@ -152,9 +153,13 @@ std::string CookieJar::get_cookie_header(const std::string& domain, const std::s
                                           bool is_top_level_nav) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    std::string result;
     std::string domain_lower = to_lower(domain);
     std::string request_path = normalize_path(path);
+    struct CookieMatch {
+        const Cookie* cookie = nullptr;
+        size_t path_length = 0;
+    };
+    std::vector<CookieMatch> matches;
 
     for (auto& [cookie_domain, domain_cookies] : cookies_) {
         int64_t now = static_cast<int64_t>(std::time(nullptr));
@@ -180,9 +185,25 @@ std::string CookieJar::get_cookie_header(const std::string& domain, const std::s
                 if (ss == "none" && !cookie.secure) continue;
             }
 
-            if (!result.empty()) result += "; ";
-            result += cookie.name + "=" + cookie.value;
+            matches.push_back(CookieMatch{
+                .cookie = &cookie,
+                .path_length = cookie.path.size(),
+            });
         }
+    }
+
+    std::sort(matches.begin(), matches.end(),
+              [](const CookieMatch& lhs, const CookieMatch& rhs) {
+                  if (lhs.path_length != rhs.path_length) {
+                      return lhs.path_length > rhs.path_length;
+                  }
+                  return lhs.cookie->creation_index < rhs.cookie->creation_index;
+              });
+
+    std::string result;
+    for (const CookieMatch& match : matches) {
+        if (!result.empty()) result += "; ";
+        result += match.cookie->name + "=" + match.cookie->value;
     }
 
     return result;

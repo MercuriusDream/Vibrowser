@@ -7546,16 +7546,23 @@ ComputedStyle StyleResolver::resolve(
     }
 
     // Parse inline style declarations from style="" attribute
-    std::vector<Declaration> inline_decls;
+    const std::vector<Declaration>* inline_decls = nullptr;
     for (const auto& attr : element.attributes) {
         if (to_lower(attr.first) == "style") {
-            inline_decls = parse_declaration_block(attr.second);
+            auto cached_inline_decls = inline_style_declaration_cache_.find(attr.second);
+            if (cached_inline_decls == inline_style_declaration_cache_.end()) {
+                cached_inline_decls = inline_style_declaration_cache_
+                    .emplace(attr.second, parse_declaration_block(attr.second))
+                    .first;
+                ++inline_style_parse_count_;
+            }
+            inline_decls = &cached_inline_decls->second;
             break;
         }
     }
 
     // Cascade matched stylesheet rules + inline declarations
-    if (!matched_rules.empty() || !inline_decls.empty()) {
+    if (!matched_rules.empty() || inline_decls != nullptr) {
         struct PrioritizedDecl {
             const Declaration* decl;
             Specificity specificity;
@@ -7568,7 +7575,8 @@ ComputedStyle StyleResolver::resolve(
         };
 
         std::vector<PrioritizedDecl> all_decls;
-        all_decls.reserve(matched_rules.size() * 4 + inline_decls.size());
+        all_decls.reserve(matched_rules.size() * 4 +
+                          (inline_decls != nullptr ? inline_decls->size() : 0));
 
         // First stylesheet is the UA sheet in our render pipeline.
         const StyleRule* ua_begin = nullptr;
@@ -7602,18 +7610,20 @@ ComputedStyle StyleResolver::resolve(
         // Keep them in their own cascade tier so inline normal beats all rule
         // normal declarations, and inline !important beats author !important.
         const Specificity inline_specificity{1000000, 0, 0};
-        for (size_t i = 0; i < inline_decls.size(); ++i) {
-            const auto& decl = inline_decls[i];
-            all_decls.push_back({
-                &decl,
-                inline_specificity,
-                i,
-                decl.important,
-                false,
-                0,
-                false,
-                true
-            });
+        if (inline_decls != nullptr) {
+            for (size_t i = 0; i < inline_decls->size(); ++i) {
+                const auto& decl = (*inline_decls)[i];
+                all_decls.push_back({
+                    &decl,
+                    inline_specificity,
+                    i,
+                    decl.important,
+                    false,
+                    0,
+                    false,
+                    true
+                });
+            }
         }
 
         std::stable_sort(all_decls.begin(), all_decls.end(),

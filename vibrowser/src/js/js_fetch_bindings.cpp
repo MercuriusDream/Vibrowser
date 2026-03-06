@@ -872,6 +872,8 @@ static JSValue create_headers_object(JSContext* ctx,
 // =========================================================================
 
 static JSClassID response_class_id = 0;
+static JSClassID response_body_stream_class_id = 0;
+static JSClassID response_body_reader_class_id = 0;
 
 struct ResponseState {
     int status = 0;
@@ -883,6 +885,16 @@ struct ResponseState {
     bool ok = false;         // status 200-299
     bool redirected = false; // true if at least one redirect was followed
     std::string type = "basic"; // "basic", "cors", "opaque", "error", "default"
+    bool body_used = false;
+    bool stream_drained = false;
+};
+
+struct ResponseBodyStreamState {
+    JSValue response = JS_UNDEFINED;
+};
+
+struct ResponseBodyReaderState {
+    JSValue response = JS_UNDEFINED;
 };
 
 static ResponseState* get_response_state(JSContext* /*ctx*/, JSValueConst this_val) {
@@ -899,6 +911,96 @@ static JSClassDef response_class_def = {
     js_response_finalizer,
     nullptr, nullptr, nullptr
 };
+
+static void js_response_body_stream_gc_mark(JSRuntime* rt, JSValueConst val,
+                                             JS_MarkFunc* mark_func) {
+    auto* state = static_cast<ResponseBodyStreamState*>(
+        JS_GetOpaque(val, response_body_stream_class_id));
+    if (!state) return;
+    JS_MarkValue(rt, state->response, mark_func);
+}
+
+static void js_response_body_stream_finalizer(JSRuntime* rt, JSValue val) {
+    auto* state = static_cast<ResponseBodyStreamState*>(
+        JS_GetOpaque(val, response_body_stream_class_id));
+    if (!state) return;
+    JS_FreeValueRT(rt, state->response);
+    delete state;
+}
+
+static JSClassDef response_body_stream_class_def = {
+    "ResponseBodyStream",
+    js_response_body_stream_finalizer,
+    js_response_body_stream_gc_mark,
+    nullptr, nullptr
+};
+
+static void js_response_body_reader_gc_mark(JSRuntime* rt, JSValueConst val,
+                                             JS_MarkFunc* mark_func) {
+    auto* state = static_cast<ResponseBodyReaderState*>(
+        JS_GetOpaque(val, response_body_reader_class_id));
+    if (!state) return;
+    JS_MarkValue(rt, state->response, mark_func);
+}
+
+static void js_response_body_reader_finalizer(JSRuntime* rt, JSValue val) {
+    auto* state = static_cast<ResponseBodyReaderState*>(
+        JS_GetOpaque(val, response_body_reader_class_id));
+    if (!state) return;
+    JS_FreeValueRT(rt, state->response);
+    delete state;
+}
+
+static JSClassDef response_body_reader_class_def = {
+    "ResponseBodyReader",
+    js_response_body_reader_finalizer,
+    js_response_body_reader_gc_mark,
+    nullptr, nullptr
+};
+
+static JSValue js_resolve_promise_with_value(JSContext* ctx, JSValue value) {
+    JSValue resolving_funcs[2];
+    JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
+    if (JS_IsException(promise)) {
+        JS_FreeValue(ctx, value);
+        return promise;
+    }
+
+    JSValue ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, &value);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, value);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+    return promise;
+}
+
+static JSValue js_reject_promise_with_message(JSContext* ctx, const char* message) {
+    JSValue resolving_funcs[2];
+    JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
+    if (JS_IsException(promise)) return promise;
+
+    JS_ThrowTypeError(ctx, "%s", message);
+    JSValue exception = JS_GetException(ctx);
+    JSValue ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, &exception);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, exception);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+    return promise;
+}
+
+static bool response_body_is_unusable(ResponseState* state) {
+    return state->body_used || state->stream_drained;
+}
+
+static bool mark_response_body_consumed(ResponseState* state) {
+    if (response_body_is_unusable(state)) {
+        return false;
+    }
+    state->body_used = true;
+    state->stream_drained = true;
+    return true;
+}
 
 // ---- Response property getters ----
 
@@ -938,9 +1040,10 @@ static JSValue js_response_get_redirected(JSContext* ctx, JSValueConst this_val)
     return state->redirected ? JS_TRUE : JS_FALSE;
 }
 
-static JSValue js_response_get_body_used(JSContext* /*ctx*/, JSValueConst /*this_val*/) {
-    // We allow repeated reads for simplicity
-    return JS_FALSE;
+static JSValue js_response_get_body_used(JSContext* /*ctx*/, JSValueConst this_val) {
+    auto* state = static_cast<ResponseState*>(JS_GetOpaque(this_val, response_class_id));
+    if (!state) return JS_FALSE;
+    return state->body_used ? JS_TRUE : JS_FALSE;
 }
 
 static JSValue js_response_get_headers(JSContext* ctx, JSValueConst this_val) {
@@ -956,19 +1059,12 @@ static JSValue js_response_text(JSContext* ctx, JSValueConst this_val,
                                  int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
-
-    JSValue resolving_funcs[2];
-    JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
-    if (JS_IsException(promise)) return promise;
+    if (!mark_response_body_consumed(state)) {
+        return js_reject_promise_with_message(ctx, "Response body is already used");
+    }
 
     JSValue text = JS_NewStringLen(ctx, state->body.data(), state->body.size());
-    JSValue ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, &text);
-    JS_FreeValue(ctx, ret);
-    JS_FreeValue(ctx, text);
-    JS_FreeValue(ctx, resolving_funcs[0]);
-    JS_FreeValue(ctx, resolving_funcs[1]);
-
-    return promise;
+    return js_resolve_promise_with_value(ctx, text);
 }
 
 // response.json() -> Promise<object>
@@ -976,6 +1072,9 @@ static JSValue js_response_json(JSContext* ctx, JSValueConst this_val,
                                  int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+    if (!mark_response_body_consumed(state)) {
+        return js_reject_promise_with_message(ctx, "Response body is already used");
+    }
 
     JSValue resolving_funcs[2];
     JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
@@ -1006,6 +1105,9 @@ static JSValue js_response_clone(JSContext* ctx, JSValueConst this_val,
                                   int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+    if (response_body_is_unusable(state)) {
+        return JS_ThrowTypeError(ctx, "Response body is already used");
+    }
 
     JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(response_class_id));
     if (JS_IsException(obj)) return obj;
@@ -1020,6 +1122,8 @@ static JSValue js_response_clone(JSContext* ctx, JSValueConst this_val,
     new_state->ok = state->ok;
     new_state->redirected = state->redirected;
     new_state->type = state->type;
+    new_state->body_used = state->body_used;
+    new_state->stream_drained = state->stream_drained;
     JS_SetOpaque(obj, new_state);
 
     return obj;
@@ -1030,22 +1134,15 @@ static JSValue js_response_array_buffer(JSContext* ctx, JSValueConst this_val,
                                          int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
-
-    JSValue resolving_funcs[2];
-    JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
-    if (JS_IsException(promise)) return promise;
+    if (!mark_response_body_consumed(state)) {
+        return js_reject_promise_with_message(ctx, "Response body is already used");
+    }
 
     // Create an ArrayBuffer with the body data
     JSValue ab = JS_NewArrayBufferCopy(ctx,
         state->body_bytes.data(),
         state->body_bytes.size());
-    JSValue ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, &ab);
-    JS_FreeValue(ctx, ret);
-    JS_FreeValue(ctx, ab);
-    JS_FreeValue(ctx, resolving_funcs[0]);
-    JS_FreeValue(ctx, resolving_funcs[1]);
-
-    return promise;
+    return js_resolve_promise_with_value(ctx, ab);
 }
 
 // response.blob() -> Promise<Blob>
@@ -1053,6 +1150,9 @@ static JSValue js_response_blob(JSContext* ctx, JSValueConst this_val,
                                  int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+    if (!mark_response_body_consumed(state)) {
+        return js_reject_promise_with_message(ctx, "Response body is already used");
+    }
 
     JSValue resolving_funcs[2];
     JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
@@ -1115,6 +1215,9 @@ static JSValue js_response_form_data(JSContext* ctx, JSValueConst this_val,
                                       int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+    if (!mark_response_body_consumed(state)) {
+        return js_reject_promise_with_message(ctx, "Response body is already used");
+    }
 
     JSValue resolving_funcs[2];
     JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
@@ -1300,103 +1403,136 @@ static JSValue js_response_form_data(JSContext* ctx, JSValueConst this_val,
     return promise;
 }
 
-// response.body — native ReadableStream-like getter that streams body bytes
-static JSValue js_response_get_body(JSContext* ctx, JSValueConst this_val) {
-    auto* state = get_response_state(ctx, this_val);
-    if (!state) return JS_NULL;
+static JSValue js_response_body_reader_read(JSContext* ctx, JSValueConst this_val,
+                                             int /*argc*/, JSValueConst* /*argv*/) {
+    auto* reader_state = static_cast<ResponseBodyReaderState*>(
+        JS_GetOpaque(this_val, response_body_reader_class_id));
+    if (!reader_state) return JS_ThrowTypeError(ctx, "Invalid Response body reader");
 
-    // Build a Uint8Array containing the body bytes
+    auto* response_state = get_response_state(ctx, reader_state->response);
+    if (!response_state) {
+        JSValue result = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, result, "done", JS_TRUE);
+        JS_SetPropertyStr(ctx, result, "value", JS_UNDEFINED);
+        return js_resolve_promise_with_value(ctx, result);
+    }
+
+    JSValue result = JS_NewObject(ctx);
+    if (!mark_response_body_consumed(response_state)) {
+        JS_SetPropertyStr(ctx, result, "done", JS_TRUE);
+        JS_SetPropertyStr(ctx, result, "value", JS_UNDEFINED);
+        return js_resolve_promise_with_value(ctx, result);
+    }
+
     JSValue array_buf = JS_NewArrayBufferCopy(ctx,
-        state->body_bytes.data(),
-        state->body_bytes.size());
-    if (JS_IsException(array_buf)) return array_buf;
+        response_state->body_bytes.data(),
+        response_state->body_bytes.size());
+    if (JS_IsException(array_buf)) {
+        JS_FreeValue(ctx, result);
+        return array_buf;
+    }
 
-    // Create Uint8Array(arrayBuf)
     JSValue global_obj = JS_GetGlobalObject(ctx);
     JSValue uint8_ctor = JS_GetPropertyStr(ctx, global_obj, "Uint8Array");
     JS_FreeValue(ctx, global_obj);
 
-    JSValue chunk;
+    JSValue chunk = JS_UNDEFINED;
     if (JS_IsFunction(ctx, uint8_ctor)) {
         JSValue ctor_args[1] = { array_buf };
         chunk = JS_CallConstructor(ctx, uint8_ctor, 1, ctor_args);
         JS_FreeValue(ctx, uint8_ctor);
         JS_FreeValue(ctx, array_buf);
-        if (JS_IsException(chunk)) return chunk;
+        if (JS_IsException(chunk)) {
+            JS_FreeValue(ctx, result);
+            return chunk;
+        }
     } else {
         JS_FreeValue(ctx, uint8_ctor);
-        chunk = array_buf; // fall back to raw ArrayBuffer
+        chunk = array_buf;
     }
 
-    // Construct reader object: { _chunk, _done: false, read(), cancel(), releaseLock(), closed }
-    JSValue reader = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, reader, "_chunk", JS_DupValue(ctx, chunk));
-    JS_SetPropertyStr(ctx, reader, "_done", JS_FALSE);
+    JS_SetPropertyStr(ctx, result, "done", JS_FALSE);
+    JS_SetPropertyStr(ctx, result, "value", chunk);
+    return js_resolve_promise_with_value(ctx, result);
+}
 
-    // read() method: returns Promise<{done, value}>
-    // We use eval to define read() on the reader because it needs closure access to _chunk/_done
-    // Instead, we define it as a C function via a small JS trampoline
-    const char* read_fn_src = R"JS(
-(function(reader) {
-    reader.read = function() {
-        if (this._done) return Promise.resolve({ done: true, value: undefined });
-        this._done = true;
-        return Promise.resolve({ done: false, value: this._chunk });
-    };
-    reader.cancel = function() { return Promise.resolve(); };
-    reader.releaseLock = function() {};
-    reader.closed = Promise.resolve();
+static JSValue js_response_body_reader_cancel(JSContext* ctx, JSValueConst /*this_val*/,
+                                               int /*argc*/, JSValueConst* /*argv*/) {
+    return js_resolve_promise_with_value(ctx, JS_UNDEFINED);
+}
+
+static JSValue js_response_body_reader_release_lock(JSContext* /*ctx*/, JSValueConst /*this_val*/,
+                                                     int /*argc*/, JSValueConst* /*argv*/) {
+    return JS_UNDEFINED;
+}
+
+static const JSCFunctionListEntry response_body_reader_proto_funcs[] = {
+    JS_CFUNC_DEF("read", 0, js_response_body_reader_read),
+    JS_CFUNC_DEF("cancel", 0, js_response_body_reader_cancel),
+    JS_CFUNC_DEF("releaseLock", 0, js_response_body_reader_release_lock),
+};
+
+static JSValue js_response_body_stream_get_reader(JSContext* ctx, JSValueConst this_val,
+                                                   int /*argc*/, JSValueConst* /*argv*/) {
+    auto* stream_state = static_cast<ResponseBodyStreamState*>(
+        JS_GetOpaque(this_val, response_body_stream_class_id));
+    if (!stream_state) return JS_ThrowTypeError(ctx, "Invalid Response body stream");
+
+    JSValue reader = JS_NewObjectClass(ctx, static_cast<int>(response_body_reader_class_id));
+    if (JS_IsException(reader)) return reader;
+
+    auto* reader_state = new ResponseBodyReaderState();
+    reader_state->response = JS_DupValue(ctx, stream_state->response);
+    JS_SetOpaque(reader, reader_state);
+    JS_SetPropertyStr(ctx, reader, "closed",
+                      js_resolve_promise_with_value(ctx, JS_UNDEFINED));
     return reader;
-})
-)JS";
-    JSValue trampoline = JS_Eval(ctx, read_fn_src, std::strlen(read_fn_src),
-                                  "<body-reader>", JS_EVAL_TYPE_GLOBAL);
-    if (!JS_IsException(trampoline) && JS_IsFunction(ctx, trampoline)) {
-        JSValue args[1] = { reader };
-        JSValue result = JS_Call(ctx, trampoline, JS_UNDEFINED, 1, args);
-        if (!JS_IsException(result)) {
-            JS_FreeValue(ctx, reader);
-            reader = result;
-        } else {
-            JS_FreeValue(ctx, result);
-        }
-        JS_FreeValue(ctx, trampoline);
-    } else {
-        JS_FreeValue(ctx, trampoline);
-    }
-    JS_FreeValue(ctx, chunk);
+}
 
-    // Construct stream object: { locked: false, getReader(), cancel(), pipeThrough(), pipeTo(), tee() }
-    JSValue stream = JS_NewObject(ctx);
+static JSValue js_response_body_stream_cancel(JSContext* ctx, JSValueConst /*this_val*/,
+                                               int /*argc*/, JSValueConst* /*argv*/) {
+    return js_resolve_promise_with_value(ctx, JS_UNDEFINED);
+}
+
+static JSValue js_response_body_stream_pipe_through(JSContext* ctx, JSValueConst /*this_val*/,
+                                                     int argc, JSValueConst* argv) {
+    if (argc < 1 || !JS_IsObject(argv[0])) return JS_UNDEFINED;
+    return JS_GetPropertyStr(ctx, argv[0], "readable");
+}
+
+static JSValue js_response_body_stream_pipe_to(JSContext* ctx, JSValueConst /*this_val*/,
+                                                int /*argc*/, JSValueConst* /*argv*/) {
+    return js_resolve_promise_with_value(ctx, JS_UNDEFINED);
+}
+
+static JSValue js_response_body_stream_tee(JSContext* ctx, JSValueConst this_val,
+                                            int /*argc*/, JSValueConst* /*argv*/) {
+    JSValue pair = JS_NewArray(ctx);
+    JS_SetPropertyUint32(ctx, pair, 0, JS_DupValue(ctx, this_val));
+    JS_SetPropertyUint32(ctx, pair, 1, JS_DupValue(ctx, this_val));
+    return pair;
+}
+
+static const JSCFunctionListEntry response_body_stream_proto_funcs[] = {
+    JS_CFUNC_DEF("getReader", 0, js_response_body_stream_get_reader),
+    JS_CFUNC_DEF("cancel", 0, js_response_body_stream_cancel),
+    JS_CFUNC_DEF("pipeThrough", 1, js_response_body_stream_pipe_through),
+    JS_CFUNC_DEF("pipeTo", 1, js_response_body_stream_pipe_to),
+    JS_CFUNC_DEF("tee", 0, js_response_body_stream_tee),
+};
+
+// response.body — native ReadableStream-like getter that streams body bytes
+static JSValue js_response_get_body(JSContext* ctx, JSValueConst this_val) {
+    auto* state = get_response_state(ctx, this_val);
+    if (!state) return JS_NULL;
+
+    JSValue stream = JS_NewObjectClass(ctx, static_cast<int>(response_body_stream_class_id));
+    if (JS_IsException(stream)) return stream;
+
+    auto* stream_state = new ResponseBodyStreamState();
+    stream_state->response = JS_DupValue(ctx, this_val);
+    JS_SetOpaque(stream, stream_state);
     JS_SetPropertyStr(ctx, stream, "locked", JS_FALSE);
-    JS_SetPropertyStr(ctx, stream, "_reader", reader); // embed reader
-
-    const char* stream_fn_src = R"JS(
-(function(stream) {
-    stream.getReader = function() { return this._reader; };
-    stream.cancel = function() { return Promise.resolve(); };
-    stream.pipeThrough = function(transform) { return transform.readable; };
-    stream.pipeTo = function() { return Promise.resolve(); };
-    stream.tee = function() { return [this, this]; };
-    return stream;
-})
-)JS";
-    JSValue stream_trampoline = JS_Eval(ctx, stream_fn_src, std::strlen(stream_fn_src),
-                                         "<body-stream>", JS_EVAL_TYPE_GLOBAL);
-    if (!JS_IsException(stream_trampoline) && JS_IsFunction(ctx, stream_trampoline)) {
-        JSValue args2[1] = { stream };
-        JSValue result2 = JS_Call(ctx, stream_trampoline, JS_UNDEFINED, 1, args2);
-        if (!JS_IsException(result2)) {
-            JS_FreeValue(ctx, stream);
-            stream = result2;
-        } else {
-            JS_FreeValue(ctx, result2);
-        }
-        JS_FreeValue(ctx, stream_trampoline);
-    } else {
-        JS_FreeValue(ctx, stream_trampoline);
-    }
-
     return stream;
 }
 
@@ -4115,10 +4251,30 @@ void install_fetch_bindings(JSContext* ctx) {
     if (!JS_IsRegisteredClass(rt, response_class_id)) {
         JS_NewClass(rt, response_class_id, &response_class_def);
     }
+    if (response_body_stream_class_id == 0) {
+        JS_NewClassID(&response_body_stream_class_id);
+    }
+    if (!JS_IsRegisteredClass(rt, response_body_stream_class_id)) {
+        JS_NewClass(rt, response_body_stream_class_id, &response_body_stream_class_def);
+    }
+    if (response_body_reader_class_id == 0) {
+        JS_NewClassID(&response_body_reader_class_id);
+    }
+    if (!JS_IsRegisteredClass(rt, response_body_reader_class_id)) {
+        JS_NewClass(rt, response_body_reader_class_id, &response_body_reader_class_def);
+    }
 
     JSValue response_proto = JS_NewObject(ctx);
     JS_SetPropertyFunctionList(ctx, response_proto, response_proto_funcs,
                                 sizeof(response_proto_funcs) / sizeof(response_proto_funcs[0]));
+    JSValue response_body_stream_proto = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, response_body_stream_proto, response_body_stream_proto_funcs,
+                                sizeof(response_body_stream_proto_funcs) / sizeof(response_body_stream_proto_funcs[0]));
+    JS_SetClassProto(ctx, response_body_stream_class_id, response_body_stream_proto);
+    JSValue response_body_reader_proto = JS_NewObject(ctx);
+    JS_SetPropertyFunctionList(ctx, response_body_reader_proto, response_body_reader_proto_funcs,
+                                sizeof(response_body_reader_proto_funcs) / sizeof(response_body_reader_proto_funcs[0]));
+    JS_SetClassProto(ctx, response_body_reader_class_id, response_body_reader_proto);
 
     JSValue response_ctor = JS_NewCFunction2(ctx, js_response_constructor,
                                               "Response", 0,

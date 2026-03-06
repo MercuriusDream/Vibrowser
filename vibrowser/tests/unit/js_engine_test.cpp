@@ -9816,6 +9816,221 @@ TEST(JSFetch, ResponseArrayBufferEmptyBodyStaysEmptyV2068) {
     EXPECT_EQ(result, "0");
 }
 
+TEST(JSFetch, ResponseBodyUsedTracksTextAndArrayBufferConsumptionV2069) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var outcome = 'pending';
+        var r = new Response('{"ok":true}', {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        });
+        var before = r.bodyUsed;
+        r.text()
+            .then(function(text) {
+                return Promise.all([
+                    Promise.resolve(text),
+                    r.arrayBuffer().then(
+                        function() { return 'arrayBuffer-resolved'; },
+                        function(err) { return err && err.message ? err.message : String(err); }
+                    ),
+                    r.json().then(
+                        function() { return 'json-resolved'; },
+                        function(err) { return err && err.message ? err.message : String(err); }
+                    )
+                ]);
+            })
+            .then(function(values) {
+                outcome = [
+                    String(before),
+                    String(r.bodyUsed),
+                    values[0],
+                    values[1],
+                    values[2]
+                ].join('|');
+            })
+            .catch(function(err) {
+                outcome = err && err.message ? err.message : String(err);
+            });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("outcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              R"(false|true|{"ok":true}|Response body is already used|Response body is already used)");
+}
+
+TEST(JSFetch, ResponseCloneRejectsAfterBodyConsumptionV2069) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var cloneOutcome = 'pending';
+        var r = new Response('clone-me', { status: 200 });
+        r.text()
+            .then(function() {
+                try {
+                    r.clone();
+                    cloneOutcome = 'clone-resolved';
+                } catch (err) {
+                    cloneOutcome = err && err.message ? err.message : String(err);
+                }
+            })
+            .catch(function(err) {
+                cloneOutcome = err && err.message ? err.message : String(err);
+            });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("cloneOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Response body is already used");
+}
+
+TEST(JSFetch, ResponseBlobMarksBodyUsedAndRejectsSecondReadV2069) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var blobOutcome = 'pending';
+        var r = new Response('hello', { status: 200 });
+        var before = r.bodyUsed;
+        r.blob()
+            .then(function(b) {
+                return r.text().then(
+                    function() { return 'text-resolved'; },
+                    function(err) { return err && err.message ? err.message : String(err); }
+                ).then(function(textResult) {
+                    blobOutcome = [
+                        String(before),
+                        String(r.bodyUsed),
+                        String(b.size),
+                        textResult
+                    ].join('|');
+                });
+            })
+            .catch(function(err) {
+                blobOutcome = err && err.message ? err.message : String(err);
+            });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("blobOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false|true|5|Response body is already used");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSFetch, ResponseFormDataMarksBodyUsedAndRejectsSecondReadV2069) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var formOutcome = 'pending';
+        var r = new Response('alpha=1&beta=2', {
+            status: 200,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        var before = r.bodyUsed;
+        r.formData()
+            .then(function(fd) {
+                return r.text().then(
+                    function() { return 'text-resolved'; },
+                    function(err) { return err && err.message ? err.message : String(err); }
+                ).then(function(textResult) {
+                    formOutcome = [
+                        String(before),
+                        String(r.bodyUsed),
+                        String(typeof fd),
+                        textResult
+                    ].join('|');
+                });
+            })
+            .catch(function(err) {
+                formOutcome = err && err.message ? err.message : String(err);
+            });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("formOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false|true|object|Response body is already used");
+}
+
+TEST(JSFetch, ResponseBodyStreamReadsFetchedBytesOnceV2069) {
+    const std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "Content-Length: 4\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "WXYZ";
+
+    ScopedHttpResponseServer server({response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    const std::string script = R"JS(
+        var streamResult = 'pending';
+        fetch('http://127.0.0.1:)JS" + std::to_string(server.port()) + R"JS(/bytes')
+            .then(function(resp) {
+                var before = resp.bodyUsed;
+                var reader = resp.body.getReader();
+                return reader.read().then(function(first) {
+                    var firstBytes = first.value ? Array.from(first.value).join(',') : 'none';
+                    var afterFirst = resp.bodyUsed;
+                    return reader.read().then(function(second) {
+                        return resp.text().then(
+                            function() { return 'text-resolved'; },
+                            function(err) { return err && err.message ? err.message : String(err); }
+                        ).then(function(textResult) {
+                            streamResult = [
+                                String(before),
+                                String(afterFirst),
+                                String(first.done),
+                                firstBytes,
+                                String(second.done),
+                                String(second.value === undefined),
+                                textResult
+                            ].join('|');
+                        });
+                    });
+                });
+            })
+            .catch(function(err) {
+                streamResult = err && err.message ? err.message : String(err);
+            });
+    )JS";
+    engine.evaluate(script.c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("streamResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              "false|true|false|87,88,89,90|true|true|Response body is already used");
+}
+
 // ============================================================================
 // Web API: HTMLCanvasElement.toDataURL() / toBlob()
 // ============================================================================

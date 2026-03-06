@@ -18,6 +18,13 @@
 #include <thread>
 #include <vector>
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 using namespace clever::paint;
 using namespace clever::layout;
 
@@ -38,6 +45,107 @@ size_t image_cache_bytes_for_testing();
 uint64_t image_cache_hit_count_for_testing();
 uint64_t image_cache_miss_count_for_testing();
 }
+
+namespace {
+
+#ifndef _WIN32
+class ScopedImageResponseServer {
+public:
+    explicit ScopedImageResponseServer(std::string body)
+        : body_(std::move(body)) {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) return;
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, 8) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~ScopedImageResponseServer() {
+        if (listen_fd_ >= 0) {
+            ::shutdown(listen_fd_, SHUT_RDWR);
+            ::close(listen_fd_);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+private:
+    void run() {
+        while (true) {
+            int client_fd = ::accept(listen_fd_, nullptr, nullptr);
+            if (client_fd < 0) return;
+
+            std::string request;
+            char buffer[1024];
+            while (request.find("\r\n\r\n") == std::string::npos) {
+                ssize_t n = ::recv(client_fd, buffer, sizeof(buffer), 0);
+                if (n <= 0) {
+                    ::close(client_fd);
+                    return;
+                }
+                request.append(buffer, static_cast<size_t>(n));
+            }
+
+            const std::string response =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: image/svg+xml\r\n"
+                "Content-Length: " + std::to_string(body_.size()) + "\r\n"
+                "Connection: close\r\n\r\n" + body_;
+
+            size_t total_sent = 0;
+            while (total_sent < response.size()) {
+                ssize_t sent = ::send(
+                    client_fd,
+                    response.data() + total_sent,
+                    response.size() - total_sent,
+                    0);
+                if (sent <= 0) break;
+                total_sent += static_cast<size_t>(sent);
+            }
+
+            ::shutdown(client_fd, SHUT_RDWR);
+            ::close(client_fd);
+        }
+    }
+
+    int listen_fd_ = -1;
+    uint16_t port_ = 0;
+    std::thread server_thread_;
+    std::string body_;
+};
+#endif
+
+} // namespace
 
 // ============================================================================
 // 1. DisplayList: fill_rect adds command
@@ -39941,6 +40049,92 @@ TEST_F(PaintTest, ImageCacheTouchKeepsHotEntryReusableV2065) {
     EXPECT_GT(image_cache_miss_count_for_testing(), misses_before_cold_reload);
 
     reset_image_cache_for_testing();
+}
+
+TEST_F(PaintTest, ImageCacheTreatsFragmentVariantsAsSameResourceV2069) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Local POSIX socket fixture is not available on Windows.";
+#else
+    reset_image_cache_for_testing();
+
+    const std::string svg =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>"
+        "<rect width='1' height='1' fill='red'/></svg>";
+    ScopedImageResponseServer server(svg);
+    ASSERT_TRUE(server.is_valid());
+
+    const std::string base_url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/image.svg";
+    const std::string first_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "#hero'></body></html>";
+    const std::string second_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "#thumb'></body></html>";
+
+    auto first = render_html(first_html, 64, 64);
+    ASSERT_TRUE(first.success) << first.error;
+    ASSERT_NE(first.renderer, nullptr);
+
+    const auto misses_after_first = image_cache_miss_count_for_testing();
+    const auto hits_after_first = image_cache_hit_count_for_testing();
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_GE(misses_after_first, 1u);
+
+    auto second = render_html(second_html, 64, 64);
+    ASSERT_TRUE(second.success) << second.error;
+    ASSERT_NE(second.renderer, nullptr);
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_after_first);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_after_first);
+
+    reset_image_cache_for_testing();
+#endif
+}
+
+TEST_F(PaintTest, ImageCacheStillSeparatesQueryVariantsV2069) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Local POSIX socket fixture is not available on Windows.";
+#else
+    reset_image_cache_for_testing();
+
+    const std::string svg =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>"
+        "<rect width='1' height='1' fill='blue'/></svg>";
+    ScopedImageResponseServer server(svg);
+    ASSERT_TRUE(server.is_valid());
+
+    const std::string base_url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/image.svg";
+    const std::string first_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "?variant=1#hero'></body></html>";
+    const std::string second_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "?variant=2#hero'></body></html>";
+
+    auto first = render_html(first_html, 64, 64);
+    ASSERT_TRUE(first.success) << first.error;
+    ASSERT_NE(first.renderer, nullptr);
+
+    const auto misses_after_first = image_cache_miss_count_for_testing();
+    const auto hits_after_first = image_cache_hit_count_for_testing();
+
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 4u);
+    EXPECT_GE(misses_after_first, 1u);
+
+    auto second = render_html(second_html, 64, 64);
+    ASSERT_TRUE(second.success) << second.error;
+    ASSERT_NE(second.renderer, nullptr);
+
+    EXPECT_EQ(image_cache_size_for_testing(), 2u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 8u);
+    EXPECT_GT(image_cache_miss_count_for_testing(), misses_after_first);
+    EXPECT_GE(image_cache_hit_count_for_testing(), hits_after_first);
+
+    reset_image_cache_for_testing();
+#endif
 }
 
 TEST(WebFontRegistration, FontDisplayPropertyCollected) {
