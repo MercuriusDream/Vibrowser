@@ -11931,6 +11931,75 @@ TEST(JSDom, ImageConstructor) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, HTMLDialogElementCloseDispatchesEventV2067) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var dialog = document.createElement('dialog');
+        document.body.appendChild(dialog);
+        var events = [];
+        dialog.returnValue = 'seed';
+        dialog.addEventListener('close', function(event) {
+            events.push(event.type + ':' + String(dialog.open) + ':' + dialog.returnValue);
+        });
+        dialog.showModal();
+        var openBeforeClose = dialog.open;
+        dialog.close('done');
+        String(
+            openBeforeClose === true &&
+            dialog.open === false &&
+            dialog.returnValue === 'done' &&
+            events.length === 1 &&
+            events[0] === 'close:false:done'
+        )
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, HTMLDialogElementRepeatedCloseIsStableV2067) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var dialog = document.createElement('dialog');
+        document.body.appendChild(dialog);
+        var closeCount = 0;
+        dialog.addEventListener('close', function() { closeCount++; });
+        dialog.returnValue = 'initial';
+
+        dialog.showModal();
+        dialog.close('first-close');
+        var afterFirstClose = closeCount === 1 &&
+            dialog.open === false &&
+            dialog.returnValue === 'first-close';
+
+        dialog.close();
+        var afterRepeatedClose = closeCount === 1 &&
+            dialog.open === false &&
+            dialog.returnValue === 'first-close';
+
+        dialog.showModal();
+        var persistedAcrossShowModal = dialog.open === true &&
+            dialog.returnValue === 'first-close';
+        dialog.close();
+
+        String(
+            afterFirstClose &&
+            afterRepeatedClose &&
+            persistedAcrossShowModal &&
+            closeCount === 2 &&
+            dialog.open === false &&
+            dialog.returnValue === 'first-close'
+        )
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // ============================================================================
 // Cycle 433 — Modern JS language feature regression (QuickJS ES2020+ support)
 // ============================================================================

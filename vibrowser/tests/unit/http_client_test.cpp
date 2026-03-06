@@ -883,6 +883,96 @@ TEST(HttpClient, QueryOnlyRedirectPreservesBasePath) {
     EXPECT_EQ(requests[1].find("POST /submit?step=2 HTTP/1.1\r\n"), std::string::npos);
 }
 
+TEST(HttpClient, Redirect301PostBecomesGetV2067) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: /landing\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/submit";
+    req.method = Method::POST;
+    req.headers.set("Content-Type", "text/plain");
+    req.body = {'p', 'a', 'y', 'l', 'o', 'a', 'd'};
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[0].find("Content-Length: 7\r\n"), std::string::npos);
+    EXPECT_NE(requests[0].find("\r\n\r\npayload"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /landing HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_EQ(requests[1].find("POST /landing HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_EQ(requests[1].find("Content-Length:"), std::string::npos);
+    EXPECT_EQ(requests[1].find("\r\n\r\npayload"), std::string::npos);
+}
+
+TEST(HttpClient, Redirect307PreservesMethodAndBodyV2067) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 307 Temporary Redirect\r\n"
+        "Location: /upload\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/submit";
+    req.method = Method::POST;
+    req.headers.set("Content-Type", "text/plain");
+    req.body = {'p', 'a', 'y', 'l', 'o', 'a', 'd'};
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[0].find("Content-Length: 7\r\n"), std::string::npos);
+    EXPECT_NE(requests[0].find("\r\n\r\npayload"), std::string::npos);
+    EXPECT_NE(requests[1].find("POST /upload HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_EQ(requests[1].find("GET /upload HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("Content-Length: 7\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("\r\n\r\npayload"), std::string::npos);
+}
+
 // ===========================================================================
 // TlsSocket Unit Tests
 // ===========================================================================

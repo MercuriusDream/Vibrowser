@@ -1034,10 +1034,20 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
                 return resp;
             }
 
-            // For 303, change method to GET
-            if (resp->status == 303) {
+            const bool rewrite_post_redirect_to_get =
+                current.method == Method::POST &&
+                (resp->status == 301 || resp->status == 302 || resp->status == 303);
+            const bool rewrite_see_other_to_get =
+                resp->status == 303 && current.method != Method::HEAD;
+            if (rewrite_post_redirect_to_get || rewrite_see_other_to_get) {
                 current.method = Method::GET;
                 current.body.clear();
+                current.headers.remove("content-length");
+                current.headers.remove("content-type");
+                current.headers.remove("content-encoding");
+                current.headers.remove("content-language");
+                current.headers.remove("content-location");
+                current.headers.remove("transfer-encoding");
             }
 
             current.url = *new_url;

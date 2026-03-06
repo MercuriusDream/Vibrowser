@@ -1833,6 +1833,72 @@ TEST(LayoutEngineTest, FitContentIgnoresFloatedDescendantsForIntrinsicWidth) {
         << "fit-content should ignore floated descendants when computing intrinsic width";
 }
 
+TEST(LayoutEngineTest, ContentVisibilityHiddenSkippedInIntrinsicWidthV2067) {
+    auto min_root = make_block("div");
+    min_root->specified_width = -2.0f; // min-content
+    min_root->append_child(make_text("Hi", 16.0f));
+
+    auto min_hidden = make_block("div");
+    min_hidden->content_visibility = 1;
+    min_hidden->append_child(make_text("supercalifragilisticexpialidocious", 16.0f));
+    min_root->append_child(std::move(min_hidden));
+
+    auto max_root = make_block("div");
+    max_root->specified_width = -3.0f; // max-content
+    max_root->append_child(make_text("Hi", 16.0f));
+
+    auto max_hidden = make_block("div");
+    max_hidden->content_visibility = 1;
+    max_hidden->append_child(make_text("supercalifragilisticexpialidocious", 16.0f));
+    max_root->append_child(std::move(max_hidden));
+
+    LayoutEngine engine;
+    engine.compute(*min_root, 800.0f, 600.0f);
+    engine.compute(*max_root, 800.0f, 600.0f);
+
+    float expected_width = 2.0f * 16.0f * 0.6f;
+    EXPECT_NEAR(min_root->geometry.width, expected_width, 1.0f)
+        << "min-content width should ignore content-visibility:hidden descendants";
+    EXPECT_NEAR(max_root->geometry.width, expected_width, 1.0f)
+        << "max-content width should ignore content-visibility:hidden descendants";
+}
+
+TEST(LayoutEngineTest, FitContentIgnoresContentVisibilityHiddenDescendantsV2067) {
+    auto root = make_block("div");
+
+    auto container = make_block("div");
+    container->specified_width = -4.0f; // fit-content
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->append_child(make_text("Hi", 16.0f));
+
+    auto wide_child = make_block("div");
+    wide_child->specified_width = 240.0f;
+    wide_child->specified_height = 10.0f;
+    inline_block->append_child(std::move(wide_child));
+
+    container->append_child(std::move(inline_block));
+    root->append_child(std::move(container));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    root->children[0]->specified_width = -4.0f;
+    auto* shrink_wrap = root->children[0]->children[0].get();
+    shrink_wrap->children[1]->content_visibility = 1;
+
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float expected_width = 2.0f * 16.0f * 0.6f;
+    EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 2.0f)
+        << "fit-content width should ignore content-visibility:hidden descendants";
+    EXPECT_NEAR(shrink_wrap->geometry.width, expected_width, 2.0f)
+        << "inline-block shrink-wrap width should ignore hidden descendants after recompute";
+}
+
 // ============================================================================
 // Word-break and overflow-wrap tests
 // ============================================================================

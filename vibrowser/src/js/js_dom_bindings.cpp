@@ -17685,6 +17685,7 @@ void install_dom_bindings(JSContext* ctx,
         var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
         if (tag !== 'dialog') return;
         if (arguments.length) this.__dialogReturnValue = (returnValue === undefined || returnValue === null) ? '' : String(returnValue);
+        if (!this.hasAttribute('open')) return undefined;
         this.removeAttribute('open');
         // Dispatch 'close' event (non-bubbling, non-cancelable)
         try {

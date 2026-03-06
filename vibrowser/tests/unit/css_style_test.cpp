@@ -886,6 +886,75 @@ TEST(StyleResolverTest, RightmostSelectorPrefilterSkipsImpossibleClassRulesV2062
     EXPECT_EQ(style.display, Display::Flex);
 }
 
+TEST(StyleResolverTest, RightmostSelectorBucketsPreserveCascadeV2067) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "* { display: block; }"
+        "div { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }"
+        "#hero { color: rgb(0, 128, 0); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Block);
+    EXPECT_EQ(style.color, (Color{0, 128, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsSkipImpossibleRulesV2067) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+
+    StyleRule impossible_type_rule;
+    CompoundSelector impossible_type_compound;
+    impossible_type_compound.simple_selectors.push_back(make_type_sel("div"));
+    auto impossible_type_selector = make_simple_complex(impossible_type_compound);
+    impossible_type_selector.rightmost_match_key = {RightmostSelectorKeyType::Type, "span"};
+    impossible_type_rule.selectors.selectors.push_back(impossible_type_selector);
+    impossible_type_rule.declarations.push_back(make_decl("display", "grid"));
+    sheet.rules.push_back(impossible_type_rule);
+
+    StyleRule impossible_id_rule;
+    CompoundSelector impossible_id_compound;
+    impossible_id_compound.simple_selectors.push_back(make_id_sel("hero"));
+    auto impossible_id_selector = make_simple_complex(impossible_id_compound);
+    impossible_id_selector.rightmost_match_key = {RightmostSelectorKeyType::Id, "other"};
+    impossible_id_rule.selectors.selectors.push_back(impossible_id_selector);
+    impossible_id_rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    sheet.rules.push_back(impossible_id_rule);
+
+    StyleRule matching_class_rule;
+    CompoundSelector matching_class_compound;
+    matching_class_compound.simple_selectors.push_back(make_class_sel("card"));
+    auto matching_class_selector = make_simple_complex(matching_class_compound);
+    matching_class_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "card"};
+    matching_class_rule.selectors.selectors.push_back(matching_class_selector);
+    matching_class_rule.declarations.push_back(make_decl("display", "flex"));
+    matching_class_rule.declarations.push_back(make_decl("color", "rgb(0, 0, 255)"));
+    sheet.rules.push_back(matching_class_rule);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+}
+
 TEST(StyleResolverTest, WhereSelectorKeepsZeroSpecificity) {
     StyleResolver resolver;
     auto sheet = parse_stylesheet(

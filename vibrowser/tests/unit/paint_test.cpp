@@ -8,12 +8,14 @@
 #include <clever/layout/box.h>
 #include <clever/layout/layout_engine.h>
 #include <gtest/gtest.h>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <set>
 #include <string>
+#include <thread>
 
 using namespace clever::paint;
 using namespace clever::layout;
@@ -6109,6 +6111,15 @@ TEST(CSSGrid, CascadeParsed) {
 // PaintTest fixture for <input type="range"> slider tests
 // ============================================================================
 class PaintTest : public ::testing::Test {};
+
+static const LayoutNode* find_node_by_id(const LayoutNode& node, const std::string& id) {
+    if (node.element_id == id) return &node;
+    for (const auto& child : node.children) {
+        if (!child) continue;
+        if (const auto* match = find_node_by_id(*child, id)) return match;
+    }
+    return nullptr;
+}
 
 // ============================================================================
 // InputRangeDefaultRender: default <input type="range"> renders successfully
@@ -41962,4 +41973,97 @@ TEST(RenderPipeline, NonFiniteDprFallsBackToOne) {
     EXPECT_EQ(result.renderer->dpr(), 1.0f);
     EXPECT_EQ(result.renderer->pixels_width(), 200);
     EXPECT_GE(result.renderer->pixels_height(), 120);
+}
+
+TEST_F(PaintTest, InterpolateSizeAllowKeywordsEnablesWidthTransitionV2067) {
+    const std::string final_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-final-width" style="display:inline-block;width:max-content;">
+          <span style="display:inline-block;width:140px;height:12px;background:red;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto final_result = render_html(final_html, 400, 200);
+    ASSERT_TRUE(final_result.success);
+    ASSERT_NE(final_result.root, nullptr);
+    const auto* final_node = find_node_by_id(*final_result.root, "v2067-final-width");
+    ASSERT_NE(final_node, nullptr);
+    const float final_width = final_node->geometry.width;
+    ASSERT_GT(final_width, 100.0f);
+
+    const std::string initial_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-allow-width"
+             style="display:inline-block;width:40px;transition:width 0.2s linear;interpolate-size:allow-keywords;">
+          <span style="display:inline-block;width:140px;height:12px;background:red;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto first = render_html(initial_html, 400, 200);
+    ASSERT_TRUE(first.success);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+
+    const std::string transitioned_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-allow-width"
+             style="display:inline-block;width:max-content;transition:width 0.2s linear;interpolate-size:allow-keywords;">
+          <span style="display:inline-block;width:140px;height:12px;background:red;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto second = render_html(transitioned_html, 400, 200);
+    ASSERT_TRUE(second.success);
+    ASSERT_NE(second.root, nullptr);
+
+    const auto* transitioned_node = find_node_by_id(*second.root, "v2067-allow-width");
+    ASSERT_NE(transitioned_node, nullptr);
+    EXPECT_GT(transitioned_node->geometry.width, 40.0f);
+    EXPECT_LT(transitioned_node->geometry.width, final_width - 1.0f);
+}
+
+TEST_F(PaintTest, InterpolateSizeDefaultKeepsIntrinsicTransitionDiscreteV2067) {
+    const std::string final_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-discrete-final" style="display:inline-block;width:max-content;">
+          <span style="display:inline-block;width:140px;height:12px;background:blue;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto final_result = render_html(final_html, 400, 200);
+    ASSERT_TRUE(final_result.success);
+    ASSERT_NE(final_result.root, nullptr);
+    const auto* final_node = find_node_by_id(*final_result.root, "v2067-discrete-final");
+    ASSERT_NE(final_node, nullptr);
+    const float final_width = final_node->geometry.width;
+    ASSERT_GT(final_width, 100.0f);
+
+    const std::string initial_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-discrete-width"
+             style="display:inline-block;width:40px;transition:width 0.2s linear;">
+          <span style="display:inline-block;width:140px;height:12px;background:blue;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto first = render_html(initial_html, 400, 200);
+    ASSERT_TRUE(first.success);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+
+    const std::string transitioned_html = R"HTML(
+        <html><body style="margin:0">
+        <div id="v2067-discrete-width"
+             style="display:inline-block;width:max-content;transition:width 0.2s linear;">
+          <span style="display:inline-block;width:140px;height:12px;background:blue;"></span>
+        </div>
+        </body></html>
+    )HTML";
+    auto second = render_html(transitioned_html, 400, 200);
+    ASSERT_TRUE(second.success);
+    ASSERT_NE(second.root, nullptr);
+
+    const auto* transitioned_node = find_node_by_id(*second.root, "v2067-discrete-width");
+    ASSERT_NE(transitioned_node, nullptr);
+    EXPECT_NEAR(transitioned_node->geometry.width, final_width, 1.0f);
 }

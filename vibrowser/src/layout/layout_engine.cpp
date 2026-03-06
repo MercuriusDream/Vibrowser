@@ -211,6 +211,7 @@ float LayoutEngine::avg_char_width(float font_size, const std::string& font_fami
 // ---------------------------------------------------------------------------
 
 static bool participates_in_intrinsic_width_measurement(const LayoutNode& node) {
+    if (node.content_visibility == 1) return false;
     if (node.display == DisplayType::None || node.mode == LayoutMode::None) return false;
     if (node.position_type == 2 || node.position_type == 3) return false;
     if (node.float_type != 0) return false;
@@ -248,6 +249,7 @@ size_t LayoutEngine::IntrinsicWidthCacheKeyHash::operator()(const IntrinsicWidth
 // Measure intrinsic content width for min-content/max-content sizing
 float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_content, int depth) {
     if (depth > 256) return 0;
+    if (depth > 0 && !participates_in_intrinsic_width_measurement(node)) return 0;
 
     if (max_content) {
         MaxContentWidthCacheKey max_content_cache_key{&node, node.specified_width};
@@ -338,7 +340,6 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
         }
     } else {
         for (auto& child : node.children) {
-            if (child->content_visibility == 1) continue;
             if (!participates_in_intrinsic_width_measurement(*child)) continue;
             float cw = measure_intrinsic_width(*child, max_content, depth + 1);
             if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||

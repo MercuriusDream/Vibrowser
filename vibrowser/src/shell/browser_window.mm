@@ -1740,6 +1740,47 @@ static std::string build_shell_message_html(const std::string& page_title,
     }
 }
 
+- (BOOL)captureDocumentScrollForTab:(BrowserTab*)tab
+                        documentX:(CGFloat*)documentX
+                        documentY:(CGFloat*)documentY {
+    if (!tab || !tab.renderView) {
+        return NO;
+    }
+    if (documentX) {
+        *documentX = [tab.renderView documentXForViewOffset:tab.renderView.scrollOffsetX];
+    }
+    if (documentY) {
+        *documentY = [tab.renderView documentYForViewOffset:tab.renderView.scrollOffset];
+    }
+    return YES;
+}
+
+- (void)restoreDocumentScrollForTab:(BrowserTab*)tab
+                         documentX:(CGFloat)documentX
+                         documentY:(CGFloat)documentY {
+    if (!tab || !tab.renderView) {
+        return;
+    }
+    tab.renderView.scrollOffsetX = [tab.renderView viewOffsetForDocumentX:documentX];
+    tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:documentY];
+    [tab.renderView setNeedsDisplay:YES];
+}
+
+- (void)rerenderTabPreservingDocumentScroll:(BrowserTab*)tab {
+    if (!tab || [tab currentHTML].empty()) {
+        return;
+    }
+    CGFloat documentScrollX = 0.0;
+    CGFloat documentScrollY = 0.0;
+    [self captureDocumentScrollForTab:tab
+                           documentX:&documentScrollX
+                           documentY:&documentScrollY];
+    [self doRender:[tab currentHTML] forTab:tab];
+    [self restoreDocumentScrollForTab:tab
+                            documentX:documentScrollX
+                            documentY:documentScrollY];
+}
+
 - (void)doRender:(const std::string&)html {
     [self doRender:html forTab:[self activeTab]];
 }
@@ -2400,7 +2441,7 @@ static std::string build_shell_message_html(const std::string& page_title,
     _resizeTimer = nil;
     BrowserTab* tab = [self activeTab];
     if (tab && ![tab currentHTML].empty()) {
-        [self doRender:[tab currentHTML]];
+        [self rerenderTabPreservingDocumentScroll:tab];
     }
 }
 
@@ -2409,7 +2450,7 @@ static std::string build_shell_message_html(const std::string& page_title,
     _resizeTimer = nil;
     BrowserTab* tab = [self activeTab];
     if (tab && ![tab currentHTML].empty()) {
-        [self doRender:[tab currentHTML]];
+        [self rerenderTabPreservingDocumentScroll:tab];
     }
 }
 
@@ -2418,7 +2459,7 @@ static std::string build_shell_message_html(const std::string& page_title,
     [self layoutChromeViews];
     BrowserTab* tab = [self activeTab];
     if (tab && ![tab currentHTML].empty()) {
-        [self doRender:[tab currentHTML]];
+        [self rerenderTabPreservingDocumentScroll:tab];
     }
 }
 
@@ -4057,7 +4098,15 @@ do_render:
 - (void)zoomIn {
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
+    CGFloat documentScrollX = 0.0;
+    CGFloat documentScrollY = 0.0;
+    [self captureDocumentScrollForTab:tab
+                           documentX:&documentScrollX
+                           documentY:&documentScrollY];
     tab.renderView.pageScale = std::min(4.0, tab.renderView.pageScale + 0.25);
+    [self restoreDocumentScrollForTab:tab
+                            documentX:documentScrollX
+                            documentY:documentScrollY];
     [tab.renderView setNeedsDisplay:YES];
     [tab.renderView.window invalidateCursorRectsForView:tab.renderView];
 }
@@ -4065,7 +4114,15 @@ do_render:
 - (void)zoomOut {
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
+    CGFloat documentScrollX = 0.0;
+    CGFloat documentScrollY = 0.0;
+    [self captureDocumentScrollForTab:tab
+                           documentX:&documentScrollX
+                           documentY:&documentScrollY];
     tab.renderView.pageScale = std::max(0.25, tab.renderView.pageScale - 0.25);
+    [self restoreDocumentScrollForTab:tab
+                            documentX:documentScrollX
+                            documentY:documentScrollY];
     [tab.renderView setNeedsDisplay:YES];
     [tab.renderView.window invalidateCursorRectsForView:tab.renderView];
 }
@@ -4073,7 +4130,15 @@ do_render:
 - (void)zoomActualSize {
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
+    CGFloat documentScrollX = 0.0;
+    CGFloat documentScrollY = 0.0;
+    [self captureDocumentScrollForTab:tab
+                           documentX:&documentScrollX
+                           documentY:&documentScrollY];
     tab.renderView.pageScale = 1.0;
+    [self restoreDocumentScrollForTab:tab
+                            documentX:documentScrollX
+                            documentY:documentScrollY];
     [tab.renderView setNeedsDisplay:YES];
     [tab.renderView.window invalidateCursorRectsForView:tab.renderView];
 }

@@ -91,8 +91,10 @@ thread_local std::unordered_map<std::string, std::vector<std::string>> collected
 thread_local bool g_transition_runtime_enabled = false;
 thread_local std::unique_ptr<AnimationController> g_transition_animation_controller;
 thread_local std::unordered_map<std::string, clever::css::ComputedStyle> g_previous_styles_by_key;
+thread_local std::unordered_map<std::string, clever::css::ComputedStyle> g_prior_styles_snapshot_by_key;
 thread_local std::unordered_map<std::string, clever::layout::LayoutNode*> g_current_layout_nodes_by_key;
 thread_local std::unordered_set<std::string> g_current_style_keys;
+thread_local std::unordered_map<std::string, std::pair<float, float>> g_previous_resolved_sizes_by_key;
 thread_local std::unordered_map<std::string, std::unique_ptr<clever::layout::LayoutNode>> g_transition_runtime_nodes;
 thread_local std::unordered_map<clever::layout::LayoutNode*, std::string> g_transition_runtime_node_to_key;
 thread_local bool g_transition_has_last_tick = false;
@@ -563,6 +565,14 @@ void prune_transition_runtime_state() {
         }
     }
 
+    for (auto it = g_previous_resolved_sizes_by_key.begin(); it != g_previous_resolved_sizes_by_key.end();) {
+        if (g_current_style_keys.find(it->first) == g_current_style_keys.end()) {
+            it = g_previous_resolved_sizes_by_key.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     for (auto it = g_transition_runtime_nodes.begin(); it != g_transition_runtime_nodes.end();) {
         if (g_current_style_keys.find(it->first) == g_current_style_keys.end()) {
             auto* runtime_node = it->second.get();
@@ -583,6 +593,31 @@ bool render_has_active_animations() {
     if (!g_transition_animation_controller) return false;
     for (const auto& kv : g_transition_runtime_node_to_key) {
         if (g_transition_animation_controller->is_animating(kv.first)) return true;
+    }
+    return false;
+}
+
+bool style_uses_intrinsic_size_keyword(const clever::css::ComputedStyle& style,
+                                       const std::string& property) {
+    if (property == "width") return style.width_keyword != 0;
+    if (property == "height") return style.height_keyword != 0;
+    return false;
+}
+
+bool can_interpolate_intrinsic_size_transition(const clever::css::ComputedStyle& old_style,
+                                               const clever::css::ComputedStyle& new_style,
+                                               const std::string& property) {
+    if (new_style.interpolate_size != 1) return false;
+
+    const bool old_is_keyword = style_uses_intrinsic_size_keyword(old_style, property);
+    const bool new_is_keyword = style_uses_intrinsic_size_keyword(new_style, property);
+    if (old_is_keyword == new_is_keyword) return false;
+
+    if (property == "width") {
+        return old_is_keyword ? !new_style.width.is_auto() : !old_style.width.is_auto();
+    }
+    if (property == "height") {
+        return old_is_keyword ? !new_style.height.is_auto() : !old_style.height.is_auto();
     }
     return false;
 }
@@ -9304,8 +9339,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 g_transition_animation_controller = std::make_unique<AnimationController>();
             }
 
-            auto prev_it = g_previous_styles_by_key.find(style_key);
-            if (prev_it != g_previous_styles_by_key.end() && g_transition_animation_controller) {
+            auto prev_it = g_prior_styles_snapshot_by_key.find(style_key);
+            if (prev_it != g_prior_styles_snapshot_by_key.end() && g_transition_animation_controller) {
                 auto changed_properties = detect_changed_transition_properties(prev_it->second, style);
                 if (!changed_properties.empty()) {
                     auto* runtime_node = get_or_create_transition_runtime_node(style_key);
@@ -9344,12 +9379,20 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                                     style.color,
                                     transition_def);
                             } else if (property == "width") {
+                                if (style_uses_intrinsic_size_keyword(prev_it->second, property) ||
+                                    style_uses_intrinsic_size_keyword(style, property)) {
+                                    continue;
+                                }
                                 g_transition_animation_controller->start_transition(
                                     runtime_node, property,
                                     prev_it->second.width.to_px(),
                                     style.width.to_px(),
                                     transition_def);
                             } else if (property == "height") {
+                                if (style_uses_intrinsic_size_keyword(prev_it->second, property) ||
+                                    style_uses_intrinsic_size_keyword(style, property)) {
+                                    continue;
+                                }
                                 g_transition_animation_controller->start_transition(
                                     runtime_node, property,
                                     prev_it->second.height.to_px(),
@@ -17901,6 +17944,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             g_transition_animation_controller = std::make_unique<AnimationController>();
         }
         g_transition_runtime_enabled = true;
+        g_prior_styles_snapshot_by_key = g_previous_styles_by_key;
         g_current_layout_nodes_by_key.clear();
         g_current_style_keys.clear();
         // Set shadow roots map so build_layout_tree_styled can render Web Components
@@ -17961,6 +18005,58 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
         // Apply ruby annotation layout now that inline geometry is final.
         apply_ruby_layout_pass(*layout_root);
+
+        if (g_transition_animation_controller) {
+            std::unordered_map<std::string, std::pair<float, float>> current_resolved_sizes_by_key;
+            for (const auto& entry : g_current_layout_nodes_by_key) {
+                const auto& style_key = entry.first;
+                auto* target = entry.second;
+                if (!target) continue;
+
+                current_resolved_sizes_by_key[style_key] = {
+                    target->geometry.width,
+                    target->geometry.height
+                };
+
+                auto prev_style_it = g_prior_styles_snapshot_by_key.find(style_key);
+                auto new_style_it = g_previous_styles_by_key.find(style_key);
+                auto prev_size_it = g_previous_resolved_sizes_by_key.find(style_key);
+                if (prev_style_it == g_prior_styles_snapshot_by_key.end() ||
+                    new_style_it == g_previous_styles_by_key.end() ||
+                    prev_size_it == g_previous_resolved_sizes_by_key.end()) {
+                    continue;
+                }
+
+                auto* runtime_node = get_or_create_transition_runtime_node(style_key);
+                if (!runtime_node || g_transition_animation_controller->is_animating(runtime_node)) continue;
+
+                const auto& old_style = prev_style_it->second;
+                const auto& new_style = new_style_it->second;
+                const auto& old_size = prev_size_it->second;
+                const auto& new_size = current_resolved_sizes_by_key[style_key];
+
+                for (const std::string property : {"width", "height"}) {
+                    if (!can_interpolate_intrinsic_size_transition(old_style, new_style, property)) continue;
+
+                    auto transition_def_opt = transition_def_for_property(new_style, property);
+                    if (!transition_def_opt.has_value()) continue;
+                    const auto& transition_def = *transition_def_opt;
+                    if (transition_def.duration_ms <= 0.0f) continue;
+
+                    const float from = property == "width" ? old_size.first : old_size.second;
+                    const float to = property == "width" ? new_size.first : new_size.second;
+                    if (std::fabs(from - to) <= 1e-4f) continue;
+
+                    g_transition_animation_controller->start_transition(
+                        runtime_node,
+                        property,
+                        from,
+                        to,
+                        transition_def);
+                }
+            }
+            g_previous_resolved_sizes_by_key = std::move(current_resolved_sizes_by_key);
+        }
 
         // Step 4b: Detect overflow indicators and compute scroll content dimensions
         {
@@ -18081,7 +18177,11 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
                 auto* target = node_it->second;
                 if (update.has_float) {
-                    if (update.property_name == "opacity") {
+                    if (update.property_name == "width") {
+                        target->geometry.width = update.float_value;
+                    } else if (update.property_name == "height") {
+                        target->geometry.height = update.float_value;
+                    } else if (update.property_name == "opacity") {
                         target->opacity = std::clamp(update.float_value, 0.0f, 1.0f);
                     } else if (update.property_name == "font-size") {
                         target->font_size = update.float_value;

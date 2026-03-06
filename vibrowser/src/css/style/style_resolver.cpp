@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <limits>
 #include <sstream>
+#include <unordered_map>
 
 namespace clever::css {
 
@@ -68,6 +69,76 @@ bool matches_rightmost_selector_key(const ElementView& element, const ComplexSel
     }
 
     return true;
+}
+
+struct RuleBuckets {
+    std::vector<size_t> unkeyed_rule_indices;
+    std::unordered_map<std::string, std::vector<size_t>> type_rule_indices;
+    std::unordered_map<std::string, std::vector<size_t>> class_rule_indices;
+    std::unordered_map<std::string, std::vector<size_t>> id_rule_indices;
+};
+
+RuleBuckets build_rule_buckets(const std::vector<StyleRule>& rules) {
+    RuleBuckets buckets;
+    for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
+        const auto& rule = rules[rule_index];
+        for (const auto& selector : rule.selectors.selectors) {
+            switch (selector.rightmost_match_key.type) {
+                case RightmostSelectorKeyType::None:
+                    buckets.unkeyed_rule_indices.push_back(rule_index);
+                    break;
+                case RightmostSelectorKeyType::Type:
+                    buckets.type_rule_indices[selector.rightmost_match_key.value].push_back(rule_index);
+                    break;
+                case RightmostSelectorKeyType::Class:
+                    buckets.class_rule_indices[selector.rightmost_match_key.value].push_back(rule_index);
+                    break;
+                case RightmostSelectorKeyType::Id:
+                    buckets.id_rule_indices[selector.rightmost_match_key.value].push_back(rule_index);
+                    break;
+            }
+        }
+    }
+    return buckets;
+}
+
+void mark_bucket_candidates(const std::vector<size_t>& bucket_indices,
+                            std::vector<bool>& candidate_rules) {
+    for (size_t rule_index : bucket_indices) {
+        candidate_rules[rule_index] = true;
+    }
+}
+
+std::vector<bool> collect_candidate_rules(const std::vector<StyleRule>& rules,
+                                          const ElementView& element) {
+    std::vector<bool> candidate_rules(rules.size(), false);
+    if (rules.empty()) {
+        return candidate_rules;
+    }
+
+    RuleBuckets buckets = build_rule_buckets(rules);
+    mark_bucket_candidates(buckets.unkeyed_rule_indices, candidate_rules);
+
+    auto type_it = buckets.type_rule_indices.find(element.tag_name);
+    if (type_it != buckets.type_rule_indices.end()) {
+        mark_bucket_candidates(type_it->second, candidate_rules);
+    }
+
+    if (!element.id.empty()) {
+        auto id_it = buckets.id_rule_indices.find(element.id);
+        if (id_it != buckets.id_rule_indices.end()) {
+            mark_bucket_candidates(id_it->second, candidate_rules);
+        }
+    }
+
+    for (const auto& class_name : element.classes) {
+        auto class_it = buckets.class_rule_indices.find(class_name);
+        if (class_it != buckets.class_rule_indices.end()) {
+            mark_bucket_candidates(class_it->second, candidate_rules);
+        }
+    }
+
+    return candidate_rules;
 }
 
 // Get the string value from a declaration's ComponentValue vector
@@ -8054,7 +8125,12 @@ void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
                                         const ElementView& element,
                                         std::vector<MatchedRule>& result,
                                         size_t& source_order) const {
-    for (const auto& rule : rules) {
+    std::vector<bool> candidate_rules = collect_candidate_rules(rules, element);
+    for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
+        if (!candidate_rules[rule_index]) {
+            continue;
+        }
+        const auto& rule = rules[rule_index];
         bool matched_any = false;
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
@@ -8083,7 +8159,12 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
                                                const std::string& pseudo_name,
                                                std::vector<MatchedRule>& result,
                                                size_t& source_order) const {
-    for (const auto& rule : rules) {
+    std::vector<bool> candidate_rules = collect_candidate_rules(rules, element);
+    for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
+        if (!candidate_rules[rule_index]) {
+            continue;
+        }
+        const auto& rule = rules[rule_index];
         bool matched_any = false;
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {

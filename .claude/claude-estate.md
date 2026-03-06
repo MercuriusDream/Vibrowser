@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 2065 — Remove Worker Message-Pump Polling Slice | Keep EventLoop Timers Cadence-Aligned | Apply HTTP/2 SETTINGS Atomically | Add Image Cache Regression Hooks | Export Screenshots From Renderer Truth | Lock In Narrow Auto-Width Table Column Wrapping
+**Current Focus**: Cycle 2067 — Dispatch HTMLDialogElement close Events Correctly | Match Browser Redirect Method Rewrites For 301/302/303 | Bucket Style Rules By Rightmost Selector Key | Exclude content-visibility Hidden Subtrees From Intrinsic Width Sizing | Animate Intrinsic Size Keywords When interpolate-size Allows It | Keep Anchor Scroll Restoration Stable Across DPR Transitions
 **Momentum**: C2007 complete — render views now prefer renderer DPR over transient window scale, with successful vibrowser app build and targeted DPR/JS regressions passing. From C1995 to C2007: 12 implementation cycles advanced.
-**Cycle**: 2065
+**Cycle**: 2067
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -2497,3 +2497,15 @@ Future cycles will append fresh entries with the corrected format from `.codex/o
 - Summary: Remove Worker Message-Pump Polling Slice | Keep EventLoop Timers Cadence-Aligned | Apply HTTP/2 SETTINGS Atomically | Add Image Cache Regression Hooks | Export Screenshots From Renderer Truth | Lock In Narrow Auto-Width Table Column Wrapping
 - Planner output: `.codex/orchestrator/state/runs/cycle-2065/plan.json`
 - Verification report: `.codex/orchestrator/state/runs/cycle-2065/verifier.json`
+
+### Cycle 2066 — 2026-03-06 21:26:32 +0900
+- Runtime: main `gpt-5.4/high` (fast=1), workers `gpt-5.4/medium` (fast=1)
+- Summary: Honor MutationObserver oldValue and takeRecords Semantics | Cap Raw IPC Frames Before Allocation | Reject HTTP/2 CONTINUATION Stream Mismatches | Match :active Against Browser UI State Attributes | Skip Redundant Inline-Block Shrink-Wrap Relayout | Keep Inline Text Overlays Aligned Through Zoom Rerenders
+- Planner output: `.codex/orchestrator/state/runs/cycle-2066/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2066/verifier.json`
+
+### Cycle 2067 — 2026-03-06 21:42:51 +0900
+- Runtime: main `gpt-5.4/high` (fast=1), workers `gpt-5.4/medium` (fast=1)
+- Summary: Dispatch HTMLDialogElement close Events Correctly | Match Browser Redirect Method Rewrites For 301/302/303 | Bucket Style Rules By Rightmost Selector Key | Exclude content-visibility Hidden Subtrees From Intrinsic Width Sizing | Animate Intrinsic Size Keywords When interpolate-size Allows It | Keep Anchor Scroll Restoration Stable Across DPR Transitions
+- Planner output: `.codex/orchestrator/state/runs/cycle-2067/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2067/verifier.json`
