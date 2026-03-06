@@ -46,6 +46,13 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+Specificity selector_specificity(const ComplexSelector& selector) {
+    if (selector.precomputed_specificity.has_value()) {
+        return *selector.precomputed_specificity;
+    }
+    return compute_specificity(selector);
+}
+
 // Get the string value from a declaration's ComponentValue vector
 std::string decl_value_string(const Declaration& decl) {
     return component_values_to_string(decl.values);
@@ -8035,7 +8042,7 @@ void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
             if (matcher_.matches(element, complex_sel)) {
-                Specificity spec = compute_specificity(complex_sel);
+                Specificity spec = selector_specificity(complex_sel);
                 if (!matched_any || best_specificity < spec) {
                     best_specificity = spec;
                 }
@@ -8090,7 +8097,7 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
             }
 
             if (matches) {
-                Specificity spec = compute_specificity(complex_sel);
+                Specificity spec = selector_specificity(complex_sel);
                 if (!matched_any || best_specificity < spec) {
                     best_specificity = spec;
                 }
