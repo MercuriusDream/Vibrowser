@@ -140,35 +140,50 @@ TEST(TimerSchedulerTest, IntervalCatchUpKeepsOriginalCadenceAfterCoarseAdvance) 
 
 TEST(TimerTest, RepeatingEventLoopTimerSkipsMissedTicksV2065) {
     EventLoop loop;
-    std::vector<std::chrono::milliseconds> tick_offsets;
+    struct TickObservation {
+        std::chrono::milliseconds elapsed { 0 };
+        std::chrono::milliseconds lag { 0 };
+    };
+
+    std::vector<TickObservation> tick_observations;
     std::mutex tick_mutex;
 
+    std::thread runner([&]() { loop.run(); });
+
+    auto wait_started_until = std::chrono::steady_clock::now() + 500ms;
+    while (!loop.is_running() && std::chrono::steady_clock::now() < wait_started_until) {
+        std::this_thread::sleep_for(1ms);
+    }
+    ASSERT_TRUE(loop.is_running());
+
     auto start = std::chrono::steady_clock::now();
-    loop.post_task([&]() {
-        std::this_thread::sleep_for(185ms);
-    });
 
     auto timer = Timer::repeating(loop, 50ms, [&]() {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start);
+        auto lag = std::chrono::duration_cast<std::chrono::milliseconds>(loop.last_delayed_task_lag());
         bool should_quit = false;
         {
             std::lock_guard lock(tick_mutex);
-            tick_offsets.push_back(elapsed);
-            should_quit = tick_offsets.size() == 2;
+            tick_observations.push_back(TickObservation { elapsed, lag });
+            should_quit = tick_observations.size() == 2;
         }
         if (should_quit) {
             loop.quit();
         }
     });
 
-    std::thread runner([&]() { loop.run(); });
+    loop.post_task([&]() {
+        std::this_thread::sleep_for(185ms);
+    });
+
     runner.join();
 
-    ASSERT_EQ(tick_offsets.size(), 2u);
-    EXPECT_GE(tick_offsets[0], 170ms);
-    EXPECT_LT(tick_offsets[1] - tick_offsets[0], 40ms);
-    EXPECT_LT(tick_offsets[1], 240ms);
+    ASSERT_EQ(tick_observations.size(), 2u);
+    EXPECT_GE(tick_observations[0].elapsed, 170ms);
+    EXPECT_GE(tick_observations[0].lag, 100ms);
+    EXPECT_LT(tick_observations[1].lag, 40ms);
+    EXPECT_LT(tick_observations[1].lag, tick_observations[0].lag);
     EXPECT_TRUE(timer->is_active());
     timer->cancel();
 }
