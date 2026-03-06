@@ -20,13 +20,18 @@ public:
     // Set the text measurement function (injected by render pipeline)
     void set_text_measurer(TextMeasureFn fn) { text_measurer_ = std::move(fn); }
 
+    int inline_block_shrink_wrap_relayout_count() const {
+        return inline_block_shrink_wrap_relayout_count_;
+    }
+
 private:
-    void layout_block(LayoutNode& node, float containing_width);
+    void layout_block(LayoutNode& node, float containing_width, float known_width = -1.0f);
     void layout_inline(LayoutNode& node, float containing_width);
     void layout_flex(LayoutNode& node, float containing_width);
     void layout_grid(LayoutNode& node, float containing_width);
     void layout_table(LayoutNode& node, float containing_width);
     void layout_children(LayoutNode& node);
+    void clear_intrinsic_measurement_caches();
 
     float compute_width(LayoutNode& node, float containing_width);
     float compute_height(LayoutNode& node, float containing_height = -1);
@@ -80,6 +85,7 @@ private:
     float viewport_height_ = 0;
     TextMeasureFn text_measurer_;
     std::unordered_map<IntrinsicWidthCacheKey, float, IntrinsicWidthCacheKeyHash> intrinsic_width_cache_;
+    int inline_block_shrink_wrap_relayout_count_ = 0;
 };
 
 } // namespace clever::layout
