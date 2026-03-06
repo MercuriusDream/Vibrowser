@@ -47,6 +47,21 @@ bootstrap_ledgers
 init_state_if_missing
 sync_shadow_ledger
 
+worker_pids=()
+
+cleanup_children() {
+  local pid=""
+
+  for pid in "${worker_pids[@]:-}"; do
+    [[ -n "$pid" ]] || continue
+    kill "$pid" >/dev/null 2>&1 || true
+  done
+
+  pkill -P "$$" >/dev/null 2>&1 || true
+}
+
+trap 'cleanup_children' INT TERM EXIT
+
 if [[ $BOOTSTRAP_ONLY -eq 1 ]]; then
   echo "Codex estate supervisor bootstrap complete."
   exit 0
@@ -266,6 +281,7 @@ while true; do
       workers_failed=1
     fi
   done
+  worker_pids=()
 
   update_state "$cycle" "integrator" "running" "integrator" "Integrating worker results"
   while ! codex_exec_role "integrator" \
@@ -424,4 +440,5 @@ EOF
   fi
 done
 
+trap - INT TERM EXIT
 echo "Codex estate supervisor stopped."

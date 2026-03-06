@@ -43,7 +43,7 @@ if [[ "$MODE" == "single-session" ]]; then
   if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
     echo "tmux session already exists: $TMUX_SESSION"
   else
-    tmux new-session -d -s "$TMUX_SESSION" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/supervisor.sh $SUPERVISOR_ARGS'"
+    tmux new-session -d -s "$TMUX_SESSION" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/supervisor-runner.sh $SUPERVISOR_ARGS'"
     for slot in $(seq 1 "$WORKER_COUNT"); do
       tmux new-window -t "$TMUX_SESSION" -n "worker-$slot" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh worker-$slot'"
     done
@@ -60,7 +60,7 @@ if [[ "$MODE" == "single-session" ]]; then
 fi
 
 base="${TMUX_SESSION}"
-tmux new-session -d -s "${base}-supervisor" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/supervisor.sh $SUPERVISOR_ARGS'"
+tmux new-session -d -s "${base}-supervisor" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/supervisor-runner.sh $SUPERVISOR_ARGS'"
 for slot in $(seq 1 "$WORKER_COUNT"); do
   tmux new-session -d -s "${base}-worker-$slot" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh worker-$slot'"
 done

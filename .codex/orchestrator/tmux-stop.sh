@@ -15,4 +15,6 @@ if command -v tmux >/dev/null 2>&1; then
 fi
 
 touch "$STOP_FILE"
+pkill -f 'codex/orchestrator/supervisor-runner\.sh' >/dev/null 2>&1 || true
+pkill -f 'codex/orchestrator/supervisor\.sh' >/dev/null 2>&1 || true
 echo "Requested stop for Codex estate orchestration."

@@ -42,6 +42,7 @@ if command -v tmux >/dev/null 2>&1; then
   done < <(tmux list-sessions 2>/dev/null | awk -F: -v prefix="${TMUX_SESSION}-" '$1 ~ "^" prefix {print $1}' || true)
 fi
 
+pkill -f 'codex/orchestrator/supervisor-runner\.sh' >/dev/null 2>&1 || true
 pkill -f 'codex/orchestrator/supervisor\.sh' >/dev/null 2>&1 || true
 pkill -f 'codex/orchestrator/watch-role\.sh' >/dev/null 2>&1 || true
 pkill -f 'codex/orchestrator/watch-state\.sh' >/dev/null 2>&1 || true

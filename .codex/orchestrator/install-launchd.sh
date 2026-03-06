@@ -24,7 +24,7 @@ cat > "$PLIST_PATH" <<EOF
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>bash "$PROJECT_DIR/.codex/orchestrator/supervisor.sh"</string>
+    <string>bash "$PROJECT_DIR/.codex/orchestrator/supervisor-runner.sh"</string>
   </array>
   <key>WorkingDirectory</key>
   <string>$PROJECT_DIR</string>

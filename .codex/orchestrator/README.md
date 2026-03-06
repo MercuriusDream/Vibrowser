@@ -2,6 +2,8 @@
 
 This directory contains the external supervisor used to run Vibrowser as an ultra-long-horizon Codex CLI workload.
 
+`supervisor-runner.sh` is the durable entrypoint. It restarts `supervisor.sh` after unexpected exits and propagates `Ctrl+C`/termination into the supervisor and its child worker processes.
+
 ## Model policy
 
 - Main orchestrator: `gpt-5.4` / `high` / fast enabled
