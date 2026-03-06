@@ -1593,6 +1593,57 @@ TEST(LayoutEngineTest, IntrinsicWidthMemoizesInlineBlockSubtreeAcrossFitContentA
     EXPECT_GT(root->children[0]->geometry.width, 0.0f);
 }
 
+TEST(LayoutEngineTest, IntrinsicHeightMemoizesRepeatedSubtreeMeasurements) {
+    auto root = make_block("div");
+    root->specified_height = -2.0f; // min-content
+
+    auto child = make_block("div");
+    child->specified_height = -2.0f; // min-content
+    child->append_child(make_text("alpha beta gamma", 16.0f));
+    root->append_child(std::move(child));
+
+    int sample_measurements = 0;
+
+    LayoutEngine engine;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) {
+        if (measured == "abcdefghijklmnopqrstuvwxyz ") {
+            sample_measurements++;
+        }
+        return static_cast<float>(measured.size()) * font_size * 0.6f;
+    });
+
+    engine.compute(*root, 500.0f, 600.0f);
+
+    EXPECT_EQ(sample_measurements, 3)
+        << "The nested min-content subtree should be measured once for intrinsic height and once for the final text layout";
+    EXPECT_GT(root->geometry.height, 0.0f);
+    EXPECT_GT(root->children[0]->geometry.height, 0.0f);
+}
+
+TEST(LayoutEngineTest, FitContentHeightReusesIntrinsicHeightCache) {
+    auto root = make_block("div");
+    root->specified_height = -4.0f; // fit-content
+
+    auto child = make_block("div");
+    child->geometry.padding.top = 4.0f;
+    child->geometry.padding.bottom = 4.0f;
+    child->geometry.border.top = 1.0f;
+    child->geometry.border.bottom = 1.0f;
+    child->append_child(make_text("fit content height", 18.0f));
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    float child_line_height = 18.0f * 1.2f;
+    float expected_child_height = child_line_height + 10.0f;
+    float expected_root_height = expected_child_height;
+
+    EXPECT_NEAR(root->children[0]->geometry.height, expected_child_height, 0.1f);
+    EXPECT_NEAR(root->geometry.height, expected_root_height, 0.1f);
+}
+
 TEST(LayoutEngineTest, FitContentIgnoresAbsoluteDescendantsForIntrinsicWidth) {
     auto root = make_block("div");
 

@@ -7,11 +7,72 @@ namespace clever::css {
 
 namespace {
 
+std::string ascii_lower(std::string value) {
+    std::transform(
+        value.begin(),
+        value.end(),
+        value.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
 const SelectorList* cached_function_selector_list(const SimpleSelector& selector) {
     if (selector.parsed_selector_list) {
         return selector.parsed_selector_list.get();
     }
     return nullptr;
+}
+
+bool attribute_value_equals(std::string_view lhs, std::string_view rhs, bool case_insensitive) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    if (!case_insensitive) {
+        return lhs == rhs;
+    }
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        const unsigned char left = static_cast<unsigned char>(lhs[i]);
+        const unsigned char right = static_cast<unsigned char>(rhs[i]);
+        if (std::tolower(left) != std::tolower(right)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool attribute_value_starts_with(std::string_view value,
+                                 std::string_view prefix,
+                                 bool case_insensitive) {
+    if (value.size() < prefix.size()) {
+        return false;
+    }
+    return attribute_value_equals(value.substr(0, prefix.size()), prefix, case_insensitive);
+}
+
+bool attribute_value_ends_with(std::string_view value,
+                               std::string_view suffix,
+                               bool case_insensitive) {
+    if (value.size() < suffix.size()) {
+        return false;
+    }
+    return attribute_value_equals(
+        value.substr(value.size() - suffix.size()),
+        suffix,
+        case_insensitive);
+}
+
+bool attribute_value_contains(std::string_view haystack,
+                              std::string_view needle,
+                              bool case_insensitive) {
+    if (needle.empty() || haystack.size() < needle.size()) {
+        return false;
+    }
+    if (!case_insensitive) {
+        return haystack.find(needle) != std::string::npos;
+    }
+    const std::string folded_haystack = ascii_lower(std::string(haystack));
+    const std::string folded_needle = ascii_lower(std::string(needle));
+    return folded_haystack.find(folded_needle) != std::string::npos;
 }
 
 }
@@ -405,11 +466,12 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             if (!attr_value) return false;
 
             const std::string& val = *attr_value;
+            const bool case_insensitive = simple.argument == "i";
             switch (simple.attr_match) {
                 case AttributeMatch::Exists:
                     return true;
                 case AttributeMatch::Exact:
-                    return val == simple.attr_value;
+                    return attribute_value_equals(val, simple.attr_value, case_insensitive);
                 case AttributeMatch::Includes: {
                     // Whitespace-separated token list contains the value.
                     if (simple.attr_value.empty()) return false;
@@ -426,7 +488,10 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                         }
                         const size_t len = i - start;
                         if (len == simple.attr_value.size() &&
-                            val.compare(start, len, simple.attr_value) == 0) {
+                            attribute_value_equals(
+                                std::string_view(val).substr(start, len),
+                                simple.attr_value,
+                                case_insensitive)) {
                             return true;
                         }
                     }
@@ -434,26 +499,30 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 }
                 case AttributeMatch::DashMatch:
                     if (simple.attr_value.empty()) return false;
-                    return val == simple.attr_value ||
+                    return attribute_value_equals(val, simple.attr_value, case_insensitive) ||
                            (val.length() > simple.attr_value.length() &&
-                            val.compare(0, simple.attr_value.length(), simple.attr_value) == 0 &&
+                            attribute_value_starts_with(
+                                val,
+                                simple.attr_value,
+                                case_insensitive) &&
                             val[simple.attr_value.length()] == '-');
                 case AttributeMatch::Prefix:
-                    if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
-                        return false;
-                    }
-                    return val.compare(0, simple.attr_value.length(), simple.attr_value) == 0;
+                    return !simple.attr_value.empty() &&
+                           attribute_value_starts_with(
+                               val,
+                               simple.attr_value,
+                               case_insensitive);
                 case AttributeMatch::Suffix:
-                    if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
-                        return false;
-                    }
-                    return val.compare(
-                               val.length() - simple.attr_value.length(),
-                               simple.attr_value.length(),
-                               simple.attr_value) == 0;
+                    return !simple.attr_value.empty() &&
+                           attribute_value_ends_with(
+                               val,
+                               simple.attr_value,
+                               case_insensitive);
                 case AttributeMatch::Substring:
-                    if (simple.attr_value.empty()) return false;
-                    return val.find(simple.attr_value) != std::string::npos;
+                    return attribute_value_contains(
+                        val,
+                        simple.attr_value,
+                        case_insensitive);
             }
         }
 

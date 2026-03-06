@@ -488,6 +488,15 @@ SimpleSelector SelectorParser::parse_attribute_selector() {
 
     skip_whitespace();
 
+    if (!at_end() && current().type == CSSToken::Ident) {
+        const std::string flag = ascii_lower(current().value);
+        if (flag == "i" || flag == "s") {
+            ss.argument = flag;
+            advance();
+            skip_whitespace();
+        }
+    }
+
     // Skip to closing ']'
     while (!at_end() && current().type != CSSToken::RightBracket) {
         advance();

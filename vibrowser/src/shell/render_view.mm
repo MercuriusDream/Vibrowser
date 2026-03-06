@@ -245,8 +245,20 @@ struct TextRegion {
     return (rendererY / _backingScale) * _pageScale;
 }
 
+- (CGFloat)viewOffsetForDocumentY:(CGFloat)documentY {
+    return documentY * _pageScale;
+}
+
 - (CGFloat)rendererYForViewOffset:(CGFloat)viewOffset {
     return (viewOffset / _pageScale) * _backingScale;
+}
+
+- (CGFloat)documentYForViewOffset:(CGFloat)viewOffset {
+    return viewOffset / _pageScale;
+}
+
+- (CGFloat)rendererScale {
+    return _backingScale;
 }
 
 - (CGFloat)logicalXForViewX:(CGFloat)viewX {
@@ -261,6 +273,11 @@ struct TextRegion {
     CGFloat logicalX = [self logicalXForViewX:viewPoint.x];
     CGFloat logicalY = [self logicalYForViewY:viewPoint.y];
     return NSMakePoint(logicalX * _backingScale, logicalY * _backingScale);
+}
+
+- (NSPoint)documentPointForViewPoint:(NSPoint)viewPoint {
+    return NSMakePoint([self logicalXForViewX:viewPoint.x],
+                       [self logicalYForViewY:viewPoint.y]);
 }
 
 - (NSRect)viewRectForRendererRect:(const clever::paint::Rect&)rect {
@@ -470,26 +487,17 @@ struct TextRegion {
         if (i >= _stickyImages.size() || !_stickyImages[i]) continue;
         auto& elem = _stickyElements[i];
 
-        // Convert scroll offset from logical view points to renderer pixel coords
-        CGFloat scrollPx = _scrollOffset / _pageScale * _backingScale;
-        CGFloat stickyScrollPx = elem.is_page_sticky
-            ? scrollPx
-            : (elem.container_scroll_y / _pageScale * _backingScale);
+        CGFloat scrollCss = [self documentYForViewOffset:_scrollOffset];
+        CGFloat stickyScrollCss = elem.is_page_sticky ? scrollCss : elem.container_scroll_y;
 
-        // The element's normal position in the page (renderer pixel coords)
+        // The element's normal position in the page (CSS/page coords).
         float normal_y = elem.abs_y;
         if (!elem.is_page_sticky) {
             normal_y -= elem.container_y;
         }
-        // The threshold: element starts sticking when its top edge scrolls
-        // past the viewport top + top_offset
-        float stick_threshold = elem.top_offset * _backingScale;
+        float stick_threshold = elem.top_offset;
 
-        // Is the element scrolled past its stick point?
-        // The element's Y relative to viewport = normal_y - scrollPx
-        // It should stick when normal_y - scrollPx < stick_threshold
-        // i.e., when scrollPx > normal_y - stick_threshold
-        bool should_stick = (stickyScrollPx > normal_y - stick_threshold);
+        bool should_stick = (stickyScrollCss > normal_y - stick_threshold);
 
         // Also check container bounds: the sticky element should not stick
         // past the bottom of its container. When the container's bottom edge
@@ -497,30 +505,30 @@ struct TextRegion {
         // should start scrolling away with the container.
         float max_stick_y = elem.container_bottom - elem.height;
         bool past_container = elem.is_page_sticky
-            ? (stickyScrollPx + stick_threshold > max_stick_y)
+            ? (stickyScrollCss + stick_threshold > max_stick_y)
             : (elem.container_y + stick_threshold > max_stick_y);
 
         if (!should_stick) continue; // Element is in normal flow position, already drawn in main image
 
-        // Calculate the Y position to draw the sticky element (in renderer pixel coords)
-        float draw_y_px;
+        // Calculate the Y position to draw the sticky element in CSS/page coordinates.
+        float draw_y_css;
         if (past_container) {
             // Element is pushed up by the container bottom edge
-            draw_y_px = max_stick_y;
+            draw_y_css = max_stick_y;
         } else {
             // Element is stuck at the sticky container's top_offset.
             if (elem.is_page_sticky) {
                 // Page-level sticky tracks the viewport scroll.
-                draw_y_px = stickyScrollPx + stick_threshold;
+                draw_y_css = stickyScrollCss + stick_threshold;
             } else {
                 // Container-level sticky tracks the container origin.
-                draw_y_px = elem.container_y + stick_threshold;
+                draw_y_css = elem.container_y + stick_threshold;
             }
         }
 
-        // Convert from renderer pixels to logical view points
+        // Convert from renderer pixels/CSS coords to logical view points.
         CGFloat draw_x = (elem.pixel_x / _backingScale) * _pageScale;
-        CGFloat draw_y = ((draw_y_px / _backingScale) * _pageScale) - (elem.is_page_sticky ? _scrollOffset : 0.0);
+        CGFloat draw_y = [self viewOffsetForDocumentY:draw_y_css] - _scrollOffset;
         CGFloat draw_w = (elem.pixel_width / _backingScale) * _pageScale;
         CGFloat draw_h = (elem.pixel_height / _backingScale) * _pageScale;
 
@@ -540,10 +548,8 @@ struct TextRegion {
         if (i >= _fixedImages.size() || !_fixedImages[i]) continue;
         auto& felem = _fixedElements[i];
 
-        // Fixed elements sit at viewport-relative pixel positions.
-        // Convert from renderer pixels to logical view points; no scroll subtracted.
-        CGFloat fx = (felem.viewport_x / _backingScale) * _pageScale;
-        CGFloat fy = (felem.viewport_y / _backingScale) * _pageScale;
+        CGFloat fx = felem.viewport_x * _pageScale;
+        CGFloat fy = felem.viewport_y * _pageScale;
         CGFloat fw = (felem.pixel_width / _backingScale) * _pageScale;
         CGFloat fh = (felem.pixel_height / _backingScale) * _pageScale;
 
@@ -1163,10 +1169,9 @@ struct TextRegion {
     float dy = (float)(_selectionEnd.y - _selectionStart.y);
     if (std::abs(dx) < 3 && std::abs(dy) < 3) {
         _hasSelection = NO;
-        // Hit-test against link regions (convert pixel coords to logical coords)
-        NSPoint rendererPoint = [self rendererPointForViewPoint:loc];
-        float px_scaled = static_cast<float>(rendererPoint.x);
-        float py_scaled = static_cast<float>(rendererPoint.y);
+        NSPoint documentPoint = [self documentPointForViewPoint:loc];
+        float px = static_cast<float>(documentPoint.x);
+        float py = static_cast<float>(documentPoint.y);
 
         // Dispatch JS "click" event before handling default behavior.
         // If a JS handler calls preventDefault(), skip all default actions
@@ -1174,14 +1179,14 @@ struct TextRegion {
         BOOL defaultPrevented = NO;
         if ([_delegate respondsToSelector:@selector(renderView:didClickElementAtX:y:)]) {
             defaultPrevented = [_delegate renderView:self
-                                 didClickElementAtX:px_scaled
-                                                  y:py_scaled];
+                                 didClickElementAtX:px
+                                                  y:py];
         }
 
         // On double-click, dispatch dblclick event after the click
         if (event.clickCount >= 2) {
             if ([_delegate respondsToSelector:@selector(renderView:didDoubleClickAtX:y:)]) {
-                [_delegate renderView:self didDoubleClickAtX:px_scaled y:py_scaled];
+                [_delegate renderView:self didDoubleClickAtX:px y:py];
             }
         }
 
@@ -1192,7 +1197,7 @@ struct TextRegion {
 
         // Check form submit regions first (they take priority over links)
         for (auto it = _formSubmitRegions.rbegin(); it != _formSubmitRegions.rend(); ++it) {
-            if (it->bounds.contains(px_scaled, py_scaled)) {
+            if (it->bounds.contains(px, py)) {
                 int fi = it->form_index;
                 if (fi >= 0 && fi < static_cast<int>(_formData.size())) {
                     if ([_delegate respondsToSelector:@selector(renderView:didSubmitForm:)]) {
@@ -1205,7 +1210,7 @@ struct TextRegion {
 
         // Check select click regions (clicking a <select> opens a popup menu)
         for (auto it = _selectClickRegions.rbegin(); it != _selectClickRegions.rend(); ++it) {
-            if (it->bounds.contains(px_scaled, py_scaled)) {
+            if (it->bounds.contains(px, py)) {
                 // Build and show a native NSMenu with the options
                 NSMenu* menu = [[NSMenu alloc] initWithTitle:@""];
                 for (int i = 0; i < static_cast<int>(it->options.size()); i++) {
@@ -1232,7 +1237,7 @@ struct TextRegion {
 
         // Check details toggle regions (clicking <summary> toggles <details>)
         for (auto it = _detailsToggleRegions.rbegin(); it != _detailsToggleRegions.rend(); ++it) {
-            if (it->bounds.contains(px_scaled, py_scaled)) {
+            if (it->bounds.contains(px, py)) {
                 if ([_delegate respondsToSelector:@selector(renderView:didToggleDetails:)]) {
                     [_delegate renderView:self didToggleDetails:it->details_id];
                 }
@@ -1241,7 +1246,7 @@ struct TextRegion {
         }
 
         for (auto it = _links.rbegin(); it != _links.rend(); ++it) {
-            if (it->bounds.contains(px_scaled, py_scaled)) {
+            if (it->bounds.contains(px, py)) {
                 NSString* href = [NSString stringWithUTF8String:it->href.c_str()];
                 if (it->target == "_blank") {
                     if ([_delegate respondsToSelector:@selector(renderView:didClickLinkInNewTab:)]) {
@@ -1261,12 +1266,11 @@ struct TextRegion {
 - (void)mouseMoved:(NSEvent*)event {
     NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
 
-    // Hit-test against link regions (convert logical to pixel coords)
-    NSPoint rendererPoint = [self rendererPointForViewPoint:loc];
-    float px_scaled = static_cast<float>(rendererPoint.x);
-    float py_scaled = static_cast<float>(rendererPoint.y);
+    NSPoint documentPoint = [self documentPointForViewPoint:loc];
+    float px = static_cast<float>(documentPoint.x);
+    float py = static_cast<float>(documentPoint.y);
     for (auto it = _links.rbegin(); it != _links.rend(); ++it) {
-        if (it->bounds.contains(px_scaled, py_scaled)) {
+        if (it->bounds.contains(px, py)) {
             [[NSCursor pointingHandCursor] set];
             // Notify delegate about hovered link URL
             if ([_delegate respondsToSelector:@selector(renderView:hoveredLink:)]) {
@@ -1284,7 +1288,7 @@ struct TextRegion {
 
     // Hit-test against CSS cursor regions (last-painted = highest z-order)
     for (auto it = _cursorRegions.rbegin(); it != _cursorRegions.rend(); ++it) {
-        if (it->bounds.contains(px_scaled, py_scaled)) {
+        if (it->bounds.contains(px, py)) {
             switch (it->cursor_type) {
                 case 1: [[NSCursor arrowCursor] set]; return;           // default
                 case 2: [[NSCursor pointingHandCursor] set]; return;    // pointer
@@ -1299,16 +1303,16 @@ struct TextRegion {
 
     // Notify delegate for CSS :hover support
     if ([_delegate respondsToSelector:@selector(renderView:didMoveMouseAtX:y:)]) {
-        [_delegate renderView:self didMoveMouseAtX:px_scaled y:py_scaled];
+        [_delegate renderView:self didMoveMouseAtX:px y:py];
     }
 }
 
 // Right-click context menu
 - (NSMenu*)menuForEvent:(NSEvent*)event {
     NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
-    NSPoint rendererPoint = [self rendererPointForViewPoint:loc];
-    float px = static_cast<float>(rendererPoint.x);
-    float py = static_cast<float>(rendererPoint.y);
+    NSPoint documentPoint = [self documentPointForViewPoint:loc];
+    float px = static_cast<float>(documentPoint.x);
+    float py = static_cast<float>(documentPoint.y);
 
     // Dispatch JS "contextmenu" event. If preventDefault() was called, suppress the native menu.
     if ([_delegate respondsToSelector:@selector(renderView:didContextMenuAtX:y:)]) {

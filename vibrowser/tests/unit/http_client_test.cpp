@@ -10,12 +10,131 @@
 #include <zlib.h>
 
 #include <algorithm>
+#include <chrono>
+#include <mutex>
+#include <netinet/in.h>
 #include <sstream>
 #include <string>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <thread>
 #include <type_traits>
+#include <unistd.h>
 #include <vector>
 
 using namespace clever::net;
+
+namespace {
+
+class RedirectTestServer {
+public:
+    RedirectTestServer() {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        const int opt = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+    }
+
+    ~RedirectTestServer() {
+        if (listen_fd_ >= 0) {
+            ::close(listen_fd_);
+        }
+        wait();
+    }
+
+    uint16_t port() const { return port_; }
+
+    void start(std::vector<std::string> responses) {
+        responses_ = std::move(responses);
+        if (listen_fd_ < 0 || responses_.empty()) {
+            return;
+        }
+
+        if (::listen(listen_fd_, static_cast<int>(responses_.size())) != 0) {
+            return;
+        }
+
+        thread_ = std::thread([this]() {
+            for (const auto& response : responses_) {
+                const int client_fd = ::accept(listen_fd_, nullptr, nullptr);
+                if (client_fd < 0) {
+                    return;
+                }
+
+                std::string request;
+                char buffer[1024];
+                while (request.find("\r\n\r\n") == std::string::npos) {
+                    const ssize_t received = ::recv(client_fd, buffer, sizeof(buffer), 0);
+                    if (received <= 0) {
+                        break;
+                    }
+                    request.append(buffer, static_cast<size_t>(received));
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    requests_.push_back(std::move(request));
+                }
+
+                size_t sent = 0;
+                while (sent < response.size()) {
+                    const ssize_t wrote = ::send(client_fd, response.data() + sent,
+                                                 response.size() - sent, 0);
+                    if (wrote <= 0) {
+                        break;
+                    }
+                    sent += static_cast<size_t>(wrote);
+                }
+
+                ::shutdown(client_fd, SHUT_RDWR);
+                ::close(client_fd);
+            }
+        });
+    }
+
+    void wait() {
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+    std::vector<std::string> requests() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return requests_;
+    }
+
+private:
+    int listen_fd_ = -1;
+    uint16_t port_ = 0;
+    std::vector<std::string> responses_;
+    mutable std::mutex mutex_;
+    std::vector<std::string> requests_;
+    std::thread thread_;
+};
+
+}  // namespace
 
 // ===========================================================================
 // HeaderMap Tests
@@ -674,6 +793,94 @@ TEST(HttpClientTest, ResponseRoundTrip) {
     EXPECT_EQ(resp->status_text, "Moved Permanently");
     EXPECT_EQ(resp->headers.get("location").value(), "http://example.com/new");
     EXPECT_TRUE(resp->body.empty());
+}
+
+TEST(HttpClient, RelativeRedirectResolvesAgainstBasePath) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 302 Found\r\n"
+        "Location: sibling?step=2\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 302 Found\r\n"
+        "Location: //127.0.0.1:" + std::to_string(server.port()) + "/final?from=protocol\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/dir/page?start=1";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://127.0.0.1:" + std::to_string(server.port()) + "/final?from=protocol");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 3u);
+    EXPECT_NE(requests[0].find("GET /dir/page?start=1 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /dir/sibling?step=2 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[2].find("GET /final?from=protocol HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(HttpClient, QueryOnlyRedirectPreservesBasePath) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 303 See Other\r\n"
+        "Location: ?step=2\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/submit?step=1";
+    req.method = Method::POST;
+    req.body = {'o', 'k'};
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://127.0.0.1:" + std::to_string(server.port()) + "/submit?step=2");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("POST /submit?step=1 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /submit?step=2 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_EQ(requests[1].find("POST /submit?step=2 HTTP/1.1\r\n"), std::string::npos);
 }
 
 // ===========================================================================

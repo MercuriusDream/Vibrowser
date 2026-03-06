@@ -61,12 +61,14 @@ SimpleSelector make_id_sel(const std::string& id) {
 }
 
 SimpleSelector make_attr_sel(const std::string& attr_name, const std::string& attr_val,
-                             AttributeMatch match = AttributeMatch::Exact) {
+                             AttributeMatch match = AttributeMatch::Exact,
+                             std::string flag = {}) {
     SimpleSelector s;
     s.type = SimpleSelectorType::Attribute;
     s.attr_name = attr_name;
     s.attr_match = match;
     s.attr_value = attr_val;
+    s.argument = flag;
     return s;
 }
 
@@ -555,6 +557,32 @@ TEST(SelectorMatcherTest, AttributeSelectorParsesUnquotedNumericValue) {
     EXPECT_EQ(attr_sel.attr_name, "colspan");
     EXPECT_EQ(attr_sel.attr_match, AttributeMatch::Exact);
     EXPECT_EQ(attr_sel.attr_value, "2");
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorCaseInsensitiveFlagMatches) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "input";
+    elem.attributes = {{"type", "button"}};
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_attr_sel("type", "BUTTON", AttributeMatch::Exact, "i"));
+
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(compound)));
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorCaseSensitiveFlagDoesNotFold) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.attributes = {{"data-id", "abc"}};
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_attr_sel("data-id", "AbC", AttributeMatch::Exact, "s"));
+
+    EXPECT_FALSE(matcher.matches(elem, make_simple_complex(compound)));
 }
 
 // ===========================================================================

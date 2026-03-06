@@ -1727,7 +1727,7 @@ static std::string build_shell_message_html(const std::string& page_title,
     if (!jsEngine || !jsEngine->context()) return;
     double scroll_x = 0.0, scroll_y = 0.0;
     if (clever::js::get_pending_scroll(jsEngine->context(), &scroll_x, &scroll_y)) {
-        CGFloat viewY = [tab.renderView viewOffsetForRendererY:static_cast<CGFloat>(scroll_y)];
+        CGFloat viewY = [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(scroll_y)];
         tab.renderView.scrollOffset = viewY;
         [tab.renderView setNeedsDisplay:YES];
         clever::js::clear_pending_scroll(jsEngine->context());
@@ -1756,7 +1756,6 @@ static std::string build_shell_message_html(const std::string& page_title,
     int height = static_cast<int>(std::round(bounds.size.height));
     if (width < 1) width = 800;
     if (height < 1) height = 600;
-    // Read DPR for JS devicePixelRatio (needed below for window metrics sync)
     NSScreen* windowScreen = self.window.screen;
     CGFloat scaleFactor = windowScreen ? windowScreen.backingScaleFactor : 1.0;
     if (!std::isfinite(scaleFactor) || scaleFactor <= 0.0) {
@@ -1810,7 +1809,7 @@ static std::string build_shell_message_html(const std::string& page_title,
                 auto& positions = [tab idPositions];
                 auto it = positions.find(fragStr);
                 if (it != positions.end()) {
-                    tab.renderView.scrollOffset = [tab.renderView viewOffsetForRendererY:it->second];
+                    tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:it->second];
                 }
             }
         }
@@ -1821,7 +1820,8 @@ static std::string build_shell_message_html(const std::string& page_title,
         [tab domTree] = std::move(result.dom_tree);
         [tab elementRegions] = std::move(result.element_regions);
         if (auto& jsEngine = [tab jsEngine]; jsEngine && jsEngine->context()) {
-            const std::string scale = std::to_string(static_cast<double>(scaleFactor));
+            const double rendererScale = result.renderer->dpr();
+            const std::string scale = std::to_string(rendererScale);
             const std::string logicalWidth = std::to_string(width);
             const std::string logicalHeight = std::to_string(height);
             const std::string syncWindowMetrics =
@@ -1839,7 +1839,7 @@ static std::string build_shell_message_html(const std::string& page_title,
             double pendScrollX = 0.0, pendScrollY = 0.0;
             if (clever::js::get_pending_scroll(jsEngine->context(), &pendScrollX, &pendScrollY)) {
                 tab.renderView.scrollOffset =
-                    [tab.renderView viewOffsetForRendererY:static_cast<CGFloat>(pendScrollY)];
+                    [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(pendScrollY)];
                 clever::js::clear_pending_scroll(jsEngine->context());
             }
         }
@@ -2019,8 +2019,8 @@ static std::string build_shell_message_html(const std::string& page_title,
                     float vp_y = g.y;
 
                     FixedElementInfo info;
-                    info.viewport_x = vp_x * pixel_scale;
-                    info.viewport_y = vp_y * pixel_scale;
+                    info.viewport_x = vp_x;
+                    info.viewport_y = vp_y;
 
                     int px_x = std::max(0, static_cast<int>(std::round(vp_x * pixel_scale)));
                     int px_y = std::max(0, static_cast<int>(std::round(vp_y * pixel_scale)));
@@ -2559,7 +2559,7 @@ static std::string build_shell_message_html(const std::string& page_title,
                     auto& positions = [tab idPositions];
                     auto it = positions.find(frag);
                     if (it != positions.end()) {
-                        tab.renderView.scrollOffset = [tab.renderView viewOffsetForRendererY:it->second];
+                        tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:it->second];
                         [tab.renderView setNeedsDisplay:YES];
                     }
                 }
@@ -2585,7 +2585,7 @@ static std::string build_shell_message_html(const std::string& page_title,
                         auto& positions = [tab idPositions];
                         auto it = positions.find(frag);
                         if (it != positions.end()) {
-                            tab.renderView.scrollOffset = [tab.renderView viewOffsetForRendererY:it->second];
+                            tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:it->second];
                             [tab.renderView setNeedsDisplay:YES];
                             // Update URL bar to show fragment
                             tab.currentURL = href;
@@ -3382,7 +3382,7 @@ static std::string build_shell_message_html(const std::string& page_title,
     // Apply any pending programmatic scroll (scrollIntoView / window.scrollTo).
     // Captured before doRender because doRender replaces the JS engine.
     if (hasPendingScroll) {
-        CGFloat viewY = [tab.renderView viewOffsetForRendererY:static_cast<CGFloat>(pendingScrollY)];
+        CGFloat viewY = [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(pendingScrollY)];
         tab.renderView.scrollOffset = viewY;
         // Clear from current engine too (in case doRender was skipped and engine is same)
         auto& curEngine = [tab jsEngine];

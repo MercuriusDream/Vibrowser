@@ -315,6 +315,25 @@ TEST_F(CSSSelectorTest, AttributeSelectorExact) {
     EXPECT_EQ(ss.attr_match, AttributeMatch::Exact);
 }
 
+TEST_F(CSSSelectorTest, AttributeSelectorParsesCaseFlags) {
+    auto list = parse_selector_list(R"([type="BUTTON" i], [data-id="AbC" s])");
+    ASSERT_EQ(list.selectors.size(), 2u);
+
+    const auto& insensitive =
+        list.selectors[0].parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(insensitive.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(insensitive.attr_name, "type");
+    EXPECT_EQ(insensitive.attr_value, "BUTTON");
+    EXPECT_EQ(insensitive.argument, "i");
+
+    const auto& sensitive =
+        list.selectors[1].parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(sensitive.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(sensitive.attr_name, "data-id");
+    EXPECT_EQ(sensitive.attr_value, "AbC");
+    EXPECT_EQ(sensitive.argument, "s");
+}
+
 // Test 21: Compound selector "div.foo#bar"
 TEST_F(CSSSelectorTest, CompoundSelector) {
     auto list = parse_selector_list("div.foo#bar");

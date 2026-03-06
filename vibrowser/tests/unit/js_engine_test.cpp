@@ -3234,6 +3234,69 @@ TEST(JSDom, MutationObserverStub) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, MutationObserverFlushesAtCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto inline_order = engine.evaluate(R"(
+        globalThis.moOrder = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moOrder.push('observer:' + records.length);
+        });
+        observer.observe(target, { attributes: true, childList: true });
+
+        target.setAttribute('data-step', '1');
+        moOrder.push('after-set-attr');
+        target.appendChild(document.createElement('span'));
+        moOrder.push('after-append');
+
+        moOrder.join(',')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_order, "after-set-attr,after-append");
+
+    auto checkpoint_order = engine.evaluate("moOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(checkpoint_order, "after-set-attr,after-append,observer:2");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverBatchesSynchronousMutations) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.moBatches = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moBatches.push(records.map(function(record) {
+                return record.type + ':' + record.attributeName;
+            }).join(','));
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-first', '1');
+        target.setAttribute('data-second', '2');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto batch_count = engine.evaluate("String(moBatches.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_count, "1");
+
+    auto batch_records = engine.evaluate("moBatches[0]");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_records, "attributes:data-first,attributes:data-second");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // ============================================================================
 // IntersectionObserver stub
 // ============================================================================

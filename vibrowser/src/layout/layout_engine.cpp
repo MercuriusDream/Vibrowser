@@ -14,6 +14,30 @@ namespace {
 
 constexpr float kMarginCollapseEpsilon = 0.0001f;
 
+struct IntrinsicHeightCacheKey {
+    const LayoutNode* node = nullptr;
+    bool max_content = false;
+    float specified_height = 0;
+
+    bool operator==(const IntrinsicHeightCacheKey& other) const {
+        return node == other.node && max_content == other.max_content
+            && specified_height == other.specified_height;
+    }
+};
+
+struct IntrinsicHeightCacheKeyHash {
+    size_t operator()(const IntrinsicHeightCacheKey& key) const {
+        size_t seed = std::hash<const LayoutNode*>{}(key.node);
+        seed ^= std::hash<bool>{}(key.max_content) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<float>{}(key.specified_height) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
+using IntrinsicHeightCache = std::unordered_map<IntrinsicHeightCacheKey, float, IntrinsicHeightCacheKeyHash>;
+
+thread_local IntrinsicHeightCache g_intrinsic_height_cache;
+
 float collapse_vertical_margins(float first, float second) {
     // CSS2.1 8.3.1: collapse two vertical margins by taking the
     // larger positive/negative value, or summing opposite signs.
@@ -296,6 +320,11 @@ static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
                                        const TextMeasureFn* measurer, int depth = 0) {
     if (depth > 256) return 0;
     if (depth > 0 && !participates_in_intrinsic_height_measurement(node)) return 0;
+
+    IntrinsicHeightCacheKey cache_key{&node, max_content, node.specified_height};
+    auto cache_it = g_intrinsic_height_cache.find(cache_key);
+    if (cache_it != g_intrinsic_height_cache.end()) return cache_it->second;
+
     float height = 0;
     if (node.is_text && !node.text_content.empty()) {
         float line_h = node.font_size * 1.2f; // approximate line height
@@ -349,11 +378,14 @@ static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
     }
     float padding_border = node.geometry.padding.top + node.geometry.padding.bottom +
                            node.geometry.border.top + node.geometry.border.bottom;
-    return std::max(height, children_height) + padding_border;
+    float measured = std::max(height, children_height) + padding_border;
+    g_intrinsic_height_cache.emplace(cache_key, measured);
+    return measured;
 }
 
 void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewport_height) {
     intrinsic_width_cache_.clear();
+    g_intrinsic_height_cache.clear();
     viewport_width_ = viewport_width;
     viewport_height_ = viewport_height;
     root.geometry.x = 0;
@@ -418,12 +450,14 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
             root.geometry.width = 0;
             root.geometry.height = 0;
             intrinsic_width_cache_.clear();
+            g_intrinsic_height_cache.clear();
             return;
         default:
             layout_block(root, viewport_width);
             break;
     }
     intrinsic_width_cache_.clear();
+    g_intrinsic_height_cache.clear();
 }
 
 // Aspect-ratio resolution:
