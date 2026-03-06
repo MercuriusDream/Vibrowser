@@ -9,6 +9,7 @@
 #include <clever/layout/layout_engine.h>
 #include <gtest/gtest.h>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <set>
@@ -16,6 +17,13 @@
 
 using namespace clever::paint;
 using namespace clever::layout;
+
+namespace clever::paint {
+void reset_text_width_cache_stats_for_testing();
+size_t text_width_cache_size_for_testing();
+uint64_t text_width_cache_hit_count_for_testing();
+uint64_t text_width_cache_miss_count_for_testing();
+}
 
 // ============================================================================
 // 1. DisplayList: fill_rect adds command
@@ -24401,6 +24409,29 @@ TEST_F(PaintTest, BackdropFilterNotInherited) {
     EXPECT_TRUE(found) << "Should find span with empty backdrop_filters (not inherited)";
 }
 
+TEST_F(PaintTest, BackdropFilterBlurReusesScratchBuffersV2064) {
+    DisplayList list;
+    list.fill_rect({0, 0, 12, 24}, {255, 0, 0, 255});
+    list.fill_rect({12, 0, 12, 24}, {0, 0, 255, 255});
+    list.apply_backdrop_filter({6, 0, 12, 24}, 9, 4.0f);
+
+    SoftwareRenderer renderer(24, 24);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(list);
+
+    const auto first_pixels = renderer.pixels();
+    const auto mixed_pixel = renderer.get_pixel(11, 12);
+    EXPECT_GT(mixed_pixel.r, 0);
+    EXPECT_GT(mixed_pixel.b, 0);
+    EXPECT_EQ(renderer.filter_blur_scratch_allocation_count_for_testing(), 1u);
+
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(list);
+
+    EXPECT_EQ(renderer.filter_blur_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(first_pixels, renderer.pixels());
+}
+
 // ============================================================================
 // mask-composite: inline style
 // ============================================================================
@@ -30971,6 +31002,42 @@ TEST_F(PaintTest, FilterDropShadowWithColor) {
     EXPECT_EQ((ds_color >> 16) & 0xFF, 0xFF) << "drop-shadow color R should be 255";
     EXPECT_EQ((ds_color >> 8) & 0xFF, 0x00) << "drop-shadow color G should be 0";
     EXPECT_EQ(ds_color & 0xFF, 0x00) << "drop-shadow color B should be 0";
+}
+
+TEST_F(PaintTest, DropShadowPixelsStayStableWithScratchReuseV2064) {
+    DisplayList list;
+    list.fill_rect({12, 12, 14, 14}, {30, 120, 220, 255});
+    list.apply_drop_shadow({12, 12, 14, 14}, 5.0f, 4.0f, 3.0f, 0xCC000000);
+
+    SoftwareRenderer renderer(48, 48);
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(list);
+
+    const auto first_pixels = renderer.pixels();
+    const auto element_pixel = renderer.get_pixel(18, 18);
+    bool found_shadow_pixel = false;
+    for (int y = 26; y < 40 && !found_shadow_pixel; ++y) {
+        for (int x = 26; x < 40 && !found_shadow_pixel; ++x) {
+            if (x >= 12 && x < 26 && y >= 12 && y < 26) continue;
+            const auto shadow_pixel = renderer.get_pixel(x, y);
+            if (shadow_pixel.a > 0) {
+                found_shadow_pixel = true;
+            }
+        }
+    }
+    EXPECT_EQ(element_pixel.r, 30);
+    EXPECT_EQ(element_pixel.g, 120);
+    EXPECT_EQ(element_pixel.b, 220);
+    EXPECT_TRUE(found_shadow_pixel);
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(), 1u);
+
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(list);
+
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(first_pixels, renderer.pixels());
 }
 
 // ============================================================================
@@ -39615,6 +39682,111 @@ TEST(WebFontRegistration, ClearRegisteredFonts) {
     EXPECT_FALSE(TextRenderer::has_registered_font("AnyFont"));
 }
 
+TEST_F(PaintTest, TextWidthCacheReusesRepeatedMeasurements) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+
+    TextRenderer renderer;
+    float first = renderer.measure_text_width("Cache me", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    float second = renderer.measure_text_width("Cache me", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+
+    EXPECT_GT(first, 0.0f);
+    EXPECT_FLOAT_EQ(first, second);
+    EXPECT_EQ(text_width_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextWidthCacheClearsOnRegisteredFontReset) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+
+    TextRenderer renderer;
+    float first = renderer.measure_text_width("Reset me", 16.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    ASSERT_GT(first, 0.0f);
+    ASSERT_EQ(text_width_cache_size_for_testing(), 1u);
+    ASSERT_EQ(text_width_cache_miss_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+    EXPECT_EQ(text_width_cache_size_for_testing(), 0u);
+
+    float second = renderer.measure_text_width("Reset me", 16.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    EXPECT_FLOAT_EQ(first, second);
+    EXPECT_EQ(text_width_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 0u);
+
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, InlineStyleCacheReusesParsedDeclarations) {
+    reset_inline_style_cache_stats_for_testing();
+
+    auto result = render_html(
+        "<html><body>"
+        "<div style='width:20px;height:20px;background:red;'></div>"
+        "<div style='width:20px;height:20px;background:red;'></div>"
+        "</body></html>",
+        120, 120);
+
+    ASSERT_TRUE(result.success) << result.error;
+    EXPECT_EQ(inline_style_cache_size_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_hit_count_for_testing(), 1u);
+}
+
+TEST_F(PaintTest, InlineStyleCacheCanonicalizesWhitespaceAndTrailingSemicolons) {
+    reset_inline_style_cache_stats_for_testing();
+
+    auto result = render_html(
+        "<html><body>"
+        "<div style='width:20px;height:20px;background:red'></div>"
+        "<div style=' width : 20px ; height:20px ; background : red ; '></div>"
+        "</body></html>",
+        120, 120);
+
+    ASSERT_TRUE(result.success) << result.error;
+    EXPECT_EQ(inline_style_cache_size_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_hit_count_for_testing(), 1u);
+}
+
+TEST_F(PaintTest, InlineStyleCacheDoesNotLeakAcrossDifferentDeclarationSets) {
+    reset_inline_style_cache_stats_for_testing();
+
+    auto result = render_html(
+        "<html><body>"
+        "<div id='red-box' style='width:20px;height:20px;background:red;'></div>"
+        "<div id='blue-box' style='width:20px;height:20px;background:blue;'></div>"
+        "</body></html>",
+        120, 120);
+
+    ASSERT_TRUE(result.success) << result.error;
+    EXPECT_EQ(inline_style_cache_size_for_testing(), 2u);
+    EXPECT_EQ(inline_style_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(inline_style_cache_hit_count_for_testing(), 0u);
+
+    bool found_red_box = false;
+    bool found_blue_box = false;
+    std::function<void(const clever::layout::LayoutNode&)> check =
+        [&](const clever::layout::LayoutNode& node) {
+        if (node.element_id == "red-box") {
+            EXPECT_EQ(node.background_color, 0xFFFF0000u);
+            found_red_box = true;
+        }
+        if (node.element_id == "blue-box") {
+            EXPECT_EQ(node.background_color, 0xFF0000FFu);
+            found_blue_box = true;
+        }
+        for (const auto& child : node.children) check(*child);
+    };
+    check(*result.root);
+    EXPECT_TRUE(found_red_box);
+    EXPECT_TRUE(found_blue_box);
+}
+
 TEST(WebFontRegistration, FontDisplayPropertyCollected) {
     auto result = render_html(
         "<html><head><style>"
@@ -41602,6 +41774,85 @@ TEST_F(PaintTest, TextWrapBalancePureText) {
     auto result = render_html(html, 400, 400);
     EXPECT_TRUE(result.success);
     EXPECT_NE(result.root, nullptr);
+}
+
+TEST_F(PaintTest, BoxShadowBlurClampCapsOversizedRadiusV2062) {
+    const Rect element_rect{96.0f, 96.0f, 32.0f, 32.0f};
+    const float huge_blur = 5000.0f;
+    const float huge_expand = huge_blur * SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+    const float capped_blur = SoftwareRenderer::kMaxBoxShadowBlurRadius;
+    const float capped_expand = capped_blur * SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+
+    SoftwareRenderer huge_renderer(256, 256);
+    huge_renderer.clear({255, 255, 255, 255});
+    DisplayList huge_shadow;
+    huge_shadow.fill_box_shadow(
+        {element_rect.x - huge_expand, element_rect.y - huge_expand,
+         element_rect.width + huge_expand * 2.0f, element_rect.height + huge_expand * 2.0f},
+        element_rect, {0, 0, 0, 255}, huge_blur, 0.0f);
+    huge_renderer.render(huge_shadow);
+
+    SoftwareRenderer capped_renderer(256, 256);
+    capped_renderer.clear({255, 255, 255, 255});
+    DisplayList capped_shadow;
+    capped_shadow.fill_box_shadow(
+        {element_rect.x - capped_expand, element_rect.y - capped_expand,
+         element_rect.width + capped_expand * 2.0f, element_rect.height + capped_expand * 2.0f},
+        element_rect, {0, 0, 0, 255}, capped_blur, 0.0f);
+    capped_renderer.render(capped_shadow);
+
+    const struct {
+        int x;
+        int y;
+    } samples[] = {{0, 0}, {72, 112}, {96, 112}, {140, 112}, {255, 255}};
+
+    for (const auto& sample : samples) {
+        const auto huge_pixel = huge_renderer.get_pixel(sample.x, sample.y);
+        const auto capped_pixel = capped_renderer.get_pixel(sample.x, sample.y);
+        EXPECT_EQ(huge_pixel.r, capped_pixel.r) << "r mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(huge_pixel.g, capped_pixel.g) << "g mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(huge_pixel.b, capped_pixel.b) << "b mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(huge_pixel.a, capped_pixel.a) << "a mismatch at (" << sample.x << "," << sample.y << ")";
+    }
+}
+
+TEST_F(PaintTest, BoxShadowBlurClampKeepsNormalShadowPixelsV2062) {
+    const Rect element_rect{90.0f, 90.0f, 48.0f, 48.0f};
+    const float normal_blur = 12.0f;
+    const float exact_expand = normal_blur * SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+    const float oversized_expand = 400.0f;
+
+    SoftwareRenderer exact_renderer(256, 256);
+    exact_renderer.clear({255, 255, 255, 255});
+    DisplayList exact_shadow;
+    exact_shadow.fill_box_shadow(
+        {element_rect.x - exact_expand, element_rect.y - exact_expand,
+         element_rect.width + exact_expand * 2.0f, element_rect.height + exact_expand * 2.0f},
+        element_rect, {0, 0, 0, 200}, normal_blur, 0.0f);
+    exact_renderer.render(exact_shadow);
+
+    SoftwareRenderer oversized_renderer(256, 256);
+    oversized_renderer.clear({255, 255, 255, 255});
+    DisplayList oversized_shadow;
+    oversized_shadow.fill_box_shadow(
+        {element_rect.x - oversized_expand, element_rect.y - oversized_expand,
+         element_rect.width + oversized_expand * 2.0f, element_rect.height + oversized_expand * 2.0f},
+        element_rect, {0, 0, 0, 200}, normal_blur, 0.0f);
+    oversized_renderer.render(oversized_shadow);
+
+    const struct {
+        int x;
+        int y;
+    } samples[] = {{32, 32}, {84, 114}, {114, 114}, {148, 114}, {220, 220}};
+
+    for (const auto& sample : samples) {
+        const auto exact_pixel = exact_renderer.get_pixel(sample.x, sample.y);
+        const auto oversized_pixel = oversized_renderer.get_pixel(sample.x, sample.y);
+        EXPECT_EQ(exact_pixel.r, oversized_pixel.r) << "r mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(exact_pixel.g, oversized_pixel.g) << "g mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(exact_pixel.b, oversized_pixel.b) << "b mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(exact_pixel.a, oversized_pixel.a) << "a mismatch at (" << sample.x << "," << sample.y << ")";
+    }
 }
 
 TEST(RenderPipeline, InvalidDprFallsBackToOne) {
