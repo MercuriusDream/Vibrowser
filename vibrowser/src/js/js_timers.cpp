@@ -104,8 +104,11 @@ void run_timer(JSContext* ctx, TimerState& state, int id) {
             JS_EVAL_TYPE_GLOBAL);
         JS_FreeValue(ctx, result);
     } else if (!JS_IsUndefined(entry->callback)) {
-        JSValue result = JS_Call(ctx, entry->callback, JS_UNDEFINED, 0, nullptr);
+        // Keep the JS function alive even if clearTimeout/clearInterval runs inside it.
+        JSValue callback = JS_DupValue(ctx, entry->callback);
+        JSValue result = JS_Call(ctx, callback, JS_UNDEFINED, 0, nullptr);
         JS_FreeValue(ctx, result);
+        JS_FreeValue(ctx, callback);
     }
 
     drain_pending_jobs(ctx);
