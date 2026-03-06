@@ -1,11 +1,16 @@
 #pragma once
 #include <clever/ipc/message.h>
+#include <clever/ipc/serializer.h>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace clever::ipc {
+
+inline constexpr size_t kMessagePipeRawFrameOverheadBytes = sizeof(uint32_t) * 3;
+inline constexpr size_t kMaxMessagePipeFrameBytes =
+    kMaxSerializedPayloadBytes + kMessagePipeRawFrameOverheadBytes;
 
 class MessagePipe {
 public:
