@@ -36,9 +36,10 @@ export CODEX_ESTATE_WORKERS="${CODEX_ESTATE_WORKERS:-6}"
 
 if command -v tmux >/dev/null 2>&1; then
   tmux kill-session -t "$TMUX_SESSION" 2>/dev/null || true
-  tmux list-sessions 2>/dev/null | awk -F: -v prefix="${TMUX_SESSION}-" '$1 ~ "^" prefix {print $1}' | while read -r name; do
+  while read -r name; do
+    [[ -n "$name" ]] || continue
     tmux kill-session -t "$name" 2>/dev/null || true
-  done
+  done < <(tmux list-sessions 2>/dev/null | awk -F: -v prefix="${TMUX_SESSION}-" '$1 ~ "^" prefix {print $1}' || true)
 fi
 
 pkill -f 'codex/orchestrator/supervisor\.sh' >/dev/null 2>&1 || true
