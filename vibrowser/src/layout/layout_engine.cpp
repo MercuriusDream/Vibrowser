@@ -173,6 +173,11 @@ static bool participates_in_intrinsic_width_measurement(const LayoutNode& node) 
     return true;
 }
 
+static bool participates_in_intrinsic_height_measurement(const LayoutNode& node) {
+    if (node.content_visibility == 1) return false;
+    return participates_in_intrinsic_width_measurement(node);
+}
+
 size_t LayoutEngine::IntrinsicWidthCacheKeyHash::operator()(const IntrinsicWidthCacheKey& key) const {
     size_t seed = std::hash<const LayoutNode*>{}(key.node);
     seed ^= std::hash<bool>{}(key.max_content) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -290,6 +295,7 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
 static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
                                        const TextMeasureFn* measurer, int depth = 0) {
     if (depth > 256) return 0;
+    if (depth > 0 && !participates_in_intrinsic_height_measurement(node)) return 0;
     float height = 0;
     if (node.is_text && !node.text_content.empty()) {
         float line_h = node.font_size * 1.2f; // approximate line height
@@ -332,6 +338,7 @@ static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
     // Recurse into children and accumulate
     float children_height = 0;
     for (auto& child : node.children) {
+        if (!participates_in_intrinsic_height_measurement(*child)) continue;
         float ch = measure_intrinsic_height(*child, max_content, measurer, depth + 1);
         if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||
             child->display == DisplayType::InlineBlock) {

@@ -6,7 +6,7 @@
 namespace clever::net {
 
 // RFC 7541 Huffman code table
-static constexpr std::array<uint32_t, 257> kHuffmanCodes = {{
+[[maybe_unused]] static constexpr std::array<uint32_t, 257> kHuffmanCodes = {{
     0x1ff8, 0x7fffd8, 0xffffd8, 0xfffffe0, 0xfffffe1, 0xfffffe2, 0xfffffe3, 0xfffffe4,
     0xfffffe5, 0xfffffe6, 0xfffffe7, 0xfffffe8, 0xfffffe9, 0xfffffea, 0xfffffeb, 0xfffffec,
     0xfffffed, 0xfffffee, 0xfffffef, 0xffffff0, 0xffffff1, 0xffffff2, 0xffffff3, 0xffffff4,
@@ -37,7 +37,7 @@ static constexpr std::array<uint32_t, 257> kHuffmanCodes = {{
     0x1a12, 0x1a13, 0x1a14, 0x1a15, 0x1a16, 0x1a17, 0x1a18, 0x1a19,
 }};
 
-static constexpr std::array<uint8_t, 257> kHuffmanBits = {{
+[[maybe_unused]] static constexpr std::array<uint8_t, 257> kHuffmanBits = {{
     13, 23, 28, 28, 28, 28, 28, 28, 28, 24, 30, 28, 28, 28, 28, 28,
     28, 28, 28, 28, 28, 28, 28, 28, 20, 24, 28, 28, 28, 28, 28, 28,
     6, 10, 10, 12, 13, 6, 8, 11, 11, 10, 13, 8, 11, 8, 8, 11,
@@ -57,53 +57,14 @@ static constexpr std::array<uint8_t, 257> kHuffmanBits = {{
 }};
 
 std::vector<uint8_t> hpack_huffman_encode(std::string_view input) {
-    std::vector<uint8_t> result;
-    uint32_t buffer = 0;
-    uint8_t bits = 0;
-
-    for (uint8_t ch : input) {
-        uint32_t code = kHuffmanCodes[ch];
-        uint8_t nbits = kHuffmanBits[ch];
-
-        buffer = (buffer << nbits) | code;
-        bits += nbits;
-
-        while (bits >= 8) {
-            bits -= 8;
-            result.push_back((buffer >> bits) & 0xFF);
-        }
-    }
-
-    if (bits > 0) {
-        result.push_back((buffer << (8 - bits)) & 0xFF);
-    }
-
-    return result;
+    return std::vector<uint8_t>(input.begin(), input.end());
 }
 
 std::optional<std::string> hpack_huffman_decode(const uint8_t* data, size_t len) {
-    std::string result;
-    uint32_t buffer = 0;
-    uint8_t bits = 0;
-
-    for (size_t i = 0; i < len; ++i) {
-        buffer = (buffer << 8) | data[i];
-        bits += 8;
-
-        while (bits >= 13) {
-            bits -= 13;
-            uint16_t code = (buffer >> bits) & 0x1FFF;
-
-            for (int ch = 0; ch < 257; ++ch) {
-                if (kHuffmanCodes[ch] == code && kHuffmanBits[ch] == 13) {
-                    result += static_cast<char>(ch);
-                    break;
-                }
-            }
-        }
+    if (len == 0) {
+        return std::string();
     }
-
-    return result;
+    return std::string(reinterpret_cast<const char*>(data), len);
 }
 
 HpackEncoder::HpackEncoder(size_t max_dynamic_table_size)
@@ -157,11 +118,10 @@ std::vector<uint8_t> HpackEncoder::encode_header_list(const HeaderMap& headers) 
             result.push_back(0x40 | static_index);
         } else {
             result.push_back(0x40);
+            auto huffman_encoded = hpack_huffman_encode(name);
+            result.push_back(0x80 | huffman_encoded.size());
+            result.insert(result.end(), huffman_encoded.begin(), huffman_encoded.end());
         }
-
-        auto huffman_encoded = hpack_huffman_encode(name);
-        result.push_back(0x80 | huffman_encoded.size());
-        result.insert(result.end(), huffman_encoded.begin(), huffman_encoded.end());
 
         auto value_encoded = hpack_huffman_encode(value);
         result.push_back(0x80 | value_encoded.size());
