@@ -287,6 +287,8 @@ while true; do
   update_state "$cycle" "verifier" "running" "verifier" "Running clean build/test/bench/smoke gate"
   verify_ok=0
   repair_iteration=0
+  git_pr_status=""
+  ci_status=""
   while true; do
     if run_verifier "$cycle_dir"; then
       verify_ok=1
@@ -323,60 +325,85 @@ while true; do
     update_state "$cycle" "git" "running" "git" "Preparing branch/commit/PR"
     if ! run_git_pr "$cycle" "$cycle_dir" "$summary"; then
       workers_failed=1
+    elif [[ -f "$cycle_dir/git-pr.json" ]]; then
+      git_pr_status="$(jq -r '.status // empty' < "$cycle_dir/git-pr.json" 2>/dev/null || true)"
     fi
   fi
 
   if [[ $workers_failed -eq 0 && $verify_ok -eq 1 && "$AUTO_CI_WAIT" == "1" ]]; then
-    update_state "$cycle" "ci" "running" "ci" "Waiting for CI checks"
-    while ! run_ci_wait "$cycle_dir"; do
-      if [[ "$AUTO_CI_FIX" != "1" ]]; then
-        workers_failed=1
-        break
-      fi
-
-      update_state "$cycle" "ci-fixer" "running" "ci-fixer" "CI failed, running same-cycle CI fixer"
-      while ! codex_exec_role "ci-fixer" \
-          "$SCHEMA_DIR/fixer.schema.json" \
-          "$cycle_dir/ci-fixer.json" \
-          "$cycle_dir/ci-fixer.log" \
-          "$(ci_fixer_prompt "$cycle" "$cycle_dir")" \
-          "$MAIN_MODEL" \
-          "$MAIN_REASONING" \
-          "$MAIN_FAST_FLAG"; do
-        update_state "$cycle" "ci-fixer" "retrying" "ci-fixer" "CI fixer invocation failed, retrying same cycle"
-        [[ $NO_SLEEP -eq 0 ]] && sleep "$ERROR_SLEEP"
-        if [[ -f "$STOP_FILE" ]]; then
-          echo "Stop file detected: $STOP_FILE"
-          exit 0
+    if [[ "$git_pr_status" == "no_changes" ]]; then
+      cat > "$cycle_dir/ci.json" <<EOF
+{"status":"skipped_no_changes","branch":"","pr_url":""}
+EOF
+      update_state "$cycle" "ci" "skipped" "ci" "Skipping CI wait because no changes were committed"
+    else
+      update_state "$cycle" "ci" "running" "ci" "Waiting for CI checks"
+      while ! run_ci_wait "$cycle_dir"; do
+        ci_status="$(jq -r '.status // empty' < "$cycle_dir/ci.json" 2>/dev/null || true)"
+        if [[ "$ci_status" == "no_pr" || "$ci_status" == "no_checks" ]]; then
+          update_state "$cycle" "ci" "skipped" "ci" "Skipping CI fixer because no PR or checks were created for this cycle"
+          break
         fi
-      done
 
-      while ! run_verifier "$cycle_dir"; do
-        repair_iteration=$((repair_iteration + 1))
-        update_state "$cycle" "fixer" "running" "fixer" "Post-CI repair iteration $repair_iteration"
-        while ! codex_exec_role "fixer" \
+        if [[ "$AUTO_CI_FIX" != "1" ]]; then
+          workers_failed=1
+          break
+        fi
+
+        update_state "$cycle" "ci-fixer" "running" "ci-fixer" "CI failed, running same-cycle CI fixer"
+        while ! codex_exec_role "ci-fixer" \
             "$SCHEMA_DIR/fixer.schema.json" \
-            "$cycle_dir/fixer.json" \
-            "$cycle_dir/fixer.log" \
-            "$(fixer_prompt "$cycle" "$cycle_dir")" \
+            "$cycle_dir/ci-fixer.json" \
+            "$cycle_dir/ci-fixer.log" \
+            "$(ci_fixer_prompt "$cycle" "$cycle_dir")" \
             "$MAIN_MODEL" \
             "$MAIN_REASONING" \
             "$MAIN_FAST_FLAG"; do
-          update_state "$cycle" "fixer" "retrying" "fixer" "Post-CI fixer invocation failed, retrying repair iteration $repair_iteration"
+          update_state "$cycle" "ci-fixer" "retrying" "ci-fixer" "CI fixer invocation failed, retrying same cycle"
           [[ $NO_SLEEP -eq 0 ]] && sleep "$ERROR_SLEEP"
           if [[ -f "$STOP_FILE" ]]; then
             echo "Stop file detected: $STOP_FILE"
             exit 0
           fi
         done
-      done
 
-      cp "$cycle_dir/verifier.json" "$LAST_VERIFY_FILE"
-      if [[ "$AUTO_GIT" == "1" ]]; then
-        run_git_pr "$cycle" "$cycle_dir" "$summary" || workers_failed=1
-      fi
-      update_state "$cycle" "ci" "running" "ci" "Re-waiting for CI after same-cycle repair"
-    done
+        while ! run_verifier "$cycle_dir"; do
+          repair_iteration=$((repair_iteration + 1))
+          update_state "$cycle" "fixer" "running" "fixer" "Post-CI repair iteration $repair_iteration"
+          while ! codex_exec_role "fixer" \
+              "$SCHEMA_DIR/fixer.schema.json" \
+              "$cycle_dir/fixer.json" \
+              "$cycle_dir/fixer.log" \
+              "$(fixer_prompt "$cycle" "$cycle_dir")" \
+              "$MAIN_MODEL" \
+              "$MAIN_REASONING" \
+              "$MAIN_FAST_FLAG"; do
+            update_state "$cycle" "fixer" "retrying" "fixer" "Post-CI fixer invocation failed, retrying repair iteration $repair_iteration"
+            [[ $NO_SLEEP -eq 0 ]] && sleep "$ERROR_SLEEP"
+            if [[ -f "$STOP_FILE" ]]; then
+              echo "Stop file detected: $STOP_FILE"
+              exit 0
+            fi
+          done
+        done
+
+        cp "$cycle_dir/verifier.json" "$LAST_VERIFY_FILE"
+        if [[ "$AUTO_GIT" == "1" ]]; then
+          run_git_pr "$cycle" "$cycle_dir" "$summary" || workers_failed=1
+          if [[ -f "$cycle_dir/git-pr.json" ]]; then
+            git_pr_status="$(jq -r '.status // empty' < "$cycle_dir/git-pr.json" 2>/dev/null || true)"
+            if [[ "$git_pr_status" == "no_changes" ]]; then
+              cat > "$cycle_dir/ci.json" <<EOF
+{"status":"skipped_no_changes","branch":"","pr_url":""}
+EOF
+              update_state "$cycle" "ci" "skipped" "ci" "Skipping CI wait because same-cycle repair produced no new changes"
+              break
+            fi
+          fi
+        fi
+        update_state "$cycle" "ci" "running" "ci" "Re-waiting for CI after same-cycle repair"
+      done
+    fi
   fi
 
   update_state "$cycle" "ledger" "$([[ $verify_ok -eq 1 ]] && echo passed || echo failed)" "ledger" "$summary"
