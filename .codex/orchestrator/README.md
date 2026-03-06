@@ -19,7 +19,7 @@ Each cycle is orchestrated as:
 4. Six external Codex worker sessions implement those workloads in parallel.
 5. Integrator reconciles the combined diff.
 6. Verifier runs `tools/codex/pr-ready.sh`.
-7. Fixer gets one recovery pass if verification fails.
+7. Fixer stays in the same cycle and keeps repairing until verification passes.
 8. Optional branch/PR/CI polling runs after local verification.
 9. The canonical Codex ledger is updated and synced to `.claude/claude-estate.md`.
 
@@ -31,6 +31,7 @@ bash .codex/orchestrator/supervisor.sh
 bash .codex/orchestrator/start-full-autonomy-fast.sh
 zsh .codex/orchestrator/start-full-autonomy-fast.zsh
 bash .codex/orchestrator/resume-live.sh
+bash .codex/orchestrator/resume-unattended-full-cicd.sh
 bash .codex/orchestrator/tmux-launch.sh
 bash .codex/orchestrator/tmux-stop.sh
 bash .codex/orchestrator/detect-writer.sh
@@ -60,7 +61,24 @@ bash .codex/orchestrator/resume-live.sh
 This single entry point:
 
 1. Clears the stop file
-2. Unloads the launchd writer by default to avoid double-writing
-3. Reuses the existing cycle/state ledger
-4. Attaches to the existing tmux session if present
-5. Otherwise starts the tmux-backed live estate view and attaches immediately
+2. Kills stale tmux/background estate writers first
+3. Unloads the launchd writer by default to avoid double-writing
+4. Reuses the existing cycle/state ledger
+5. Starts a fresh tmux-backed live estate view and attaches immediately
+
+## Unattended full CICD
+
+Use:
+
+```bash
+bash .codex/orchestrator/resume-unattended-full-cicd.sh
+```
+
+This turns on:
+
+- autogit
+- push
+- PR creation
+- CI wait
+- CI autofix
+- known-baseline test allowance for the current red-suite list

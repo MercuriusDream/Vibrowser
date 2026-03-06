@@ -9,7 +9,6 @@ source "$SCRIPT_DIR/lib.sh"
 MAX_CYCLES=0
 BOOTSTRAP_ONLY=0
 NO_SLEEP=0
-consecutive_errors=0
 
 usage() {
   cat <<'EOF'
@@ -218,23 +217,21 @@ while true; do
   ln -sfn "$cycle_dir" "$LOG_DIR/current"
 
   update_state "$cycle" "planner" "running" "planner" "Selecting 6 workloads"
-
-  if ! codex_exec_role "planner" \
+  while ! codex_exec_role "planner" \
       "$SCHEMA_DIR/planner.schema.json" \
       "$cycle_dir/plan.json" \
       "$cycle_dir/planner.log" \
       "$(planner_prompt "$cycle")" \
       "$MAIN_MODEL" \
       "$MAIN_REASONING" \
-      "$MAIN_FAST_FLAG"; then
-    consecutive_errors=$((consecutive_errors + 1))
-    update_state "$cycle" "planner" "failed" "planner" "Planner failed"
-    if [[ $consecutive_errors -ge $MAX_ERRORS ]]; then
-      break
-    fi
+      "$MAIN_FAST_FLAG"; do
+    update_state "$cycle" "planner" "retrying" "planner" "Planner failed, retrying same cycle"
     [[ $NO_SLEEP -eq 0 ]] && sleep "$ERROR_SLEEP"
-    continue
-  fi
+    if [[ -f "$STOP_FILE" ]]; then
+      echo "Stop file detected: $STOP_FILE"
+      exit 0
+    fi
+  done
 
   cp "$cycle_dir/plan.json" "$LAST_PLAN_FILE"
   update_state "$cycle" "workers" "running" "workers" "Running 6 external Codex workers"
@@ -254,36 +251,53 @@ while true; do
   done
 
   update_state "$cycle" "integrator" "running" "integrator" "Integrating worker results"
-  if ! codex_exec_role "integrator" \
+  while ! codex_exec_role "integrator" \
       "$SCHEMA_DIR/integrator.schema.json" \
       "$cycle_dir/integrator.json" \
       "$cycle_dir/integrator.log" \
       "$(integrator_prompt "$cycle" "$cycle_dir")" \
       "$MAIN_MODEL" \
       "$MAIN_REASONING" \
-      "$MAIN_FAST_FLAG"; then
-    workers_failed=1
-  fi
+      "$MAIN_FAST_FLAG"; do
+    update_state "$cycle" "integrator" "retrying" "integrator" "Integrator failed, retrying same cycle"
+    [[ $NO_SLEEP -eq 0 ]] && sleep "$ERROR_SLEEP"
+    if [[ -f "$STOP_FILE" ]]; then
+      echo "Stop file detected: $STOP_FILE"
+      exit 0
+    fi
+  done
 
   update_state "$cycle" "verifier" "running" "verifier" "Running clean build/test/bench/smoke gate"
   verify_ok=0
-  if run_verifier "$cycle_dir"; then
-    verify_ok=1
-  else
-    update_state "$cycle" "fixer" "running" "fixer" "Verification failed, running fixer"
-    if codex_exec_role "fixer" \
+  repair_iteration=0
+  while true; do
+    if run_verifier "$cycle_dir"; then
+      verify_ok=1
+      break
+    fi
+
+    repair_iteration=$((repair_iteration + 1))
+    update_state "$cycle" "fixer" "running" "fixer" "Verification failed, repair iteration $repair_iteration"
+
+    while ! codex_exec_role "fixer" \
         "$SCHEMA_DIR/fixer.schema.json" \
         "$cycle_dir/fixer.json" \
         "$cycle_dir/fixer.log" \
         "$(fixer_prompt "$cycle" "$cycle_dir")" \
         "$MAIN_MODEL" \
         "$MAIN_REASONING" \
-        "$MAIN_FAST_FLAG"; then
-      if run_verifier "$cycle_dir"; then
-        verify_ok=1
+        "$MAIN_FAST_FLAG"; do
+      update_state "$cycle" "fixer" "retrying" "fixer" "Fixer invocation failed, retrying repair iteration $repair_iteration"
+      [[ $NO_SLEEP -eq 0 ]] && sleep "$ERROR_SLEEP"
+      if [[ -f "$STOP_FILE" ]]; then
+        echo "Stop file detected: $STOP_FILE"
+        exit 0
       fi
-    fi
-  fi
+    done
+
+    update_state "$cycle" "verifier" "running" "verifier" "Re-running verification after repair iteration $repair_iteration"
+    [[ $NO_SLEEP -eq 0 ]] && sleep 1
+  done
 
   cp "$cycle_dir/verifier.json" "$LAST_VERIFY_FILE"
   summary="$(summarize_cycle "$cycle_dir")"
@@ -297,36 +311,55 @@ while true; do
 
   if [[ $workers_failed -eq 0 && $verify_ok -eq 1 && "$AUTO_CI_WAIT" == "1" ]]; then
     update_state "$cycle" "ci" "running" "ci" "Waiting for CI checks"
-    if ! run_ci_wait "$cycle_dir"; then
-      if [[ "$AUTO_CI_FIX" == "1" ]]; then
-        update_state "$cycle" "ci-fixer" "running" "ci-fixer" "CI failed, running CI fixer"
-        if codex_exec_role "ci-fixer" \
+    while ! run_ci_wait "$cycle_dir"; do
+      if [[ "$AUTO_CI_FIX" != "1" ]]; then
+        workers_failed=1
+        break
+      fi
+
+      update_state "$cycle" "ci-fixer" "running" "ci-fixer" "CI failed, running same-cycle CI fixer"
+      while ! codex_exec_role "ci-fixer" \
+          "$SCHEMA_DIR/fixer.schema.json" \
+          "$cycle_dir/ci-fixer.json" \
+          "$cycle_dir/ci-fixer.log" \
+          "$(ci_fixer_prompt "$cycle" "$cycle_dir")" \
+          "$MAIN_MODEL" \
+          "$MAIN_REASONING" \
+          "$MAIN_FAST_FLAG"; do
+        update_state "$cycle" "ci-fixer" "retrying" "ci-fixer" "CI fixer invocation failed, retrying same cycle"
+        [[ $NO_SLEEP -eq 0 ]] && sleep "$ERROR_SLEEP"
+        if [[ -f "$STOP_FILE" ]]; then
+          echo "Stop file detected: $STOP_FILE"
+          exit 0
+        fi
+      done
+
+      while ! run_verifier "$cycle_dir"; do
+        repair_iteration=$((repair_iteration + 1))
+        update_state "$cycle" "fixer" "running" "fixer" "Post-CI repair iteration $repair_iteration"
+        while ! codex_exec_role "fixer" \
             "$SCHEMA_DIR/fixer.schema.json" \
-            "$cycle_dir/ci-fixer.json" \
-            "$cycle_dir/ci-fixer.log" \
-            "$(ci_fixer_prompt "$cycle" "$cycle_dir")" \
+            "$cycle_dir/fixer.json" \
+            "$cycle_dir/fixer.log" \
+            "$(fixer_prompt "$cycle" "$cycle_dir")" \
             "$MAIN_MODEL" \
             "$MAIN_REASONING" \
-            "$MAIN_FAST_FLAG"; then
-          if run_verifier "$cycle_dir"; then
-            verify_ok=1
-            cp "$cycle_dir/verifier.json" "$LAST_VERIFY_FILE"
-            if [[ "$AUTO_GIT" == "1" ]]; then
-              run_git_pr "$cycle" "$cycle_dir" "$summary" || workers_failed=1
-            fi
-            if [[ "$AUTO_CI_WAIT" == "1" ]]; then
-              run_ci_wait "$cycle_dir" || workers_failed=1
-            fi
-          else
-            verify_ok=0
+            "$MAIN_FAST_FLAG"; do
+          update_state "$cycle" "fixer" "retrying" "fixer" "Post-CI fixer invocation failed, retrying repair iteration $repair_iteration"
+          [[ $NO_SLEEP -eq 0 ]] && sleep "$ERROR_SLEEP"
+          if [[ -f "$STOP_FILE" ]]; then
+            echo "Stop file detected: $STOP_FILE"
+            exit 0
           fi
-        else
-          workers_failed=1
-        fi
-      else
-        workers_failed=1
+        done
+      done
+
+      cp "$cycle_dir/verifier.json" "$LAST_VERIFY_FILE"
+      if [[ "$AUTO_GIT" == "1" ]]; then
+        run_git_pr "$cycle" "$cycle_dir" "$summary" || workers_failed=1
       fi
-    fi
+      update_state "$cycle" "ci" "running" "ci" "Re-waiting for CI after same-cycle repair"
+    done
   fi
 
   update_state "$cycle" "ledger" "$([[ $verify_ok -eq 1 ]] && echo passed || echo failed)" "ledger" "$summary"
@@ -337,14 +370,9 @@ while true; do
   sync_shadow_ledger
 
   if [[ $workers_failed -eq 0 && $verify_ok -eq 1 ]]; then
-    consecutive_errors=0
     update_state "$cycle" "idle" "passed" "" "$summary"
   else
-    consecutive_errors=$((consecutive_errors + 1))
     update_state "$cycle" "idle" "failed" "" "$summary"
-    if [[ $consecutive_errors -ge $MAX_ERRORS ]]; then
-      break
-    fi
   fi
 
   if [[ $NO_SLEEP -eq 0 ]]; then

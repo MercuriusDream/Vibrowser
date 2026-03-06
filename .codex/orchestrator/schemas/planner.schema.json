@@ -1,5 +1,6 @@
 {
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "workloads": {
       "type": "array",
@@ -7,6 +8,7 @@
       "maxItems": 6,
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "properties": {
           "title": { "type": "string" },
           "objective": { "type": "string" },

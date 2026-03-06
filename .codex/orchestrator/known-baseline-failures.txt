@@ -1,0 +1,11 @@
+RenderPipeline.CalcHeightMultiply
+RenderPipeline.CalcInlineStyle
+RenderPipeline.CalcCSSCascade
+RenderPipeline.GetBoundingClientRectFromJS
+RenderPipeline.OffsetDimensionsFromJS
+RenderPipeline.ResizeObserverBorderBoxSize
+RenderPipeline.GetComputedStyleWidth
+PaintTest.SvgLinearGradientParsed
+PaintTest.SvgRadialGradientParsed
+PaintTest.SvgUseMultipleReferencesRender
+PaintTest.SvgUseGroupChildrenRendered

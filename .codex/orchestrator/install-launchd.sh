@@ -52,6 +52,18 @@ cat > "$PLIST_PATH" <<EOF
     <string>$SUBAGENT_FAST_FLAG</string>
     <key>CODEX_ESTATE_WORKERS</key>
     <string>$WORKER_COUNT</string>
+    <key>CODEX_ESTATE_AUTOGIT</key>
+    <string>$AUTO_GIT</string>
+    <key>CODEX_ESTATE_PUSH</key>
+    <string>$AUTO_PUSH</string>
+    <key>CODEX_ESTATE_CREATE_PR</key>
+    <string>$AUTO_PR</string>
+    <key>CODEX_ESTATE_WAIT_FOR_CI</key>
+    <string>$AUTO_CI_WAIT</string>
+    <key>CODEX_ESTATE_CI_AUTOFIX</key>
+    <string>$AUTO_CI_FIX</string>
+    <key>CODEX_ALLOW_KNOWN_BASELINE_FAILURES</key>
+    <string>${CODEX_ALLOW_KNOWN_BASELINE_FAILURES:-0}</string>
   </dict>
 </dict>
 </plist>

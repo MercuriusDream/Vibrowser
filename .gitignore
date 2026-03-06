@@ -109,7 +109,9 @@ _bmad-output/
 !.codex/orchestrator/start-full-autonomy-fast.zsh
 !.codex/orchestrator/detect-writer.sh
 !.codex/orchestrator/resume-live.sh
+!.codex/orchestrator/resume-unattended-full-cicd.sh
 !.codex/orchestrator/safe-restart.sh
+!.codex/orchestrator/known-baseline-failures.txt
 !.codex/orchestrator/ultra-long-horizon-workload-map.md
 !.codex/orchestrator/phase16-master-checklist.md
 !.codex/orchestrator/schemas/

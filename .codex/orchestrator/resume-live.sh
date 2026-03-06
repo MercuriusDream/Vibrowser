@@ -34,6 +34,18 @@ export CODEX_ESTATE_SUBAGENT_REASONING="${CODEX_ESTATE_SUBAGENT_REASONING:-mediu
 export CODEX_ESTATE_SUBAGENT_FAST_FLAG="${CODEX_ESTATE_SUBAGENT_FAST_FLAG:-1}"
 export CODEX_ESTATE_WORKERS="${CODEX_ESTATE_WORKERS:-6}"
 
+if command -v tmux >/dev/null 2>&1; then
+  tmux kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+  tmux list-sessions 2>/dev/null | awk -F: -v prefix="${TMUX_SESSION}-" '$1 ~ "^" prefix {print $1}' | while read -r name; do
+    tmux kill-session -t "$name" 2>/dev/null || true
+  done
+fi
+
+pkill -f 'codex/orchestrator/supervisor\.sh' >/dev/null 2>&1 || true
+pkill -f 'codex/orchestrator/watch-role\.sh' >/dev/null 2>&1 || true
+pkill -f 'codex/orchestrator/watch-state\.sh' >/dev/null 2>&1 || true
+pkill -f 'codex/orchestrator/worker\.sh' >/dev/null 2>&1 || true
+
 if [[ -f "$STOP_FILE" ]]; then
   rm -f "$STOP_FILE"
 fi
@@ -54,15 +66,8 @@ Resuming Codex Estate live session:
   current cycle   : $(jq -r '.cycle // 0' "$CURRENT_STATE_FILE" 2>/dev/null || echo 0)
   next cycle      : $(( $(jq -r '.cycle // 0' "$CURRENT_STATE_FILE" 2>/dev/null || echo 0) + 1 ))
   launchd writer  : $([[ $KEEP_LAUNCHD -eq 1 ]] && echo "kept" || echo "unloaded")
+  stale writers   : cleaned
 EOF
-
-if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-  echo "Attaching to existing tmux session: $TMUX_SESSION"
-  if [[ $NO_ATTACH -eq 1 ]]; then
-    exit 0
-  fi
-  exec tmux attach -t "$TMUX_SESSION"
-fi
 
 if [[ $NO_ATTACH -eq 1 ]]; then
   exec bash "$SCRIPT_DIR/tmux-launch.sh" --no-attach

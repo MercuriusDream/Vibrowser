@@ -20,6 +20,7 @@
 - Stop file: `.claude/.claude-estate-stop`
 - Fast launcher: `.codex/orchestrator/start-full-autonomy-fast.sh`
 - zsh fast launcher: `.codex/orchestrator/start-full-autonomy-fast.zsh`
+- Single-command resume + live monitor: `.codex/orchestrator/resume-live.sh`
 - Human live view: `.codex/orchestrator/tmux-launch.sh`
 - Active writer detection: `.codex/orchestrator/detect-writer.sh`
 - Safe restart playbook: `.codex/orchestrator/safe-restart.sh`
