@@ -4,7 +4,306 @@
 #include <clever/js/js_window.h>
 #include <clever/html/tree_builder.h>
 #include <gtest/gtest.h>
+
+extern "C" {
+#include <quickjs.h>
+}
+
+#include <CommonCrypto/CommonDigest.h>
+#include <arpa/inet.h>
+#include <array>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <netinet/in.h>
 #include <string>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
+#include <vector>
+
+namespace {
+
+static const char kBase64Chars[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::string base64_encode_bytes(const uint8_t* data, size_t size) {
+    std::string output;
+    output.reserve(((size + 2) / 3) * 4);
+
+    unsigned int value = 0;
+    int bits = -6;
+    for (size_t i = 0; i < size; ++i) {
+        value = (value << 8) + data[i];
+        bits += 8;
+        while (bits >= 0) {
+            output.push_back(kBase64Chars[(value >> bits) & 0x3F]);
+            bits -= 6;
+        }
+    }
+    if (bits > -6) {
+        output.push_back(kBase64Chars[((value << 8) >> (bits + 8)) & 0x3F]);
+    }
+    while (output.size() % 4 != 0) {
+        output.push_back('=');
+    }
+    return output;
+}
+
+std::string websocket_accept_from_request(const std::string& request) {
+    static constexpr std::string_view kHeader = "Sec-WebSocket-Key:";
+    const size_t key_start = request.find(kHeader);
+    if (key_start == std::string::npos) {
+        return {};
+    }
+    size_t value_start = key_start + kHeader.size();
+    while (value_start < request.size() &&
+           (request[value_start] == ' ' || request[value_start] == '\t')) {
+        ++value_start;
+    }
+    const size_t value_end = request.find("\r\n", value_start);
+    if (value_end == std::string::npos || value_end <= value_start) {
+        return {};
+    }
+
+    std::string key = request.substr(value_start, value_end - value_start);
+    key += "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    std::array<uint8_t, CC_SHA1_DIGEST_LENGTH> digest {};
+    CC_SHA1(reinterpret_cast<const unsigned char*>(key.data()),
+            static_cast<CC_LONG>(key.size()),
+            digest.data());
+    return base64_encode_bytes(digest.data(), digest.size());
+}
+
+class ScopedWebSocketTestServer {
+public:
+    ScopedWebSocketTestServer() {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, 1) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~ScopedWebSocketTestServer() {
+        if (listen_fd_ >= 0) {
+            ::shutdown(listen_fd_, SHUT_RDWR);
+            ::close(listen_fd_);
+        }
+        if (client_fd_ >= 0) {
+            ::shutdown(client_fd_, SHUT_RDWR);
+            ::close(client_fd_);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+    bool wait_until_open(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(state_mutex_);
+        return state_cv_.wait_for(lock, timeout, [this] { return handshake_complete_; });
+    }
+
+private:
+    void run() {
+        int accepted_fd = ::accept(listen_fd_, nullptr, nullptr);
+        if (accepted_fd < 0) {
+            return;
+        }
+        client_fd_ = accepted_fd;
+
+        std::string request;
+        char buffer[1024];
+        while (request.find("\r\n\r\n") == std::string::npos) {
+            ssize_t n = ::recv(client_fd_, buffer, sizeof(buffer), 0);
+            if (n <= 0) {
+                return;
+            }
+            request.append(buffer, static_cast<size_t>(n));
+        }
+
+        const std::string accept = websocket_accept_from_request(request);
+        if (accept.empty()) {
+            return;
+        }
+
+        const std::string handshake_response =
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: " + accept + "\r\n"
+            "\r\n";
+        if (::send(client_fd_, handshake_response.data(), handshake_response.size(), 0) < 0) {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            handshake_complete_ = true;
+        }
+        state_cv_.notify_all();
+
+        while (true) {
+            ssize_t n = ::recv(client_fd_, buffer, sizeof(buffer), 0);
+            if (n <= 0) {
+                break;
+            }
+        }
+    }
+
+    int listen_fd_ = -1;
+    int client_fd_ = -1;
+    uint16_t port_ = 0;
+    std::thread server_thread_;
+    std::mutex state_mutex_;
+    std::condition_variable state_cv_;
+    bool handshake_complete_ = false;
+};
+
+class ScopedHttpResponseServer {
+public:
+    explicit ScopedHttpResponseServer(std::vector<std::string> responses)
+        : responses_(std::move(responses)) {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, static_cast<int>(responses_.size())) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~ScopedHttpResponseServer() {
+        if (listen_fd_ >= 0) {
+            ::shutdown(listen_fd_, SHUT_RDWR);
+            ::close(listen_fd_);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+private:
+    void run() {
+        for (const auto& response : responses_) {
+            int client_fd = ::accept(listen_fd_, nullptr, nullptr);
+            if (client_fd < 0) {
+                return;
+            }
+
+            std::string request;
+            char buffer[1024];
+            while (request.find("\r\n\r\n") == std::string::npos) {
+                ssize_t n = ::recv(client_fd, buffer, sizeof(buffer), 0);
+                if (n <= 0) {
+                    ::close(client_fd);
+                    return;
+                }
+                request.append(buffer, static_cast<size_t>(n));
+            }
+
+            size_t total_sent = 0;
+            while (total_sent < response.size()) {
+                ssize_t sent = ::send(client_fd,
+                                      response.data() + total_sent,
+                                      response.size() - total_sent,
+                                      0);
+                if (sent <= 0) {
+                    break;
+                }
+                total_sent += static_cast<size_t>(sent);
+            }
+
+            ::shutdown(client_fd, SHUT_RDWR);
+            ::close(client_fd);
+        }
+    }
+
+    int listen_fd_ = -1;
+    uint16_t port_ = 0;
+    std::thread server_thread_;
+    std::vector<std::string> responses_;
+};
+
+JSValue js_advance_host_timers(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
+    int delay_ms = 0;
+    if (argc >= 1) {
+        JS_ToInt32(ctx, &delay_ms, argv[0]);
+    }
+    return JS_NewInt32(ctx, clever::js::flush_ready_timers(ctx, delay_ms));
+}
+
+void install_js_timer_test_helpers(JSContext* ctx) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(
+        ctx,
+        global,
+        "__advanceHostTimers",
+        JS_NewCFunction(ctx, js_advance_host_timers, "__advanceHostTimers", 1));
+    JS_FreeValue(ctx, global);
+}
+
+} // namespace
 
 // ============================================================================
 // 1. JSEngine basic initialization and destruction
@@ -1353,6 +1652,59 @@ TEST(JSTimers, IntervalSchedulingStaysAlignedAfterCoarseAdvance) {
     clever::js::cleanup_timers(engine.context());
 }
 
+TEST(JSTimers, IntervalAvoidsCallbackDrift) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    install_js_timer_test_helpers(engine.context());
+    engine.evaluate(R"(
+        var ticks = [];
+        var id = setInterval(function() {
+            ticks.push(ticks.length + 1);
+            if (ticks.length === 1) {
+                __advanceHostTimers(35);
+            }
+            if (ticks.length === 2) {
+                clearInterval(id);
+            }
+        }, 10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 10), 1);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 4), 0);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 1), 1);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1,2");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
+TEST(JSTimers, ClearedIntervalDoesNotRescheduleAfterCallback) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    install_js_timer_test_helpers(engine.context());
+    engine.evaluate(R"(
+        var ticks = 0;
+        var id = setInterval(function() {
+            ticks = ticks + 1;
+            clearInterval(id);
+            __advanceHostTimers(100);
+        }, 10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 10), 1);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 100), 0);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
 TEST(JSTimers, ClearIntervalWorks) {
     clever::js::JSEngine engine;
     clever::js::install_timer_bindings(engine.context());
@@ -1935,6 +2287,50 @@ TEST(JSWebSocket, CloseOnClosedSocketIsNoop) {
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3"); // CLOSED
+}
+
+TEST(JSWebSocket, ClosePathStopsReceiveThreadWithoutSleepPollingV2064) {
+    ScopedWebSocketTestServer server;
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto create_result = engine.evaluate((std::string(R"(
+        (() => {
+            globalThis.__v2064ws = new WebSocket('ws://127.0.0.1:)")
+        + std::to_string(server.port())
+        + R"(/test');
+            return 'created';
+        })()
+    )"));
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(create_result, "created");
+    ASSERT_TRUE(server.wait_until_open(std::chrono::milliseconds(500)));
+
+    auto started = std::chrono::steady_clock::now();
+    auto result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2064ws.close(1000, 'done');
+            return globalThis.__v2064ws.readyState;
+        })()
+    )");
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started);
+
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+    EXPECT_LT(elapsed_ms.count(), 250);
+
+    auto cleanup_result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2064ws = undefined;
+            return 'cleared';
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(cleanup_result, "cleared");
+    JS_RunGC(engine.runtime());
 }
 
 TEST(JSWebSocket, EventHandlerGetterSetterOnopen) {
@@ -3228,6 +3624,147 @@ TEST(JSDom, MutationObserverStub) {
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(no_throw, "true");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverFlushesAtCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto inline_order = engine.evaluate(R"(
+        globalThis.moOrder = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moOrder.push('observer:' + records.length);
+        });
+        observer.observe(target, { attributes: true, childList: true });
+
+        target.setAttribute('data-step', '1');
+        moOrder.push('after-set-attr');
+        target.appendChild(document.createElement('span'));
+        moOrder.push('after-append');
+
+        moOrder.join(',')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_order, "after-set-attr,after-append");
+
+    auto checkpoint_order = engine.evaluate("moOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(checkpoint_order, "after-set-attr,after-append,observer:2");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverBatchesSynchronousMutations) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.moBatches = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moBatches.push(records.map(function(record) {
+                return record.type + ':' + record.attributeName;
+            }).join(','));
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-first', '1');
+        target.setAttribute('data-second', '2');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto batch_count = engine.evaluate("String(moBatches.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_count, "1");
+
+    auto batch_records = engine.evaluate("moBatches[0]");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_records, "attributes:data-first,attributes:data-second");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverAttributeOldValueAndTakeRecordsV2066) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto result = engine.evaluate(R"(
+        var target = document.getElementById('target');
+        var callbackCount = 0;
+        var observer = new MutationObserver(function() {
+            callbackCount++;
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-empty', '');
+        target.setAttribute('data-empty', 'filled');
+        var noOldValue = observer.takeRecords().map(function(record) {
+            return record.attributeName + ':' + String(record.oldValue);
+        }).join('|');
+
+        observer.observe(target, { attributes: true, attributeOldValue: true });
+        target.setAttribute('data-empty', '');
+        target.setAttribute('data-empty', 'filled-again');
+        var withOldValue = observer.takeRecords().map(function(record) {
+            return record.attributeName + ':' + (record.oldValue === null ? '<null>' : '[' + record.oldValue + ']');
+        }).join('|');
+
+        target.setAttribute('data-stale', 'queued');
+        observer.disconnect();
+        var afterDisconnect = observer.takeRecords().length;
+
+        [noOldValue, withOldValue, String(afterDisconnect), String(callbackCount)].join('||');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "data-empty:null|data-empty:null||data-empty:[filled]|data-empty:[]||0||0");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverCharacterDataOldValueRespectsOptionsV2066) {
+    auto doc = clever::html::parse("<html><body><div id='target'>before</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto result = engine.evaluate(R"(
+        var text = document.getElementById('target').firstChild;
+        var callbackCount = 0;
+        var observer = new MutationObserver(function() {
+            callbackCount++;
+        });
+        observer.observe(text, { characterData: true });
+
+        text.textContent = 'after-no-old';
+        var withoutOldValue = observer.takeRecords().map(function(record) {
+            return record.type + ':' + String(record.oldValue);
+        }).join('|');
+
+        observer.observe(text, { characterData: true, characterDataOldValue: true });
+        text.textContent = 'after-with-old';
+        var withOldValue = observer.takeRecords().map(function(record) {
+            return record.type + ':' + (record.oldValue === null ? '<null>' : '[' + record.oldValue + ']');
+        }).join('|');
+
+        text.textContent = 'queued-then-drained';
+        var drained = observer.takeRecords().map(function(record) {
+            return record.oldValue === null ? '<null>' : '[' + record.oldValue + ']';
+        }).join('|');
+        var afterDrain = observer.takeRecords().length;
+
+        [withoutOldValue, withOldValue, drained, String(afterDrain), String(callbackCount)].join('||');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "characterData:null||characterData:[after-no-old]||[after-with-old]||0||0");
 
     clever::js::cleanup_dom_bindings(engine.context());
 }
@@ -4563,6 +5100,104 @@ TEST(JSEventPropagation, ComposedPathReturnsAncestorChain) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, EventObjectMethodsStillWorkWithoutPerDispatchEvalV2062) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='parent'><button id='child'>x</button></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        var eventLog = '';
+        var parent = document.getElementById('parent');
+        var child = document.getElementById('child');
+
+        child.addEventListener('click', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.push('mutated');
+            var secondPath = e.composedPath();
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            eventLog = [
+                e.defaultPrevented,
+                e.__stopped,
+                e.__immediate_stopped,
+                firstPath.length === secondPath.length + 1,
+                secondPath.length >= 4,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'child',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent'
+            ].join('|');
+        });
+
+        child.addEventListener('click', function() {
+            eventLog += '|unexpected-second-listener';
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* child_node = find_node_by_id(doc.get(), "child");
+    ASSERT_NE(child_node, nullptr);
+
+    bool prevented = clever::js::dispatch_event(engine.context(), child_node, "click");
+    EXPECT_TRUE(prevented);
+    EXPECT_EQ(engine.evaluate("eventLog"), "true|true|true|true|true|true|true");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MouseEventObjectMethodsStillWorkWithoutPerDispatchEvalV2062) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='parent'><button id='child'>x</button></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        var mouseLog = '';
+        var parent = document.getElementById('parent');
+        var child = document.getElementById('child');
+
+        child.addEventListener('mousedown', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.pop();
+            var secondPath = e.composedPath();
+            e.stopPropagation();
+            e.preventDefault();
+            mouseLog = [
+                e.getModifierState('Control'),
+                e.getModifierState('Shift'),
+                e.getModifierState('Alt'),
+                e.getModifierState('Meta'),
+                e.getModifierState('CapsLock'),
+                e.defaultPrevented,
+                e.__stopped,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'child',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent',
+                e.clientX,
+                e.clientY,
+                secondPath.length >= 4
+            ].join('|');
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* child_node = find_node_by_id(doc.get(), "child");
+    ASSERT_NE(child_node, nullptr);
+
+    bool prevented = clever::js::dispatch_mouse_event(
+        engine.context(), child_node, "mousedown",
+        12.0, 34.0, 56.0, 78.0,
+        1, 1,
+        true, false, true, false,
+        2);
+    EXPECT_TRUE(prevented);
+    EXPECT_EQ(engine.evaluate("mouseLog"), "true|false|true|false|false|true|true|true|true|12|34|true");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // Test: addEventListener with options object {capture: true}
 TEST(JSEventPropagation, AddEventListenerWithOptionsObject) {
     auto doc = clever::html::parse(
@@ -5455,6 +6090,113 @@ TEST(JSWorker, DISABLED_MultipleWorkersCoexist) {
     EXPECT_EQ(result, "11,110");
 }
 
+TEST(JSWorker, MessagePumpDeliversQueuedMessages) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerResult = e.data; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    std::this_thread::sleep_for(20ms);
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, MessagePumpDoesNotWaitForPollingSliceV2065) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerResult = e.data; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    const auto deadline = std::chrono::steady_clock::now() + 80ms;
+    std::string delivered = "pending";
+    while (std::chrono::steady_clock::now() < deadline) {
+        engine.evaluate("0");
+        ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+        delivered = engine.evaluate("__workerResult");
+        ASSERT_FALSE(engine.has_error()) << engine.last_error();
+        if (delivered == "echo:hello") {
+            break;
+        }
+
+        std::this_thread::sleep_for(1ms);
+    }
+
+    EXPECT_EQ(delivered, "echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, MessagePumpDeliversWorkerError) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerError = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function() { throw new Error("boom from worker"); }');
+        __worker.onerror = function(e) { __workerError = e.message; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerError;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    std::this_thread::sleep_for(20ms);
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerError");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "boom from worker");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
 // ============================================================================
 // Cycle 220: Modern DOM Manipulation Methods
 // ============================================================================
@@ -5905,6 +6647,90 @@ TEST(JSDom, KeyboardEventConstructor) {
         "})()");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result2, "|0|false");
+
+    auto doc_with_input = clever::html::parse(
+        "<html><body><div id='parent'><input id='field'></div></body></html>");
+    ASSERT_NE(doc_with_input, nullptr);
+
+    clever::js::cleanup_dom_bindings(engine.context());
+    clever::js::install_dom_bindings(engine.context(), doc_with_input.get());
+
+    engine.evaluate(R"(
+        var keyboardDispatchLog = [];
+        var keyboardBubbleLog = [];
+        var parent = document.getElementById('parent');
+        var field = document.getElementById('field');
+
+        parent.addEventListener('keydown', function(e) {
+            keyboardBubbleLog.push(e.type + ':' + e.key);
+        });
+
+        field.addEventListener('keydown', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.pop();
+            var secondPath = e.composedPath();
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            keyboardDispatchLog.push([
+                e.key,
+                e.code,
+                e.keyCode,
+                e.charCode,
+                e.which,
+                e.location,
+                e.repeat,
+                e.isComposing,
+                e.getModifierState('Control'),
+                e.getModifierState('Shift'),
+                e.getModifierState('Alt'),
+                e.getModifierState('Meta'),
+                e.getModifierState('CapsLock'),
+                e.defaultPrevented,
+                e.__stopped,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'field',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent',
+                secondPath.length >= 4,
+                firstPath.length + 1 === secondPath.length
+            ].join('|'));
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* field_node = find_node_by_id(doc_with_input.get(), "field");
+    ASSERT_NE(field_node, nullptr);
+
+    clever::js::KeyboardEventInit enter_init;
+    enter_init.key = "Enter";
+    enter_init.code = "Enter";
+    enter_init.key_code = 13;
+    enter_init.char_code = 13;
+    enter_init.location = 1;
+    enter_init.ctrl_key = true;
+    enter_init.repeat = true;
+    bool enter_prevented = clever::js::dispatch_keyboard_event(
+        engine.context(), field_node, "keydown", enter_init);
+    EXPECT_TRUE(enter_prevented);
+
+    clever::js::KeyboardEventInit letter_init;
+    letter_init.key = "a";
+    letter_init.code = "KeyA";
+    letter_init.key_code = 65;
+    letter_init.char_code = 97;
+    letter_init.location = 0;
+    letter_init.alt_key = true;
+    letter_init.meta_key = true;
+    letter_init.is_composing = true;
+    bool letter_prevented = clever::js::dispatch_keyboard_event(
+        engine.context(), field_node, "keydown", letter_init);
+    EXPECT_FALSE(letter_prevented);
+
+    EXPECT_EQ(
+        engine.evaluate("keyboardDispatchLog.join(';')"),
+        "Enter|Enter|13|13|13|1|true|false|true|false|false|false|false|true|true|true|true|true|true;"
+        "a|KeyA|65|97|65|0|false|true|false|false|true|true|false|false|false|true|true|true|true");
+    EXPECT_EQ(engine.evaluate("keyboardBubbleLog.join(';')"), "keydown:a");
 
     clever::js::cleanup_dom_bindings(engine.context());
 }
@@ -8898,6 +9724,98 @@ TEST(JSFetch, ResponseBlobTextRoundTrip) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSFetch, ResponseArrayBufferReturnsBodyBytesV2068) {
+    const char raw_body_bytes[] = {0x00, 0x7f, static_cast<char>(0x80),
+                                   static_cast<char>(0xff), 'A', 'B', 'C'};
+    const std::string body_bytes(raw_body_bytes, sizeof(raw_body_bytes));
+    const std::string redirect_response =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: /final\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+    const std::string final_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "Content-Length: 7\r\n"
+        "Connection: close\r\n"
+        "\r\n" + body_bytes;
+
+    ScopedHttpResponseServer server({redirect_response, final_response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var bytesResult = 'pending';
+        var redirectedResult = false;
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/start')
+            .then(function(resp) {
+                redirectedResult = resp.redirected;
+                return resp.arrayBuffer();
+            })
+            .then(function(buf) {
+                bytesResult = Array.from(new Uint8Array(buf)).join(',');
+            })
+            .catch(function(err) {
+                bytesResult = err.message || String(err);
+            });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto bytes = engine.evaluate("bytesResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(bytes, "0,127,128,255,65,66,67");
+
+    auto redirected = engine.evaluate("String(redirectedResult)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(redirected, "true");
+}
+
+TEST(JSFetch, ResponseArrayBufferEmptyBodyStaysEmptyV2068) {
+    const std::string empty_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    ScopedHttpResponseServer server({empty_response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var byteLengthResult = -1;
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/empty')
+            .then(function(resp) {
+                return resp.arrayBuffer();
+            })
+            .then(function(buf) {
+                byteLengthResult = buf.byteLength;
+            })
+            .catch(function(err) {
+                byteLengthResult = err.message || String(err);
+            });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("String(byteLengthResult)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0");
+}
+
 // ============================================================================
 // Web API: HTMLCanvasElement.toDataURL() / toBlob()
 // ============================================================================
@@ -11194,6 +12112,75 @@ TEST(JSDom, ImageConstructor) {
         // decode() returns Promise
         checks.push(typeof img.decode === 'function');
         String(checks.every(function(c){return c;}));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, HTMLDialogElementCloseDispatchesEventV2067) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var dialog = document.createElement('dialog');
+        document.body.appendChild(dialog);
+        var events = [];
+        dialog.returnValue = 'seed';
+        dialog.addEventListener('close', function(event) {
+            events.push(event.type + ':' + String(dialog.open) + ':' + dialog.returnValue);
+        });
+        dialog.showModal();
+        var openBeforeClose = dialog.open;
+        dialog.close('done');
+        String(
+            openBeforeClose === true &&
+            dialog.open === false &&
+            dialog.returnValue === 'done' &&
+            events.length === 1 &&
+            events[0] === 'close:false:done'
+        )
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, HTMLDialogElementRepeatedCloseIsStableV2067) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var dialog = document.createElement('dialog');
+        document.body.appendChild(dialog);
+        var closeCount = 0;
+        dialog.addEventListener('close', function() { closeCount++; });
+        dialog.returnValue = 'initial';
+
+        dialog.showModal();
+        dialog.close('first-close');
+        var afterFirstClose = closeCount === 1 &&
+            dialog.open === false &&
+            dialog.returnValue === 'first-close';
+
+        dialog.close();
+        var afterRepeatedClose = closeCount === 1 &&
+            dialog.open === false &&
+            dialog.returnValue === 'first-close';
+
+        dialog.showModal();
+        var persistedAcrossShowModal = dialog.open === true &&
+            dialog.returnValue === 'first-close';
+        dialog.close();
+
+        String(
+            afterFirstClose &&
+            afterRepeatedClose &&
+            persistedAcrossShowModal &&
+            closeCount === 2 &&
+            dialog.open === false &&
+            dialog.returnValue === 'first-close'
+        )
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");

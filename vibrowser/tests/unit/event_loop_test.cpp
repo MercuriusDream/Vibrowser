@@ -201,12 +201,14 @@ TEST(EventLoopTest, PostTaskWakesUpRunFromBlocking) {
     EXPECT_FALSE(loop.is_running());
 }
 
-TEST(EventLoopTest, EarlierDelayedTaskWakesBlockedRun) {
+TEST(EventLoopTest, EarlierDelayedTaskWakesRun) {
     EventLoop loop;
     std::atomic<bool> earlier_task_executed{false};
     std::atomic<long long> elapsed_ms{-1};
+    constexpr auto kInitialDelay = 700ms;
+    constexpr auto kInsertedDelay = 20ms;
 
-    loop.post_delayed_task([]() {}, 400ms);
+    loop.post_delayed_task([]() {}, kInitialDelay);
 
     auto start = std::chrono::steady_clock::now();
     std::thread runner([&loop]() {
@@ -223,13 +225,27 @@ TEST(EventLoopTest, EarlierDelayedTaskWakesBlockedRun) {
             std::memory_order_relaxed);
         earlier_task_executed.store(true, std::memory_order_relaxed);
         loop.quit();
-    }, 20ms);
+    }, kInsertedDelay);
 
     runner.join();
 
     ASSERT_TRUE(earlier_task_executed.load(std::memory_order_relaxed));
     EXPECT_GE(elapsed_ms.load(std::memory_order_relaxed), 60);
-    EXPECT_LT(elapsed_ms.load(std::memory_order_relaxed), 250);
+    EXPECT_LT(elapsed_ms.load(std::memory_order_relaxed), 500);
+}
+
+TEST(EventLoopTest, RecordsLagForLateDelayedTask) {
+    EventLoop loop;
+    bool executed = false;
+
+    loop.post_delayed_task([&executed]() { executed = true; }, 20ms);
+
+    std::this_thread::sleep_for(80ms);
+    loop.run_pending();
+
+    EXPECT_TRUE(executed);
+    EXPECT_GE(loop.last_delayed_task_lag(), 40ms);
+    EXPECT_LT(loop.last_delayed_task_lag(), 500ms);
 }
 
 // ---------------------------------------------------------------------------

@@ -212,6 +212,22 @@ TEST(SerializerTest, RoundTripBytesWithData) {
     EXPECT_FALSE(d.has_remaining());
 }
 
+TEST(SerializerTest, WriteStringRejectsOversizedPayloadV2062) {
+    Serializer s;
+    const char dummy = 'x';
+    std::string_view oversized(&dummy, clever::ipc::kMaxSerializedPayloadBytes + 1);
+
+    EXPECT_THROW(s.write_string(oversized), std::runtime_error);
+}
+
+TEST(SerializerTest, ReadBytesRejectsOversizedLengthPrefixV2062) {
+    Serializer s;
+    s.write_u32(static_cast<uint32_t>(clever::ipc::kMaxSerializedPayloadBytes + 1));
+
+    Deserializer d(s.data());
+    EXPECT_THROW(d.read_bytes(), std::runtime_error);
+}
+
 // ------------------------------------------------------------------
 // 7. Multiple values in sequence
 // ------------------------------------------------------------------

@@ -91,8 +91,10 @@ thread_local std::unordered_map<std::string, std::vector<std::string>> collected
 thread_local bool g_transition_runtime_enabled = false;
 thread_local std::unique_ptr<AnimationController> g_transition_animation_controller;
 thread_local std::unordered_map<std::string, clever::css::ComputedStyle> g_previous_styles_by_key;
+thread_local std::unordered_map<std::string, clever::css::ComputedStyle> g_prior_styles_snapshot_by_key;
 thread_local std::unordered_map<std::string, clever::layout::LayoutNode*> g_current_layout_nodes_by_key;
 thread_local std::unordered_set<std::string> g_current_style_keys;
+thread_local std::unordered_map<std::string, std::pair<float, float>> g_previous_resolved_sizes_by_key;
 thread_local std::unordered_map<std::string, std::unique_ptr<clever::layout::LayoutNode>> g_transition_runtime_nodes;
 thread_local std::unordered_map<clever::layout::LayoutNode*, std::string> g_transition_runtime_node_to_key;
 thread_local bool g_transition_has_last_tick = false;
@@ -563,6 +565,14 @@ void prune_transition_runtime_state() {
         }
     }
 
+    for (auto it = g_previous_resolved_sizes_by_key.begin(); it != g_previous_resolved_sizes_by_key.end();) {
+        if (g_current_style_keys.find(it->first) == g_current_style_keys.end()) {
+            it = g_previous_resolved_sizes_by_key.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     for (auto it = g_transition_runtime_nodes.begin(); it != g_transition_runtime_nodes.end();) {
         if (g_current_style_keys.find(it->first) == g_current_style_keys.end()) {
             auto* runtime_node = it->second.get();
@@ -583,6 +593,31 @@ bool render_has_active_animations() {
     if (!g_transition_animation_controller) return false;
     for (const auto& kv : g_transition_runtime_node_to_key) {
         if (g_transition_animation_controller->is_animating(kv.first)) return true;
+    }
+    return false;
+}
+
+bool style_uses_intrinsic_size_keyword(const clever::css::ComputedStyle& style,
+                                       const std::string& property) {
+    if (property == "width") return style.width_keyword != 0;
+    if (property == "height") return style.height_keyword != 0;
+    return false;
+}
+
+bool can_interpolate_intrinsic_size_transition(const clever::css::ComputedStyle& old_style,
+                                               const clever::css::ComputedStyle& new_style,
+                                               const std::string& property) {
+    if (new_style.interpolate_size != 1) return false;
+
+    const bool old_is_keyword = style_uses_intrinsic_size_keyword(old_style, property);
+    const bool new_is_keyword = style_uses_intrinsic_size_keyword(new_style, property);
+    if (old_is_keyword == new_is_keyword) return false;
+
+    if (property == "width") {
+        return old_is_keyword ? !new_style.width.is_auto() : !old_style.width.is_auto();
+    }
+    if (property == "height") {
+        return old_is_keyword ? !new_style.height.is_auto() : !old_style.height.is_auto();
     }
     return false;
 }
@@ -2209,7 +2244,34 @@ struct StyleDecl {
     std::string value;
 };
 
-std::vector<StyleDecl> parse_inline_style(const std::string& style_str) {
+thread_local std::unordered_map<std::string, std::vector<StyleDecl>> g_inline_style_cache;
+thread_local uint64_t g_inline_style_cache_hits = 0;
+thread_local uint64_t g_inline_style_cache_misses = 0;
+
+std::string canonicalize_inline_style_cache_key(const std::string& style_str) {
+    std::string key;
+    std::istringstream iss(style_str);
+    std::string token;
+    while (std::getline(iss, token, ';')) {
+        auto colon = token.find(':');
+        if (colon == std::string::npos) continue;
+        std::string prop = trim(to_lower(token.substr(0, colon)));
+        std::string val = trim(token.substr(colon + 1));
+        auto imp = val.find("!important");
+        if (imp == std::string::npos) imp = val.find("! important");
+        if (imp != std::string::npos) {
+            val = trim(val.substr(0, imp));
+        }
+        if (prop.empty() || val.empty()) continue;
+        key += prop;
+        key += ':';
+        key += val;
+        key += ';';
+    }
+    return key;
+}
+
+std::vector<StyleDecl> parse_inline_style_uncached(const std::string& style_str) {
     std::vector<StyleDecl> decls;
     std::istringstream iss(style_str);
     std::string token;
@@ -2231,6 +2293,20 @@ std::vector<StyleDecl> parse_inline_style(const std::string& style_str) {
         }
     }
     return decls;
+}
+
+const std::vector<StyleDecl>& parse_inline_style(const std::string& style_str) {
+    const std::string cache_key = canonicalize_inline_style_cache_key(style_str);
+    auto it = g_inline_style_cache.find(cache_key);
+    if (it != g_inline_style_cache.end()) {
+        ++g_inline_style_cache_hits;
+        return it->second;
+    }
+
+    ++g_inline_style_cache_misses;
+    auto [inserted_it, _] =
+        g_inline_style_cache.emplace(cache_key, parse_inline_style_uncached(style_str));
+    return inserted_it->second;
 }
 
 // Parse linear-gradient() into angle and color stops
@@ -2599,13 +2675,14 @@ static std::string resolve_css_var(const std::string& val, const clever::css::Co
 
 void apply_inline_style(clever::css::ComputedStyle& style, const std::string& style_attr,
                         const clever::css::ComputedStyle* parent_style = nullptr) {
-    auto decls = parse_inline_style(style_attr);
+    const auto& decls = parse_inline_style(style_attr);
     // Default parent for inherit: use a default-constructed style if no parent provided
     clever::css::ComputedStyle default_parent;
     default_parent.z_index = clever::layout::Z_INDEX_AUTO;
     const auto& parent = parent_style ? *parent_style : default_parent;
 
-    for (auto& d : decls) {
+    for (const auto& decl : decls) {
+        auto d = decl;
         // Store custom properties (--foo: value)
         if (d.property.size() > 2 && d.property[0] == '-' && d.property[1] == '-') {
             style.custom_properties[d.property] = resolve_css_env(d.value);
@@ -7370,7 +7447,7 @@ std::optional<clever::net::Response> fetch_with_redirects(
 
         // Store cookies from response
         for (auto& cookie_val : response->headers.get_all("set-cookie")) {
-            jar.set_from_header(cookie_val, req.host);
+            jar.set_from_header(cookie_val, req.host, req.path);
         }
 
         if (response->status == 301 || response->status == 302 ||
@@ -7539,7 +7616,10 @@ static std::mutex s_image_cache_mutex;
 static std::unordered_map<std::string, DecodedImage> s_image_cache;
 static std::vector<std::string> s_image_cache_order;
 static size_t s_image_cache_bytes = 0;
-static constexpr size_t IMAGE_CACHE_MAX_BYTES = 64 * 1024 * 1024; // 64MB
+static constexpr size_t IMAGE_CACHE_DEFAULT_MAX_BYTES = 64 * 1024 * 1024; // 64MB
+static size_t s_image_cache_max_bytes = IMAGE_CACHE_DEFAULT_MAX_BYTES;
+static uint64_t s_image_cache_hits = 0;
+static uint64_t s_image_cache_misses = 0;
 
 // Internal helpers — callers must hold s_image_cache_mutex
 static void image_cache_remove_from_order_locked(const std::string& url) {
@@ -7550,7 +7630,7 @@ static void image_cache_remove_from_order_locked(const std::string& url) {
 }
 
 static void image_cache_evict_locked() {
-    while (s_image_cache_bytes > IMAGE_CACHE_MAX_BYTES && !s_image_cache_order.empty()) {
+    while (s_image_cache_bytes > s_image_cache_max_bytes && !s_image_cache_order.empty()) {
         const auto& oldest_url = s_image_cache_order.front();
         auto it = s_image_cache.find(oldest_url);
         if (it != s_image_cache.end()) {
@@ -7835,9 +7915,11 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
         std::lock_guard<std::mutex> lock(s_image_cache_mutex);
         auto cache_it = s_image_cache.find(url);
         if (cache_it != s_image_cache.end()) {
+            ++s_image_cache_hits;
             image_cache_touch(url);
             return cache_it->second;
         }
+        ++s_image_cache_misses;
     }
 
     // Handle data: URIs (e.g., data:image/png;base64,iVBOR...)
@@ -9257,8 +9339,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 g_transition_animation_controller = std::make_unique<AnimationController>();
             }
 
-            auto prev_it = g_previous_styles_by_key.find(style_key);
-            if (prev_it != g_previous_styles_by_key.end() && g_transition_animation_controller) {
+            auto prev_it = g_prior_styles_snapshot_by_key.find(style_key);
+            if (prev_it != g_prior_styles_snapshot_by_key.end() && g_transition_animation_controller) {
                 auto changed_properties = detect_changed_transition_properties(prev_it->second, style);
                 if (!changed_properties.empty()) {
                     auto* runtime_node = get_or_create_transition_runtime_node(style_key);
@@ -9297,12 +9379,20 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                                     style.color,
                                     transition_def);
                             } else if (property == "width") {
+                                if (style_uses_intrinsic_size_keyword(prev_it->second, property) ||
+                                    style_uses_intrinsic_size_keyword(style, property)) {
+                                    continue;
+                                }
                                 g_transition_animation_controller->start_transition(
                                     runtime_node, property,
                                     prev_it->second.width.to_px(),
                                     style.width.to_px(),
                                     transition_def);
                             } else if (property == "height") {
+                                if (style_uses_intrinsic_size_keyword(prev_it->second, property) ||
+                                    style_uses_intrinsic_size_keyword(style, property)) {
+                                    continue;
+                                }
                                 g_transition_animation_controller->start_transition(
                                     runtime_node, property,
                                     prev_it->second.height.to_px(),
@@ -9759,7 +9849,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             if (layout_node->specified_height < 0)
                 layout_node->specified_height = (attr_h > 0) ? attr_h : 150;
 
-            layout_node->background_color = 0xFFF0F0F0;
+            layout_node->background_color = 0xFFDDDDDD;
             layout_node->geometry.border = {1, 1, 1, 1};
             layout_node->border_color = 0xFFCCCCCC;
             layout_node->border_color_top = 0xFFCCCCCC;
@@ -9872,7 +9962,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     layout_node->specified_height = (attr_h > 0) ? attr_h : 150;
 
                 // Light gray background with 1px border (broken image style)
-                layout_node->background_color = 0xFFF0F0F0;
+                layout_node->background_color = 0xFFDDDDDD;
                 layout_node->geometry.border = {1, 1, 1, 1};
                 layout_node->border_color = 0xFFCCCCCC;
                 layout_node->border_color_top = 0xFFCCCCCC;
@@ -16882,6 +16972,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height, float dpr) {
     const float normalized_dpr = (std::isfinite(dpr) && dpr >= 0.1f) ? dpr : 1.0f;
     g_render_dpr = normalized_dpr;
+    g_inline_style_cache.clear();
     const int device_viewport_width = std::max(1, viewport_width);
     const int device_viewport_height = std::max(1, viewport_height);
     int layout_viewport_width = device_viewport_width;
@@ -17853,6 +17944,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             g_transition_animation_controller = std::make_unique<AnimationController>();
         }
         g_transition_runtime_enabled = true;
+        g_prior_styles_snapshot_by_key = g_previous_styles_by_key;
         g_current_layout_nodes_by_key.clear();
         g_current_style_keys.clear();
         // Set shadow roots map so build_layout_tree_styled can render Web Components
@@ -17913,6 +18005,58 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
         // Apply ruby annotation layout now that inline geometry is final.
         apply_ruby_layout_pass(*layout_root);
+
+        if (g_transition_animation_controller) {
+            std::unordered_map<std::string, std::pair<float, float>> current_resolved_sizes_by_key;
+            for (const auto& entry : g_current_layout_nodes_by_key) {
+                const auto& style_key = entry.first;
+                auto* target = entry.second;
+                if (!target) continue;
+
+                current_resolved_sizes_by_key[style_key] = {
+                    target->geometry.width,
+                    target->geometry.height
+                };
+
+                auto prev_style_it = g_prior_styles_snapshot_by_key.find(style_key);
+                auto new_style_it = g_previous_styles_by_key.find(style_key);
+                auto prev_size_it = g_previous_resolved_sizes_by_key.find(style_key);
+                if (prev_style_it == g_prior_styles_snapshot_by_key.end() ||
+                    new_style_it == g_previous_styles_by_key.end() ||
+                    prev_size_it == g_previous_resolved_sizes_by_key.end()) {
+                    continue;
+                }
+
+                auto* runtime_node = get_or_create_transition_runtime_node(style_key);
+                if (!runtime_node || g_transition_animation_controller->is_animating(runtime_node)) continue;
+
+                const auto& old_style = prev_style_it->second;
+                const auto& new_style = new_style_it->second;
+                const auto& old_size = prev_size_it->second;
+                const auto& new_size = current_resolved_sizes_by_key[style_key];
+
+                for (const std::string property : {"width", "height"}) {
+                    if (!can_interpolate_intrinsic_size_transition(old_style, new_style, property)) continue;
+
+                    auto transition_def_opt = transition_def_for_property(new_style, property);
+                    if (!transition_def_opt.has_value()) continue;
+                    const auto& transition_def = *transition_def_opt;
+                    if (transition_def.duration_ms <= 0.0f) continue;
+
+                    const float from = property == "width" ? old_size.first : old_size.second;
+                    const float to = property == "width" ? new_size.first : new_size.second;
+                    if (std::fabs(from - to) <= 1e-4f) continue;
+
+                    g_transition_animation_controller->start_transition(
+                        runtime_node,
+                        property,
+                        from,
+                        to,
+                        transition_def);
+                }
+            }
+            g_previous_resolved_sizes_by_key = std::move(current_resolved_sizes_by_key);
+        }
 
         // Step 4b: Detect overflow indicators and compute scroll content dimensions
         {
@@ -18033,7 +18177,11 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
                 auto* target = node_it->second;
                 if (update.has_float) {
-                    if (update.property_name == "opacity") {
+                    if (update.property_name == "width") {
+                        target->geometry.width = update.float_value;
+                    } else if (update.property_name == "height") {
+                        target->geometry.height = update.float_value;
+                    } else if (update.property_name == "opacity") {
                         target->opacity = std::clamp(update.float_value, 0.0f, 1.0f);
                     } else if (update.property_name == "font-size") {
                         target->font_size = update.float_value;
@@ -18325,6 +18473,60 @@ JSImageData fetch_image_for_js(const std::string& url) {
         out.height = img.height;
     }
     return out;
+}
+
+void reset_inline_style_cache_stats_for_testing() {
+    g_inline_style_cache.clear();
+    g_inline_style_cache_hits = 0;
+    g_inline_style_cache_misses = 0;
+}
+
+size_t inline_style_cache_size_for_testing() {
+    return g_inline_style_cache.size();
+}
+
+uint64_t inline_style_cache_hit_count_for_testing() {
+    return g_inline_style_cache_hits;
+}
+
+uint64_t inline_style_cache_miss_count_for_testing() {
+    return g_inline_style_cache_misses;
+}
+
+void reset_image_cache_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    s_image_cache.clear();
+    s_image_cache_order.clear();
+    s_image_cache_bytes = 0;
+    s_image_cache_max_bytes = IMAGE_CACHE_DEFAULT_MAX_BYTES;
+    s_image_cache_hits = 0;
+    s_image_cache_misses = 0;
+}
+
+void set_image_cache_max_bytes_for_testing(size_t max_bytes) {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    s_image_cache_max_bytes = max_bytes;
+    image_cache_evict_locked();
+}
+
+size_t image_cache_size_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    return s_image_cache.size();
+}
+
+size_t image_cache_bytes_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    return s_image_cache_bytes;
+}
+
+uint64_t image_cache_hit_count_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    return s_image_cache_hits;
+}
+
+uint64_t image_cache_miss_count_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    return s_image_cache_misses;
 }
 
 } // namespace clever::paint

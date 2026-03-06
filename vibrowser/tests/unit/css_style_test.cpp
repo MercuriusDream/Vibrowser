@@ -61,12 +61,14 @@ SimpleSelector make_id_sel(const std::string& id) {
 }
 
 SimpleSelector make_attr_sel(const std::string& attr_name, const std::string& attr_val,
-                             AttributeMatch match = AttributeMatch::Exact) {
+                             AttributeMatch match = AttributeMatch::Exact,
+                             std::string flag = {}) {
     SimpleSelector s;
     s.type = SimpleSelectorType::Attribute;
     s.attr_name = attr_name;
     s.attr_match = match;
     s.attr_value = attr_val;
+    s.argument = flag;
     return s;
 }
 
@@ -557,6 +559,32 @@ TEST(SelectorMatcherTest, AttributeSelectorParsesUnquotedNumericValue) {
     EXPECT_EQ(attr_sel.attr_value, "2");
 }
 
+TEST(SelectorMatcherTest, AttributeSelectorCaseInsensitiveFlagMatches) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "input";
+    elem.attributes = {{"type", "button"}};
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_attr_sel("type", "BUTTON", AttributeMatch::Exact, "i"));
+
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(compound)));
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorCaseSensitiveFlagDoesNotFold) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.attributes = {{"data-id", "abc"}};
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_attr_sel("data-id", "AbC", AttributeMatch::Exact, "s"));
+
+    EXPECT_FALSE(matcher.matches(elem, make_simple_complex(compound)));
+}
+
 // ===========================================================================
 // Test 24: PropertyCascade: single rule applied
 // ===========================================================================
@@ -757,6 +785,46 @@ TEST(StyleResolverTest, ResolveWithSingleStylesheet) {
     EXPECT_EQ(result.color.b, 0);
 }
 
+TEST(StyleResolverTest, PaintFunctionImageValueParsesV2068) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ".box { "
+        "background-image: paint(accent-chip, 12px, rgba(255, 0, 0, 0.5)); "
+        "background-repeat: no-repeat; "
+        "}");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("box");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_repeat, 3);
+    EXPECT_TRUE(style.bg_image_url.empty());
+    EXPECT_EQ(style.gradient_type, 0);
+    EXPECT_TRUE(style.gradient_stops.empty());
+}
+
+TEST(StyleResolverTest, PaintFunctionBackgroundFallsBackSafelyV2068) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ".box { background: paint(accent-chip, 12px, rgba(0, 0, 0, 0.25)) rgb(12, 34, 56); }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("box");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_color, (Color{12, 34, 56, 255}));
+    EXPECT_TRUE(style.bg_image_url.empty());
+    EXPECT_EQ(style.gradient_type, 0);
+}
+
 TEST(StyleResolverTest, SelectorListUsesHighestMatchingSpecificityForCascadeRanking) {
     const std::string css =
         "div, #hero { color: rgb(255, 0, 0); }"
@@ -775,6 +843,174 @@ TEST(StyleResolverTest, SelectorListUsesHighestMatchingSpecificityForCascadeRank
     auto style = resolver.resolve(elem, parent);
 
     EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, UsesPrecomputedSelectorSpecificity) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "div { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }");
+
+    ASSERT_EQ(sheet.rules.size(), 2u);
+    ASSERT_EQ(sheet.rules[0].selectors.selectors.size(), 1u);
+    ASSERT_EQ(sheet.rules[1].selectors.selectors.size(), 1u);
+
+    sheet.rules[0].selectors.selectors[0].precomputed_specificity = Specificity{2, 0, 0};
+    sheet.rules[1].selectors.selectors[0].precomputed_specificity = Specificity{0, 1, 0};
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorPrefilterKeepsCascadeResultsV2062) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ":where(.card) { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }"
+        "* { display: block; }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(style.display, Display::Block);
+}
+
+TEST(StyleResolverTest, RightmostSelectorPrefilterSkipsImpossibleClassRulesV2062) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+
+    StyleRule impossible_rule;
+    CompoundSelector impossible_compound;
+    impossible_compound.simple_selectors.push_back(make_type_sel("div"));
+    auto impossible_selector = make_simple_complex(impossible_compound);
+    impossible_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "missing"};
+    impossible_rule.selectors.selectors.push_back(impossible_selector);
+    impossible_rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    sheet.rules.push_back(impossible_rule);
+
+    StyleRule matching_rule;
+    CompoundSelector matching_compound;
+    matching_compound.simple_selectors.push_back(make_class_sel("card"));
+    auto matching_selector = make_simple_complex(matching_compound);
+    matching_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "card"};
+    matching_rule.selectors.selectors.push_back(matching_selector);
+    matching_rule.declarations.push_back(make_decl("display", "flex"));
+    sheet.rules.push_back(matching_rule);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, Color::black());
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsPreserveCascadeV2067) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "* { display: block; }"
+        "div { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }"
+        "#hero { color: rgb(0, 128, 0); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Block);
+    EXPECT_EQ(style.color, (Color{0, 128, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsSkipImpossibleRulesV2067) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+
+    StyleRule impossible_type_rule;
+    CompoundSelector impossible_type_compound;
+    impossible_type_compound.simple_selectors.push_back(make_type_sel("div"));
+    auto impossible_type_selector = make_simple_complex(impossible_type_compound);
+    impossible_type_selector.rightmost_match_key = {RightmostSelectorKeyType::Type, "span"};
+    impossible_type_rule.selectors.selectors.push_back(impossible_type_selector);
+    impossible_type_rule.declarations.push_back(make_decl("display", "grid"));
+    sheet.rules.push_back(impossible_type_rule);
+
+    StyleRule impossible_id_rule;
+    CompoundSelector impossible_id_compound;
+    impossible_id_compound.simple_selectors.push_back(make_id_sel("hero"));
+    auto impossible_id_selector = make_simple_complex(impossible_id_compound);
+    impossible_id_selector.rightmost_match_key = {RightmostSelectorKeyType::Id, "other"};
+    impossible_id_rule.selectors.selectors.push_back(impossible_id_selector);
+    impossible_id_rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    sheet.rules.push_back(impossible_id_rule);
+
+    StyleRule matching_class_rule;
+    CompoundSelector matching_class_compound;
+    matching_class_compound.simple_selectors.push_back(make_class_sel("card"));
+    auto matching_class_selector = make_simple_complex(matching_class_compound);
+    matching_class_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "card"};
+    matching_class_rule.selectors.selectors.push_back(matching_class_selector);
+    matching_class_rule.declarations.push_back(make_decl("display", "flex"));
+    matching_class_rule.declarations.push_back(make_decl("color", "rgb(0, 0, 255)"));
+    sheet.rules.push_back(matching_class_rule);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+}
+
+TEST(StyleResolverTest, WhereSelectorKeepsZeroSpecificity) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ":where(.card) { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
 }
 
 TEST(StyleResolverTest, AppliesSupportsRulesWhenConditionMatches) {
@@ -1887,6 +2123,23 @@ TEST(SelectorMatcherTest, NotPseudoClassWithType) {
     div_elem.tag_name = "div";
 
     EXPECT_FALSE(matcher.matches(div_elem, complex));
+}
+
+TEST(SelectorMatcherTest, NotPseudoReusesParsedSelectorListV2064) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":not(.hidden)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    auto& simple_sels = list.selectors[0].parts[0].compound.simple_selectors;
+    ASSERT_EQ(simple_sels.size(), 1u);
+    ASSERT_TRUE(simple_sels[0].parsed_selector_list);
+
+    simple_sels[0].argument = "span";
+
+    ElementView span_elem;
+    span_elem.tag_name = "span";
+    EXPECT_TRUE(matcher.matches(span_elem, list.selectors[0]));
 }
 
 // ===========================================================================
@@ -5100,6 +5353,48 @@ TEST(SelectorMatcherTest, FocusVisiblePseudoClass) {
 }
 
 // ============================================================================
+// Cycle 2066: :active matches elements with UI-injected active-state attributes
+// ============================================================================
+TEST(SelectorMatcherTest, ActivePseudoClassMatchesBrowserStateAttributesV2066) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "active";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView vibrowser_elem;
+    vibrowser_elem.tag_name = "button";
+    vibrowser_elem.attributes.push_back({"data-vibrowser-active", ""});
+    EXPECT_TRUE(matcher.matches(vibrowser_elem, complex));
+
+    ElementView clever_elem;
+    clever_elem.tag_name = "button";
+    clever_elem.attributes.push_back({"data-clever-active", ""});
+    EXPECT_TRUE(matcher.matches(clever_elem, complex));
+}
+
+TEST(SelectorMatcherTest, ActivePseudoClassDoesNotMatchWithoutStateV2066) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "button";
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "active";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    EXPECT_FALSE(matcher.matches(elem, complex));
+}
+
+// ============================================================================
 // Cycle 422: :first-child / :last-child / :only-child structural pseudo-classes
 // ============================================================================
 TEST(SelectorMatcherTest, FirstChildPseudoClass) {
@@ -5559,6 +5854,23 @@ TEST(SelectorMatcherTest, IsPseudoClass) {
     ElementView h4;
     h4.tag_name = "h4";
     EXPECT_FALSE(matcher.matches(h4, complex));
+}
+
+TEST(SelectorMatcherTest, IsPseudoReusesParsedSelectorListV2064) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":is(h1, h2, h3)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    auto& simple_sels = list.selectors[0].parts[0].compound.simple_selectors;
+    ASSERT_EQ(simple_sels.size(), 1u);
+    ASSERT_TRUE(simple_sels[0].parsed_selector_list);
+
+    simple_sels[0].argument = "article";
+
+    ElementView h2;
+    h2.tag_name = "h2";
+    EXPECT_TRUE(matcher.matches(h2, list.selectors[0]));
 }
 
 // ============================================================================

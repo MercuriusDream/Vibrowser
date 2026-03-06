@@ -15,6 +15,7 @@ extern "C" {
 #include <arpa/inet.h>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstring>
 #include <fcntl.h>
@@ -311,7 +312,7 @@ static JSValue js_xhr_send(JSContext* ctx, JSValueConst this_val,
         // Store Set-Cookie from response
         auto set_cookie = resp->headers.get("set-cookie");
         if (should_send_cookies && set_cookie.has_value()) {
-            jar.set_from_header(*set_cookie, req.host);
+            jar.set_from_header(*set_cookie, req.host, req.path);
         }
 
         // Copy response headers
@@ -876,6 +877,7 @@ struct ResponseState {
     int status = 0;
     std::string status_text;
     std::string body;
+    std::vector<uint8_t> body_bytes;
     std::map<std::string, std::string> headers;
     std::string url;
     bool ok = false;         // status 200-299
@@ -959,7 +961,7 @@ static JSValue js_response_text(JSContext* ctx, JSValueConst this_val,
     JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
     if (JS_IsException(promise)) return promise;
 
-    JSValue text = JS_NewString(ctx, state->body.c_str());
+    JSValue text = JS_NewStringLen(ctx, state->body.data(), state->body.size());
     JSValue ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, &text);
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, text);
@@ -1012,6 +1014,7 @@ static JSValue js_response_clone(JSContext* ctx, JSValueConst this_val,
     new_state->status = state->status;
     new_state->status_text = state->status_text;
     new_state->body = state->body;
+    new_state->body_bytes = state->body_bytes;
     new_state->headers = state->headers;
     new_state->url = state->url;
     new_state->ok = state->ok;
@@ -1022,7 +1025,7 @@ static JSValue js_response_clone(JSContext* ctx, JSValueConst this_val,
     return obj;
 }
 
-// response.arrayBuffer() -> Promise<ArrayBuffer> (stub: returns empty ArrayBuffer)
+// response.arrayBuffer() -> Promise<ArrayBuffer>
 static JSValue js_response_array_buffer(JSContext* ctx, JSValueConst this_val,
                                          int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
@@ -1034,8 +1037,8 @@ static JSValue js_response_array_buffer(JSContext* ctx, JSValueConst this_val,
 
     // Create an ArrayBuffer with the body data
     JSValue ab = JS_NewArrayBufferCopy(ctx,
-        reinterpret_cast<const uint8_t*>(state->body.data()),
-        state->body.size());
+        state->body_bytes.data(),
+        state->body_bytes.size());
     JSValue ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, &ab);
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, ab);
@@ -1062,7 +1065,7 @@ static JSValue js_response_blob(JSContext* ctx, JSValueConst this_val,
     if (JS_IsFunction(ctx, blob_ctor)) {
         // Create parts array: [bodyText]
         JSValue parts = JS_NewArray(ctx);
-        JSValue body_str = JS_NewString(ctx, state->body.c_str());
+        JSValue body_str = JS_NewStringLen(ctx, state->body.data(), state->body.size());
         JS_SetPropertyUint32(ctx, parts, 0, body_str);
 
         // Create options object: {type: content-type}
@@ -1304,8 +1307,8 @@ static JSValue js_response_get_body(JSContext* ctx, JSValueConst this_val) {
 
     // Build a Uint8Array containing the body bytes
     JSValue array_buf = JS_NewArrayBufferCopy(ctx,
-        reinterpret_cast<const uint8_t*>(state->body.data()),
-        state->body.size());
+        state->body_bytes.data(),
+        state->body_bytes.size());
     if (JS_IsException(array_buf)) return array_buf;
 
     // Create Uint8Array(arrayBuf)
@@ -1438,6 +1441,7 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst new_target,
             const char* body_cstr = JS_ToCString(ctx, argv[0]);
             if (body_cstr) {
                 state->body = body_cstr;
+                state->body_bytes.assign(body_cstr, body_cstr + std::strlen(body_cstr));
                 JS_FreeCString(ctx, body_cstr);
             }
         } else if (JS_IsObject(argv[0])) {
@@ -1460,6 +1464,8 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst new_target,
                         state->body.assign(
                             reinterpret_cast<const char*>(buf2 + byte_offset),
                             static_cast<size_t>(typed_len));
+                        state->body_bytes.assign(buf2 + byte_offset,
+                                                 buf2 + byte_offset + typed_len);
                         read_ok = true;
                     }
                 }
@@ -1472,6 +1478,7 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst new_target,
                 uint8_t* buf = JS_GetArrayBuffer(ctx, &byte_length, argv[0]);
                 if (buf) {
                     state->body.assign(reinterpret_cast<const char*>(buf), byte_length);
+                    state->body_bytes.assign(buf, buf + byte_length);
                 } else {
                     JS_FreeValue(ctx, JS_GetException(ctx)); // clear any exception
                 }
@@ -1539,8 +1546,10 @@ static JSValue create_response_object(JSContext* ctx,
         state->status_text = "";
         state->ok = false;
         state->body = "";
+        state->body_bytes.clear();
     } else {
-        state->body = resp.body_as_string();
+        state->body.assign(resp.body.begin(), resp.body.end());
+        state->body_bytes = resp.body;
 
         if (cors_filtered) {
             // CORS responses: only expose safelisted headers plus
@@ -2335,7 +2344,7 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
         auto set_cookie = resp->headers.get("set-cookie");
         if (set_cookie.has_value()) {
             auto& jar = clever::net::CookieJar::shared();
-            jar.set_from_header(*set_cookie, req.host);
+            jar.set_from_header(*set_cookie, req.host, req.path);
         }
     }
 
@@ -2430,6 +2439,8 @@ struct WebSocketState {
     std::vector<std::string> message_queue;
     std::mutex message_queue_mutex_;
     std::thread receive_thread_;
+    std::mutex receive_thread_mutex_;
+    std::condition_variable receive_thread_cv_;
     std::atomic<bool> should_close_thread_ {false};
     std::atomic<bool> receive_thread_running_ {false};
     // TLS socket (heap-allocated so we can null-check)
@@ -2438,7 +2449,6 @@ struct WebSocketState {
 
 constexpr int k_ws_recv_timeout_ms = 1000;
 constexpr int k_ws_thread_join_timeout_ms = 2000;
-constexpr int k_ws_thread_join_poll_interval_ms = 5;
 
 // ---- Helpers ----
 
@@ -2570,12 +2580,12 @@ static void ws_stop_receive_thread(WebSocketState* state, int timeout_ms) {
     if (!state->receive_thread_.joinable()) return;
     if (state->receive_thread_.get_id() == std::this_thread::get_id()) return;
 
-    auto deadline = std::chrono::steady_clock::now() +
-        std::chrono::milliseconds(timeout_ms);
-    while (state->receive_thread_running_.load() &&
-           std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(k_ws_thread_join_poll_interval_ms));
+    {
+        std::unique_lock<std::mutex> lock(state->receive_thread_mutex_);
+        state->receive_thread_cv_.wait_for(
+            lock,
+            std::chrono::milliseconds(timeout_ms),
+            [state] { return !state->receive_thread_running_.load(); });
     }
     state->receive_thread_.join();
 }
@@ -2975,7 +2985,11 @@ static std::vector<uint8_t> ws_build_close_frame(uint16_t code, const std::strin
 static void ws_receive_loop(WebSocketState* state) {
     if (!state) return;
 
-    state->receive_thread_running_.store(true);
+    {
+        std::lock_guard<std::mutex> lock(state->receive_thread_mutex_);
+        state->receive_thread_running_.store(true);
+    }
+    state->receive_thread_cv_.notify_all();
 
     std::vector<uint8_t> recv_buffer;
     std::vector<uint8_t> fragmented_payload;
@@ -3147,7 +3161,11 @@ static void ws_receive_loop(WebSocketState* state) {
         if (should_break_loop) break;
     }
 
-    state->receive_thread_running_.store(false);
+    {
+        std::lock_guard<std::mutex> lock(state->receive_thread_mutex_);
+        state->receive_thread_running_.store(false);
+    }
+    state->receive_thread_cv_.notify_all();
 }
 
 // ---- WebSocket JS methods ----

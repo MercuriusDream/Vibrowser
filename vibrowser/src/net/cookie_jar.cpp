@@ -34,6 +34,15 @@ std::string normalize_path(const std::string& path) {
     return path;
 }
 
+std::string default_path_for_request(const std::string& request_path) {
+    const std::string normalized_request_path = normalize_path(request_path);
+    if (normalized_request_path == "/") return "/";
+
+    const size_t last_slash = normalized_request_path.rfind('/');
+    if (last_slash == std::string::npos || last_slash == 0) return "/";
+    return normalized_request_path.substr(0, last_slash);
+}
+
 } // anonymous namespace
 
 CookieJar& CookieJar::shared() {
@@ -42,11 +51,12 @@ CookieJar& CookieJar::shared() {
 }
 
 void CookieJar::set_from_header(const std::string& header_value,
-                                 const std::string& request_domain) {
+                                const std::string& request_domain,
+                                const std::string& request_path) {
     // Parse: name=value; Path=/; Domain=.example.com; Secure; HttpOnly
     Cookie cookie;
     cookie.domain = to_lower(request_domain);
-    cookie.path = "/";
+    cookie.path = default_path_for_request(request_path);
 
     // Split by semicolons
     std::istringstream iss(header_value);
@@ -87,7 +97,9 @@ void CookieJar::set_from_header(const std::string& header_value,
             cookie.domain = dom;
             cookie.host_only = false;
         } else if (attr_name == "path") {
-            cookie.path = normalize_path(attr_value);
+            if (!attr_value.empty() && attr_value[0] == '/') {
+                cookie.path = attr_value;
+            }
         } else if (attr_name == "secure") {
             cookie.secure = true;
         } else if (attr_name == "httponly") {
