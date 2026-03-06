@@ -10493,7 +10493,88 @@ TEST(JSDom, HTMLMediaElementMethods) {
         checks.push(m.paused === true);
         checks.push(m.volume === 1);
         checks.push(m.readyState === 0);
+        checks.push(m.networkState === 0);
         String(checks.every(function(c) { return c; }));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
+// HTMLMediaElement: load/play/pause drive a coherent stub state machine
+// ============================================================================
+TEST(JSDom, HTMLMediaElementStateTransitions) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var m = new HTMLMediaElement();
+        m.src = 'movie.mp4';
+        m.load();
+        var firstPromise = m.play();
+        var secondPromise = m.play();
+        var afterPlayPaused = m.paused;
+        var afterPlayReadyState = m.readyState;
+        var afterPlayNetworkState = m.networkState;
+        m.pause();
+        [
+            m.currentSrc === 'movie.mp4',
+            afterPlayPaused === false,
+            m.paused === true,
+            afterPlayReadyState === 2,
+            afterPlayNetworkState === 1,
+            firstPromise === secondPromise
+        ].every(function(v) { return v; }).toString();
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
+// HTMLMediaElement: event surface fires for load/play/pause
+// ============================================================================
+TEST(JSDom, HTMLMediaElementEventSurface) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var m = new HTMLMediaElement();
+        m.src = 'clip.webm';
+        var events = [];
+        function onLoadedData() { events.push('loadeddata-listener'); }
+        m.onloadstart = function() { events.push('loadstart-handler'); };
+        m.onplay = function() { events.push('play-handler'); };
+        m.addEventListener('loadeddata', onLoadedData);
+        m.addEventListener('pause', function() { events.push('pause-listener'); });
+        m.load();
+        m.removeEventListener('loadeddata', onLoadedData);
+        m.play();
+        m.pause();
+        events.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "loadstart-handler,loadeddata-listener,play-handler,pause-listener");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+// ============================================================================
+// HTMLMediaElement: canPlayType allowlist covers common browser media MIME types
+// ============================================================================
+TEST(JSDom, HTMLMediaElementCanPlayType) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var m = new HTMLMediaElement();
+        [
+            m.canPlayType('video/mp4') === 'probably',
+            m.canPlayType('video/webm; codecs="vp9"') === 'probably',
+            m.canPlayType('audio/mp3') === 'probably',
+            m.canPlayType('audio/ogg; codecs=vorbis') === 'probably',
+            m.canPlayType('application/octet-stream') === ''
+        ].every(function(v) { return v; }).toString();
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
@@ -10518,6 +10599,10 @@ TEST(JSDom, HTMLVideoElementProperties) {
         // Should inherit media methods
         checks.push(typeof v.play === 'function');
         checks.push(typeof v.pause === 'function');
+        v.src = 'video.mp4';
+        v.load();
+        checks.push(v.readyState === 2);
+        checks.push(v.networkState === 1);
         String(checks.every(function(c) { return c; }));
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();

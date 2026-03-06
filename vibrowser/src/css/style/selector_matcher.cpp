@@ -5,6 +5,17 @@
 
 namespace clever::css {
 
+namespace {
+
+const SelectorList* cached_function_selector_list(const SimpleSelector& selector) {
+    if (selector.parsed_selector_list) {
+        return selector.parsed_selector_list.get();
+    }
+    return nullptr;
+}
+
+}
+
 // Parse an+b expression from :nth-child() argument
 // Supports: "odd", "even", "3", "2n", "2n+1", "-n+3", "n", etc.
 static bool parse_an_plus_b(const std::string& arg, int& a, int& b) {
@@ -565,8 +576,13 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "not") {
                 // :not() receives a comma-separated selector list. It matches only
                 // when every selector in that list does NOT match this element.
-                auto inner_list = parse_selector_list(simple.argument);
-                for (const auto& sel : inner_list.selectors) {
+                SelectorList parsed_list;
+                const SelectorList* inner_list = cached_function_selector_list(simple);
+                if (!inner_list) {
+                    parsed_list = parse_selector_list(simple.argument);
+                    inner_list = &parsed_list;
+                }
+                for (const auto& sel : inner_list->selectors) {
                     if (matches(element, sel)) return false;
                 }
                 return true;
@@ -574,8 +590,13 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 // :is() / :where() / :matches() / -webkit-any() accept a comma-separated
                 // selector list and match when any listed selector matches.
                 // :where() is identical here; specificity is handled elsewhere.
-                auto inner_list = parse_selector_list(simple.argument);
-                for (const auto& sel : inner_list.selectors) {
+                SelectorList parsed_list;
+                const SelectorList* inner_list = cached_function_selector_list(simple);
+                if (!inner_list) {
+                    parsed_list = parse_selector_list(simple.argument);
+                    inner_list = &parsed_list;
+                }
+                for (const auto& sel : inner_list->selectors) {
                     if (matches(element, sel)) return true;
                 }
                 return false;
@@ -614,8 +635,13 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "has") {
                 // :has() takes a comma-separated selector list. It matches when any
                 // selector in that list matches via the relative matching path.
-                auto inner_list = parse_selector_list(simple.argument);
-                for (const auto& sel : inner_list.selectors) {
+                SelectorList parsed_list;
+                const SelectorList* inner_list = cached_function_selector_list(simple);
+                if (!inner_list) {
+                    parsed_list = parse_selector_list(simple.argument);
+                    inner_list = &parsed_list;
+                }
+                for (const auto& sel : inner_list->selectors) {
                     if (has_selector_matches(element, sel)) return true;
                 }
                 return false;

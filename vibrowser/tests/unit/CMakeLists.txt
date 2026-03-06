@@ -10,6 +10,7 @@ add_test(NAME url_tests COMMAND vibrowser_url_tests)
 add_executable(vibrowser_platform_tests
     thread_pool_test.cpp
     event_loop_test.cpp
+    timer_test.cpp
 )
 target_link_libraries(vibrowser_platform_tests PRIVATE vibrowser_platform GTest::gtest_main)
 add_test(NAME platform_tests COMMAND vibrowser_platform_tests)

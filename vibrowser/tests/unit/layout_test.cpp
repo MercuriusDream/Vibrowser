@@ -1593,6 +1593,78 @@ TEST(LayoutEngineTest, IntrinsicWidthMemoizesInlineBlockSubtreeAcrossFitContentA
     EXPECT_GT(root->children[0]->geometry.width, 0.0f);
 }
 
+TEST(LayoutEngineTest, FitContentIgnoresAbsoluteDescendantsForIntrinsicWidth) {
+    auto root = make_block("div");
+
+    auto container = make_block("div");
+    container->specified_width = -4.0f; // fit-content
+    container->append_child(make_text("Hi", 16.0f));
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    abs_child->specified_width = 400.0f;
+    abs_child->specified_height = 20.0f;
+    container->append_child(std::move(abs_child));
+
+    root->append_child(std::move(container));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float expected_width = 2.0f * 16.0f * 0.6f;
+    EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 2.0f)
+        << "fit-content should ignore absolutely positioned descendants when computing intrinsic width";
+}
+
+TEST(LayoutEngineTest, InlineBlockShrinkWrapIgnoresAbsoluteDescendants) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->append_child(make_text("Hi", 16.0f));
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    abs_child->specified_width = 400.0f;
+    abs_child->specified_height = 20.0f;
+    inline_block->append_child(std::move(abs_child));
+
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float expected_width = 2.0f * 16.0f * 0.6f;
+    EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 2.0f)
+        << "inline-block shrink-wrap should ignore absolutely positioned descendants";
+}
+
+TEST(LayoutEngineTest, FitContentIgnoresFloatedDescendantsForIntrinsicWidth) {
+    auto root = make_block("div");
+
+    auto container = make_block("div");
+    container->specified_width = -4.0f; // fit-content
+    container->append_child(make_text("Hi", 16.0f));
+
+    auto floated = make_block("div");
+    floated->float_type = 1; // float:left
+    floated->specified_width = 400.0f;
+    floated->specified_height = 20.0f;
+    container->append_child(std::move(floated));
+
+    root->append_child(std::move(container));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float expected_width = 2.0f * 16.0f * 0.6f;
+    EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 2.0f)
+        << "fit-content should ignore floated descendants when computing intrinsic width";
+}
+
 // ============================================================================
 // Word-break and overflow-wrap tests
 // ============================================================================

@@ -7,6 +7,8 @@
 
 namespace clever::css {
 
+struct SelectorList;
+
 enum class SimpleSelectorType {
     Type,        // div, p, span
     Class,       // .foo
@@ -38,6 +40,7 @@ struct SimpleSelector {
 
     // Pseudo-class specifics (e.g., nth-child argument)
     std::string argument;
+    std::shared_ptr<const SelectorList> parsed_selector_list;
 };
 
 enum class Combinator {

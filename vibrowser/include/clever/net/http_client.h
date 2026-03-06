@@ -89,9 +89,11 @@ public:
     // Set the max cache budget (for testing).
     void set_max_bytes(size_t bytes);
 
+    // Canonicalize a URL into its shared-cache key.
+    static std::string make_cache_key(const std::string& url);
+
 private:
     HttpCache() = default;
-
     void evict_if_needed();
 
     mutable std::mutex mu_;

@@ -197,14 +197,24 @@ HttpCache& HttpCache::instance() {
     return cache;
 }
 
+std::string HttpCache::make_cache_key(const std::string& url) {
+    const size_t fragment_pos = url.find('#');
+    if (fragment_pos == std::string::npos) {
+        return url;
+    }
+    return url.substr(0, fragment_pos);
+}
+
 std::optional<CacheEntry> HttpCache::lookup(const std::string& url) {
+    const std::string cache_key = make_cache_key(url);
+
     std::lock_guard<std::mutex> lock(mu_);
-    auto it = entries_.find(url);
+    auto it = entries_.find(cache_key);
     if (it == entries_.end()) return std::nullopt;
 
     // Move to front of LRU (most recently used)
     lru_.erase(it->second.lru_it);
-    lru_.push_front(url);
+    lru_.push_front(cache_key);
     it->second.lru_it = lru_.begin();
 
     return it->second.data;
@@ -214,10 +224,13 @@ void HttpCache::store(const CacheEntry& entry) {
     if (entry.body.size() > kMaxEntryBytes) return;  // Too large to cache
     if (entry.is_private) return;                     // Private responses stay out of shared cache
 
+    CacheEntry normalized_entry = entry;
+    normalized_entry.url = make_cache_key(entry.url);
+
     std::lock_guard<std::mutex> lock(mu_);
 
     // If already present, remove old entry size
-    auto it = entries_.find(entry.url);
+    auto it = entries_.find(normalized_entry.url);
     if (it != entries_.end()) {
         current_bytes_ -= it->second.data.approx_size();
         lru_.erase(it->second.lru_it);
@@ -225,20 +238,22 @@ void HttpCache::store(const CacheEntry& entry) {
     }
 
     // Add to LRU front
-    lru_.push_front(entry.url);
+    lru_.push_front(normalized_entry.url);
 
     InternalEntry ie;
-    ie.data = entry;
+    ie.data = std::move(normalized_entry);
     ie.lru_it = lru_.begin();
-    current_bytes_ += entry.approx_size();
-    entries_.insert_or_assign(entry.url, std::move(ie));
+    current_bytes_ += ie.data.approx_size();
+    entries_.insert_or_assign(ie.data.url, std::move(ie));
 
     evict_if_needed();
 }
 
 void HttpCache::remove(const std::string& url) {
+    const std::string cache_key = make_cache_key(url);
+
     std::lock_guard<std::mutex> lock(mu_);
-    auto it = entries_.find(url);
+    auto it = entries_.find(cache_key);
     if (it != entries_.end()) {
         current_bytes_ -= it->second.data.approx_size();
         lru_.erase(it->second.lru_it);
@@ -855,15 +870,18 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
     // --- Cache: only cache GET requests ---
     const bool is_cacheable_method = (current.method == Method::GET);
     auto& cache = HttpCache::instance();
+    const std::string request_cache_key = is_cacheable_method ? HttpCache::make_cache_key(current.url)
+                                                              : std::string{};
 
     if (is_cacheable_method) {
-        auto cached = cache.lookup(current.url);
+        auto cached = cache.lookup(request_cache_key);
         if (cached.has_value()) {
             // If no-store was set, we should not have stored it, but double check
             if (!cached->no_store) {
                 if (cached->is_fresh()) {
                     // Fresh cache hit — return immediately without network
                     auto resp = response_from_cache(*cached);
+                    resp.url = current.url;
                     resp.was_redirected = false;
                     return resp;
                 }
@@ -935,7 +953,7 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
 
         // --- Handle 304 Not Modified ---
         if (resp->status == 304 && is_cacheable_method) {
-            auto cached = cache.lookup(current.url);
+            auto cached = cache.lookup(request_cache_key);
             if (cached.has_value()) {
                 // Refresh the stored_at time (entry is still valid)
                 CacheEntry refreshed = *cached;
@@ -1012,7 +1030,7 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
                     // Don't cache bodies > 10 MB
                     if (body_str.size() <= HttpCache::kMaxEntryBytes) {
                         CacheEntry entry;
-                        entry.url = current.url;
+                        entry.url = request_cache_key;
                         entry.etag = etag.value_or("");
                         entry.last_modified = last_mod.value_or("");
                         entry.body = std::move(body_str);

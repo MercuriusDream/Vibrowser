@@ -1354,6 +1354,65 @@ TEST_F(CSSSelectorTest, PseudoClassNotArgument) {
     EXPECT_TRUE(found_not) << "Should have :not pseudo-class";
 }
 
+TEST_F(CSSSelectorTest, FunctionalPseudoSelectorListsCachedAtParseTime) {
+    auto list = parse_selector_list("div:is(.match, #target):where(article):not(span):has(> img)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& simple_selectors = list.selectors[0].parts[0].compound.simple_selectors;
+
+    bool saw_is = false;
+    bool saw_where = false;
+    bool saw_not = false;
+    bool saw_has = false;
+    for (const auto& ss : simple_selectors) {
+        if (ss.type != SimpleSelectorType::PseudoClass) {
+            continue;
+        }
+        if (ss.value == "is") {
+            ASSERT_TRUE(ss.parsed_selector_list);
+            EXPECT_EQ(ss.parsed_selector_list->selectors.size(), 2u);
+            saw_is = true;
+        } else if (ss.value == "where") {
+            ASSERT_TRUE(ss.parsed_selector_list);
+            EXPECT_EQ(ss.parsed_selector_list->selectors.size(), 1u);
+            saw_where = true;
+        } else if (ss.value == "not") {
+            ASSERT_TRUE(ss.parsed_selector_list);
+            EXPECT_EQ(ss.parsed_selector_list->selectors.size(), 1u);
+            saw_not = true;
+        } else if (ss.value == "has") {
+            ASSERT_TRUE(ss.parsed_selector_list);
+            EXPECT_EQ(ss.parsed_selector_list->selectors.size(), 1u);
+            saw_has = true;
+        }
+    }
+
+    EXPECT_TRUE(saw_is);
+    EXPECT_TRUE(saw_where);
+    EXPECT_TRUE(saw_not);
+    EXPECT_TRUE(saw_has);
+}
+
+TEST_F(CSSSelectorTest, FunctionalPseudoSpecificityUsesCachedSelectorList) {
+    auto list = parse_selector_list(":is(.match, #target)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto selector = list.selectors[0];
+
+    auto& pseudo = selector.parts[0].compound.simple_selectors[0];
+    ASSERT_TRUE(pseudo.parsed_selector_list);
+
+    const Specificity before = compute_specificity(selector);
+    EXPECT_EQ(before.a, 1);
+    EXPECT_EQ(before.b, 0);
+    EXPECT_EQ(before.c, 0);
+
+    pseudo.argument = "div";
+
+    const Specificity after = compute_specificity(selector);
+    EXPECT_EQ(after.a, 1);
+    EXPECT_EQ(after.b, 0);
+    EXPECT_EQ(after.c, 0);
+}
+
 TEST_F(CSSSelectorTest, AttributeSelectorDashMatchLang) {
     auto list = parse_selector_list("[lang|=en]");
     ASSERT_EQ(list.selectors.size(), 1u);

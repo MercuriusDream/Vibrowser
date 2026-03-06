@@ -166,6 +166,13 @@ float LayoutEngine::avg_char_width(float font_size, const std::string& font_fami
 
 // ---------------------------------------------------------------------------
 
+static bool participates_in_intrinsic_width_measurement(const LayoutNode& node) {
+    if (node.display == DisplayType::None || node.mode == LayoutMode::None) return false;
+    if (node.position_type == 2 || node.position_type == 3) return false;
+    if (node.float_type != 0) return false;
+    return true;
+}
+
 size_t LayoutEngine::IntrinsicWidthCacheKeyHash::operator()(const IntrinsicWidthCacheKey& key) const {
     size_t seed = std::hash<const LayoutNode*>{}(key.node);
     seed ^= std::hash<bool>{}(key.max_content) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -259,6 +266,7 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
     } else {
         for (auto& child : node.children) {
             if (child->content_visibility == 1) continue;
+            if (!participates_in_intrinsic_width_measurement(*child)) continue;
             float cw = measure_intrinsic_width(*child, max_content, depth + 1);
             if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||
                 child->display == DisplayType::InlineBlock) {
@@ -1500,7 +1508,7 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                     // in that case to get the correct intrinsic width.
                     float max_cw = 0;
                     for (auto& gc : child->children) {
-                        if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                        if (!participates_in_intrinsic_width_measurement(*gc)) continue;
                         if (child->text_align == 0) {
                             max_cw = std::max(max_cw, gc->geometry.x + gc->geometry.margin_box_width());
                         } else {
@@ -2274,7 +2282,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 // in that case to avoid double-centering.
                 float max_child_w = 0;
                 for (auto& gc : child->children) {
-                    if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                    if (!participates_in_intrinsic_width_measurement(*gc)) continue;
                     float w = gc->geometry.margin_box_width();
                     if (child->text_align == 0) {
                         max_child_w = std::max(max_child_w, gc->geometry.x + w);

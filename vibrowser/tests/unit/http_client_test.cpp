@@ -21379,6 +21379,111 @@ TEST(HttpCacheTest, LookupPromotesEntryPreventingEvictionV124) {
     cache.clear();
 }
 
+TEST(HttpCacheTest, FragmentOnlyDifferencesReuseSameEntryV2058) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry entry;
+    entry.url = "https://cache.v2058.test/article?page=1#intro";
+    entry.body = "fragment-insensitive";
+    entry.status = 200;
+    entry.max_age_seconds = 3600;
+    entry.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(entry);
+
+    auto alias = cache.lookup("https://cache.v2058.test/article?page=1#details");
+    ASSERT_TRUE(alias.has_value());
+    EXPECT_EQ(alias->body, "fragment-insensitive");
+    EXPECT_EQ(alias->url, "https://cache.v2058.test/article?page=1");
+    EXPECT_EQ(cache.entry_count(), 1u);
+
+    cache.clear();
+}
+
+TEST(HttpCacheTest, PathAndQueryDifferencesRemainDistinctV2058) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry query_entry;
+    query_entry.url = "https://cache.v2058.test/article?page=1#intro";
+    query_entry.body = "query-1";
+    query_entry.status = 200;
+    query_entry.max_age_seconds = 3600;
+    query_entry.stored_at = std::chrono::steady_clock::now();
+
+    CacheEntry path_entry;
+    path_entry.url = "https://cache.v2058.test/article/other?page=1#intro";
+    path_entry.body = "path-2";
+    path_entry.status = 200;
+    path_entry.max_age_seconds = 3600;
+    path_entry.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(query_entry);
+    cache.store(path_entry);
+
+    auto query_alias = cache.lookup("https://cache.v2058.test/article?page=2#details");
+    EXPECT_FALSE(query_alias.has_value());
+
+    auto exact_query = cache.lookup("https://cache.v2058.test/article?page=1#summary");
+    ASSERT_TRUE(exact_query.has_value());
+    EXPECT_EQ(exact_query->body, "query-1");
+
+    auto exact_path = cache.lookup("https://cache.v2058.test/article/other?page=1#summary");
+    ASSERT_TRUE(exact_path.has_value());
+    EXPECT_EQ(exact_path->body, "path-2");
+    EXPECT_EQ(cache.entry_count(), 2u);
+
+    cache.clear();
+}
+
+TEST(HttpCacheTest, RemoveIgnoresFragmentWhenEvictingEntryV2058) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry entry;
+    entry.url = "https://cache.v2058.test/remove#one";
+    entry.body = "remove-me";
+    entry.status = 200;
+    entry.max_age_seconds = 3600;
+    entry.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(entry);
+    cache.remove("https://cache.v2058.test/remove#two");
+
+    EXPECT_FALSE(cache.lookup("https://cache.v2058.test/remove#three").has_value());
+    EXPECT_EQ(cache.entry_count(), 0u);
+}
+
+TEST(HttpClient, FragmentCacheHitUsesCanonicalCacheKeyV2058) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry entry;
+    entry.url = "https://client.v2058.test/data?id=7#one";
+    entry.body = "cached-fragment-response";
+    entry.status = 200;
+    entry.max_age_seconds = 3600;
+    entry.stored_at = std::chrono::steady_clock::now();
+    entry.headers["content-type"] = "text/plain";
+
+    cache.store(entry);
+
+    HttpClient client;
+    Request request;
+    request.method = Method::GET;
+    request.url = "https://client.v2058.test/data?id=7#two";
+
+    auto response = client.fetch(request);
+    ASSERT_TRUE(response.has_value());
+    EXPECT_EQ(response->status, 200);
+    EXPECT_EQ(response->body_as_string(), "cached-fragment-response");
+    EXPECT_EQ(response->url, "https://client.v2058.test/data?id=7#two");
+    EXPECT_EQ(response->headers.get("content-type").value(), "text/plain");
+
+    cache.clear();
+}
+
 // ---------------------------------------------------------------------------
 // 7. Request::parse_url with URL containing fragment (hash) should not include
 //    fragment in the path or query sent to the server

@@ -20983,6 +20983,19 @@ if (typeof queueMicrotask === 'undefined') {
         const char* media_src = R"JS(
 (function() {
     if (typeof globalThis.HTMLMediaElement !== 'undefined') return;
+    function makeMediaEvent(target, type) {
+        return {
+            type: type,
+            target: target,
+            currentTarget: target,
+            bubbles: false,
+            cancelable: false,
+            defaultPrevented: false,
+            preventDefault: function() { this.defaultPrevented = true; },
+            stopPropagation: function() {},
+            stopImmediatePropagation: function() {}
+        };
+    }
     function HTMLMediaElement() {
         this.src=''; this.currentSrc=''; this.currentTime=0; this.duration=NaN;
         this.paused=true; this.ended=false; this.muted=false; this.volume=1;
@@ -20993,16 +21006,102 @@ if (typeof queueMicrotask === 'undefined') {
         this.played={length:0,start:function(){return 0;},end:function(){return 0;}};
         this.autoplay=false; this.loop=false; this.controls=false;
         this.preload='auto'; this.crossOrigin=null;
+        this._listeners = Object.create(null);
+        this._playPromise = null;
     }
-    HTMLMediaElement.prototype.play = function() { return Promise.resolve(); };
-    HTMLMediaElement.prototype.pause = function() {};
-    HTMLMediaElement.prototype.load = function() {};
-    HTMLMediaElement.prototype.canPlayType = function(t) { return ''; };
+    HTMLMediaElement.prototype._dispatchMediaEvent = function(type) {
+        var evt = makeMediaEvent(this, type);
+        var listeners = this._listeners[type] ? this._listeners[type].slice() : [];
+        for (var i = 0; i < listeners.length; i++) {
+            try {
+                if (typeof listeners[i] === 'function') listeners[i].call(this, evt);
+                else if (listeners[i] && typeof listeners[i].handleEvent === 'function') listeners[i].handleEvent(evt);
+            } catch (e) {}
+        }
+        var handler = this['on' + type];
+        if (typeof handler === 'function') {
+            try { handler.call(this, evt); } catch (e) {}
+        }
+        return !evt.defaultPrevented;
+    };
+    HTMLMediaElement.prototype.play = function() {
+        if (this.readyState === 0) this.load();
+        if (!this._playPromise) this._playPromise = Promise.resolve(this);
+        if (this.paused) {
+            this.paused = false;
+            this.ended = false;
+            if (this.networkState === 0) this.networkState = 1;
+            if (this.readyState < 2) this.readyState = 2;
+            this._dispatchMediaEvent('play');
+            this._dispatchMediaEvent('playing');
+        }
+        return this._playPromise;
+    };
+    HTMLMediaElement.prototype.pause = function() {
+        if (this.paused) return;
+        this.paused = true;
+        this._dispatchMediaEvent('pause');
+    };
+    HTMLMediaElement.prototype.load = function() {
+        this.paused = true;
+        this.ended = false;
+        this.currentTime = 0;
+        this.currentSrc = this.src ? String(this.src) : '';
+        this.networkState = this.currentSrc ? 1 : 3;
+        this.readyState = this.currentSrc ? 2 : 0;
+        this._dispatchMediaEvent('loadstart');
+        if (this.currentSrc) {
+            this._dispatchMediaEvent('loadedmetadata');
+            this._dispatchMediaEvent('loadeddata');
+            this._dispatchMediaEvent('canplay');
+            this._dispatchMediaEvent('canplaythrough');
+        } else {
+            this._dispatchMediaEvent('emptied');
+        }
+    };
+    HTMLMediaElement.prototype.canPlayType = function(t) {
+        var normalized = String(t || '').trim().toLowerCase();
+        if (!normalized) return '';
+        var mime = normalized.split(';')[0].trim();
+        var probably = {
+            'video/mp4': true,
+            'audio/mp4': true,
+            'video/webm': true,
+            'audio/webm': true,
+            'audio/mpeg': true,
+            'audio/mp3': true,
+            'audio/ogg': true,
+            'video/ogg': true,
+            'application/ogg': true
+        };
+        if (probably[mime]) return 'probably';
+        if (normalized.indexOf('mp4') !== -1 || normalized.indexOf('webm') !== -1 ||
+            normalized.indexOf('ogg') !== -1 || normalized.indexOf('mp3') !== -1 ||
+            normalized.indexOf('mpeg') !== -1) {
+            return 'maybe';
+        }
+        return '';
+    };
     HTMLMediaElement.prototype.addTextTrack = function(k,l,lang) {
         return {kind:k,label:l||'',language:lang||'',mode:'disabled',cues:null,addCue:function(){},removeCue:function(){}};
     };
-    HTMLMediaElement.prototype.addEventListener = function() {};
-    HTMLMediaElement.prototype.removeEventListener = function() {};
+    HTMLMediaElement.prototype.addEventListener = function(type, fn) {
+        if (!type || !fn) return;
+        if (!this._listeners[type]) this._listeners[type] = [];
+        for (var i = 0; i < this._listeners[type].length; i++) {
+            if (this._listeners[type][i] === fn) return;
+        }
+        this._listeners[type].push(fn);
+    };
+    HTMLMediaElement.prototype.removeEventListener = function(type, fn) {
+        if (!this._listeners[type]) return;
+        this._listeners[type] = this._listeners[type].filter(function(listener) { return listener !== fn; });
+    };
+    HTMLMediaElement.prototype.dispatchEvent = function(evt) {
+        var type = evt && evt.type ? String(evt.type) : '';
+        if (!type) return true;
+        return this._dispatchMediaEvent(type);
+    };
 
     function HTMLVideoElement() {
         HTMLMediaElement.call(this);

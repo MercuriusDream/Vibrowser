@@ -16,6 +16,19 @@ std::string ascii_lower(std::string value) {
     return value;
 }
 
+const SelectorList* cached_function_selector_list(const SimpleSelector& selector) {
+    if (selector.parsed_selector_list) {
+        return selector.parsed_selector_list.get();
+    }
+    return nullptr;
+}
+
+bool should_cache_function_selector_list(std::string_view pseudo_name) {
+    const std::string pseudo = ascii_lower(std::string(pseudo_name));
+    return pseudo == "is" || pseudo == "where" || pseudo == "not" || pseudo == "has" ||
+           pseudo == "matches" || pseudo == "-webkit-any";
+}
+
 Specificity max_specificity_in_list(const SelectorList& list) {
     Specificity max_spec;
     bool has_value = false;
@@ -67,8 +80,13 @@ Specificity compute_specificity(const ComplexSelector& selector) {
                         }
                         if (pseudo == "is" || pseudo == "not" || pseudo == "has" ||
                             pseudo == "matches" || pseudo == "-webkit-any") {
-                            Specificity inner = max_specificity_in_list(
-                                parse_selector_list(ss.argument));
+                            const SelectorList* inner_list = cached_function_selector_list(ss);
+                            SelectorList parsed_list;
+                            if (!inner_list) {
+                                parsed_list = parse_selector_list(ss.argument);
+                                inner_list = &parsed_list;
+                            }
+                            Specificity inner = max_specificity_in_list(*inner_list);
                             spec.a += inner.a;
                             spec.b += inner.b;
                             spec.c += inner.c;
@@ -381,6 +399,10 @@ CompoundSelector SelectorParser::parse_compound_selector() {
                         advance();
                     }
                     ss.argument = args;
+                    if (should_cache_function_selector_list(ss.value)) {
+                        ss.parsed_selector_list =
+                            std::make_shared<SelectorList>(parse_selector_list(ss.argument));
+                    }
                     compound.simple_selectors.push_back(std::move(ss));
                 } else {
                     SimpleSelector ss;
