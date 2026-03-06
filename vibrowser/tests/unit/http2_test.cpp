@@ -348,6 +348,57 @@ TEST(Http2ConnectionTest, WindowUpdateOverflowDoesNotMutateStateV2065) {
               Http2Connection::kMaxFlowControlWindowSize - 12);
 }
 
+TEST(Http2ConnectionTest, SettingsAckPayloadDoesNotMutateStateV2068) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    {
+        Http2Connection connection(fds[0]);
+        connection.remote_initial_window_size_ = 65535;
+        connection.encoder_.set_max_dynamic_table_size(4096);
+        connection.streams_[1].state = Http2Connection::StreamState::Open;
+        connection.streams_[1].send_window = 3210;
+
+        Http2Connection::Frame ack_frame;
+        ack_frame.type = Http2Connection::FRAME_TYPE_SETTINGS;
+        ack_frame.flags = Http2Connection::FLAG_ACK;
+        ack_frame.stream_id = 0;
+        ack_frame.payload = {0x00, Http2Connection::SETTINGS_INITIAL_WINDOW_SIZE,
+                             0x00, 0x01, 0x00, 0x00};
+
+        ASSERT_FALSE(connection.handle_settings(ack_frame));
+        EXPECT_EQ(connection.remote_initial_window_size_, 65535u);
+        EXPECT_EQ(connection.encoder_.max_dynamic_table_size(), 4096u);
+        EXPECT_EQ(connection.streams_[1].send_window, 3210);
+
+        uint8_t raw_frame[9];
+        EXPECT_EQ(::recv(fds[1], raw_frame, sizeof(raw_frame), MSG_DONTWAIT), -1);
+    }
+
+    close(fds[1]);
+}
+
+TEST(Http2ConnectionTest, WindowUpdateOverflowDoesNotTouchClosedStreamV2068) {
+    Http2Connection connection(-1);
+    connection.connection_send_window_ = 4096;
+    connection.streams_[1].state = Http2Connection::StreamState::Closed;
+    connection.streams_[1].send_window = Http2Connection::kMaxFlowControlWindowSize - 4;
+    connection.streams_[3].state = Http2Connection::StreamState::Open;
+    connection.streams_[3].send_window = 2048;
+
+    Http2Connection::Frame stream_frame;
+    stream_frame.type = Http2Connection::FRAME_TYPE_WINDOW_UPDATE;
+    stream_frame.stream_id = 1;
+    stream_frame.payload = {0x7F, 0xFF, 0xFF, 0xFF};
+
+    ASSERT_FALSE(connection.handle_window_update(stream_frame));
+    EXPECT_EQ(connection.connection_send_window_, 4096);
+    EXPECT_EQ(connection.streams_[1].state, Http2Connection::StreamState::Closed);
+    EXPECT_EQ(connection.streams_[1].send_window,
+              Http2Connection::kMaxFlowControlWindowSize - 4);
+    EXPECT_EQ(connection.streams_[3].send_window, 2048);
+}
+
 TEST(Http2ConnectionTest, ContinuationStreamMismatchIsRejectedV2066) {
     Http2Connection connection(-1);
     connection.streams_[1].state = Http2Connection::StreamState::Open;

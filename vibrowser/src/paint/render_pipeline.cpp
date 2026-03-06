@@ -9849,7 +9849,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             if (layout_node->specified_height < 0)
                 layout_node->specified_height = (attr_h > 0) ? attr_h : 150;
 
-            layout_node->background_color = 0xFFF0F0F0;
+            layout_node->background_color = 0xFFDDDDDD;
             layout_node->geometry.border = {1, 1, 1, 1};
             layout_node->border_color = 0xFFCCCCCC;
             layout_node->border_color_top = 0xFFCCCCCC;
@@ -9962,7 +9962,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     layout_node->specified_height = (attr_h > 0) ? attr_h : 150;
 
                 // Light gray background with 1px border (broken image style)
-                layout_node->background_color = 0xFFF0F0F0;
+                layout_node->background_color = 0xFFDDDDDD;
                 layout_node->geometry.border = {1, 1, 1, 1};
                 layout_node->border_color = 0xFFCCCCCC;
                 layout_node->border_color_top = 0xFFCCCCCC;

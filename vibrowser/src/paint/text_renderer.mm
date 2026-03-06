@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
+#include <atomic>
 #include <mutex>
 
 #import <CoreFoundation/CoreFoundation.h>
@@ -33,6 +34,11 @@ std::unordered_map<std::string, std::vector<RegisteredWebFont>>& registered_font
 std::mutex& font_registry_mutex() {
     static std::mutex mtx;
     return mtx;
+}
+
+std::atomic<uint64_t>& font_registry_generation() {
+    static std::atomic<uint64_t> generation{0};
+    return generation;
 }
 
 struct TextWidthCacheKey {
@@ -89,6 +95,122 @@ std::mutex& text_width_cache_mutex() {
 
 void invalidate_text_width_cache_locked() {
     text_width_cache_state().entries.clear();
+}
+
+struct TextLineLayoutCacheKey {
+    std::string text;
+    std::string font_descriptor;
+    float kern = 0.0f;
+    uint64_t font_generation = 0;
+
+    bool operator==(const TextLineLayoutCacheKey& other) const {
+        return text == other.text &&
+               font_descriptor == other.font_descriptor &&
+               kern == other.kern &&
+               font_generation == other.font_generation;
+    }
+};
+
+struct TextLineLayoutCacheKeyHash {
+    size_t operator()(const TextLineLayoutCacheKey& key) const {
+        size_t seed = std::hash<std::string>{}(key.text);
+        auto mix = [&seed](size_t value) {
+            seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        };
+        mix(std::hash<std::string>{}(key.font_descriptor));
+        mix(std::hash<float>{}(key.kern));
+        mix(std::hash<uint64_t>{}(key.font_generation));
+        return seed;
+    }
+};
+
+struct CachedTextLineLayout {
+    CTLineRef line = nullptr;
+    CGFloat ascent = 0.0;
+};
+
+struct TextLineLayoutCacheState {
+    std::unordered_map<TextLineLayoutCacheKey, CachedTextLineLayout, TextLineLayoutCacheKeyHash> entries;
+    uint64_t hits = 0;
+    uint64_t misses = 0;
+    uint64_t creations = 0;
+
+    ~TextLineLayoutCacheState() {
+        for (auto& [key, entry] : entries) {
+            if (entry.line) {
+                CFRelease(entry.line);
+            }
+        }
+    }
+};
+
+TextLineLayoutCacheState& text_line_layout_cache_state() {
+    static TextLineLayoutCacheState state;
+    return state;
+}
+
+std::mutex& text_line_layout_cache_mutex() {
+    static std::mutex mtx;
+    return mtx;
+}
+
+void invalidate_text_line_layout_cache_locked() {
+    auto& cache = text_line_layout_cache_state();
+    for (auto& [key, entry] : cache.entries) {
+        if (entry.line) {
+            CFRelease(entry.line);
+        }
+    }
+    cache.entries.clear();
+}
+
+std::string cf_string_to_std_string(CFStringRef value) {
+    if (!value) return {};
+
+    CFIndex length = CFStringGetLength(value);
+    CFIndex max_bytes = CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
+    std::string out(static_cast<size_t>(max_bytes), '\0');
+    if (!CFStringGetCString(value, out.data(), max_bytes, kCFStringEncodingUTF8)) {
+        return {};
+    }
+    out.resize(std::strlen(out.c_str()));
+    return out;
+}
+
+std::string font_layout_descriptor_token(CTFontRef font) {
+    if (!font) return {};
+
+    if (CFStringRef postscript_name = CTFontCopyPostScriptName(font)) {
+        std::string token = cf_string_to_std_string(postscript_name);
+        CFRelease(postscript_name);
+        if (CFStringRef full_name = CTFontCopyFullName(font)) {
+            token += "|";
+            token += cf_string_to_std_string(full_name);
+            CFRelease(full_name);
+        }
+        token += "|" + std::to_string(CTFontGetSize(font));
+        token += "|" + std::to_string(CTFontGetAscent(font));
+        token += "|" + std::to_string(CTFontGetDescent(font));
+        token += "|" + std::to_string(CTFontGetLeading(font));
+        token += "|" + std::to_string(CTFontGetSlantAngle(font));
+        token += "|" + std::to_string(CTFontGetCapHeight(font));
+        token += "|" + std::to_string(CTFontGetXHeight(font));
+        return token;
+    }
+
+    std::string token;
+    if (CFStringRef full_name = CTFontCopyFullName(font)) {
+        token += cf_string_to_std_string(full_name);
+        CFRelease(full_name);
+    }
+    token += "|" + std::to_string(CTFontGetSize(font));
+    token += "|" + std::to_string(CTFontGetAscent(font));
+    token += "|" + std::to_string(CTFontGetDescent(font));
+    token += "|" + std::to_string(CTFontGetLeading(font));
+    token += "|" + std::to_string(CTFontGetSlantAngle(font));
+    token += "|" + std::to_string(CTFontGetCapHeight(font));
+    token += "|" + std::to_string(CTFontGetXHeight(font));
+    return token;
 }
 
 // Normalize family name for lookup (lowercase, strip quotes)
@@ -180,6 +302,11 @@ bool TextRenderer::register_font(const std::string& family_name,
         std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
         invalidate_text_width_cache_locked();
     }
+    {
+        std::lock_guard<std::mutex> cache_lock(text_line_layout_cache_mutex());
+        invalidate_text_line_layout_cache_locked();
+    }
+    font_registry_generation().fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 
@@ -209,6 +336,11 @@ void TextRenderer::clear_registered_fonts() {
         std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
         invalidate_text_width_cache_locked();
     }
+    {
+        std::lock_guard<std::mutex> cache_lock(text_line_layout_cache_mutex());
+        invalidate_text_line_layout_cache_locked();
+    }
+    font_registry_generation().fetch_add(1, std::memory_order_relaxed);
 }
 
 // Helper: map a CSS-style font weight (100-900) to a CoreText weight value.
@@ -296,84 +428,88 @@ void TextRenderer::render_single_line(const std::string& text, float x, float y,
                                        float clip_w, float clip_h) {
     if (text.empty()) return;
 
-    // Create attributed string for this line
-    CFStringRef cf_text = CFStringCreateWithBytes(
-        kCFAllocatorDefault,
-        reinterpret_cast<const UInt8*>(text.data()),
-        static_cast<CFIndex>(text.size()),
-        kCFStringEncodingUTF8, false
-    );
-    if (!cf_text) return;
-
     // font-kerning: none (2) disables kerning by setting kern to 0
     bool disable_kerning = (font_kerning == 2);
+    CGFloat effective_kern = disable_kerning ? 0.0 : static_cast<CGFloat>(letter_spacing);
 
-    CFDictionaryRef attrs;
-    CFNumberRef kern_value = nullptr;
-    if (letter_spacing != 0 || disable_kerning) {
-        CGFloat kern = disable_kerning ? 0.0 : static_cast<CGFloat>(letter_spacing);
-        kern_value = CFNumberCreate(kCFAllocatorDefault, kCFNumberCGFloatType, &kern);
-        const void* keys[] = {kCTFontAttributeName, kCTForegroundColorAttributeName, kCTKernAttributeName};
-        const void* vals[] = {font, cg_color, kern_value};
-        attrs = CFDictionaryCreate(
-            kCFAllocatorDefault, keys, vals, 3,
-            &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks
-        );
-    } else {
-        const void* keys[] = {kCTFontAttributeName, kCTForegroundColorAttributeName};
-        const void* vals[] = {font, cg_color};
-        attrs = CFDictionaryCreate(
-            kCFAllocatorDefault, keys, vals, 2,
-            &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks
-        );
-    }
-
-    CFAttributedStringRef attr_str = CFAttributedStringCreate(kCFAllocatorDefault, cf_text, attrs);
-    if (!attr_str) {
-        CFRelease(attrs);
-        CFRelease(cf_text);
-        if (kern_value) CFRelease(kern_value);
-        return;
-    }
-
-    // Create a CG context wrapping the main pixel buffer.
-    // IMPORTANT: Do NOT apply a CTM flip — CoreText mirrors glyphs when
-    // the CTM has a negative y-scale.  Instead we manually convert our
-    // top-left-origin y to CG's native bottom-left-origin y.
-    CGContextRef ctx = CGBitmapContextCreate(
-        buffer, static_cast<size_t>(buffer_width), static_cast<size_t>(buffer_height),
-        8, static_cast<size_t>(buffer_width) * 4, colorspace,
-        kCGImageAlphaPremultipliedLast
-    );
-
-    if (!ctx) {
-        CFRelease(attr_str);
-        CFRelease(attrs);
-        CFRelease(cf_text);
-        if (kern_value) CFRelease(kern_value);
-        return;
-    }
-
-    if (clip_x >= 0 && clip_w > 0 && clip_h > 0) {
-        float cg_clip_y = static_cast<float>(buffer_height) - (clip_y + clip_h);
-        CGContextClipToRect(ctx, CGRectMake(clip_x, cg_clip_y, clip_w, clip_h));
-    }
-
-    // Apply text-rendering hints
-    // 0=auto, 1=optimizeSpeed (disable smoothing), 2=optimizeLegibility, 3=geometricPrecision
-    bool smooth = (text_rendering != 1); // optimizeSpeed disables smoothing
-    CGContextSetShouldAntialias(ctx, smooth);
-    CGContextSetAllowsAntialiasing(ctx, smooth);
-    CGContextSetShouldSmoothFonts(ctx, smooth);
-    CGContextSetAllowsFontSmoothing(ctx, smooth);
-    CGContextSetTextDrawingMode(ctx, kCGTextFill);
-
-    // Ensure text matrix is identity — on some macOS versions the default
-    // text matrix in a CGBitmapContext can be non-identity.
-    CGContextSetTextMatrix(ctx, CGAffineTransformIdentity);
-
-    // Handle word spacing: if non-zero, render word-by-word with manual spacing
     if (word_spacing != 0) {
+        CFStringRef cf_text = CFStringCreateWithBytes(
+            kCFAllocatorDefault,
+            reinterpret_cast<const UInt8*>(text.data()),
+            static_cast<CFIndex>(text.size()),
+            kCFStringEncodingUTF8, false
+        );
+        if (!cf_text) return;
+
+        CFDictionaryRef attrs;
+        CFNumberRef kern_value = nullptr;
+        if (letter_spacing != 0 || disable_kerning) {
+            kern_value = CFNumberCreate(kCFAllocatorDefault, kCFNumberCGFloatType, &effective_kern);
+            const void* keys[] = {kCTFontAttributeName, kCTForegroundColorAttributeName, kCTKernAttributeName};
+            const void* vals[] = {font, cg_color, kern_value};
+            attrs = CFDictionaryCreate(
+                kCFAllocatorDefault, keys, vals, 3,
+                &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks
+            );
+        } else {
+            const void* keys[] = {kCTFontAttributeName, kCTForegroundColorAttributeName};
+            const void* vals[] = {font, cg_color};
+            attrs = CFDictionaryCreate(
+                kCFAllocatorDefault, keys, vals, 2,
+                &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks
+            );
+        }
+
+        if (!attrs) {
+            CFRelease(cf_text);
+            if (kern_value) CFRelease(kern_value);
+            return;
+        }
+
+        CFAttributedStringRef attr_str = CFAttributedStringCreate(kCFAllocatorDefault, cf_text, attrs);
+        if (!attr_str) {
+            CFRelease(attrs);
+            CFRelease(cf_text);
+            if (kern_value) CFRelease(kern_value);
+            return;
+        }
+
+        // Create a CG context wrapping the main pixel buffer.
+        // IMPORTANT: Do NOT apply a CTM flip — CoreText mirrors glyphs when
+        // the CTM has a negative y-scale.  Instead we manually convert our
+        // top-left-origin y to CG's native bottom-left-origin y.
+        CGContextRef ctx = CGBitmapContextCreate(
+            buffer, static_cast<size_t>(buffer_width), static_cast<size_t>(buffer_height),
+            8, static_cast<size_t>(buffer_width) * 4, colorspace,
+            kCGImageAlphaPremultipliedLast
+        );
+
+        if (!ctx) {
+            CFRelease(attr_str);
+            CFRelease(attrs);
+            CFRelease(cf_text);
+            if (kern_value) CFRelease(kern_value);
+            return;
+        }
+
+        if (clip_x >= 0 && clip_w > 0 && clip_h > 0) {
+            float cg_clip_y = static_cast<float>(buffer_height) - (clip_y + clip_h);
+            CGContextClipToRect(ctx, CGRectMake(clip_x, cg_clip_y, clip_w, clip_h));
+        }
+
+        // Apply text-rendering hints
+        // 0=auto, 1=optimizeSpeed (disable smoothing), 2=optimizeLegibility, 3=geometricPrecision
+        bool smooth = (text_rendering != 1); // optimizeSpeed disables smoothing
+        CGContextSetShouldAntialias(ctx, smooth);
+        CGContextSetAllowsAntialiasing(ctx, smooth);
+        CGContextSetShouldSmoothFonts(ctx, smooth);
+        CGContextSetAllowsFontSmoothing(ctx, smooth);
+        CGContextSetTextDrawingMode(ctx, kCGTextFill);
+
+        // Ensure text matrix is identity — on some macOS versions the default
+        // text matrix in a CGBitmapContext can be non-identity.
+        CGContextSetTextMatrix(ctx, CGAffineTransformIdentity);
+
         float cursor_x = x;
         size_t i = 0;
         while (i < text.size()) {
@@ -431,25 +567,132 @@ void TextRenderer::render_single_line(const std::string& text, float x, float y,
             i = sp + 1;
             if (sp == text.size()) break;
         }
-    } else {
-        // No word spacing: render entire line at once
-        CTLineRef line = CTLineCreateWithAttributedString(attr_str);
-        if (line) {
-            CGFloat ascent, descent, leading;
-            CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
-            CGFloat baseline_x = static_cast<CGFloat>(x);
-            CGFloat baseline_y = static_cast<CGFloat>(buffer_height) - (static_cast<CGFloat>(y) + ascent);
-            CGContextSetTextPosition(ctx, baseline_x, baseline_y);
-            CTLineDraw(line, ctx);
-            CFRelease(line);
+
+        CGContextRelease(ctx);
+        CFRelease(attr_str);
+        CFRelease(attrs);
+        CFRelease(cf_text);
+        if (kern_value) CFRelease(kern_value);
+        return;
+    }
+
+    CTLineRef line = nullptr;
+    CGFloat ascent = 0.0;
+    TextLineLayoutCacheKey cache_key{
+        text,
+        font_layout_descriptor_token(font),
+        static_cast<float>(effective_kern),
+        font_registry_generation().load(std::memory_order_relaxed)
+    };
+    {
+        std::lock_guard<std::mutex> cache_lock(text_line_layout_cache_mutex());
+        auto& cache = text_line_layout_cache_state();
+        auto it = cache.entries.find(cache_key);
+        if (it != cache.entries.end()) {
+            line = static_cast<CTLineRef>(CFRetain(it->second.line));
+            ascent = it->second.ascent;
+            ++cache.hits;
+        } else {
+            ++cache.misses;
         }
     }
 
+    if (!line) {
+        CFStringRef cf_text = CFStringCreateWithBytes(
+            kCFAllocatorDefault,
+            reinterpret_cast<const UInt8*>(text.data()),
+            static_cast<CFIndex>(text.size()),
+            kCFStringEncodingUTF8, false
+        );
+        if (!cf_text) return;
+
+        CFDictionaryRef attrs;
+        CFNumberRef kern_value = nullptr;
+        if (letter_spacing != 0 || disable_kerning) {
+            kern_value = CFNumberCreate(kCFAllocatorDefault, kCFNumberCGFloatType, &effective_kern);
+            const void* keys[] = {kCTFontAttributeName, kCTKernAttributeName,
+                                  kCTForegroundColorFromContextAttributeName};
+            const void* vals[] = {font, kern_value, kCFBooleanTrue};
+            attrs = CFDictionaryCreate(
+                kCFAllocatorDefault, keys, vals, 3,
+                &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks
+            );
+        } else {
+            const void* keys[] = {kCTFontAttributeName, kCTForegroundColorFromContextAttributeName};
+            const void* vals[] = {font, kCFBooleanTrue};
+            attrs = CFDictionaryCreate(
+                kCFAllocatorDefault, keys, vals, 2,
+                &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks
+            );
+        }
+
+        if (!attrs) {
+            CFRelease(cf_text);
+            if (kern_value) CFRelease(kern_value);
+            return;
+        }
+
+        CFAttributedStringRef attr_str = CFAttributedStringCreate(kCFAllocatorDefault, cf_text, attrs);
+        if (!attr_str) {
+            CFRelease(attrs);
+            CFRelease(cf_text);
+            if (kern_value) CFRelease(kern_value);
+            return;
+        }
+
+        line = CTLineCreateWithAttributedString(attr_str);
+        if (line) {
+            CGFloat descent = 0.0;
+            CGFloat leading = 0.0;
+            CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
+            std::lock_guard<std::mutex> cache_lock(text_line_layout_cache_mutex());
+            auto& cache = text_line_layout_cache_state();
+            auto [it, inserted] = cache.entries.emplace(cache_key, CachedTextLineLayout{});
+            if (inserted) {
+                it->second.line = static_cast<CTLineRef>(CFRetain(line));
+                it->second.ascent = ascent;
+                ++cache.creations;
+            }
+        }
+
+        CFRelease(attr_str);
+        CFRelease(attrs);
+        CFRelease(cf_text);
+        if (kern_value) CFRelease(kern_value);
+        if (!line) return;
+    }
+
+    CGContextRef ctx = CGBitmapContextCreate(
+        buffer, static_cast<size_t>(buffer_width), static_cast<size_t>(buffer_height),
+        8, static_cast<size_t>(buffer_width) * 4, colorspace,
+        kCGImageAlphaPremultipliedLast
+    );
+    if (!ctx) {
+        CFRelease(line);
+        return;
+    }
+
+    if (clip_x >= 0 && clip_w > 0 && clip_h > 0) {
+        float cg_clip_y = static_cast<float>(buffer_height) - (clip_y + clip_h);
+        CGContextClipToRect(ctx, CGRectMake(clip_x, cg_clip_y, clip_w, clip_h));
+    }
+
+    bool smooth = (text_rendering != 1);
+    CGContextSetShouldAntialias(ctx, smooth);
+    CGContextSetAllowsAntialiasing(ctx, smooth);
+    CGContextSetShouldSmoothFonts(ctx, smooth);
+    CGContextSetAllowsFontSmoothing(ctx, smooth);
+    CGContextSetTextDrawingMode(ctx, kCGTextFill);
+    CGContextSetTextMatrix(ctx, CGAffineTransformIdentity);
+    CGContextSetFillColorWithColor(ctx, cg_color);
+
+    CGFloat baseline_x = static_cast<CGFloat>(x);
+    CGFloat baseline_y = static_cast<CGFloat>(buffer_height) - (static_cast<CGFloat>(y) + ascent);
+    CGContextSetTextPosition(ctx, baseline_x, baseline_y);
+    CTLineDraw(line, ctx);
+
     CGContextRelease(ctx);
-    CFRelease(attr_str);
-    CFRelease(attrs);
-    CFRelease(cf_text);
-    if (kern_value) CFRelease(kern_value);
+    CFRelease(line);
 }
 
 // Parse CSS font-feature-settings string like '"smcp" 1, "liga" 0' into CoreText feature array
@@ -884,6 +1127,35 @@ uint64_t text_width_cache_hit_count_for_testing() {
 uint64_t text_width_cache_miss_count_for_testing() {
     std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
     return text_width_cache_state().misses;
+}
+
+void reset_text_line_layout_cache_for_testing() {
+    std::lock_guard<std::mutex> cache_lock(text_line_layout_cache_mutex());
+    auto& cache = text_line_layout_cache_state();
+    invalidate_text_line_layout_cache_locked();
+    cache.hits = 0;
+    cache.misses = 0;
+    cache.creations = 0;
+}
+
+size_t text_line_layout_cache_size_for_testing() {
+    std::lock_guard<std::mutex> cache_lock(text_line_layout_cache_mutex());
+    return text_line_layout_cache_state().entries.size();
+}
+
+uint64_t text_line_layout_cache_hit_count_for_testing() {
+    std::lock_guard<std::mutex> cache_lock(text_line_layout_cache_mutex());
+    return text_line_layout_cache_state().hits;
+}
+
+uint64_t text_line_layout_cache_miss_count_for_testing() {
+    std::lock_guard<std::mutex> cache_lock(text_line_layout_cache_mutex());
+    return text_line_layout_cache_state().misses;
+}
+
+uint64_t text_line_layout_creation_count_for_testing() {
+    std::lock_guard<std::mutex> cache_lock(text_line_layout_cache_mutex());
+    return text_line_layout_cache_state().creations;
 }
 
 } // namespace clever::paint

@@ -785,6 +785,46 @@ TEST(StyleResolverTest, ResolveWithSingleStylesheet) {
     EXPECT_EQ(result.color.b, 0);
 }
 
+TEST(StyleResolverTest, PaintFunctionImageValueParsesV2068) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ".box { "
+        "background-image: paint(accent-chip, 12px, rgba(255, 0, 0, 0.5)); "
+        "background-repeat: no-repeat; "
+        "}");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("box");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_repeat, 3);
+    EXPECT_TRUE(style.bg_image_url.empty());
+    EXPECT_EQ(style.gradient_type, 0);
+    EXPECT_TRUE(style.gradient_stops.empty());
+}
+
+TEST(StyleResolverTest, PaintFunctionBackgroundFallsBackSafelyV2068) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ".box { background: paint(accent-chip, 12px, rgba(0, 0, 0, 0.25)) rgb(12, 34, 56); }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("box");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_color, (Color{12, 34, 56, 255}));
+    EXPECT_TRUE(style.bg_image_url.empty());
+    EXPECT_EQ(style.gradient_type, 0);
+}
+
 TEST(StyleResolverTest, SelectorListUsesHighestMatchingSpecificityForCascadeRanking) {
     const std::string css =
         "div, #hero { color: rgb(255, 0, 0); }"

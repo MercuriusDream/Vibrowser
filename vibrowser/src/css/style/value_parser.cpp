@@ -28,6 +28,30 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+std::string strip_leading_paint_image_stubs(const std::string& value) {
+    std::string remainder = trim(value);
+    while (remainder.rfind("paint(", 0) == 0) {
+        int depth = 0;
+        size_t cursor = 0;
+        for (; cursor < remainder.size(); ++cursor) {
+            if (remainder[cursor] == '(') {
+                ++depth;
+            } else if (remainder[cursor] == ')') {
+                --depth;
+                if (depth == 0) {
+                    ++cursor;
+                    break;
+                }
+            }
+        }
+        if (depth != 0 || cursor > remainder.size()) {
+            return value;
+        }
+        remainder = trim(remainder.substr(cursor));
+    }
+    return remainder;
+}
+
 // Parse a hex digit
 int hex_digit(char c) {
     if (c >= '0' && c <= '9') return c - '0';
@@ -841,6 +865,13 @@ std::optional<Color> parse_color(const std::string& input) {
     std::string value = trim(to_lower(input));
 
     if (value.empty()) return std::nullopt;
+
+    if (value.rfind("paint(", 0) == 0) {
+        const std::string stripped = strip_leading_paint_image_stubs(value);
+        if (!stripped.empty() && stripped != value) {
+            return parse_color(stripped);
+        }
+    }
 
     auto parse_argb_color = [](uint32_t argb) -> Color {
         return Color{

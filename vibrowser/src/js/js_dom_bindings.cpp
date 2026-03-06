@@ -115,6 +115,9 @@ struct DOMState {
     JSValue event_get_modifier_state_fn = JS_UNDEFINED;
     // document.cookie storage: name -> value
     std::map<std::string, std::string> cookies;
+    std::string visibility_state = "visible";
+    bool hidden = false;
+    bool visibility_initialized = false;
 
     // Layout geometry cache: SimpleNode* -> absolute position box geometry + computed style
     struct LayoutRect {
@@ -15266,8 +15269,45 @@ void dispatch_window_listeners(JSContext* ctx, const std::string& event_type,
 }
 
 void dispatch_visibility_change(JSContext* ctx) {
+    if (!ctx) return;
+    auto* state = get_dom_state(ctx);
+    if (!state) return;
+
     JSValue global = JS_GetGlobalObject(ctx);
     JSValue doc = JS_GetPropertyStr(ctx, global, "document");
+
+    JSValue visibility_state = JS_GetPropertyStr(ctx, doc, "visibilityState");
+    JSValue hidden = JS_GetPropertyStr(ctx, doc, "hidden");
+
+    const char* visibility_state_cstr = JS_ToCString(ctx, visibility_state);
+    std::string next_visibility_state =
+        visibility_state_cstr ? visibility_state_cstr : "visible";
+    if (visibility_state_cstr) {
+        JS_FreeCString(ctx, visibility_state_cstr);
+    }
+    const bool next_hidden = JS_ToBool(ctx, hidden) != 0;
+
+    JS_FreeValue(ctx, hidden);
+    JS_FreeValue(ctx, visibility_state);
+
+    if (!state->visibility_initialized) {
+        state->visibility_state = next_visibility_state;
+        state->hidden = next_hidden;
+        state->visibility_initialized = true;
+        JS_FreeValue(ctx, doc);
+        JS_FreeValue(ctx, global);
+        return;
+    }
+
+    if (state->visibility_state == next_visibility_state &&
+        state->hidden == next_hidden) {
+        JS_FreeValue(ctx, doc);
+        JS_FreeValue(ctx, global);
+        return;
+    }
+
+    state->visibility_state = next_visibility_state;
+    state->hidden = next_hidden;
 
     // Create event object
     JSValue event = JS_NewObject(ctx);
@@ -15989,11 +16029,15 @@ void install_dom_bindings(JSContext* ctx,
         JS_NewString(ctx, "visible"));
     JS_SetPropertyStr(ctx, doc_obj, "hidden",
         JS_NewBool(ctx, false));
+    if (auto* state = get_dom_state(ctx)) {
+        state->visibility_state = "visible";
+        state->hidden = false;
+        state->visibility_initialized = true;
+    }
 
     // ---- document.hasFocus() ----
     JS_SetPropertyStr(ctx, doc_obj, "hasFocus",
         JS_NewCFunction(ctx, js_document_has_focus, "hasFocus", 0));
-    dispatch_visibility_change(ctx);
 
     // ---- document.activeElement (internal getter) ----
     JS_SetPropertyStr(ctx, doc_obj, "__getActiveElement",

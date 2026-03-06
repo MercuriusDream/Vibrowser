@@ -390,13 +390,20 @@ bool Http2Connection::handle_window_update(const Frame& frame) {
         connection_send_window_ = updated_connection_window;
     } else {
         auto it = streams_.find(frame.stream_id);
-        if (it != streams_.end()) {
-            if (it->second.send_window > (kMaxFlowControlWindowSize - increment)) {
-                return false;
-            }
-            int64_t updated_stream_window = it->second.send_window + increment;
-            it->second.send_window = updated_stream_window;
+        if (it == streams_.end()) {
+            return true;
         }
+
+        if (it->second.state == StreamState::Closed) {
+            return false;
+        }
+
+        if (it->second.send_window > (kMaxFlowControlWindowSize - increment)) {
+            return false;
+        }
+
+        int64_t updated_stream_window = it->second.send_window + increment;
+        it->second.send_window = updated_stream_window;
     }
 
     return true;

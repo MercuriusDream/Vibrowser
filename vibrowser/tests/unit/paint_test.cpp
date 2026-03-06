@@ -16,6 +16,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace clever::paint;
 using namespace clever::layout;
@@ -25,6 +26,11 @@ void reset_text_width_cache_stats_for_testing();
 size_t text_width_cache_size_for_testing();
 uint64_t text_width_cache_hit_count_for_testing();
 uint64_t text_width_cache_miss_count_for_testing();
+void reset_text_line_layout_cache_for_testing();
+size_t text_line_layout_cache_size_for_testing();
+uint64_t text_line_layout_cache_hit_count_for_testing();
+uint64_t text_line_layout_cache_miss_count_for_testing();
+uint64_t text_line_layout_creation_count_for_testing();
 void reset_image_cache_for_testing();
 void set_image_cache_max_bytes_for_testing(size_t max_bytes);
 size_t image_cache_size_for_testing();
@@ -39735,6 +39741,55 @@ TEST_F(PaintTest, TextWidthCacheClearsOnRegisteredFontReset) {
     EXPECT_EQ(text_width_cache_miss_count_for_testing(), 2u);
     EXPECT_EQ(text_width_cache_hit_count_for_testing(), 0u);
 
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererReusesRepeatedLineLayoutV2068) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_line_layout_cache_for_testing();
+
+    TextRenderer renderer;
+    std::vector<uint8_t> buffer(256 * 64 * 4, 0);
+
+    renderer.render_text("Cache this line", 8.0f, 12.0f, 18.0f, {0, 0, 0, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+    renderer.render_text("Cache this line", 8.0f, 12.0f, 18.0f, {0, 0, 0, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 1u);
+
+    reset_text_line_layout_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererCacheInvalidatesAfterFontRegistryChangeV2068) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_line_layout_cache_for_testing();
+
+    TextRenderer renderer;
+    std::vector<uint8_t> buffer(256 * 64 * 4, 0);
+
+    renderer.render_text("Invalidate this line", 8.0f, 12.0f, 16.0f, {0, 0, 0, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+    ASSERT_EQ(text_line_layout_cache_size_for_testing(), 1u);
+    ASSERT_EQ(text_line_layout_cache_miss_count_for_testing(), 1u);
+    ASSERT_EQ(text_line_layout_creation_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 0u);
+
+    renderer.render_text("Invalidate this line", 8.0f, 12.0f, 16.0f, {0, 0, 0, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 0u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 2u);
+
+    reset_text_line_layout_cache_for_testing();
     TextRenderer::clear_registered_fonts();
 }
 

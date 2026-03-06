@@ -877,6 +877,7 @@ struct ResponseState {
     int status = 0;
     std::string status_text;
     std::string body;
+    std::vector<uint8_t> body_bytes;
     std::map<std::string, std::string> headers;
     std::string url;
     bool ok = false;         // status 200-299
@@ -960,7 +961,7 @@ static JSValue js_response_text(JSContext* ctx, JSValueConst this_val,
     JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
     if (JS_IsException(promise)) return promise;
 
-    JSValue text = JS_NewString(ctx, state->body.c_str());
+    JSValue text = JS_NewStringLen(ctx, state->body.data(), state->body.size());
     JSValue ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, &text);
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, text);
@@ -1013,6 +1014,7 @@ static JSValue js_response_clone(JSContext* ctx, JSValueConst this_val,
     new_state->status = state->status;
     new_state->status_text = state->status_text;
     new_state->body = state->body;
+    new_state->body_bytes = state->body_bytes;
     new_state->headers = state->headers;
     new_state->url = state->url;
     new_state->ok = state->ok;
@@ -1023,7 +1025,7 @@ static JSValue js_response_clone(JSContext* ctx, JSValueConst this_val,
     return obj;
 }
 
-// response.arrayBuffer() -> Promise<ArrayBuffer> (stub: returns empty ArrayBuffer)
+// response.arrayBuffer() -> Promise<ArrayBuffer>
 static JSValue js_response_array_buffer(JSContext* ctx, JSValueConst this_val,
                                          int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
@@ -1035,8 +1037,8 @@ static JSValue js_response_array_buffer(JSContext* ctx, JSValueConst this_val,
 
     // Create an ArrayBuffer with the body data
     JSValue ab = JS_NewArrayBufferCopy(ctx,
-        reinterpret_cast<const uint8_t*>(state->body.data()),
-        state->body.size());
+        state->body_bytes.data(),
+        state->body_bytes.size());
     JSValue ret = JS_Call(ctx, resolving_funcs[0], JS_UNDEFINED, 1, &ab);
     JS_FreeValue(ctx, ret);
     JS_FreeValue(ctx, ab);
@@ -1063,7 +1065,7 @@ static JSValue js_response_blob(JSContext* ctx, JSValueConst this_val,
     if (JS_IsFunction(ctx, blob_ctor)) {
         // Create parts array: [bodyText]
         JSValue parts = JS_NewArray(ctx);
-        JSValue body_str = JS_NewString(ctx, state->body.c_str());
+        JSValue body_str = JS_NewStringLen(ctx, state->body.data(), state->body.size());
         JS_SetPropertyUint32(ctx, parts, 0, body_str);
 
         // Create options object: {type: content-type}
@@ -1305,8 +1307,8 @@ static JSValue js_response_get_body(JSContext* ctx, JSValueConst this_val) {
 
     // Build a Uint8Array containing the body bytes
     JSValue array_buf = JS_NewArrayBufferCopy(ctx,
-        reinterpret_cast<const uint8_t*>(state->body.data()),
-        state->body.size());
+        state->body_bytes.data(),
+        state->body_bytes.size());
     if (JS_IsException(array_buf)) return array_buf;
 
     // Create Uint8Array(arrayBuf)
@@ -1439,6 +1441,7 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst new_target,
             const char* body_cstr = JS_ToCString(ctx, argv[0]);
             if (body_cstr) {
                 state->body = body_cstr;
+                state->body_bytes.assign(body_cstr, body_cstr + std::strlen(body_cstr));
                 JS_FreeCString(ctx, body_cstr);
             }
         } else if (JS_IsObject(argv[0])) {
@@ -1461,6 +1464,8 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst new_target,
                         state->body.assign(
                             reinterpret_cast<const char*>(buf2 + byte_offset),
                             static_cast<size_t>(typed_len));
+                        state->body_bytes.assign(buf2 + byte_offset,
+                                                 buf2 + byte_offset + typed_len);
                         read_ok = true;
                     }
                 }
@@ -1473,6 +1478,7 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst new_target,
                 uint8_t* buf = JS_GetArrayBuffer(ctx, &byte_length, argv[0]);
                 if (buf) {
                     state->body.assign(reinterpret_cast<const char*>(buf), byte_length);
+                    state->body_bytes.assign(buf, buf + byte_length);
                 } else {
                     JS_FreeValue(ctx, JS_GetException(ctx)); // clear any exception
                 }
@@ -1540,8 +1546,10 @@ static JSValue create_response_object(JSContext* ctx,
         state->status_text = "";
         state->ok = false;
         state->body = "";
+        state->body_bytes.clear();
     } else {
-        state->body = resp.body_as_string();
+        state->body.assign(resp.body.begin(), resp.body.end());
+        state->body_bytes = resp.body;
 
         if (cors_filtered) {
             // CORS responses: only expose safelisted headers plus

@@ -20,6 +20,7 @@ extern "C" {
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -188,6 +189,100 @@ private:
     std::mutex state_mutex_;
     std::condition_variable state_cv_;
     bool handshake_complete_ = false;
+};
+
+class ScopedHttpResponseServer {
+public:
+    explicit ScopedHttpResponseServer(std::vector<std::string> responses)
+        : responses_(std::move(responses)) {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, static_cast<int>(responses_.size())) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~ScopedHttpResponseServer() {
+        if (listen_fd_ >= 0) {
+            ::shutdown(listen_fd_, SHUT_RDWR);
+            ::close(listen_fd_);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+private:
+    void run() {
+        for (const auto& response : responses_) {
+            int client_fd = ::accept(listen_fd_, nullptr, nullptr);
+            if (client_fd < 0) {
+                return;
+            }
+
+            std::string request;
+            char buffer[1024];
+            while (request.find("\r\n\r\n") == std::string::npos) {
+                ssize_t n = ::recv(client_fd, buffer, sizeof(buffer), 0);
+                if (n <= 0) {
+                    ::close(client_fd);
+                    return;
+                }
+                request.append(buffer, static_cast<size_t>(n));
+            }
+
+            size_t total_sent = 0;
+            while (total_sent < response.size()) {
+                ssize_t sent = ::send(client_fd,
+                                      response.data() + total_sent,
+                                      response.size() - total_sent,
+                                      0);
+                if (sent <= 0) {
+                    break;
+                }
+                total_sent += static_cast<size_t>(sent);
+            }
+
+            ::shutdown(client_fd, SHUT_RDWR);
+            ::close(client_fd);
+        }
+    }
+
+    int listen_fd_ = -1;
+    uint16_t port_ = 0;
+    std::thread server_thread_;
+    std::vector<std::string> responses_;
 };
 
 JSValue js_advance_host_timers(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
@@ -9627,6 +9722,98 @@ TEST(JSFetch, ResponseBlobTextRoundTrip) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "round trip");
     clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSFetch, ResponseArrayBufferReturnsBodyBytesV2068) {
+    const char raw_body_bytes[] = {0x00, 0x7f, static_cast<char>(0x80),
+                                   static_cast<char>(0xff), 'A', 'B', 'C'};
+    const std::string body_bytes(raw_body_bytes, sizeof(raw_body_bytes));
+    const std::string redirect_response =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: /final\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+    const std::string final_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "Content-Length: 7\r\n"
+        "Connection: close\r\n"
+        "\r\n" + body_bytes;
+
+    ScopedHttpResponseServer server({redirect_response, final_response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var bytesResult = 'pending';
+        var redirectedResult = false;
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/start')
+            .then(function(resp) {
+                redirectedResult = resp.redirected;
+                return resp.arrayBuffer();
+            })
+            .then(function(buf) {
+                bytesResult = Array.from(new Uint8Array(buf)).join(',');
+            })
+            .catch(function(err) {
+                bytesResult = err.message || String(err);
+            });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto bytes = engine.evaluate("bytesResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(bytes, "0,127,128,255,65,66,67");
+
+    auto redirected = engine.evaluate("String(redirectedResult)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(redirected, "true");
+}
+
+TEST(JSFetch, ResponseArrayBufferEmptyBodyStaysEmptyV2068) {
+    const std::string empty_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    ScopedHttpResponseServer server({empty_response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var byteLengthResult = -1;
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/empty')
+            .then(function(resp) {
+                return resp.arrayBuffer();
+            })
+            .then(function(buf) {
+                byteLengthResult = buf.byteLength;
+            })
+            .catch(function(err) {
+                byteLengthResult = err.message || String(err);
+            });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("String(byteLengthResult)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0");
 }
 
 // ============================================================================

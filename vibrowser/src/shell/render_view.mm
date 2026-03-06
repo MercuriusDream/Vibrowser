@@ -762,16 +762,6 @@ struct TextRegion {
 }
 
 - (void)scrollWheel:(NSEvent*)event {
-    // Dismiss text input overlay when scrolling — it would be mispositioned
-    if (_overlayTextField || _overlaySecureField) {
-        NSTextField* field = _overlayIsPassword ? _overlaySecureField : _overlayTextField;
-        NSString* val = [field stringValue];
-        if ([_delegate respondsToSelector:@selector(renderView:didFinishEditingInputWithValue:)]) {
-            [_delegate renderView:self didFinishEditingInputWithValue:val];
-        }
-        [self dismissTextInputOverlay];
-    }
-
     // Keep internal tracking in sync when external code updates scrollOffset.
     _scrollY = _scrollOffset;
 
@@ -827,6 +817,7 @@ struct TextRegion {
 
         // Trigger re-render if scroll was applied
         if (std::abs(appliedDeltaX) > kScrollDeltaEpsilon || std::abs(appliedDeltaY) > kScrollDeltaEpsilon) {
+            [self reflowTextInputOverlay];
             [self setNeedsDisplay:YES];
         }
 
@@ -904,9 +895,14 @@ struct TextRegion {
         _scrollOffset = std::max(0.0, std::min(_scrollOffset, maxScroll));
         _scrollY = _scrollOffset;
         appliedDeltaY = _scrollY - prevScrollY;
+        [self reflowTextInputOverlay];
         [self setNeedsDisplay:YES];
     } else {
         _scrollY = _scrollOffset;
+    }
+
+    if (std::abs(appliedDeltaX) > kScrollDeltaEpsilon) {
+        [self reflowTextInputOverlay];
     }
 
     // Notify delegate so the embedding controller can react/re-render.
@@ -1064,6 +1060,9 @@ struct TextRegion {
     _scrollY = _scrollOffset;
 
     CGFloat appliedDeltaY = _scrollOffset - prevScrollY;
+    if (std::abs(appliedDeltaY) > kScrollDeltaEpsilon) {
+        [self reflowTextInputOverlay];
+    }
     if (std::abs(appliedDeltaY) > kScrollDeltaEpsilon &&
         [_delegate respondsToSelector:@selector(renderView:didScrollToX:y:deltaX:deltaY:isMomentum:)]) {
         [_delegate renderView:self
