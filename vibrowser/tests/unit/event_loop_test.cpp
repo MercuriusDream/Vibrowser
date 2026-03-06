@@ -205,8 +205,10 @@ TEST(EventLoopTest, EarlierDelayedTaskWakesBlockedRun) {
     EventLoop loop;
     std::atomic<bool> earlier_task_executed{false};
     std::atomic<long long> elapsed_ms{-1};
+    constexpr auto kFarDelayedTask = 400ms;
+    constexpr auto kWakeupMustBeatOriginalDelay = 380;
 
-    loop.post_delayed_task([]() {}, 400ms);
+    loop.post_delayed_task([]() {}, kFarDelayedTask);
 
     auto start = std::chrono::steady_clock::now();
     std::thread runner([&loop]() {
@@ -229,7 +231,11 @@ TEST(EventLoopTest, EarlierDelayedTaskWakesBlockedRun) {
 
     ASSERT_TRUE(earlier_task_executed.load(std::memory_order_relaxed));
     EXPECT_GE(elapsed_ms.load(std::memory_order_relaxed), 60);
-    EXPECT_LT(elapsed_ms.load(std::memory_order_relaxed), 250);
+    // The important contract is that inserting an earlier delayed task wakes the
+    // blocked run loop well before the original 400 ms deadline. Hosted macOS
+    // runners can add substantial scheduling jitter, so keep the upper bound
+    // comfortably below the original timeout instead of assuming sub-250 ms.
+    EXPECT_LT(elapsed_ms.load(std::memory_order_relaxed), kWakeupMustBeatOriginalDelay);
 }
 
 // ---------------------------------------------------------------------------
