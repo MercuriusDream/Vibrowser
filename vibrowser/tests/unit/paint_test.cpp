@@ -8,6 +8,7 @@
 #include <clever/layout/box.h>
 #include <clever/layout/layout_engine.h>
 #include <gtest/gtest.h>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -51,8 +52,12 @@ namespace {
 #ifndef _WIN32
 class ScopedImageResponseServer {
 public:
-    explicit ScopedImageResponseServer(std::string body)
-        : body_(std::move(body)) {
+    explicit ScopedImageResponseServer(std::string body,
+                                       std::string content_type = "image/svg+xml",
+                                       int status_code = 200)
+        : body_(std::move(body)),
+          content_type_(std::move(content_type)),
+          status_code_(status_code) {
         listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
         if (listen_fd_ < 0) return;
 
@@ -98,12 +103,14 @@ public:
 
     bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
     uint16_t port() const { return port_; }
+    int request_count() const { return request_count_; }
 
 private:
     void run() {
         while (true) {
             int client_fd = ::accept(listen_fd_, nullptr, nullptr);
             if (client_fd < 0) return;
+            ++request_count_;
 
             std::string request;
             char buffer[1024];
@@ -117,8 +124,9 @@ private:
             }
 
             const std::string response =
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: image/svg+xml\r\n"
+                "HTTP/1.1 " + std::to_string(status_code_) +
+                (status_code_ >= 400 ? " Error\r\n" : " OK\r\n") +
+                "Content-Type: " + content_type_ + "\r\n"
                 "Content-Length: " + std::to_string(body_.size()) + "\r\n"
                 "Connection: close\r\n\r\n" + body_;
 
@@ -142,6 +150,9 @@ private:
     uint16_t port_ = 0;
     std::thread server_thread_;
     std::string body_;
+    std::string content_type_;
+    int status_code_ = 200;
+    std::atomic<int> request_count_ = 0;
 };
 #endif
 
@@ -40132,6 +40143,116 @@ TEST_F(PaintTest, ImageCacheStillSeparatesQueryVariantsV2069) {
     EXPECT_EQ(image_cache_bytes_for_testing(), 8u);
     EXPECT_GT(image_cache_miss_count_for_testing(), misses_after_first);
     EXPECT_GE(image_cache_hit_count_for_testing(), hits_after_first);
+
+    reset_image_cache_for_testing();
+#endif
+}
+
+TEST_F(PaintTest, ImageCacheNegativeCachesBrokenImageRerendersV2071) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Local POSIX socket fixture is not available on Windows.";
+#else
+    reset_image_cache_for_testing();
+
+    ScopedImageResponseServer server("", "image/png");
+    ASSERT_TRUE(server.is_valid());
+
+    const std::string url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/broken.png";
+    const std::string html =
+        "<html><body><img width='24' height='24' src='" + url + "'></body></html>";
+
+    auto first = render_html(html, 64, 64);
+    ASSERT_TRUE(first.success) << first.error;
+    EXPECT_EQ(server.request_count(), 1);
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 0u);
+
+    const auto misses_after_first = image_cache_miss_count_for_testing();
+    const auto hits_after_first = image_cache_hit_count_for_testing();
+
+    auto second = render_html(html, 64, 64);
+    ASSERT_TRUE(second.success) << second.error;
+    EXPECT_EQ(server.request_count(), 1);
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 0u);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_after_first);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_after_first);
+
+    reset_image_cache_for_testing();
+#endif
+}
+
+TEST_F(PaintTest, ImageCacheNegativeTreatsFragmentVariantsAsSameResourceV2071) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Local POSIX socket fixture is not available on Windows.";
+#else
+    reset_image_cache_for_testing();
+
+    ScopedImageResponseServer server("", "image/png");
+    ASSERT_TRUE(server.is_valid());
+
+    const std::string base_url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/broken.png";
+    const std::string first_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "#hero'></body></html>";
+    const std::string second_html =
+        "<html><body><img width='24' height='24' src='" + base_url + "#thumb'></body></html>";
+
+    auto first = render_html(first_html, 64, 64);
+    ASSERT_TRUE(first.success) << first.error;
+    EXPECT_EQ(server.request_count(), 1);
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 0u);
+
+    const auto misses_after_first = image_cache_miss_count_for_testing();
+    const auto hits_after_first = image_cache_hit_count_for_testing();
+
+    auto second = render_html(second_html, 64, 64);
+    ASSERT_TRUE(second.success) << second.error;
+    EXPECT_EQ(server.request_count(), 1);
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 0u);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_after_first);
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_after_first);
+
+    reset_image_cache_for_testing();
+#endif
+}
+
+TEST_F(PaintTest, ImageCacheResetClearsNegativeEntriesV2071) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Local POSIX socket fixture is not available on Windows.";
+#else
+    reset_image_cache_for_testing();
+
+    ScopedImageResponseServer server("", "image/png");
+    ASSERT_TRUE(server.is_valid());
+
+    const std::string url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/broken.png";
+    const std::string html =
+        "<html><body><img width='24' height='24' src='" + url + "'></body></html>";
+
+    auto first = render_html(html, 64, 64);
+    ASSERT_TRUE(first.success) << first.error;
+    EXPECT_EQ(server.request_count(), 1);
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+
+    auto second = render_html(html, 64, 64);
+    ASSERT_TRUE(second.success) << second.error;
+    EXPECT_EQ(server.request_count(), 1);
+
+    reset_image_cache_for_testing();
+    EXPECT_EQ(image_cache_size_for_testing(), 0u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 0u);
+
+    auto third = render_html(html, 64, 64);
+    ASSERT_TRUE(third.success) << third.error;
+    EXPECT_EQ(server.request_count(), 2);
+    EXPECT_EQ(image_cache_size_for_testing(), 1u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 0u);
+    EXPECT_GE(image_cache_miss_count_for_testing(), 1u);
 
     reset_image_cache_for_testing();
 #endif

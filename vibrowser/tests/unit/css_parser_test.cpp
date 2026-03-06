@@ -816,6 +816,10 @@ TEST(CSSParserTest, MediaRuleParsesNestedSupports) {
     ASSERT_EQ(sheet.media_queries.size(), 1u);
     ASSERT_EQ(sheet.media_queries[0].rules.size(), 1u);
     EXPECT_EQ(sheet.media_queries[0].rules[0].selector_text, ".grid");
+    ASSERT_EQ(sheet.media_queries[0].rules[0].media_conditions.size(), 1u);
+    EXPECT_EQ(sheet.media_queries[0].rules[0].media_conditions[0], "screen");
+    ASSERT_EQ(sheet.media_queries[0].rules[0].supports_conditions.size(), 1u);
+    EXPECT_EQ(sheet.media_queries[0].rules[0].supports_conditions[0], "(display: grid)");
     ASSERT_EQ(sheet.media_queries[0].rules[0].declarations.size(), 1u);
     EXPECT_EQ(sheet.media_queries[0].rules[0].declarations[0].property, "display");
 }
@@ -826,8 +830,32 @@ TEST(CSSParserTest, SupportsRuleParsesNestedMedia) {
     ASSERT_EQ(sheet.supports_rules.size(), 1u);
     ASSERT_EQ(sheet.supports_rules[0].rules.size(), 1u);
     EXPECT_EQ(sheet.supports_rules[0].rules[0].selector_text, ".grid");
+    ASSERT_EQ(sheet.supports_rules[0].rules[0].supports_conditions.size(), 1u);
+    EXPECT_EQ(sheet.supports_rules[0].rules[0].supports_conditions[0], "(display: grid)");
+    ASSERT_EQ(sheet.supports_rules[0].rules[0].media_conditions.size(), 1u);
+    EXPECT_EQ(sheet.supports_rules[0].rules[0].media_conditions[0], "screen");
     ASSERT_EQ(sheet.supports_rules[0].rules[0].declarations.size(), 1u);
     EXPECT_EQ(sheet.supports_rules[0].rules[0].declarations[0].property, "display");
+}
+
+TEST(CSSParserTest, NestedConditionalRulesRetainCombinedOuterAndInnerConditions) {
+    auto sheet = parse_stylesheet(
+        "@media screen {"
+        "  @supports (display: grid) {"
+        "    @media (min-width: 768px) {"
+        "      .grid { display: grid; }"
+        "    }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 1u);
+    const auto& rule = sheet.media_queries[0].rules[0];
+    EXPECT_EQ(rule.selector_text, ".grid");
+    EXPECT_EQ(rule.media_conditions,
+              (std::vector<std::string>{"screen", "(min-width: 768px)"}));
+    EXPECT_EQ(rule.supports_conditions,
+              (std::vector<std::string>{"(display: grid)"}));
 }
 
 // =============================================================================

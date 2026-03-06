@@ -8094,8 +8094,31 @@ bool StyleResolver::evaluate_supports_condition(const std::string& condition) co
     return matches;
 }
 
+bool StyleResolver::rule_conditions_match(const StyleRule& rule) const {
+    for (const auto& condition : rule.media_conditions) {
+        if (!evaluate_media_condition(condition)) {
+            return false;
+        }
+    }
+
+    for (const auto& condition : rule.supports_conditions) {
+        if (!evaluate_supports_condition(condition)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool StyleResolver::is_element_in_scope(const ElementView& element, const ScopeRule& scope) const {
-    auto scope_start_list = parse_selector_list(scope.scope_start);
+    auto scope_start_it = scope_boundary_selector_cache_.find(scope.scope_start);
+    if (scope_start_it == scope_boundary_selector_cache_.end()) {
+        scope_start_it = scope_boundary_selector_cache_
+            .emplace(scope.scope_start, parse_selector_list(scope.scope_start))
+            .first;
+        ++scope_boundary_parse_count_;
+    }
+    const auto& scope_start_list = scope_start_it->second;
     if (scope_start_list.selectors.empty()) {
         return false;
     }
@@ -8116,7 +8139,14 @@ bool StyleResolver::is_element_in_scope(const ElementView& element, const ScopeR
     }
 
     if (!scope.scope_end.empty()) {
-        auto scope_end_list = parse_selector_list(scope.scope_end);
+        auto scope_end_it = scope_boundary_selector_cache_.find(scope.scope_end);
+        if (scope_end_it == scope_boundary_selector_cache_.end()) {
+            scope_end_it = scope_boundary_selector_cache_
+                .emplace(scope.scope_end, parse_selector_list(scope.scope_end))
+                .first;
+            ++scope_boundary_parse_count_;
+        }
+        const auto& scope_end_list = scope_end_it->second;
         for (const ElementView* anc = element.parent; anc; anc = anc->parent) {
             for (const auto& complex_sel : scope_end_list.selectors) {
                 if (matcher_.matches(*anc, complex_sel)) {
@@ -8141,6 +8171,9 @@ void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
             continue;
         }
         const auto& rule = rules[rule_index];
+        if (!rule_conditions_match(rule)) {
+            continue;
+        }
         bool matched_any = false;
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
@@ -8175,6 +8208,9 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
             continue;
         }
         const auto& rule = rules[rule_index];
+        if (!rule_conditions_match(rule)) {
+            continue;
+        }
         bool matched_any = false;
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {

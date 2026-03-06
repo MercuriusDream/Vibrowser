@@ -130,12 +130,14 @@ void CookieJar::set_from_header(const std::string& header_value,
 
     std::lock_guard<std::mutex> lock(mutex_);
 
-    // Replace existing cookie with same name+domain+path
+    // Host-only and Domain cookies can coexist for the same normalized domain/path.
+    // Only replace an existing cookie when the storage scope also matches.
     auto& domain_cookies = cookies_[cookie.domain];
     domain_cookies.erase(
         std::remove_if(domain_cookies.begin(), domain_cookies.end(),
                        [&](const Cookie& existing) {
-                           return existing.name == cookie.name && existing.path == cookie.path;
+                           return existing.name == cookie.name && existing.path == cookie.path &&
+                                  existing.host_only == cookie.host_only;
                        }),
         domain_cookies.end());
 

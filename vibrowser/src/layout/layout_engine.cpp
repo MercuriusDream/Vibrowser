@@ -492,10 +492,14 @@ static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
     return measured;
 }
 
-void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewport_height) {
+void LayoutEngine::clear_intrinsic_measurement_caches() {
     intrinsic_width_cache_.clear();
     g_intrinsic_height_cache.clear();
     g_max_content_width_cache.clear();
+}
+
+void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewport_height) {
+    clear_intrinsic_measurement_caches();
     inline_block_shrink_wrap_relayout_count_ = 0;
     viewport_width_ = viewport_width;
     viewport_height_ = viewport_height;
@@ -560,17 +564,13 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
         case LayoutMode::None:
             root.geometry.width = 0;
             root.geometry.height = 0;
-            intrinsic_width_cache_.clear();
-            g_intrinsic_height_cache.clear();
-            g_max_content_width_cache.clear();
+            clear_intrinsic_measurement_caches();
             return;
         default:
             layout_block(root, viewport_width);
             break;
     }
-    intrinsic_width_cache_.clear();
-    g_intrinsic_height_cache.clear();
-    g_max_content_width_cache.clear();
+    clear_intrinsic_measurement_caches();
 }
 
 // Aspect-ratio resolution:
@@ -5804,6 +5804,11 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         // Scan ALL rows: use maximum explicit/intrinsic width per column.
         // Use scan_occupancy to skip columns already occupied by rowspans from prior rows,
         // ensuring correct column index assignment when rowspan cells are present.
+        // Auto-table layout can re-enter within the same top-level compute when an
+        // ancestor changes the table's used width on a later pass. Start each table
+        // width-distribution pass from fresh intrinsic measurements so width hints do
+        // not leak across those relayouts.
+        clear_intrinsic_measurement_caches();
         std::unordered_map<const LayoutNode*, std::array<float, 2>> auto_cell_width_hints;
         for (size_t ri = 0; ri < rows.size(); ri++) {
             auto* row = rows[ri];

@@ -31,6 +31,7 @@ private:
     void layout_grid(LayoutNode& node, float containing_width);
     void layout_table(LayoutNode& node, float containing_width);
     void layout_children(LayoutNode& node);
+    void clear_intrinsic_measurement_caches();
 
     float compute_width(LayoutNode& node, float containing_width);
     float compute_height(LayoutNode& node, float containing_height = -1);

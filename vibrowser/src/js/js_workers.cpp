@@ -52,6 +52,22 @@ WorkerState* get_worker_state(JSContext* ctx) {
     return raw;
 }
 
+static void unregister_worker(JSContext* ctx, WorkerThread* worker) {
+    std::lock_guard<std::mutex> lock(g_worker_states_mutex);
+    auto it = g_worker_states.find(ctx);
+    if (it == g_worker_states.end()) {
+        return;
+    }
+
+    auto worker_it = it->second->workers.find(worker);
+    if (worker_it == it->second->workers.end()) {
+        return;
+    }
+
+    JS_FreeValue(ctx, worker_it->second.js_object);
+    it->second->workers.erase(worker_it);
+}
+
 static bool parse_json_payload(JSContext* ctx, JSValueConst value, std::string& out) {
     JSValue json_val = JS_JSONStringify(ctx, value, JS_UNDEFINED, JS_UNDEFINED);
     if (JS_IsException(json_val)) {
@@ -367,6 +383,7 @@ static void worker_finalizer(JSRuntime* /*rt*/, JSValue val) {
         for (auto& [ctx, state] : g_worker_states) {
             auto it = state->workers.find(worker_handle->get());
             if (it != state->workers.end()) {
+                JS_FreeValue(ctx, it->second.js_object);
                 state->workers.erase(it);
                 break;
             }
@@ -424,6 +441,7 @@ static JSValue worker_terminate(JSContext* ctx, JSValueConst this_val, int /*arg
     }
 
     worker->terminate();
+    unregister_worker(ctx, worker);
     return JS_UNDEFINED;
 }
 
@@ -591,6 +609,12 @@ void WorkerThread::post_message_to_main(const std::string& json_data, const std:
 
 bool WorkerThread::try_recv_message_from_worker(WorkerMessage& message) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
+    if (should_terminate_ || finished_) {
+        while (!worker_to_main_.empty()) {
+            worker_to_main_.pop();
+        }
+        return false;
+    }
     if (worker_to_main_.empty()) {
         return false;
     }
@@ -827,6 +851,7 @@ void install_worker_bindings(JSContext* ctx) {
 void process_worker_messages(JSContext* ctx) {
     WorkerState* state = get_worker_state(ctx);
     std::vector<std::pair<std::shared_ptr<WorkerThread>, JSValue>> active_workers;
+    std::vector<WorkerThread*> stale_workers;
     {
         std::lock_guard<std::mutex> lock(g_worker_states_mutex);
         if (!state || state->workers.empty()) {
@@ -834,20 +859,38 @@ void process_worker_messages(JSContext* ctx) {
         }
 
         active_workers.reserve(state->workers.size());
+        stale_workers.reserve(state->workers.size());
         for (auto& state_entry : state->workers) {
             auto& entry = state_entry.second;
+            if (entry.thread->is_terminated() || entry.thread->is_finished()) {
+                stale_workers.push_back(state_entry.first);
+                continue;
+            }
             if (!JS_IsUndefined(entry.js_object)) {
                 active_workers.emplace_back(entry.thread, JS_DupValue(ctx, entry.js_object));
             }
         }
     }
 
+    for (WorkerThread* worker : stale_workers) {
+        unregister_worker(ctx, worker);
+    }
+
     for (auto& pair : active_workers) {
         auto worker = pair.first;
         JSValue worker_obj = pair.second;
 
+        if (worker->is_terminated() || worker->is_finished()) {
+            unregister_worker(ctx, worker.get());
+            JS_FreeValue(ctx, worker_obj);
+            continue;
+        }
+
         WorkerMessage msg;
         while (worker->try_recv_message_from_worker(msg)) {
+            if (worker->is_terminated() || worker->is_finished()) {
+                break;
+            }
             if (msg.kind == WorkerMessageKind::kError) {
                 JSValue onerror = JS_GetPropertyStr(ctx, worker_obj, "onerror");
                 if (JS_IsFunction(ctx, onerror)) {
@@ -880,12 +923,7 @@ void process_worker_messages(JSContext* ctx) {
 
         // Clean up finished workers
         if (worker->is_finished()) {
-            std::lock_guard<std::mutex> lock(g_worker_states_mutex);
-            auto it = state->workers.find(worker.get());
-            if (it != state->workers.end()) {
-                JS_FreeValue(ctx, it->second.js_object);
-                state->workers.erase(it);
-            }
+            unregister_worker(ctx, worker.get());
         }
         JS_FreeValue(ctx, worker_obj);
     }

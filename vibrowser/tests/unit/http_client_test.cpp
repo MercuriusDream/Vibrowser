@@ -32287,28 +32287,28 @@ TEST(HttpClient, CookieJarReplacementUpdatesDomainScopeV2056) {
     jar.set_from_header("session2056=domain; Domain=example.com; Path=/app", "example.com");
 
     std::string exact = jar.get_cookie_header("example.com", "/app", false);
-    EXPECT_NE(exact.find("session2056=domain"), std::string::npos)
-        << "Latest cookie should replace the earlier value on the origin host, got: " << exact;
-    EXPECT_EQ(exact.find("session2056=host"), std::string::npos)
-        << "Replaced host-only cookie should not remain serialized, got: " << exact;
+    EXPECT_EQ(exact, "session2056=host; session2056=domain")
+        << "Exact-host requests should serialize both host-only and domain-scoped cookies in "
+           "creation order, got: "
+        << exact;
 
     std::string subdomain = jar.get_cookie_header("cdn.example.com", "/app", false);
-    EXPECT_NE(subdomain.find("session2056=domain"), std::string::npos)
-        << "Replacement with a domain cookie should widen scope to subdomains, got: " << subdomain;
+    EXPECT_EQ(subdomain, "session2056=domain")
+        << "Subdomains should receive only the domain-scoped cookie, got: " << subdomain;
 
     jar.set_from_header("session2056=host-again; Path=/app", "example.com");
+    jar.set_from_header("session2056=domain-again; Domain=example.com; Path=/app", "example.com");
 
     std::string rewritten = jar.get_cookie_header("example.com", "/app", false);
-    EXPECT_NE(rewritten.find("session2056=host-again"), std::string::npos)
-        << "Later host-only cookie should replace the domain cookie on the origin host, got: "
-        << rewritten;
-    EXPECT_EQ(rewritten.find("session2056=domain"), std::string::npos)
-        << "Replaced domain cookie should not remain serialized on the origin host, got: "
+    EXPECT_EQ(rewritten, "session2056=host-again; session2056=domain-again")
+        << "Each scope should replace only its own prior cookie while keeping mixed-scope "
+           "serialization deterministic, got: "
         << rewritten;
 
     std::string subdomain_after_host = jar.get_cookie_header("cdn.example.com", "/app", false);
-    EXPECT_EQ(subdomain_after_host.find("session2056=host-again"), std::string::npos)
-        << "Host-only replacement should stop subdomain serialization, got: " << subdomain_after_host;
+    EXPECT_EQ(subdomain_after_host, "session2056=domain-again")
+        << "Replacing the host-only scope must not affect subdomain-visible domain cookies, got: "
+        << subdomain_after_host;
 }
 
 TEST(HttpClient, CookieDefaultPathUsesRequestDirectory) {
@@ -32373,6 +32373,39 @@ TEST(CookieJarTest, EqualScopeDuplicateNamesPreserveCreationOrderV2069) {
         << "Equal-path duplicate names should keep creation order instead of preferring host-only "
            "cookies, got: "
         << header;
+}
+
+TEST(CookieJarTest, HostOnlyCookieIsolationSurvivesSameNameDomainCookieV2071) {
+    CookieJar jar;
+    jar.set_from_header("tenant2071=domain; Domain=example.com; Path=/", "example.com");
+    jar.set_from_header("tenant2071=host; Path=/", "api.example.com");
+
+    std::string exact = jar.get_cookie_header("api.example.com", "/", false);
+    EXPECT_EQ(exact, "tenant2071=domain; tenant2071=host")
+        << "Exact host should receive both matching scopes in creation order, got: " << exact;
+
+    std::string subdomain = jar.get_cookie_header("deep.api.example.com", "/", false);
+    EXPECT_EQ(subdomain, "tenant2071=domain")
+        << "Host-only cookies must not leak to deeper subdomains even when a same-name domain "
+           "cookie also matches, got: "
+        << subdomain;
+}
+
+TEST(CookieJarTest, MixedScopeDuplicateNamesKeepPathSpecificOrderingV2071) {
+    CookieJar jar;
+    jar.set_from_header("prefs2071=domain-root; Domain=example.com; Path=/", "example.com");
+    jar.set_from_header("prefs2071=host-app; Path=/app", "api.example.com");
+    jar.set_from_header("prefs2071=domain-app; Domain=example.com; Path=/app", "api.example.com");
+
+    std::string header = jar.get_cookie_header("api.example.com", "/app/dashboard", false);
+    std::string repeated = jar.get_cookie_header("api.example.com", "/app/dashboard", false);
+
+    EXPECT_EQ(header, "prefs2071=host-app; prefs2071=domain-app; prefs2071=domain-root")
+        << "Longer-path cookies should stay first, and equal-path mixed-scope cookies should "
+           "remain in creation order, got: "
+        << header;
+    EXPECT_EQ(repeated, header)
+        << "Repeated serialization should keep mixed-scope ordering stable, got: " << repeated;
 }
 
 TEST(HttpClient, CookieDefaultPathMatchesNestedRequests) {

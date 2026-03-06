@@ -63,6 +63,14 @@ public:
         return inline_style_parse_count_;
     }
 
+    size_t scope_boundary_selector_cache_size_for_testing() const {
+        return scope_boundary_selector_cache_.size();
+    }
+
+    size_t scope_boundary_parse_count_for_testing() const {
+        return scope_boundary_parse_count_;
+    }
+
 private:
     struct MediaConditionCacheState {
         float viewport_width = 0.0f;
@@ -75,6 +83,7 @@ private:
     bool evaluate_media_condition(const std::string& condition) const;
     // Evaluate a @supports condition string
     bool evaluate_supports_condition(const std::string& condition) const;
+    bool rule_conditions_match(const StyleRule& rule) const;
     // Check if element is within @scope boundaries
     bool is_element_in_scope(const ElementView& element, const ScopeRule& scope) const;
     // Helper: collect rules from a rule list into matched results
@@ -101,7 +110,9 @@ private:
     mutable std::unordered_map<std::string, bool> supports_condition_cache_;
     mutable std::unordered_map<std::string, std::vector<Declaration>>
         inline_style_declaration_cache_;
+    mutable std::unordered_map<std::string, SelectorList> scope_boundary_selector_cache_;
     mutable size_t inline_style_parse_count_ = 0;
+    mutable size_t scope_boundary_parse_count_ = 0;
 };
 
 // Set/get the global dark mode flag used by light-dark() color function.

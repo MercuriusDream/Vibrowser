@@ -6123,6 +6123,67 @@ TEST(JSWorker, MessagePumpDeliversQueuedMessages) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
 }
 
+TEST(JSWorker, TerminateSuppressesQueuedMessagesBeforePump) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__workerCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) {
+            __workerCount++;
+            __workerResult = e.data;
+        };
+        __worker.postMessage('hello');
+        __worker.terminate();
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    std::this_thread::sleep_for(20ms);
+
+    auto result = engine.evaluate(R"(
+        var snapshot = __workerResult + ',' + __workerCount;
+        __worker = null;
+        snapshot;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "pending,0");
+}
+
+TEST(JSWorker, WorkerCloseSuppressesQueuedErrorsBeforePump) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerError = 'pending';
+        globalThis.__workerErrorCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function() { try { throw new Error("boom from worker"); } finally { close(); } }');
+        __worker.onerror = function(e) {
+            __workerErrorCount++;
+            __workerError = e.message;
+        };
+        __worker.postMessage('hello');
+        __workerError;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    std::this_thread::sleep_for(20ms);
+
+    auto result = engine.evaluate(R"(
+        var snapshot = __workerError + ',' + __workerErrorCount;
+        __worker = null;
+        snapshot;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "pending,0");
+}
+
 TEST(JSWorker, MessagePumpDoesNotWaitForPollingSliceV2065) {
     using namespace std::chrono_literals;
 

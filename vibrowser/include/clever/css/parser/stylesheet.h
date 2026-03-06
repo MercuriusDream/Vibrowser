@@ -26,6 +26,8 @@ struct StyleRule {
     SelectorList selectors;
     std::vector<Declaration> declarations;
     std::string selector_text;  // original selector text
+    std::vector<std::string> media_conditions;
+    std::vector<std::string> supports_conditions;
     // CSS @layer metadata used by cascade ordering.
     bool in_layer = false;
     size_t layer_order = 0;

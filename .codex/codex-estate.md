@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-06
-**Current Focus**: Cycle 2069 — Make One-Shot Event-Loop Timers Become Inactive After Firing | Order Matching Cookies By Path Specificity In Outgoing Headers | Enforce One-Shot `Response` Body Consumption And Real `bodyUsed` State | Cache Parsed Inline Style Declaration Blocks In The Style Resolver | Use Rendered Text Transforms In Intrinsic Width Measurement | Strip URL Fragments From Decoded Image Cache Keys
+**Current Focus**: Cycle 2071 — Worker Termination Message Suppression | Host-Only Cookie Isolation | Nested Conditional Rule Semantics | `@scope` Boundary Selector Cache | Auto-Table Relayout Fresh Width Hints | Negative Cache For Broken Images
 **Momentum**: C2007 complete — render views now prefer renderer DPR over transient window scale, with successful vibrowser app build and targeted DPR/JS regressions passing. From C1995 to C2007: 12 implementation cycles advanced.
-**Cycle**: 2069
+**Cycle**: 2071
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -2527,3 +2527,15 @@ Future cycles will append fresh entries with the corrected format from `.codex/o
 - Summary: Make One-Shot Event-Loop Timers Become Inactive After Firing | Order Matching Cookies By Path Specificity In Outgoing Headers | Enforce One-Shot `Response` Body Consumption And Real `bodyUsed` State | Cache Parsed Inline Style Declaration Blocks In The Style Resolver | Use Rendered Text Transforms In Intrinsic Width Measurement | Strip URL Fragments From Decoded Image Cache Keys
 - Planner output: `.codex/orchestrator/state/runs/cycle-2069/plan.json`
 - Verification report: `.codex/orchestrator/state/runs/cycle-2069/verifier.json`
+
+### Cycle 2070 — 2026-03-06 23:45:41 +0900
+- Runtime: main `gpt-5.4/high` (fast=1), workers `gpt-5.4/medium` (fast=1)
+- Summary: One-Shot Event-Loop Timer Inactivation | Cookie Header Path-Specificity Ordering | Response Body One-Shot Consumption | Inline Style Declaration Cache | Intrinsic Width Uses Rendered Text Transforms | Decoded Image Cache Fragment Normalization
+- Planner output: `.codex/orchestrator/state/runs/cycle-2070/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2070/verifier.json`
+
+### Cycle 2071 — 2026-03-07 00:01:28 +0900
+- Runtime: main `gpt-5.4/high` (fast=1), workers `gpt-5.4/medium` (fast=1)
+- Summary: Quiesce Worker Deliveries After Termination | Harden Host-Only Cookie Isolation | Preserve Nested Conditional Rule Semantics | Cache Parsed `@scope` Boundaries | Stabilize Auto-Table Relayout Under Width Changes | Negative-Cache Broken Image Fetches
+- Planner output: `.codex/orchestrator/state/runs/cycle-2071/plan.json`
+- Verification report: clean rebuild verified in `vibrowser/build-cycle2071-integrate` with focused JS/network/CSS/layout/paint regressions green

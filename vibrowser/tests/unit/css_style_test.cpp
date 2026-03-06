@@ -1340,6 +1340,117 @@ TEST(StyleResolverTest, InlineStyleCacheSeparatesDistinctAttributeStringsV2069) 
     EXPECT_EQ(resolver.inline_style_parse_count_for_testing(), 2u);
 }
 
+TEST(StyleResolverTest, ScopeBoundaryCacheReusesParsedSelectorsAcrossRepeatedMatchesV2071) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "@scope (.card) to (.stop) {"
+        "  .title { color: rgb(255, 0, 0); }"
+        "  .title::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "}"
+        "@scope (.card) to (.stop) {"
+        "  .title { background-color: rgb(0, 255, 0); }"
+        "}");
+    resolver.add_stylesheet(sheet);
+
+    ElementView card;
+    card.tag_name = "section";
+    card.classes = {"card"};
+
+    ElementView title;
+    title.tag_name = "h2";
+    title.classes = {"title"};
+    title.parent = &card;
+
+    ComputedStyle parent;
+    auto first_style = resolver.resolve(title, parent);
+    auto pseudo_style = resolver.resolve_pseudo(title, "before", first_style);
+    auto matched_again = resolver.collect_matching_rules(title);
+
+    ASSERT_TRUE(pseudo_style.has_value());
+    EXPECT_EQ(first_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(first_style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(pseudo_style->color, (Color{0, 0, 255, 255}));
+    EXPECT_FALSE(matched_again.empty());
+    EXPECT_EQ(resolver.scope_boundary_selector_cache_size_for_testing(), 2u);
+    EXPECT_EQ(resolver.scope_boundary_parse_count_for_testing(), 2u);
+
+    auto second_style = resolver.resolve(title, parent);
+    auto pseudo_style_again = resolver.resolve_pseudo(title, "before", second_style);
+
+    ASSERT_TRUE(pseudo_style_again.has_value());
+    EXPECT_EQ(second_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(pseudo_style_again->color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(resolver.scope_boundary_selector_cache_size_for_testing(), 2u);
+    EXPECT_EQ(resolver.scope_boundary_parse_count_for_testing(), 2u);
+}
+
+TEST(StyleResolverTest, ScopeBoundaryCacheKeepsScopeEndBehaviorV2071) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "@scope (.card) to (.stop) {"
+        "  .title { color: rgb(255, 0, 0); }"
+        "}");
+    resolver.add_stylesheet(sheet);
+
+    ElementView card;
+    card.tag_name = "section";
+    card.classes = {"card"};
+
+    ElementView stop;
+    stop.tag_name = "div";
+    stop.classes = {"stop"};
+    stop.parent = &card;
+
+    ElementView in_scope_title;
+    in_scope_title.tag_name = "h2";
+    in_scope_title.classes = {"title"};
+    in_scope_title.parent = &card;
+
+    ElementView blocked_title;
+    blocked_title.tag_name = "h2";
+    blocked_title.classes = {"title"};
+    blocked_title.parent = &stop;
+
+    auto in_scope_matches = resolver.collect_matching_rules(in_scope_title);
+    auto blocked_matches = resolver.collect_matching_rules(blocked_title);
+
+    ASSERT_EQ(in_scope_matches.size(), 1u);
+    EXPECT_TRUE(blocked_matches.empty());
+    EXPECT_EQ(resolver.scope_boundary_selector_cache_size_for_testing(), 2u);
+    EXPECT_EQ(resolver.scope_boundary_parse_count_for_testing(), 2u);
+}
+
+TEST(StyleResolverTest, NestedConditionalRulesRequireAllStoredConditionsV2071) {
+    StyleResolver resolver;
+    resolver.set_viewport(720.0f, 700.0f);
+    resolver.add_stylesheet(parse_stylesheet(
+        "@media screen {"
+        "  @supports (display: grid) {"
+        "    @media (min-width: 768px) {"
+        "      .grid { color: rgb(255, 0, 0); }"
+        "      .grid::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "    }"
+        "  }"
+        "}"));
+
+    ElementView grid;
+    grid.tag_name = "div";
+    grid.classes = {"grid"};
+    ComputedStyle parent;
+
+    auto narrow_style = resolver.resolve(grid, parent);
+    EXPECT_EQ(narrow_style.color, parent.color);
+    EXPECT_FALSE(resolver.resolve_pseudo(grid, "before", narrow_style).has_value());
+
+    resolver.set_viewport(960.0f, 700.0f);
+
+    auto wide_style = resolver.resolve(grid, parent);
+    auto pseudo_style = resolver.resolve_pseudo(grid, "before", wide_style);
+    EXPECT_EQ(wide_style.color, (Color{255, 0, 0, 255}));
+    ASSERT_TRUE(pseudo_style.has_value());
+    EXPECT_EQ(pseudo_style->color, (Color{0, 0, 255, 255}));
+}
+
 // ===========================================================================
 // Test 29: StyleResolver: inherited properties (color, font-size)
 // ===========================================================================

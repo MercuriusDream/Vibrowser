@@ -92,6 +92,40 @@ std::unique_ptr<LayoutNode> make_hn_title_subtext_table(float table_width) {
     return table;
 }
 
+std::unique_ptr<LayoutNode> make_rowspan_colspan_table(float table_width) {
+    auto table = make_table();
+    table->specified_width = table_width;
+
+    auto first_row = make_row();
+    auto rowspan_cell = make_cell();
+    rowspan_cell->specified_width = 48.0f;
+    rowspan_cell->rowspan = 2;
+    rowspan_cell->append_child(make_text("1.", 14.0f));
+
+    auto wide_cell = make_cell();
+    wide_cell->colspan = 2;
+    wide_cell->append_child(make_text(
+        "Wide title cell should span the remaining columns without disturbing rowspan occupancy",
+        14.0f));
+
+    first_row->append_child(std::move(rowspan_cell));
+    first_row->append_child(std::move(wide_cell));
+
+    auto second_row = make_row();
+    auto meta_cell = make_cell();
+    meta_cell->append_child(make_text("site.example", 12.0f));
+
+    auto comments_cell = make_cell();
+    comments_cell->append_child(make_text("42 comments", 12.0f));
+
+    second_row->append_child(std::move(meta_cell));
+    second_row->append_child(std::move(comments_cell));
+
+    table->append_child(std::move(first_row));
+    table->append_child(std::move(second_row));
+    return table;
+}
+
 }  // namespace
 
 TEST(TableLayoutRegression, HnLikeAutoLayoutKeepsSpacerRowHeightAndWideTitleColumn) {
@@ -189,36 +223,7 @@ TEST(TableLayoutRegression, AutoLayoutScalesAllExplicitColumnsProportionallyOnSh
 }
 
 TEST(TableLayoutRegression, AutoLayoutKeepsColspanAndRowspanPlacementStable) {
-    auto table = make_table();
-    table->specified_width = 360.0f;
-
-    auto first_row = make_row();
-    auto rowspan_cell = make_cell();
-    rowspan_cell->specified_width = 48.0f;
-    rowspan_cell->rowspan = 2;
-    rowspan_cell->append_child(make_text("1.", 14.0f));
-
-    auto wide_cell = make_cell();
-    wide_cell->colspan = 2;
-    wide_cell->append_child(make_text(
-        "Wide title cell should span the remaining columns without disturbing rowspan occupancy",
-        14.0f));
-
-    first_row->append_child(std::move(rowspan_cell));
-    first_row->append_child(std::move(wide_cell));
-
-    auto second_row = make_row();
-    auto meta_cell = make_cell();
-    meta_cell->append_child(make_text("site.example", 12.0f));
-
-    auto comments_cell = make_cell();
-    comments_cell->append_child(make_text("42 comments", 12.0f));
-
-    second_row->append_child(std::move(meta_cell));
-    second_row->append_child(std::move(comments_cell));
-
-    table->append_child(std::move(first_row));
-    table->append_child(std::move(second_row));
+    auto table = make_rowspan_colspan_table(360.0f);
 
     LayoutEngine engine;
     engine.compute(*table, 360.0f, 240.0f);
@@ -306,4 +311,75 @@ TEST(LayoutTableRegressionTest, AutoWidthColumnDoesNotCollapseToMinContentAfterR
     EXPECT_GT(narrow_title_width, 200.0f)
         << "Relayout should keep the auto column at remaining width instead of collapsing to min-content";
     EXPECT_GT(narrow_title_row->geometry.height, 30.0f);
+}
+
+TEST(LayoutTableRegressionTest, AutoWidthColumnReexpandsFromFreshHintsAfterShrinkV2071) {
+    auto table = make_hn_title_subtext_table(520.0f);
+
+    LayoutEngine engine;
+    engine.compute(*table, 520.0f, 240.0f);
+
+    const float wide_title_width = table->children[0]->children[2]->geometry.width;
+    const float wide_title_height = table->children[0]->geometry.height;
+
+    table->specified_width = 260.0f;
+    engine.compute(*table, 260.0f, 240.0f);
+
+    const float narrow_title_width = table->children[0]->children[2]->geometry.width;
+    const float narrow_title_height = table->children[0]->geometry.height;
+
+    table->specified_width = 420.0f;
+    engine.compute(*table, 420.0f, 240.0f);
+
+    ASSERT_EQ(table->children.size(), 2u);
+    auto* expanded_title_row = table->children[0].get();
+    auto* expanded_subtext_row = table->children[1].get();
+
+    const float rank_width = expanded_title_row->children[0]->geometry.width;
+    const float vote_width = expanded_title_row->children[1]->geometry.width;
+    const float expanded_title_width = expanded_title_row->children[2]->geometry.width;
+    const float expanded_subtext_width = expanded_subtext_row->children[2]->geometry.width;
+    const float expanded_title_height = expanded_title_row->geometry.height;
+    const float expected_expanded_auto_column_width = table->geometry.width - rank_width - vote_width;
+
+    EXPECT_LT(narrow_title_width, wide_title_width);
+    EXPECT_GT(expanded_title_width, narrow_title_width);
+    EXPECT_NEAR(expanded_title_width, expected_expanded_auto_column_width, 0.5f);
+    EXPECT_NEAR(expanded_subtext_width, expected_expanded_auto_column_width, 0.5f);
+    EXPECT_LT(expanded_title_height, narrow_title_height)
+        << "Widening the table should recompute the title column from fresh hints and reduce wrapping";
+    EXPECT_LE(expanded_title_height, wide_title_height + 0.5f);
+}
+
+TEST(TableLayoutRegression, AutoLayoutKeepsColspanAndRowspanPlacementStableAfterSecondPass) {
+    auto table = make_rowspan_colspan_table(360.0f);
+
+    LayoutEngine engine;
+    engine.compute(*table, 360.0f, 240.0f);
+
+    table->specified_width = 300.0f;
+    engine.compute(*table, 300.0f, 240.0f);
+
+    ASSERT_EQ(table->children.size(), 2u);
+    auto* laid_first_row = table->children[0].get();
+    auto* laid_second_row = table->children[1].get();
+    ASSERT_EQ(laid_first_row->children.size(), 2u);
+    ASSERT_EQ(laid_second_row->children.size(), 2u);
+
+    auto* laid_rowspan_cell = laid_first_row->children[0].get();
+    auto* laid_wide_cell = laid_first_row->children[1].get();
+    auto* laid_meta_cell = laid_second_row->children[0].get();
+    auto* laid_comments_cell = laid_second_row->children[1].get();
+
+    EXPECT_GT(laid_rowspan_cell->geometry.width, 40.0f);
+    EXPECT_GT(laid_wide_cell->geometry.width, laid_comments_cell->geometry.width);
+    EXPECT_NEAR(laid_wide_cell->geometry.width,
+                laid_meta_cell->geometry.width + laid_comments_cell->geometry.width,
+                0.1f);
+    EXPECT_NEAR(laid_meta_cell->geometry.x, laid_rowspan_cell->geometry.width, 0.1f);
+    EXPECT_NEAR(laid_comments_cell->geometry.x,
+                laid_meta_cell->geometry.x + laid_meta_cell->geometry.width,
+                0.1f);
+    EXPECT_GE(laid_rowspan_cell->geometry.height,
+              laid_first_row->geometry.height + laid_second_row->geometry.height);
 }
