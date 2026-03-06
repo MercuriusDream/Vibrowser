@@ -2209,7 +2209,34 @@ struct StyleDecl {
     std::string value;
 };
 
-std::vector<StyleDecl> parse_inline_style(const std::string& style_str) {
+thread_local std::unordered_map<std::string, std::vector<StyleDecl>> g_inline_style_cache;
+thread_local uint64_t g_inline_style_cache_hits = 0;
+thread_local uint64_t g_inline_style_cache_misses = 0;
+
+std::string canonicalize_inline_style_cache_key(const std::string& style_str) {
+    std::string key;
+    std::istringstream iss(style_str);
+    std::string token;
+    while (std::getline(iss, token, ';')) {
+        auto colon = token.find(':');
+        if (colon == std::string::npos) continue;
+        std::string prop = trim(to_lower(token.substr(0, colon)));
+        std::string val = trim(token.substr(colon + 1));
+        auto imp = val.find("!important");
+        if (imp == std::string::npos) imp = val.find("! important");
+        if (imp != std::string::npos) {
+            val = trim(val.substr(0, imp));
+        }
+        if (prop.empty() || val.empty()) continue;
+        key += prop;
+        key += ':';
+        key += val;
+        key += ';';
+    }
+    return key;
+}
+
+std::vector<StyleDecl> parse_inline_style_uncached(const std::string& style_str) {
     std::vector<StyleDecl> decls;
     std::istringstream iss(style_str);
     std::string token;
@@ -2231,6 +2258,20 @@ std::vector<StyleDecl> parse_inline_style(const std::string& style_str) {
         }
     }
     return decls;
+}
+
+const std::vector<StyleDecl>& parse_inline_style(const std::string& style_str) {
+    const std::string cache_key = canonicalize_inline_style_cache_key(style_str);
+    auto it = g_inline_style_cache.find(cache_key);
+    if (it != g_inline_style_cache.end()) {
+        ++g_inline_style_cache_hits;
+        return it->second;
+    }
+
+    ++g_inline_style_cache_misses;
+    auto [inserted_it, _] =
+        g_inline_style_cache.emplace(cache_key, parse_inline_style_uncached(style_str));
+    return inserted_it->second;
 }
 
 // Parse linear-gradient() into angle and color stops
@@ -2599,13 +2640,14 @@ static std::string resolve_css_var(const std::string& val, const clever::css::Co
 
 void apply_inline_style(clever::css::ComputedStyle& style, const std::string& style_attr,
                         const clever::css::ComputedStyle* parent_style = nullptr) {
-    auto decls = parse_inline_style(style_attr);
+    const auto& decls = parse_inline_style(style_attr);
     // Default parent for inherit: use a default-constructed style if no parent provided
     clever::css::ComputedStyle default_parent;
     default_parent.z_index = clever::layout::Z_INDEX_AUTO;
     const auto& parent = parent_style ? *parent_style : default_parent;
 
-    for (auto& d : decls) {
+    for (const auto& decl : decls) {
+        auto d = decl;
         // Store custom properties (--foo: value)
         if (d.property.size() > 2 && d.property[0] == '-' && d.property[1] == '-') {
             style.custom_properties[d.property] = resolve_css_env(d.value);
@@ -7370,7 +7412,7 @@ std::optional<clever::net::Response> fetch_with_redirects(
 
         // Store cookies from response
         for (auto& cookie_val : response->headers.get_all("set-cookie")) {
-            jar.set_from_header(cookie_val, req.host);
+            jar.set_from_header(cookie_val, req.host, req.path);
         }
 
         if (response->status == 301 || response->status == 302 ||
@@ -7539,7 +7581,10 @@ static std::mutex s_image_cache_mutex;
 static std::unordered_map<std::string, DecodedImage> s_image_cache;
 static std::vector<std::string> s_image_cache_order;
 static size_t s_image_cache_bytes = 0;
-static constexpr size_t IMAGE_CACHE_MAX_BYTES = 64 * 1024 * 1024; // 64MB
+static constexpr size_t IMAGE_CACHE_DEFAULT_MAX_BYTES = 64 * 1024 * 1024; // 64MB
+static size_t s_image_cache_max_bytes = IMAGE_CACHE_DEFAULT_MAX_BYTES;
+static uint64_t s_image_cache_hits = 0;
+static uint64_t s_image_cache_misses = 0;
 
 // Internal helpers — callers must hold s_image_cache_mutex
 static void image_cache_remove_from_order_locked(const std::string& url) {
@@ -7550,7 +7595,7 @@ static void image_cache_remove_from_order_locked(const std::string& url) {
 }
 
 static void image_cache_evict_locked() {
-    while (s_image_cache_bytes > IMAGE_CACHE_MAX_BYTES && !s_image_cache_order.empty()) {
+    while (s_image_cache_bytes > s_image_cache_max_bytes && !s_image_cache_order.empty()) {
         const auto& oldest_url = s_image_cache_order.front();
         auto it = s_image_cache.find(oldest_url);
         if (it != s_image_cache.end()) {
@@ -7835,9 +7880,11 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
         std::lock_guard<std::mutex> lock(s_image_cache_mutex);
         auto cache_it = s_image_cache.find(url);
         if (cache_it != s_image_cache.end()) {
+            ++s_image_cache_hits;
             image_cache_touch(url);
             return cache_it->second;
         }
+        ++s_image_cache_misses;
     }
 
     // Handle data: URIs (e.g., data:image/png;base64,iVBOR...)
@@ -16882,6 +16929,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height, float dpr) {
     const float normalized_dpr = (std::isfinite(dpr) && dpr >= 0.1f) ? dpr : 1.0f;
     g_render_dpr = normalized_dpr;
+    g_inline_style_cache.clear();
     const int device_viewport_width = std::max(1, viewport_width);
     const int device_viewport_height = std::max(1, viewport_height);
     int layout_viewport_width = device_viewport_width;
@@ -18325,6 +18373,60 @@ JSImageData fetch_image_for_js(const std::string& url) {
         out.height = img.height;
     }
     return out;
+}
+
+void reset_inline_style_cache_stats_for_testing() {
+    g_inline_style_cache.clear();
+    g_inline_style_cache_hits = 0;
+    g_inline_style_cache_misses = 0;
+}
+
+size_t inline_style_cache_size_for_testing() {
+    return g_inline_style_cache.size();
+}
+
+uint64_t inline_style_cache_hit_count_for_testing() {
+    return g_inline_style_cache_hits;
+}
+
+uint64_t inline_style_cache_miss_count_for_testing() {
+    return g_inline_style_cache_misses;
+}
+
+void reset_image_cache_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    s_image_cache.clear();
+    s_image_cache_order.clear();
+    s_image_cache_bytes = 0;
+    s_image_cache_max_bytes = IMAGE_CACHE_DEFAULT_MAX_BYTES;
+    s_image_cache_hits = 0;
+    s_image_cache_misses = 0;
+}
+
+void set_image_cache_max_bytes_for_testing(size_t max_bytes) {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    s_image_cache_max_bytes = max_bytes;
+    image_cache_evict_locked();
+}
+
+size_t image_cache_size_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    return s_image_cache.size();
+}
+
+size_t image_cache_bytes_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    return s_image_cache_bytes;
+}
+
+uint64_t image_cache_hit_count_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    return s_image_cache_hits;
+}
+
+uint64_t image_cache_miss_count_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    return s_image_cache_misses;
 }
 
 } // namespace clever::paint

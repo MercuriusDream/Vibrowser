@@ -206,6 +206,8 @@ struct TextRegion {
             : 1.0;
     }
     _contentHeight = _imageHeight / _backingScale; // logical points
+    [self clampScrollOffsetsToContentBounds];
+    [self reflowTextInputOverlay];
 
     // Convert RGBA pixel buffer to CGImage.
     // Our pixel buffer is top-left origin (row 0 = top of page).
@@ -245,8 +247,88 @@ struct TextRegion {
     return (rendererY / _backingScale) * _pageScale;
 }
 
+- (CGFloat)viewOffsetForDocumentX:(CGFloat)documentX {
+    return documentX * _pageScale;
+}
+
+- (CGFloat)viewOffsetForDocumentY:(CGFloat)documentY {
+    return documentY * _pageScale;
+}
+
+- (CGFloat)documentXForViewOffset:(CGFloat)viewOffset {
+    return viewOffset / _pageScale;
+}
+
 - (CGFloat)rendererYForViewOffset:(CGFloat)viewOffset {
     return (viewOffset / _pageScale) * _backingScale;
+}
+
+- (CGFloat)documentYForViewOffset:(CGFloat)viewOffset {
+    return viewOffset / _pageScale;
+}
+
+- (CGFloat)rendererScale {
+    return _backingScale;
+}
+
+- (CGFloat)logicalXForViewX:(CGFloat)viewX {
+    return (viewX + _scrollX) / _pageScale;
+}
+
+- (CGFloat)logicalYForViewY:(CGFloat)viewY {
+    return (viewY + _scrollOffset) / _pageScale;
+}
+
+- (NSPoint)rendererPointForViewPoint:(NSPoint)viewPoint {
+    CGFloat logicalX = [self logicalXForViewX:viewPoint.x];
+    CGFloat logicalY = [self logicalYForViewY:viewPoint.y];
+    return NSMakePoint(logicalX * _backingScale, logicalY * _backingScale);
+}
+
+- (NSPoint)documentPointForViewPoint:(NSPoint)viewPoint {
+    return NSMakePoint([self logicalXForViewX:viewPoint.x],
+                       [self logicalYForViewY:viewPoint.y]);
+}
+
+- (NSRect)viewRectForRendererRect:(const clever::paint::Rect&)rect {
+    return NSMakeRect(
+        [self viewOffsetForDocumentX:(rect.x / _backingScale)] - _scrollX,
+        [self viewOffsetForRendererY:rect.y] - _scrollOffset,
+        (rect.width / _backingScale) * _pageScale,
+        (rect.height / _backingScale) * _pageScale);
+}
+
+- (void)setScrollOffset:(CGFloat)scrollOffset {
+    CGFloat maxScrollY = std::max(0.0, _contentHeight * _pageScale - self.bounds.size.height);
+    _scrollOffset = std::max(0.0, std::min(scrollOffset, maxScrollY));
+    _scrollY = _scrollOffset;
+}
+
+- (void)setScrollOffsetX:(CGFloat)scrollOffsetX {
+    CGFloat contentWidth = (_backingScale > 0.0)
+        ? (_imageWidth / _backingScale) * _pageScale
+        : 0.0;
+    CGFloat maxScrollX = std::max(0.0, contentWidth - self.bounds.size.width);
+    _scrollX = std::max(0.0, std::min(scrollOffsetX, maxScrollX));
+}
+
+- (CGFloat)scrollOffsetX {
+    return _scrollX;
+}
+
+- (void)clampScrollOffsetsToContentBounds {
+    CGFloat currentScrollX = _scrollX;
+    CGFloat currentScrollY = _scrollOffset;
+    [self setScrollOffsetX:currentScrollX];
+    [self setScrollOffset:currentScrollY];
+    CGFloat maxScrollY = std::max(0.0, _contentHeight * _pageScale - self.bounds.size.height);
+    _targetScrollOffset = std::max(0.0, std::min(_targetScrollOffset, maxScrollY));
+}
+
+- (void)setPageScale:(CGFloat)pageScale {
+    _pageScale = std::max(0.25, std::min(4.0, pageScale));
+    [self clampScrollOffsetsToContentBounds];
+    [self reflowTextInputOverlay];
 }
 
 - (void)updateLinks:(const std::vector<clever::paint::LinkRegion>&)links {
@@ -305,10 +387,23 @@ struct TextRegion {
     }
     _stickyImages.clear();
     _stickyElements = std::move(elements);
+    CGFloat overlayScale = (std::isfinite(_backingScale) && _backingScale >= 1.0) ? _backingScale : 1.0;
 
     // Pre-create CGImages for each sticky element from their pixel data
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     for (auto& elem : _stickyElements) {
+        if (!std::isfinite(elem.renderer_dpr) || elem.renderer_dpr < 1.0f) {
+            elem.renderer_dpr = overlayScale;
+        }
+        if (elem.pixel_x > 0 || elem.logical_x == 0.0f) {
+            elem.logical_x = static_cast<float>(elem.pixel_x) / elem.renderer_dpr;
+        }
+        if (elem.logical_width <= 0.0f && elem.pixel_width > 0) {
+            elem.logical_width = static_cast<float>(elem.pixel_width) / elem.renderer_dpr;
+        }
+        if (elem.logical_height <= 0.0f && elem.pixel_height > 0) {
+            elem.logical_height = static_cast<float>(elem.pixel_height) / elem.renderer_dpr;
+        }
         if (elem.pixels.empty() || elem.pixel_width <= 0 || elem.pixel_height <= 0) {
             _stickyImages.push_back(nullptr);
             continue;
@@ -337,10 +432,20 @@ struct TextRegion {
     }
     _fixedImages.clear();
     _fixedElements = std::move(elements);
+    CGFloat overlayScale = (std::isfinite(_backingScale) && _backingScale >= 1.0) ? _backingScale : 1.0;
 
     // Pre-create CGImages for each fixed element from their pixel data
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     for (auto& elem : _fixedElements) {
+        if (!std::isfinite(elem.renderer_dpr) || elem.renderer_dpr < 1.0f) {
+            elem.renderer_dpr = overlayScale;
+        }
+        if (elem.logical_width <= 0.0f && elem.pixel_width > 0) {
+            elem.logical_width = static_cast<float>(elem.pixel_width) / elem.renderer_dpr;
+        }
+        if (elem.logical_height <= 0.0f && elem.pixel_height > 0) {
+            elem.logical_height = static_cast<float>(elem.pixel_height) / elem.renderer_dpr;
+        }
         if (elem.pixels.empty() || elem.pixel_width <= 0 || elem.pixel_height <= 0) {
             _fixedImages.push_back(nullptr);
             continue;
@@ -426,6 +531,7 @@ struct TextRegion {
     // divide by _backingScale to get the correct logical point dimensions.
     CGFloat img_w = (_imageWidth / _backingScale) * _pageScale;
     CGFloat img_h = (_imageHeight / _backingScale) * _pageScale;
+    CGFloat img_x = -_scrollX;
     CGFloat img_y = -_scrollOffset;
 
     CGContextRef cgctx = [[NSGraphicsContext currentContext] CGContext];
@@ -433,7 +539,7 @@ struct TextRegion {
     // Clip to viewport bounds to prevent horizontal overflow
     CGContextClipToRect(cgctx, CGRectMake(0, 0, self.bounds.size.width, self.bounds.size.height));
     // Flip vertically within the destination rect
-    CGContextTranslateCTM(cgctx, 0, img_y + img_h);
+    CGContextTranslateCTM(cgctx, img_x, img_y + img_h);
     CGContextScaleCTM(cgctx, 1.0, -1.0);
     CGContextDrawImage(cgctx, CGRectMake(0, 0, img_w, img_h), _cgImage);
     CGContextRestoreGState(cgctx);
@@ -442,65 +548,61 @@ struct TextRegion {
     // For each sticky element, determine if it should be "stuck" at its
     // CSS `top` offset based on the current scroll position. If so, draw
     // its pre-rendered pixels at the stuck position on top of the main image.
-    // All coordinates here are in device pixels (renderer coords) that we
-    // convert to logical points via _backingScale and then scale by _pageScale.
+    // Overlay snapshots carry their own renderer DPR so a newly-rendered main
+    // surface cannot mis-size or misplace an older sticky snapshot mid-update.
     for (size_t i = 0; i < _stickyElements.size(); i++) {
         if (i >= _stickyImages.size() || !_stickyImages[i]) continue;
         auto& elem = _stickyElements[i];
 
-        // Convert scroll offset from logical view points to renderer pixel coords
-        CGFloat scrollPx = _scrollOffset / _pageScale * _backingScale;
-        CGFloat stickyScrollPx = elem.is_page_sticky
-            ? scrollPx
-            : (elem.container_scroll_y / _pageScale * _backingScale);
+        CGFloat scrollCss = [self documentYForViewOffset:_scrollOffset];
+        CGFloat stickyScrollCss = elem.is_page_sticky ? scrollCss : elem.container_scroll_y;
 
-        // The element's normal position in the page (renderer pixel coords)
+        // The element's normal position in the page (CSS/page coords).
         float normal_y = elem.abs_y;
         if (!elem.is_page_sticky) {
             normal_y -= elem.container_y;
         }
-        // The threshold: element starts sticking when its top edge scrolls
-        // past the viewport top + top_offset
-        float stick_threshold = elem.top_offset * _backingScale;
+        float stick_threshold = elem.top_offset;
 
-        // Is the element scrolled past its stick point?
-        // The element's Y relative to viewport = normal_y - scrollPx
-        // It should stick when normal_y - scrollPx < stick_threshold
-        // i.e., when scrollPx > normal_y - stick_threshold
-        bool should_stick = (stickyScrollPx > normal_y - stick_threshold);
+        bool should_stick = (stickyScrollCss > normal_y - stick_threshold);
 
         // Also check container bounds: the sticky element should not stick
         // past the bottom of its container. When the container's bottom edge
         // minus the element's height reaches the stick threshold, the element
         // should start scrolling away with the container.
-        float max_stick_y = elem.container_bottom - elem.height;
+        float container_bottom_css = elem.is_page_sticky ? static_cast<float>(_contentHeight)
+                                                         : elem.container_bottom;
+        float max_stick_y = container_bottom_css - elem.height;
         bool past_container = elem.is_page_sticky
-            ? (stickyScrollPx + stick_threshold > max_stick_y)
+            ? (stickyScrollCss + stick_threshold > max_stick_y)
             : (elem.container_y + stick_threshold > max_stick_y);
 
         if (!should_stick) continue; // Element is in normal flow position, already drawn in main image
 
-        // Calculate the Y position to draw the sticky element (in renderer pixel coords)
-        float draw_y_px;
+        // Calculate the Y position to draw the sticky element in CSS/page coordinates.
+        float draw_y_css;
         if (past_container) {
             // Element is pushed up by the container bottom edge
-            draw_y_px = max_stick_y;
+            draw_y_css = max_stick_y;
         } else {
             // Element is stuck at the sticky container's top_offset.
             if (elem.is_page_sticky) {
                 // Page-level sticky tracks the viewport scroll.
-                draw_y_px = stickyScrollPx + stick_threshold;
+                draw_y_css = stickyScrollCss + stick_threshold;
             } else {
                 // Container-level sticky tracks the container origin.
-                draw_y_px = elem.container_y + stick_threshold;
+                draw_y_css = elem.container_y + stick_threshold;
             }
         }
 
-        // Convert from renderer pixels to logical view points
-        CGFloat draw_x = (elem.pixel_x / _backingScale) * _pageScale;
-        CGFloat draw_y = ((draw_y_px / _backingScale) * _pageScale) - (elem.is_page_sticky ? _scrollOffset : 0.0);
-        CGFloat draw_w = (elem.pixel_width / _backingScale) * _pageScale;
-        CGFloat draw_h = (elem.pixel_height / _backingScale) * _pageScale;
+        // Convert from renderer pixels/CSS coords to logical view points.
+        CGFloat draw_x = [self viewOffsetForDocumentX:elem.logical_x] - _scrollX;
+        if (!elem.is_page_sticky) {
+            draw_x -= [self viewOffsetForDocumentX:elem.container_scroll_x];
+        }
+        CGFloat draw_y = [self viewOffsetForDocumentY:draw_y_css] - _scrollOffset;
+        CGFloat draw_w = elem.logical_width * _pageScale;
+        CGFloat draw_h = elem.logical_height * _pageScale;
 
         // Draw the sticky element overlay with the same flip transform as the main image
         CGContextSaveGState(cgctx);
@@ -518,12 +620,10 @@ struct TextRegion {
         if (i >= _fixedImages.size() || !_fixedImages[i]) continue;
         auto& felem = _fixedElements[i];
 
-        // Fixed elements sit at viewport-relative pixel positions.
-        // Convert from renderer pixels to logical view points; no scroll subtracted.
-        CGFloat fx = (felem.viewport_x / _backingScale) * _pageScale;
-        CGFloat fy = (felem.viewport_y / _backingScale) * _pageScale;
-        CGFloat fw = (felem.pixel_width / _backingScale) * _pageScale;
-        CGFloat fh = (felem.pixel_height / _backingScale) * _pageScale;
+        CGFloat fx = felem.viewport_x * _pageScale;
+        CGFloat fy = felem.viewport_y * _pageScale;
+        CGFloat fw = felem.logical_width * _pageScale;
+        CGFloat fh = felem.logical_height * _pageScale;
 
         // Draw with the same flip transform as the main image.
         CGContextSaveGState(cgctx);
@@ -589,7 +689,7 @@ struct TextRegion {
             if (bx + bw >= sx && bx <= ex &&
                 by + bh >= sy && by <= ey) {
                 NSRect highlight = NSMakeRect(
-                    bx * _pageScale,
+                    [self viewOffsetForDocumentX:bx] - _scrollX,
                     by * _pageScale - _scrollOffset,
                     bw * _pageScale,
                     bh * _pageScale);
@@ -606,10 +706,6 @@ struct TextRegion {
                                                 canScrollDown:(BOOL)canScrollDown
                                                 canScrollRight:(BOOL)canScrollRight {
     if (!_layoutRoot) return nullptr;
-
-    // Convert page coordinates to viewport coordinates for easier calculation
-    // (page coords = viewport coords shifted by _scrollOffset)
-    CGFloat viewportY = pageY + _scrollOffset;
 
     // Recursive search: find the deepest scrollable container at this point
     std::function<clever::layout::LayoutNode*(clever::layout::LayoutNode&,
@@ -629,7 +725,7 @@ struct TextRegion {
 
         // Check if point is within this node's border box
         if (pageX < absX || pageX > absX + w ||
-            viewportY < absY || viewportY > absY + h) {
+            pageY < absY || pageY > absY + h) {
             return nullptr;
         }
 
@@ -698,8 +794,9 @@ struct TextRegion {
     NSPoint mouseLocation = [NSEvent mouseLocation];
     NSPoint screenPoint = [self.window convertPointFromScreen:mouseLocation];
     NSPoint viewMouseLocation = [self convertPoint:screenPoint fromView:nil];
-    CGFloat pageX = viewMouseLocation.x / _pageScale / _backingScale;
-    CGFloat pageY = -viewMouseLocation.y / _pageScale / _backingScale; // flip Y axis
+    NSPoint documentPoint = [self documentPointForViewPoint:viewMouseLocation];
+    CGFloat pageX = documentPoint.x;
+    CGFloat pageY = documentPoint.y;
 
     // Check if we should try scrolling a child container
     auto scrollTarget = [self findScrollableContainerAtPageX:pageX
@@ -991,8 +1088,7 @@ struct TextRegion {
 }
 
 - (void)magnifyWithEvent:(NSEvent*)event {
-    _pageScale += event.magnification;
-    _pageScale = std::max(0.25, std::min(4.0, _pageScale));
+    self.pageScale = _pageScale + event.magnification;
     [self setNeedsDisplay:YES];
     [self.window invalidateCursorRectsForView:self];
 }
@@ -1068,8 +1164,8 @@ struct TextRegion {
         }
     }
 
-    float px = static_cast<float>(loc.x / _pageScale);
-    float py = static_cast<float>((loc.y + _scrollOffset) / _pageScale);
+    float px = static_cast<float>([self logicalXForViewX:loc.x]);
+    float py = static_cast<float>([self logicalYForViewY:loc.y]);
 
     _selectionStart = NSMakePoint(px, py);
     _selectionEnd = NSMakePoint(px, py);
@@ -1114,8 +1210,8 @@ struct TextRegion {
 
     if (!_selecting) return;
 
-    float px = static_cast<float>(loc.x / _pageScale);
-    float py = static_cast<float>((loc.y + _scrollOffset) / _pageScale);
+    float px = static_cast<float>([self logicalXForViewX:loc.x]);
+    float py = static_cast<float>([self logicalYForViewY:loc.y]);
 
     _selectionEnd = NSMakePoint(px, py);
     _hasSelection = YES;
@@ -1131,8 +1227,8 @@ struct TextRegion {
     _selecting = NO;
 
     NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
-    float px = static_cast<float>(loc.x / _pageScale);
-    float py = static_cast<float>((loc.y + _scrollOffset) / _pageScale);
+    float px = static_cast<float>([self logicalXForViewX:loc.x]);
+    float py = static_cast<float>([self logicalYForViewY:loc.y]);
 
     _selectionEnd = NSMakePoint(px, py);
 
@@ -1141,9 +1237,9 @@ struct TextRegion {
     float dy = (float)(_selectionEnd.y - _selectionStart.y);
     if (std::abs(dx) < 3 && std::abs(dy) < 3) {
         _hasSelection = NO;
-        // Hit-test against link regions (convert pixel coords to logical coords)
-        float px_scaled = px * _backingScale;
-        float py_scaled = py * _backingScale;
+        NSPoint documentPoint = [self documentPointForViewPoint:loc];
+        float px = static_cast<float>(documentPoint.x);
+        float py = static_cast<float>(documentPoint.y);
 
         // Dispatch JS "click" event before handling default behavior.
         // If a JS handler calls preventDefault(), skip all default actions
@@ -1151,14 +1247,14 @@ struct TextRegion {
         BOOL defaultPrevented = NO;
         if ([_delegate respondsToSelector:@selector(renderView:didClickElementAtX:y:)]) {
             defaultPrevented = [_delegate renderView:self
-                                 didClickElementAtX:px_scaled
-                                                  y:py_scaled];
+                                 didClickElementAtX:px
+                                                  y:py];
         }
 
         // On double-click, dispatch dblclick event after the click
         if (event.clickCount >= 2) {
             if ([_delegate respondsToSelector:@selector(renderView:didDoubleClickAtX:y:)]) {
-                [_delegate renderView:self didDoubleClickAtX:px_scaled y:py_scaled];
+                [_delegate renderView:self didDoubleClickAtX:px y:py];
             }
         }
 
@@ -1169,7 +1265,7 @@ struct TextRegion {
 
         // Check form submit regions first (they take priority over links)
         for (auto it = _formSubmitRegions.rbegin(); it != _formSubmitRegions.rend(); ++it) {
-            if (it->bounds.contains(px_scaled, py_scaled)) {
+            if (it->bounds.contains(px, py)) {
                 int fi = it->form_index;
                 if (fi >= 0 && fi < static_cast<int>(_formData.size())) {
                     if ([_delegate respondsToSelector:@selector(renderView:didSubmitForm:)]) {
@@ -1182,7 +1278,7 @@ struct TextRegion {
 
         // Check select click regions (clicking a <select> opens a popup menu)
         for (auto it = _selectClickRegions.rbegin(); it != _selectClickRegions.rend(); ++it) {
-            if (it->bounds.contains(px_scaled, py_scaled)) {
+            if (it->bounds.contains(px, py)) {
                 // Build and show a native NSMenu with the options
                 NSMenu* menu = [[NSMenu alloc] initWithTitle:@""];
                 for (int i = 0; i < static_cast<int>(it->options.size()); i++) {
@@ -1209,7 +1305,7 @@ struct TextRegion {
 
         // Check details toggle regions (clicking <summary> toggles <details>)
         for (auto it = _detailsToggleRegions.rbegin(); it != _detailsToggleRegions.rend(); ++it) {
-            if (it->bounds.contains(px_scaled, py_scaled)) {
+            if (it->bounds.contains(px, py)) {
                 if ([_delegate respondsToSelector:@selector(renderView:didToggleDetails:)]) {
                     [_delegate renderView:self didToggleDetails:it->details_id];
                 }
@@ -1218,7 +1314,7 @@ struct TextRegion {
         }
 
         for (auto it = _links.rbegin(); it != _links.rend(); ++it) {
-            if (it->bounds.contains(px_scaled, py_scaled)) {
+            if (it->bounds.contains(px, py)) {
                 NSString* href = [NSString stringWithUTF8String:it->href.c_str()];
                 if (it->target == "_blank") {
                     if ([_delegate respondsToSelector:@selector(renderView:didClickLinkInNewTab:)]) {
@@ -1237,14 +1333,12 @@ struct TextRegion {
 
 - (void)mouseMoved:(NSEvent*)event {
     NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
-    float px = static_cast<float>(loc.x / _pageScale);
-    float py = static_cast<float>((loc.y + _scrollOffset) / _pageScale);
 
-    // Hit-test against link regions (convert logical to pixel coords)
-    float px_scaled = px * _backingScale;
-    float py_scaled = py * _backingScale;
+    NSPoint documentPoint = [self documentPointForViewPoint:loc];
+    float px = static_cast<float>(documentPoint.x);
+    float py = static_cast<float>(documentPoint.y);
     for (auto it = _links.rbegin(); it != _links.rend(); ++it) {
-        if (it->bounds.contains(px_scaled, py_scaled)) {
+        if (it->bounds.contains(px, py)) {
             [[NSCursor pointingHandCursor] set];
             // Notify delegate about hovered link URL
             if ([_delegate respondsToSelector:@selector(renderView:hoveredLink:)]) {
@@ -1262,7 +1356,7 @@ struct TextRegion {
 
     // Hit-test against CSS cursor regions (last-painted = highest z-order)
     for (auto it = _cursorRegions.rbegin(); it != _cursorRegions.rend(); ++it) {
-        if (it->bounds.contains(px_scaled, py_scaled)) {
+        if (it->bounds.contains(px, py)) {
             switch (it->cursor_type) {
                 case 1: [[NSCursor arrowCursor] set]; return;           // default
                 case 2: [[NSCursor pointingHandCursor] set]; return;    // pointer
@@ -1277,15 +1371,16 @@ struct TextRegion {
 
     // Notify delegate for CSS :hover support
     if ([_delegate respondsToSelector:@selector(renderView:didMoveMouseAtX:y:)]) {
-        [_delegate renderView:self didMoveMouseAtX:px_scaled y:py_scaled];
+        [_delegate renderView:self didMoveMouseAtX:px y:py];
     }
 }
 
 // Right-click context menu
 - (NSMenu*)menuForEvent:(NSEvent*)event {
     NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
-    float px = static_cast<float>(loc.x / _pageScale) * _backingScale;
-    float py = static_cast<float>((loc.y + _scrollOffset) / _pageScale) * _backingScale;
+    NSPoint documentPoint = [self documentPointForViewPoint:loc];
+    float px = static_cast<float>(documentPoint.x);
+    float py = static_cast<float>(documentPoint.y);
 
     // Dispatch JS "contextmenu" event. If preventDefault() was called, suppress the native menu.
     if ([_delegate respondsToSelector:@selector(renderView:didContextMenuAtX:y:)]) {
@@ -1710,18 +1805,8 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
 
     _overlayBufferBounds = bufferBounds;
     _overlayIsPassword = isPassword;
-
-    // Convert buffer-pixel coords to view coords
-    CGFloat vx = (bufferBounds.x / _backingScale) * _pageScale;
-    CGFloat vy = (bufferBounds.y / _backingScale) * _pageScale - _scrollOffset;
-    CGFloat vw = (bufferBounds.width / _backingScale) * _pageScale;
-    CGFloat vh = (bufferBounds.height / _backingScale) * _pageScale;
-
-    // Clamp to view bounds
-    if (vw < 40) vw = 40;
-    if (vh < 16) vh = 16;
-
-    NSRect fieldRect = NSMakeRect(vx, vy, vw, vh);
+    NSRect fieldRect = [self overlayFrameForBufferBounds:bufferBounds];
+    CGFloat vh = fieldRect.size.height;
 
     if (isPassword) {
         _overlaySecureField = [[NSSecureTextField alloc] initWithFrame:fieldRect];
@@ -1757,6 +1842,30 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
     dispatch_async(dispatch_get_main_queue(), ^{
         [activeField selectText:nil];
     });
+}
+
+- (NSRect)overlayFrameForBufferBounds:(const clever::paint::Rect&)bufferBounds {
+    NSRect fieldRect = [self viewRectForRendererRect:bufferBounds];
+    CGFloat vx = fieldRect.origin.x;
+    CGFloat vy = fieldRect.origin.y;
+    CGFloat vw = fieldRect.size.width;
+    CGFloat vh = fieldRect.size.height;
+
+    if (vw < 40) vw = 40;
+    if (vh < 16) vh = 16;
+
+    return NSMakeRect(vx, vy, vw, vh);
+}
+
+- (void)reflowTextInputOverlay {
+    NSTextField* activeField = _overlayIsPassword ? _overlaySecureField : _overlayTextField;
+    if (!activeField) {
+        return;
+    }
+
+    NSRect fieldRect = [self overlayFrameForBufferBounds:_overlayBufferBounds];
+    activeField.frame = fieldRect;
+    activeField.font = [NSFont systemFontOfSize:std::max(11.0, fieldRect.size.height * 0.55)];
 }
 
 - (void)dismissTextInputOverlay {
@@ -1849,11 +1958,7 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
     [super resetCursorRects];
     // Add hand cursor for link regions (convert pixel to logical coords)
     for (auto& link : _links) {
-        NSRect rect = NSMakeRect(
-            (link.bounds.x / _backingScale) * _pageScale,
-            (link.bounds.y / _backingScale) * _pageScale - _scrollOffset,
-            (link.bounds.width / _backingScale) * _pageScale,
-            (link.bounds.height / _backingScale) * _pageScale);
+        NSRect rect = [self viewRectForRendererRect:link.bounds];
         [self addCursorRect:rect cursor:[NSCursor pointingHandCursor]];
     }
     // Add CSS cursor regions
@@ -1867,11 +1972,7 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
             case 5: cursor = [NSCursor operationNotAllowedCursor]; break;// not-allowed
             default: continue;
         }
-        NSRect rect = NSMakeRect(
-            (region.bounds.x / _backingScale) * _pageScale,
-            (region.bounds.y / _backingScale) * _pageScale - _scrollOffset,
-            (region.bounds.width / _backingScale) * _pageScale,
-            (region.bounds.height / _backingScale) * _pageScale);
+        NSRect rect = [self viewRectForRendererRect:region.bounds];
         [self addCursorRect:rect cursor:cursor];
     }
 }
@@ -2007,5 +2108,86 @@ static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) 
 - (const std::vector<uint8_t>&)basePixels { return _basePixels; }
 - (int)baseWidth { return _baseWidth; }
 - (int)baseHeight { return _baseHeight; }
+
+- (NSData*)rendererViewportPNGData {
+    if (_basePixels.empty() || _baseWidth <= 0 || _baseHeight <= 0) {
+        return nil;
+    }
+
+    const CGFloat rendererScale =
+        (std::isfinite(_backingScale) && _backingScale > 0.0) ? _backingScale : 1.0;
+    const CGFloat pageScale =
+        (std::isfinite(_pageScale) && _pageScale > 0.0) ? _pageScale : 1.0;
+    const CGFloat viewportWidth = std::max<CGFloat>(0.0, self.bounds.size.width);
+    const CGFloat viewportHeight = std::max<CGFloat>(0.0, self.bounds.size.height);
+
+    int sourceX = static_cast<int>(std::lround((_scrollX / pageScale) * rendererScale));
+    int sourceY = static_cast<int>(std::lround((_scrollOffset / pageScale) * rendererScale));
+    int sourceWidth = static_cast<int>(std::lround((viewportWidth / pageScale) * rendererScale));
+    int sourceHeight = static_cast<int>(std::lround((viewportHeight / pageScale) * rendererScale));
+
+    sourceX = std::max(0, std::min(sourceX, _baseWidth));
+    sourceY = std::max(0, std::min(sourceY, _baseHeight));
+    sourceWidth = std::max(1, std::min(sourceWidth, _baseWidth - sourceX));
+    sourceHeight = std::max(1, std::min(sourceHeight, _baseHeight - sourceY));
+
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef sourceContext = CGBitmapContextCreate(
+        const_cast<uint8_t*>(_basePixels.data()),
+        _baseWidth,
+        _baseHeight,
+        8,
+        _baseWidth * 4,
+        colorSpace,
+        static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast) | kCGBitmapByteOrder32Big
+    );
+    if (!sourceContext) {
+        CGColorSpaceRelease(colorSpace);
+        return nil;
+    }
+
+    CGImageRef sourceImage = CGBitmapContextCreateImage(sourceContext);
+    CGContextRelease(sourceContext);
+    if (!sourceImage) {
+        CGColorSpaceRelease(colorSpace);
+        return nil;
+    }
+
+    CGContextRef exportContext = CGBitmapContextCreate(
+        nullptr,
+        sourceWidth,
+        sourceHeight,
+        8,
+        sourceWidth * 4,
+        colorSpace,
+        static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast) | kCGBitmapByteOrder32Big
+    );
+    if (!exportContext) {
+        CGImageRelease(sourceImage);
+        CGColorSpaceRelease(colorSpace);
+        return nil;
+    }
+
+    CGContextTranslateCTM(exportContext, -sourceX, sourceHeight + sourceY);
+    CGContextScaleCTM(exportContext, 1.0, -1.0);
+    CGContextDrawImage(exportContext,
+                       CGRectMake(0, 0, _baseWidth, _baseHeight),
+                       sourceImage);
+
+    CGImageRef exportImage = CGBitmapContextCreateImage(exportContext);
+    CGContextRelease(exportContext);
+    CGImageRelease(sourceImage);
+    CGColorSpaceRelease(colorSpace);
+    if (!exportImage) {
+        return nil;
+    }
+
+    NSBitmapImageRep* rep = [[NSBitmapImageRep alloc] initWithCGImage:exportImage];
+    CGImageRelease(exportImage);
+    if (!rep) {
+        return nil;
+    }
+    return [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+}
 
 @end

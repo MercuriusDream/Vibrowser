@@ -83,6 +83,7 @@ MessagePipe& MessagePipe::operator=(MessagePipe&& other) noexcept {
 
 bool MessagePipe::send(const uint8_t* data, size_t len) {
     if (!is_open()) return false;
+    if (len > kMaxMessagePipeFrameBytes) return false;
 
     // Write 4-byte length prefix in network byte order
     uint32_t net_len = htonl(static_cast<uint32_t>(len));
@@ -109,6 +110,10 @@ std::optional<std::vector<uint8_t>> MessagePipe::receive() {
     if (!read_all(fd_, prefix, 4)) return std::nullopt;
 
     uint32_t len = ntohl(net_len);
+    if (len > kMaxMessagePipeFrameBytes) {
+        close();
+        return std::nullopt;
+    }
 
     // Read payload
     std::vector<uint8_t> payload(len);

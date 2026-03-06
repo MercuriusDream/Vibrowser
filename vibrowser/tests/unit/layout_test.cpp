@@ -1557,7 +1557,7 @@ TEST(LayoutEngineTest, InlineBlockAutoWidthRespectsMinContentFloorInNarrowContai
     EXPECT_NEAR(child->geometry.width, 192.0f, 1.0f);
 }
 
-TEST(LayoutEngineTest, IntrinsicWidthMemoizesInlineBlockSubtreeAcrossFitContentAndShrinkWrap) {
+TEST(LayoutEngineTest, MaxContentMemoizesRepeatedSubtreeMeasurementsV2064) {
     auto root = make_block("div");
     root->specified_width = -4.0f; // fit-content
 
@@ -1565,19 +1565,21 @@ TEST(LayoutEngineTest, IntrinsicWidthMemoizesInlineBlockSubtreeAcrossFitContentA
     ib->tag_name = "span";
     ib->mode = LayoutMode::InlineBlock;
     ib->display = DisplayType::InlineBlock;
+    ib->tab_size = 4;
 
-    auto text = make_text("alpha beta", 16.0f);
+    auto text = make_text("alpha\tbeta", 16.0f);
+    text->tab_size = 4;
     ib->append_child(std::move(text));
     root->append_child(std::move(ib));
 
-    int full_text_measurements = 0;
+    int max_content_measurements = 0;
     int word_measurements = 0;
 
     LayoutEngine engine;
     engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
                                  int, bool, float) {
-        if (measured == "alpha beta") {
-            full_text_measurements++;
+        if (measured == "alpha    beta") {
+            max_content_measurements++;
         } else if (measured == "alpha" || measured == "beta") {
             word_measurements++;
         }
@@ -1586,11 +1588,84 @@ TEST(LayoutEngineTest, IntrinsicWidthMemoizesInlineBlockSubtreeAcrossFitContentA
 
     engine.compute(*root, 500.0f, 600.0f);
 
-    EXPECT_EQ(full_text_measurements, 3)
-        << "The full text should be measured once for layout and once per shared max-content path";
+    EXPECT_EQ(max_content_measurements, 1)
+        << "fit-content sizing and inline-block shrink-wrap should share one cached max-content subtree walk";
     EXPECT_EQ(word_measurements, 2)
         << "fit-content root sizing and inline-block shrink-wrap should share the cached min-content width";
     EXPECT_GT(root->children[0]->geometry.width, 0.0f);
+}
+
+TEST(LayoutEngineTest, ShrinkWrapWidthStillMatchesMaxContentAfterMemoizationV2064) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->append_child(make_text("alpha beta", 16.0f));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    float char_w = 16.0f * 0.6f;
+    float expected_max_content = 10.0f * char_w; // "alpha beta"
+    auto* child = root->children[0].get();
+    EXPECT_NEAR(child->geometry.width, expected_max_content, 1.0f)
+        << "inline-block shrink-wrap width should still resolve to max-content";
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, IntrinsicHeightMemoizesRepeatedSubtreeMeasurements) {
+    auto root = make_block("div");
+    root->specified_height = -2.0f; // min-content
+
+    auto child = make_block("div");
+    child->specified_height = -2.0f; // min-content
+    child->append_child(make_text("alpha beta gamma", 16.0f));
+    root->append_child(std::move(child));
+
+    int sample_measurements = 0;
+
+    LayoutEngine engine;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) {
+        if (measured == "abcdefghijklmnopqrstuvwxyz ") {
+            sample_measurements++;
+        }
+        return static_cast<float>(measured.size()) * font_size * 0.6f;
+    });
+
+    engine.compute(*root, 500.0f, 600.0f);
+
+    EXPECT_EQ(sample_measurements, 3)
+        << "The nested min-content subtree should be measured once for intrinsic height and once for the final text layout";
+    EXPECT_GT(root->geometry.height, 0.0f);
+    EXPECT_GT(root->children[0]->geometry.height, 0.0f);
+}
+
+TEST(LayoutEngineTest, FitContentHeightReusesIntrinsicHeightCache) {
+    auto root = make_block("div");
+    root->specified_height = -4.0f; // fit-content
+
+    auto child = make_block("div");
+    child->geometry.padding.top = 4.0f;
+    child->geometry.padding.bottom = 4.0f;
+    child->geometry.border.top = 1.0f;
+    child->geometry.border.bottom = 1.0f;
+    child->append_child(make_text("fit content height", 18.0f));
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    float child_line_height = 18.0f * 1.2f;
+    float expected_child_height = child_line_height + 10.0f;
+    float expected_root_height = expected_child_height;
+
+    EXPECT_NEAR(root->children[0]->geometry.height, expected_child_height, 0.1f);
+    EXPECT_NEAR(root->geometry.height, expected_root_height, 0.1f);
 }
 
 TEST(LayoutEngineTest, FitContentIgnoresAbsoluteDescendantsForIntrinsicWidth) {
@@ -1640,6 +1715,99 @@ TEST(LayoutEngineTest, InlineBlockShrinkWrapIgnoresAbsoluteDescendants) {
     float expected_width = 2.0f * 16.0f * 0.6f;
     EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 2.0f)
         << "inline-block shrink-wrap should ignore absolutely positioned descendants";
+}
+
+TEST(LayoutEngineTest, InlineBlockShrinkWrapAvoidsSecondLayoutPass) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->text_align = 1; // center
+    inline_block->append_child(make_text("alpha beta", 16.0f));
+
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, ShrinkWrapWidthStillMatchesIntrinsicContent) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->geometry.padding.left = 6.0f;
+    inline_block->geometry.padding.right = 4.0f;
+    inline_block->geometry.border.left = 2.0f;
+    inline_block->geometry.border.right = 3.0f;
+    inline_block->append_child(make_text("wide", 20.0f));
+
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    float expected_text_width = 4.0f * 20.0f * 0.6f;
+    float expected_width = expected_text_width + 6.0f + 4.0f + 2.0f + 3.0f;
+    EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 0.1f);
+}
+
+TEST(LayoutEngineTest, InlineBlockShrinkWrapAvoidsRedundantRelayoutV2066) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+
+    auto child = make_block("div");
+    child->specified_width = 80.0f;
+    child->specified_height = 24.0f;
+    child->geometry.margin.left = 18.0f;
+    inline_block->append_child(std::move(child));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    auto* laid_out_inline_block = root->children[0].get();
+    EXPECT_FLOAT_EQ(laid_out_inline_block->geometry.width, 80.0f);
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, InlineFormattingShrinkWrapAvoidsRedundantRelayoutV2066) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+
+    auto child = make_block("div");
+    child->specified_width = 90.0f;
+    child->specified_height = 20.0f;
+    child->geometry.margin.left = 14.0f;
+    inline_block->append_child(std::move(child));
+
+    root->append_child(make_text("lead ", 16.0f));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    auto* laid_out_inline_block = root->children[1].get();
+    EXPECT_FLOAT_EQ(laid_out_inline_block->geometry.width, 90.0f);
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
 }
 
 TEST(LayoutEngineTest, FitContentIgnoresFloatedDescendantsForIntrinsicWidth) {
@@ -3101,8 +3269,8 @@ TEST(LayoutSmallCaps, SmallCapsDetected) {
 
 TEST(LayoutSmallCaps, SmallCapsInheritedFromParent) {
     // Build a tree: <div font_variant=1> containing a text node.
-    // After layout, the text should be transformed to uppercase and
-    // font_variant should be propagated to the child.
+    // After layout, the source text should be preserved while the
+    // font-variant style remains on the child.
     auto root = make_block("div");
     root->font_variant = 1;
 
@@ -3115,8 +3283,8 @@ TEST(LayoutSmallCaps, SmallCapsInheritedFromParent) {
 
     // After layout, the text child should have font_variant == 1
     EXPECT_EQ(root->children[0]->font_variant, 1);
-    // The layout engine transforms small-caps text to uppercase for measuring
-    EXPECT_EQ(root->children[0]->text_content, "HELLO");
+    // Inline layout should not rewrite the source node content in place
+    EXPECT_EQ(root->children[0]->text_content, "hello");
 }
 
 TEST(LayoutSmallCaps, SmallCapsDoesNotAffectNormalText) {
@@ -3138,6 +3306,51 @@ TEST(LayoutSmallCaps, SmallCapsDoesNotAffectNormalText) {
     // Width should use normal font_size (16 * 0.6 = 9.6 per char, 5 chars = 48)
     float expected_width = 5.0f * (16.0f * 0.6f);
     EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 0.1f);
+}
+
+TEST(LayoutEngineTest, InlineLayoutPreservesSourceTextContentV2062) {
+    auto root = make_text("hello   world", 16.0f);
+    root->text_transform = 2; // uppercase
+    root->white_space = 0;    // normal
+    root->white_space_pre = false;
+    root->white_space_collapse = 0;
+
+    LayoutEngine engine;
+    std::vector<std::string> measured_texts;
+    engine.set_text_measurer([&](const std::string& measured, float, const std::string&,
+                                 int, bool, float) -> float {
+        measured_texts.push_back(measured);
+        return static_cast<float>(measured.size()) * 9.0f;
+    });
+
+    engine.compute(*root, 400.0f, 200.0f);
+
+    ASSERT_FALSE(measured_texts.empty());
+    EXPECT_EQ(measured_texts.back(), "HELLO WORLD");
+    EXPECT_EQ(root->text_content, "hello   world");
+}
+
+TEST(LayoutEngineTest, SmallCapsMeasurementDoesNotRewriteNodeTextV2062) {
+    auto root = make_text("hello", 16.0f);
+    root->font_variant = 1;
+
+    LayoutEngine engine;
+    std::vector<std::string> measured_texts;
+    std::vector<float> measured_font_sizes;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) -> float {
+        measured_texts.push_back(measured);
+        measured_font_sizes.push_back(font_size);
+        return static_cast<float>(measured.size()) * font_size;
+    });
+
+    engine.compute(*root, 400.0f, 200.0f);
+
+    ASSERT_FALSE(measured_texts.empty());
+    ASSERT_FALSE(measured_font_sizes.empty());
+    EXPECT_EQ(measured_texts.back(), "HELLO");
+    EXPECT_NEAR(measured_font_sizes.back(), 12.8f, 0.001f);
+    EXPECT_EQ(root->text_content, "hello");
 }
 
 // ===========================================================================
@@ -3332,6 +3545,86 @@ TEST(LayoutEngineTest, HeightMaxContentResolvesToSingleLineHeight) {
         << "height: max-content should produce positive height";
     EXPECT_NEAR(root->geometry.height, line_h, 1.0f)
         << "height: max-content for single-line text should be approximately one line height";
+}
+
+TEST(LayoutEngineTest, IntrinsicHeightIgnoresAbsoluteChild) {
+    auto root = make_block("div");
+    root->specified_height = -3;
+
+    auto in_flow = make_text("visible", 16.0f);
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    abs_child->append_child(make_text("This absolute child should not count", 32.0f));
+
+    root->append_child(std::move(in_flow));
+    root->append_child(std::move(abs_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_NEAR(root->geometry.height, 16.0f * 1.2f, 0.1f);
+}
+
+TEST(LayoutEngineTest, IntrinsicHeightIgnoresFixedChild) {
+    auto root = make_block("div");
+    root->specified_height = -2;
+
+    auto in_flow = make_block("div");
+    in_flow->append_child(make_text("visible", 18.0f));
+
+    auto fixed_child = make_block("div");
+    fixed_child->position_type = 3; // fixed
+    fixed_child->append_child(make_text("This fixed child should not count", 30.0f));
+
+    root->append_child(std::move(in_flow));
+    root->append_child(std::move(fixed_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_NEAR(root->geometry.height, 18.0f * 1.2f, 0.1f);
+}
+
+TEST(LayoutEngineTest, IntrinsicHeightIgnoresFloatChild) {
+    auto root = make_block("div");
+    root->specified_height = -2;
+
+    auto in_flow = make_block("div");
+    in_flow->append_child(make_text("visible", 14.0f));
+
+    auto float_child = make_block("div");
+    float_child->float_type = 1; // left float
+    float_child->append_child(make_text("This float child should not count", 28.0f));
+
+    root->append_child(std::move(in_flow));
+    root->append_child(std::move(float_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_NEAR(root->geometry.height, 14.0f * 1.2f, 0.1f);
+}
+
+TEST(LayoutEngineTest, IntrinsicHeightIgnoresDisplayNoneChild) {
+    auto root = make_block("div");
+    root->specified_height = -2;
+
+    auto in_flow = make_block("div");
+    in_flow->append_child(make_text("visible", 20.0f));
+
+    auto hidden_child = make_block("div");
+    hidden_child->display = DisplayType::None;
+    hidden_child->mode = LayoutMode::None;
+    hidden_child->append_child(make_text("This hidden child should not count", 36.0f));
+
+    root->append_child(std::move(in_flow));
+    root->append_child(std::move(hidden_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_NEAR(root->geometry.height, 20.0f * 1.2f, 0.1f);
 }
 
 // Test: min-content width with multiple words selects longest word

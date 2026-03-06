@@ -15,6 +15,7 @@ extern "C" {
 #include <arpa/inet.h>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstring>
 #include <fcntl.h>
@@ -311,7 +312,7 @@ static JSValue js_xhr_send(JSContext* ctx, JSValueConst this_val,
         // Store Set-Cookie from response
         auto set_cookie = resp->headers.get("set-cookie");
         if (should_send_cookies && set_cookie.has_value()) {
-            jar.set_from_header(*set_cookie, req.host);
+            jar.set_from_header(*set_cookie, req.host, req.path);
         }
 
         // Copy response headers
@@ -2335,7 +2336,7 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
         auto set_cookie = resp->headers.get("set-cookie");
         if (set_cookie.has_value()) {
             auto& jar = clever::net::CookieJar::shared();
-            jar.set_from_header(*set_cookie, req.host);
+            jar.set_from_header(*set_cookie, req.host, req.path);
         }
     }
 
@@ -2430,6 +2431,8 @@ struct WebSocketState {
     std::vector<std::string> message_queue;
     std::mutex message_queue_mutex_;
     std::thread receive_thread_;
+    std::mutex receive_thread_mutex_;
+    std::condition_variable receive_thread_cv_;
     std::atomic<bool> should_close_thread_ {false};
     std::atomic<bool> receive_thread_running_ {false};
     // TLS socket (heap-allocated so we can null-check)
@@ -2438,7 +2441,6 @@ struct WebSocketState {
 
 constexpr int k_ws_recv_timeout_ms = 1000;
 constexpr int k_ws_thread_join_timeout_ms = 2000;
-constexpr int k_ws_thread_join_poll_interval_ms = 5;
 
 // ---- Helpers ----
 
@@ -2570,12 +2572,12 @@ static void ws_stop_receive_thread(WebSocketState* state, int timeout_ms) {
     if (!state->receive_thread_.joinable()) return;
     if (state->receive_thread_.get_id() == std::this_thread::get_id()) return;
 
-    auto deadline = std::chrono::steady_clock::now() +
-        std::chrono::milliseconds(timeout_ms);
-    while (state->receive_thread_running_.load() &&
-           std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(
-            std::chrono::milliseconds(k_ws_thread_join_poll_interval_ms));
+    {
+        std::unique_lock<std::mutex> lock(state->receive_thread_mutex_);
+        state->receive_thread_cv_.wait_for(
+            lock,
+            std::chrono::milliseconds(timeout_ms),
+            [state] { return !state->receive_thread_running_.load(); });
     }
     state->receive_thread_.join();
 }
@@ -2975,7 +2977,11 @@ static std::vector<uint8_t> ws_build_close_frame(uint16_t code, const std::strin
 static void ws_receive_loop(WebSocketState* state) {
     if (!state) return;
 
-    state->receive_thread_running_.store(true);
+    {
+        std::lock_guard<std::mutex> lock(state->receive_thread_mutex_);
+        state->receive_thread_running_.store(true);
+    }
+    state->receive_thread_cv_.notify_all();
 
     std::vector<uint8_t> recv_buffer;
     std::vector<uint8_t> fragmented_payload;
@@ -3147,7 +3153,11 @@ static void ws_receive_loop(WebSocketState* state) {
         if (should_break_loop) break;
     }
 
-    state->receive_thread_running_.store(false);
+    {
+        std::lock_guard<std::mutex> lock(state->receive_thread_mutex_);
+        state->receive_thread_running_.store(false);
+    }
+    state->receive_thread_cv_.notify_all();
 }
 
 // ---- WebSocket JS methods ----
