@@ -79,7 +79,24 @@ run_git_pr() {
 
 run_ci_wait() {
   local cycle_dir=$1
-  "$TOOLS_DIR/ci-wait.sh" > "$cycle_dir/ci.json" 2> "$cycle_dir/ci.log"
+  local branch=""
+  local pr_url=""
+  local -a cmd
+
+  if [[ -f "$cycle_dir/git-pr.json" ]]; then
+    branch="$(sed -n '/^{/,$p' "$cycle_dir/git-pr.json" | jq -r '.branch // empty' 2>/dev/null || true)"
+    pr_url="$(sed -n '/^{/,$p' "$cycle_dir/git-pr.json" | jq -r '.pr_url // empty' 2>/dev/null || true)"
+  fi
+
+  cmd=("$TOOLS_DIR/ci-wait.sh")
+  if [[ -n "$branch" ]]; then
+    cmd+=(--branch "$branch")
+  fi
+  if [[ -n "$pr_url" ]]; then
+    cmd+=(--pr-url "$pr_url")
+  fi
+
+  "${cmd[@]}" > "$cycle_dir/ci.json" 2> "$cycle_dir/ci.log"
 }
 
 planner_prompt() {

@@ -52,9 +52,9 @@ if [[ "$current_branch" == ${branch_pattern}* ]]; then
   branch="$current_branch"
 elif [[ -n "$existing_branch" ]]; then
   branch="$existing_branch"
-  git checkout "$branch"
+  git checkout "$branch" >&2
 else
-  git checkout -b "$branch"
+  git checkout -b "$branch" >&2
 fi
 
 git add -A
@@ -64,11 +64,11 @@ if git diff --cached --quiet; then
   exit 0
 fi
 
-git commit -m "estate: cycle $CYCLE $short_summary"
+git commit -m "estate: cycle $CYCLE $short_summary" >&2
 
 pr_url=""
 if [[ "$PUSH" == "1" ]]; then
-  git push -u origin "$branch"
+  git push -u origin "$branch" >&2
   if [[ "$CREATE_PR" == "1" ]]; then
     pr_url="$(gh pr view --head "$branch" --json url -q .url 2>/dev/null || true)"
     if [[ -z "$pr_url" ]]; then

@@ -8,18 +8,44 @@ cd "$ROOT_DIR"
 TIMEOUT_SECONDS="${CODEX_ESTATE_CI_TIMEOUT_SECONDS:-3600}"
 INTERVAL_SECONDS="${CODEX_ESTATE_CI_POLL_INTERVAL:-30}"
 deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
+BRANCH=""
+PR_URL=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --branch)
+      BRANCH="$2"
+      shift
+      ;;
+    --pr-url)
+      PR_URL="$2"
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
 
 if ! gh auth status >/dev/null 2>&1; then
   jq -n '{status:"gh_not_authenticated"}'
   exit 2
 fi
 
-branch="$(git rev-parse --abbrev-ref HEAD)"
+if [[ -z "$BRANCH" ]]; then
+  BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+fi
 
 while true; do
-  pr_json="$(gh pr view --head "$branch" --json number,url,statusCheckRollup 2>/dev/null || true)"
+  if [[ -n "$PR_URL" ]]; then
+    pr_json="$(gh pr view "$PR_URL" --json number,url,statusCheckRollup,headRefName 2>/dev/null || true)"
+  else
+    pr_json="$(gh pr view --head "$BRANCH" --json number,url,statusCheckRollup,headRefName 2>/dev/null || true)"
+  fi
   if [[ -z "$pr_json" ]]; then
-    jq -n --arg branch "$branch" '{status:"no_pr",branch:$branch}'
+    jq -n --arg branch "$BRANCH" --arg pr_url "$PR_URL" '{status:"no_pr",branch:$branch,pr_url:$pr_url}'
     exit 2
   fi
 
