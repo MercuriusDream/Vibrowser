@@ -1,5 +1,6 @@
 #include <clever/net/cookie_jar.h>
 #include <algorithm>
+#include <cctype>
 #include <ctime>
 #include <sstream>
 
@@ -21,6 +22,18 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+bool domain_matches_value(const std::string& cookie_domain, const std::string& request_domain) {
+    if (cookie_domain == request_domain) return true;
+    if (request_domain.size() <= cookie_domain.size()) return false;
+    auto pos = request_domain.size() - cookie_domain.size();
+    return request_domain[pos - 1] == '.' && request_domain.substr(pos) == cookie_domain;
+}
+
+std::string normalize_path(const std::string& path) {
+    if (path.empty() || path[0] != '/') return "/";
+    return path;
+}
+
 } // anonymous namespace
 
 CookieJar& CookieJar::shared() {
@@ -33,6 +46,7 @@ void CookieJar::set_from_header(const std::string& header_value,
     // Parse: name=value; Path=/; Domain=.example.com; Secure; HttpOnly
     Cookie cookie;
     cookie.domain = to_lower(request_domain);
+    cookie.path = "/";
 
     // Split by semicolons
     std::istringstream iss(header_value);
@@ -67,9 +81,13 @@ void CookieJar::set_from_header(const std::string& header_value,
             std::string dom = to_lower(attr_value);
             // Remove leading dot
             if (!dom.empty() && dom[0] == '.') dom = dom.substr(1);
+            if (dom.empty() || !domain_matches_value(dom, cookie.domain)) {
+                return;
+            }
             cookie.domain = dom;
+            cookie.host_only = false;
         } else if (attr_name == "path") {
-            cookie.path = attr_value;
+            cookie.path = normalize_path(attr_value);
         } else if (attr_name == "secure") {
             cookie.secure = true;
         } else if (attr_name == "httponly") {
@@ -102,14 +120,18 @@ void CookieJar::set_from_header(const std::string& header_value,
 
     // Replace existing cookie with same name+domain+path
     auto& domain_cookies = cookies_[cookie.domain];
-    for (auto& existing : domain_cookies) {
-        if (existing.name == cookie.name && existing.path == cookie.path) {
-            existing.value = cookie.value;
-            existing.secure = cookie.secure;
-            existing.http_only = cookie.http_only;
-            return;
-        }
+    domain_cookies.erase(
+        std::remove_if(domain_cookies.begin(), domain_cookies.end(),
+                       [&](const Cookie& existing) {
+                           return existing.name == cookie.name && existing.path == cookie.path;
+                       }),
+        domain_cookies.end());
+
+    int64_t now = static_cast<int64_t>(std::time(nullptr));
+    if (cookie.expires_at > 0 && cookie.expires_at <= now) {
+        return;
     }
+
     domain_cookies.push_back(std::move(cookie));
 }
 
@@ -120,13 +142,13 @@ std::string CookieJar::get_cookie_header(const std::string& domain, const std::s
 
     std::string result;
     std::string domain_lower = to_lower(domain);
+    std::string request_path = normalize_path(path);
 
     for (auto& [cookie_domain, domain_cookies] : cookies_) {
-        if (!domain_matches(cookie_domain, domain_lower)) continue;
-
         int64_t now = static_cast<int64_t>(std::time(nullptr));
         for (auto& cookie : domain_cookies) {
-            if (!path_matches(cookie.path, path)) continue;
+            if (!domain_matches(cookie, domain_lower)) continue;
+            if (!path_matches(cookie.path, request_path)) continue;
             if (cookie.secure && !is_secure) continue;
             // Skip expired cookies
             if (cookie.expires_at > 0 && cookie.expires_at <= now) continue;
@@ -168,25 +190,22 @@ size_t CookieJar::size() const {
     return count;
 }
 
-bool CookieJar::domain_matches(const std::string& cookie_domain,
+bool CookieJar::domain_matches(const Cookie& cookie,
                                 const std::string& request_domain) const {
-    if (cookie_domain == request_domain) return true;
-    // Check if request_domain ends with .cookie_domain
-    if (request_domain.size() > cookie_domain.size()) {
-        auto pos = request_domain.size() - cookie_domain.size();
-        if (request_domain[pos - 1] == '.' &&
-            request_domain.substr(pos) == cookie_domain) {
-            return true;
-        }
+    if (cookie.host_only) {
+        return cookie.domain == request_domain;
     }
-    return false;
+    return domain_matches_value(cookie.domain, request_domain);
 }
 
 bool CookieJar::path_matches(const std::string& cookie_path,
                                const std::string& request_path) const {
     if (cookie_path == "/") return true;
-    if (request_path.find(cookie_path) == 0) return true;
-    return false;
+    if (cookie_path == request_path) return true;
+    if (request_path.rfind(cookie_path, 0) != 0) return false;
+    if (cookie_path.back() == '/') return true;
+    return request_path.size() > cookie_path.size() &&
+           request_path[cookie_path.size()] == '/';
 }
 
 } // namespace clever::net

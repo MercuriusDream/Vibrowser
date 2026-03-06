@@ -3,6 +3,7 @@
 #include <clever/css/style/selector_matcher.h>
 #include <clever/css/parser/stylesheet.h>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace clever::css {
@@ -52,12 +53,16 @@ public:
     }
 
     // Set viewport dimensions for @media query evaluation
-    void set_viewport(float width, float height) {
-        viewport_width_ = width;
-        viewport_height_ = height;
-    }
+    void set_viewport(float width, float height);
 
 private:
+    struct MediaConditionCacheState {
+        float viewport_width = 0.0f;
+        float viewport_height = 0.0f;
+        bool dark_mode = false;
+        bool valid = false;
+    };
+
     // Evaluate a @media condition string against current viewport
     bool evaluate_media_condition(const std::string& condition) const;
     // Evaluate a @supports condition string
@@ -74,6 +79,8 @@ private:
                                    const std::string& pseudo_name,
                                    std::vector<MatchedRule>& result,
                                    size_t& source_order) const;
+    void invalidate_conditional_caches();
+    void refresh_media_condition_cache_state() const;
 
     SelectorMatcher matcher_;
     PropertyCascade cascade_;
@@ -81,6 +88,9 @@ private:
     std::unordered_map<std::string, std::string> default_custom_props_;
     float viewport_width_ = 1280;
     float viewport_height_ = 800;
+    mutable MediaConditionCacheState media_condition_cache_state_;
+    mutable std::unordered_map<std::string, bool> media_condition_cache_;
+    mutable std::unordered_map<std::string, bool> supports_condition_cache_;
 };
 
 // Set/get the global dark mode flag used by light-dark() color function.

@@ -1557,6 +1557,42 @@ TEST(LayoutEngineTest, InlineBlockAutoWidthRespectsMinContentFloorInNarrowContai
     EXPECT_NEAR(child->geometry.width, 192.0f, 1.0f);
 }
 
+TEST(LayoutEngineTest, IntrinsicWidthMemoizesInlineBlockSubtreeAcrossFitContentAndShrinkWrap) {
+    auto root = make_block("div");
+    root->specified_width = -4.0f; // fit-content
+
+    auto ib = std::make_unique<LayoutNode>();
+    ib->tag_name = "span";
+    ib->mode = LayoutMode::InlineBlock;
+    ib->display = DisplayType::InlineBlock;
+
+    auto text = make_text("alpha beta", 16.0f);
+    ib->append_child(std::move(text));
+    root->append_child(std::move(ib));
+
+    int full_text_measurements = 0;
+    int word_measurements = 0;
+
+    LayoutEngine engine;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) {
+        if (measured == "alpha beta") {
+            full_text_measurements++;
+        } else if (measured == "alpha" || measured == "beta") {
+            word_measurements++;
+        }
+        return static_cast<float>(measured.size()) * font_size * 0.6f;
+    });
+
+    engine.compute(*root, 500.0f, 600.0f);
+
+    EXPECT_EQ(full_text_measurements, 3)
+        << "The full text should be measured once for layout and once per shared max-content path";
+    EXPECT_EQ(word_measurements, 2)
+        << "fit-content root sizing and inline-block shrink-wrap should share the cached min-content width";
+    EXPECT_GT(root->children[0]->geometry.width, 0.0f);
+}
+
 // ============================================================================
 // Word-break and overflow-wrap tests
 // ============================================================================

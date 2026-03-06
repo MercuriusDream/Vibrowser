@@ -22050,9 +22050,9 @@ TEST(HttpClient, CookieJarSubpathAndRootPathMatchingV129) {
     // Set a cookie scoped to /api
     jar.set_from_header("api=xyz; Path=/api", "example.com");
 
-    // /apiary also gets the /api cookie (simple prefix matching in our implementation)
+    // /apiary is a sibling path and should not match /api
     std::string apiary_cookie = jar.get_cookie_header("example.com", "/apiary", false);
-    EXPECT_NE(apiary_cookie.find("api=xyz"), std::string::npos);
+    EXPECT_EQ(apiary_cookie.find("api=xyz"), std::string::npos);
 
     // Path that doesn't start with /api should NOT get it
     std::string other_cookie = jar.get_cookie_header("example.com", "/about", false);
@@ -22908,14 +22908,11 @@ TEST(HttpClient, ConnectionPoolAcquireFromEmptyReturnsNegativeV134) {
 TEST(HttpClient, CookieJarExpiresMaxAgeZeroClearsV134) {
     CookieJar jar;
 
-    // Set a cookie directly with Max-Age=0 — should be stored but
-    // get_cookie_header treats it as expired (expires_at=1 which is in the past)
+    // Max-Age=0 deletes the cookie immediately, so it is not retained.
     jar.set_from_header("ephemeral=gone; Path=/; Max-Age=0", "maxage.v134.test");
 
-    // The cookie entry exists in the jar
-    EXPECT_EQ(jar.size(), 1u);
+    EXPECT_EQ(jar.size(), 0u);
 
-    // But get_cookie_header skips expired cookies, so nothing returned
     std::string hdr = jar.get_cookie_header("maxage.v134.test", "/", false);
     EXPECT_TRUE(hdr.empty());
 }
@@ -23508,9 +23505,9 @@ TEST(HttpClient, CookieJarPathPrefixMatchingV137) {
     std::string hdr4 = jar.get_cookie_header("v137path.example.com", "/other", false);
     EXPECT_EQ(hdr4.find("api_key=v137secret"), std::string::npos);
 
-    // /apiv3 starts with /api so prefix matching includes it
+    // /apiv3 is a sibling path and should not match /api
     std::string hdr5 = jar.get_cookie_header("v137path.example.com", "/apiv3", false);
-    EXPECT_NE(hdr5.find("api_key=v137secret"), std::string::npos);
+    EXPECT_EQ(hdr5.find("api_key=v137secret"), std::string::npos);
 }
 
 // 8. ConnectionPool release and reacquire same host returns the fd
@@ -31811,4 +31808,73 @@ TEST(HttpClient, HeaderMapHasExistingAndMissingV181) {
         << "has() should return false for missing header";
     EXPECT_FALSE(headers.has("Authorization"))
         << "has() should return false for absent Authorization";
+}
+
+TEST(HttpClient, CookieJarHostOnlyCookieNotSentToSubdomainsV2056) {
+    CookieJar jar;
+    jar.set_from_header("hostonly2056=alpha; Path=/", "example.com");
+
+    std::string exact = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_NE(exact.find("hostonly2056=alpha"), std::string::npos)
+        << "Host-only cookie should be sent to the origin host, got: " << exact;
+
+    std::string subdomain = jar.get_cookie_header("sub.example.com", "/", false);
+    EXPECT_EQ(subdomain.find("hostonly2056=alpha"), std::string::npos)
+        << "Host-only cookie should not be sent to subdomains, got: " << subdomain;
+}
+
+TEST(HttpClient, CookieJarDomainCookieSentToSubdomainsV2056) {
+    CookieJar jar;
+    jar.set_from_header("domain2056=beta; Domain=example.com; Path=/", "example.com");
+
+    std::string subdomain = jar.get_cookie_header("api.example.com", "/", false);
+    EXPECT_NE(subdomain.find("domain2056=beta"), std::string::npos)
+        << "Domain cookie should be sent to matching subdomains, got: " << subdomain;
+}
+
+TEST(HttpClient, CookieJarRejectsSiblingPathMatchV2056) {
+    CookieJar jar;
+    jar.set_from_header("path2056=gamma; Path=/docs", "example.com");
+
+    std::string exact = jar.get_cookie_header("example.com", "/docs", false);
+    EXPECT_NE(exact.find("path2056=gamma"), std::string::npos)
+        << "Cookie should match the exact cookie path, got: " << exact;
+
+    std::string nested = jar.get_cookie_header("example.com", "/docs/reference", false);
+    EXPECT_NE(nested.find("path2056=gamma"), std::string::npos)
+        << "Cookie should match nested paths under the cookie path, got: " << nested;
+
+    std::string sibling = jar.get_cookie_header("example.com", "/docsets", false);
+    EXPECT_EQ(sibling.find("path2056=gamma"), std::string::npos)
+        << "Cookie should not match sibling paths with only a string prefix, got: " << sibling;
+}
+
+TEST(HttpClient, CookieJarReplacementUpdatesDomainScopeV2056) {
+    CookieJar jar;
+    jar.set_from_header("session2056=host; Path=/app", "example.com");
+    jar.set_from_header("session2056=domain; Domain=example.com; Path=/app", "example.com");
+
+    std::string exact = jar.get_cookie_header("example.com", "/app", false);
+    EXPECT_NE(exact.find("session2056=domain"), std::string::npos)
+        << "Latest cookie should replace the earlier value on the origin host, got: " << exact;
+    EXPECT_EQ(exact.find("session2056=host"), std::string::npos)
+        << "Replaced host-only cookie should not remain serialized, got: " << exact;
+
+    std::string subdomain = jar.get_cookie_header("cdn.example.com", "/app", false);
+    EXPECT_NE(subdomain.find("session2056=domain"), std::string::npos)
+        << "Replacement with a domain cookie should widen scope to subdomains, got: " << subdomain;
+
+    jar.set_from_header("session2056=host-again; Path=/app", "example.com");
+
+    std::string rewritten = jar.get_cookie_header("example.com", "/app", false);
+    EXPECT_NE(rewritten.find("session2056=host-again"), std::string::npos)
+        << "Later host-only cookie should replace the domain cookie on the origin host, got: "
+        << rewritten;
+    EXPECT_EQ(rewritten.find("session2056=domain"), std::string::npos)
+        << "Replaced domain cookie should not remain serialized on the origin host, got: "
+        << rewritten;
+
+    std::string subdomain_after_host = jar.get_cookie_header("cdn.example.com", "/app", false);
+    EXPECT_EQ(subdomain_after_host.find("session2056=host-again"), std::string::npos)
+        << "Host-only replacement should stop subdomain serialization, got: " << subdomain_after_host;
 }

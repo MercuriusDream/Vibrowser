@@ -5,20 +5,17 @@ struct JSContext;
 namespace clever::js {
 
 // Install setTimeout, setInterval, clearTimeout, clearInterval into the global.
-// For the initial render pass, timers are NOT actually delayed -- setTimeout(fn, 0)
-// executes immediately. This matches browser behavior during initial page load
-// for synchronous rendering. True async timers need an event loop (future work).
+// Timers are scheduled onto a host-managed queue and fire only when
+// flush_ready_timers() advances the host clock to their deadline.
 void install_timer_bindings(JSContext* ctx);
 
-// Execute any pending timer callbacks (setTimeout with delay=0).
-// Call after all scripts have been evaluated.
-// DEPRECATED: This flushes AND destroys timer state.  Prefer
-// flush_ready_timers() + cleanup_timers() for multi-round flushing.
+// Execute the currently ready timers, then destroy timer state.
+// DEPRECATED: Prefer flush_ready_timers() + cleanup_timers() for multi-round flushing.
 void flush_pending_timers(JSContext* ctx);
 
-// Execute pending timer callbacks that are "ready" (delay <= max_delay_ms).
-// Does NOT destroy timer state -- can be called multiple times.
-// Returns the number of callbacks that were fired.
+// Advance the host timer clock by max_delay_ms and execute timers whose
+// scheduled deadline is now due. Does NOT destroy timer state.
+// Returns the number of macrotasks that were fired.
 int flush_ready_timers(JSContext* ctx, int max_delay_ms = 0);
 
 // Destroy per-context timer state and free callback references.

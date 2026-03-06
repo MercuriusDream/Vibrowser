@@ -7293,6 +7293,35 @@ void PropertyCascade::apply_declaration(
 
 void StyleResolver::add_stylesheet(const StyleSheet& sheet) {
     stylesheets_.push_back(sheet);
+    invalidate_conditional_caches();
+}
+
+void StyleResolver::set_viewport(float width, float height) {
+    viewport_width_ = width;
+    viewport_height_ = height;
+    invalidate_conditional_caches();
+}
+
+void StyleResolver::invalidate_conditional_caches() {
+    media_condition_cache_.clear();
+    supports_condition_cache_.clear();
+    media_condition_cache_state_.valid = false;
+}
+
+void StyleResolver::refresh_media_condition_cache_state() const {
+    const bool dark_mode = is_dark_mode();
+    if (media_condition_cache_state_.valid &&
+        media_condition_cache_state_.viewport_width == viewport_width_ &&
+        media_condition_cache_state_.viewport_height == viewport_height_ &&
+        media_condition_cache_state_.dark_mode == dark_mode) {
+        return;
+    }
+
+    media_condition_cache_.clear();
+    media_condition_cache_state_.viewport_width = viewport_width_;
+    media_condition_cache_state_.viewport_height = viewport_height_;
+    media_condition_cache_state_.dark_mode = dark_mode;
+    media_condition_cache_state_.valid = true;
 }
 
 void StyleResolver::set_default_custom_property(const std::string& name, const std::string& value) {
@@ -7551,391 +7580,413 @@ ComputedStyle StyleResolver::resolve(
 // --- Media query evaluation ---
 
 bool StyleResolver::evaluate_media_condition(const std::string& condition) const {
-    // Trim whitespace
-    std::string cond = condition;
-    while (!cond.empty() && cond.front() == ' ') cond.erase(cond.begin());
-    while (!cond.empty() && cond.back() == ' ') cond.pop_back();
-    if (cond.empty()) return true; // empty condition = all
+    refresh_media_condition_cache_state();
 
-    // Lowercase for comparison
-    std::string lower = cond;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-
-    // Handle comma-separated media query lists (OR semantics)
-    if (lower.find(',') != std::string::npos) {
-        size_t start = 0;
-        while (start < cond.size()) {
-            size_t comma = cond.find(',', start);
-            std::string part = (comma == std::string::npos)
-                ? cond.substr(start)
-                : cond.substr(start, comma - start);
-            if (evaluate_media_condition(part)) return true;
-            if (comma == std::string::npos) break;
-            start = comma + 1;
-        }
-        return false;
+    auto cached = media_condition_cache_.find(condition);
+    if (cached != media_condition_cache_.end()) {
+        return cached->second;
     }
 
-    // Handle "not" prefix
-    if (lower.substr(0, 4) == "not ") {
-        return !evaluate_media_condition(cond.substr(4));
-    }
+    const bool matches = [&]() {
+        // Trim whitespace
+        std::string cond = condition;
+        while (!cond.empty() && cond.front() == ' ') cond.erase(cond.begin());
+        while (!cond.empty() && cond.back() == ' ') cond.pop_back();
+        if (cond.empty()) return true; // empty condition = all
 
-    // Handle "only" prefix (treat same as without)
-    if (lower.substr(0, 5) == "only ") {
-        return evaluate_media_condition(cond.substr(5));
-    }
-
-    // Media types:
-    // - "screen" and "all" are supported in this screen-first browser.
-    // - "print" is intentionally unsupported (false) because print output/layout is not implemented.
-    // - Other print-adjacent media types are also treated as non-applicable.
-    // - This keeps "@media not print" and similar checks evaluating to the expected non-print branch.
-    if (lower == "all" || lower == "screen") return true;
-    if (lower == "print" || lower == "speech" || lower == "tty" ||
-        lower == "tv" || lower == "projection" || lower == "handheld" ||
-        lower == "braille" || lower == "embossed" || lower == "aural") return false;
-
-    // Handle "and" combinations: "screen and (max-width: 768px)"
-    // Split on " and " and evaluate each part
-    {
-        std::string::size_type and_pos = lower.find(" and ");
-        if (and_pos != std::string::npos) {
-            std::string left = cond.substr(0, and_pos);
-            std::string right = cond.substr(and_pos + 5);
-            return evaluate_media_condition(left) && evaluate_media_condition(right);
-        }
-    }
-
-    // Handle individual media features: (feature: value) or (feature)
-    if (lower.front() == '(' && lower.back() == ')') {
-        std::string inner = lower.substr(1, lower.size() - 2);
-        // Trim
-        while (!inner.empty() && inner.front() == ' ') inner.erase(inner.begin());
-        while (!inner.empty() && inner.back() == ' ') inner.pop_back();
-
-        auto colon_pos = inner.find(':');
-        if (colon_pos == std::string::npos) {
-            auto tokenize_range = [](const std::string& input) {
-                std::vector<std::string> tokens;
-                for (size_t i = 0; i < input.size();) {
-                    while (i < input.size() && std::isspace(static_cast<unsigned char>(input[i]))) {
-                        ++i;
-                    }
-                    if (i >= input.size()) {
-                        break;
-                    }
-
-                    if (input[i] == '>' || input[i] == '<') {
-                        if (i + 1 < input.size() && input[i + 1] == '=') {
-                            tokens.push_back(input.substr(i, 2));
-                            i += 2;
-                        } else {
-                            tokens.push_back(input.substr(i, 1));
-                            ++i;
-                        }
-                        continue;
-                    }
-
-                    size_t start = i;
-                    while (i < input.size() && !std::isspace(static_cast<unsigned char>(input[i])) &&
-                           input[i] != '>' && input[i] != '<') {
-                        ++i;
-                    }
-                    tokens.push_back(input.substr(start, i - start));
-                }
-                return tokens;
-            };
-
-            auto parse_length = [](const std::string& input, float& out) {
-                if (input.empty()) return false;
-                char* end_ptr = nullptr;
-                out = std::strtof(input.c_str(), &end_ptr);
-                if (end_ptr == input.c_str()) return false;
-
-                if (*end_ptr == '\0') return true;
-
-                std::string unit;
-                unit.reserve(input.size());
-                for (const char ch : std::string(end_ptr)) {
-                    unit.push_back(std::tolower(static_cast<unsigned char>(ch)));
-                }
-
-                if (unit == "px") {
-                    return true;
-                }
-                if (unit == "em") {
-                    out *= 16.0f;
-                    return true;
-                }
-                return false;
-            };
-
-            auto get_feature_value = [&](const std::string& feature, float& out) {
-                if (feature == "width") {
-                    out = static_cast<float>(viewport_width_);
-                    return true;
-                }
-                if (feature == "height") {
-                    out = static_cast<float>(viewport_height_);
-                    return true;
-                }
-                return false;
-            };
-
-            auto compare_feature_value = [](float feature_value, const std::string& op, float value) {
-                if (op == "<") return feature_value < value;
-                if (op == "<=") return feature_value <= value;
-                if (op == ">") return feature_value > value;
-                if (op == ">=") return feature_value >= value;
-                return false;
-            };
-
-            auto compare_value_feature = [](float value, const std::string& op, float feature_value) {
-                if (op == "<") return feature_value > value;
-                if (op == "<=") return feature_value >= value;
-                if (op == ">") return feature_value < value;
-                if (op == ">=") return feature_value <= value;
-                return false;
-            };
-
-            auto evaluate_comparison = [&](const std::string& left, const std::string& op, const std::string& right) {
-                float left_value = 0.0f;
-                float right_value = 0.0f;
-                float value = 0.0f;
-
-                bool left_is_width_or_height = get_feature_value(left, left_value);
-                bool right_is_width_or_height = get_feature_value(right, right_value);
-
-                if (left_is_width_or_height && !right_is_width_or_height) {
-                    if (!parse_length(right, value)) return false;
-                    return compare_feature_value(left_value, op, value);
-                }
-                if (!left_is_width_or_height && right_is_width_or_height) {
-                    if (!parse_length(left, value)) return false;
-                    return compare_value_feature(value, op, right_value);
-                }
-                return false;
-            };
-
-            bool has_comparison = (inner.find('>') != std::string::npos) || (inner.find('<') != std::string::npos);
-            std::vector<std::string> tokens = tokenize_range(inner);
-            if (tokens.size() == 3) {
-                return evaluate_comparison(tokens[0], tokens[1], tokens[2]);
-            }
-            if (tokens.size() == 5) {
-                std::string left_str = tokens[0];
-                std::string op1 = tokens[1];
-                std::string feature_str = tokens[2];
-                std::string op2 = tokens[3];
-                std::string right_str = tokens[4];
-
-                float left_val = 0.0f;
-                float feature_val = 0.0f;
-                float right_val = 0.0f;
-
-                // Parse left value
-                if (!parse_length(left_str, left_val)) return false;
-                // Get feature value
-                if (!get_feature_value(feature_str, feature_val)) return false;
-                // Parse right value
-                if (!parse_length(right_str, right_val)) return false;
-
-                // Evaluate both comparisons
-                bool first = compare_value_feature(left_val, op1, feature_val);
-                bool second = compare_feature_value(feature_val, op2, right_val);
-                return first && second;
-            }
-            if (has_comparison) return false;
-
-            // Boolean feature like (color), (hover), (pointer)
-            if (inner == "color" || inner == "hover" || inner == "grid") return true;
-            if (inner == "pointer") return true; // we have a pointer
-            return false;
-        }
-
-        std::string feature = inner.substr(0, colon_pos);
-        std::string value = inner.substr(colon_pos + 1);
-        while (!feature.empty() && feature.back() == ' ') feature.pop_back();
-        while (!feature.empty() && feature.front() == ' ') feature.erase(feature.begin());
-        while (!value.empty() && value.back() == ' ') value.pop_back();
-        while (!value.empty() && value.front() == ' ') value.erase(value.begin());
-        std::string value_lower = value;
-        std::transform(value_lower.begin(), value_lower.end(), value_lower.begin(),
+        // Lowercase for comparison
+        std::string lower = cond;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
                        [](unsigned char c) { return std::tolower(c); });
 
-        // Text-valued features.
-        if (feature == "orientation") {
-            if (value_lower == "portrait") return viewport_height_ >= viewport_width_;
-            if (value_lower == "landscape") return viewport_width_ >= viewport_height_;
+        // Handle comma-separated media query lists (OR semantics)
+        if (lower.find(',') != std::string::npos) {
+            size_t start = 0;
+            while (start < cond.size()) {
+                size_t comma = cond.find(',', start);
+                std::string part = (comma == std::string::npos)
+                    ? cond.substr(start)
+                    : cond.substr(start, comma - start);
+                if (evaluate_media_condition(part)) return true;
+                if (comma == std::string::npos) break;
+                start = comma + 1;
+            }
             return false;
-        }
-        if (feature == "prefers-color-scheme") {
-            if (value_lower == "dark") return is_dark_mode();
-            if (value_lower == "light") return !is_dark_mode();
-            return false;
-        }
-        if (feature == "prefers-reduced-motion") {
-            if (value_lower == "reduce") return false;
-            if (value_lower == "no-preference") return true;
-            return false;
-        }
-        if (feature == "prefers-contrast") {
-            if (value_lower == "more") return false;
-            if (value_lower == "less") return false;
-            return false;
-        }
-        if (feature == "display-mode") {
-            return value_lower == "browser";
         }
 
-        // Parse numeric value with optional unit.
-        float num_val = 0.0f;
-        char* end_ptr = nullptr;
-        num_val = std::strtof(value.c_str(), &end_ptr);
-        if (end_ptr == value.c_str()) {
-            return false;
+        // Handle "not" prefix
+        if (lower.substr(0, 4) == "not ") {
+            return !evaluate_media_condition(cond.substr(4));
         }
-        if (*end_ptr != '\0') {
-            std::string unit;
-            for (const char ch : std::string(end_ptr)) {
-                unit.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+
+        // Handle "only" prefix (treat same as without)
+        if (lower.substr(0, 5) == "only ") {
+            return evaluate_media_condition(cond.substr(5));
+        }
+
+        // Media types:
+        // - "screen" and "all" are supported in this screen-first browser.
+        // - "print" is intentionally unsupported (false) because print output/layout is not implemented.
+        // - Other print-adjacent media types are also treated as non-applicable.
+        // - This keeps "@media not print" and similar checks evaluating to the expected non-print branch.
+        if (lower == "all" || lower == "screen") return true;
+        if (lower == "print" || lower == "speech" || lower == "tty" ||
+            lower == "tv" || lower == "projection" || lower == "handheld" ||
+            lower == "braille" || lower == "embossed" || lower == "aural") return false;
+
+        // Handle "and" combinations: "screen and (max-width: 768px)"
+        // Split on " and " and evaluate each part
+        {
+            std::string::size_type and_pos = lower.find(" and ");
+            if (and_pos != std::string::npos) {
+                std::string left = cond.substr(0, and_pos);
+                std::string right = cond.substr(and_pos + 5);
+                return evaluate_media_condition(left) && evaluate_media_condition(right);
             }
-            if (unit == "px") {
-                // No conversion needed.
-            } else if (unit == "em") {
-                num_val *= 16.0f;
-            } else {
+        }
+
+        // Handle individual media features: (feature: value) or (feature)
+        if (lower.front() == '(' && lower.back() == ')') {
+            std::string inner = lower.substr(1, lower.size() - 2);
+            // Trim
+            while (!inner.empty() && inner.front() == ' ') inner.erase(inner.begin());
+            while (!inner.empty() && inner.back() == ' ') inner.pop_back();
+
+            auto colon_pos = inner.find(':');
+            if (colon_pos == std::string::npos) {
+                auto tokenize_range = [](const std::string& input) {
+                    std::vector<std::string> tokens;
+                    for (size_t i = 0; i < input.size();) {
+                        while (i < input.size() && std::isspace(static_cast<unsigned char>(input[i]))) {
+                            ++i;
+                        }
+                        if (i >= input.size()) {
+                            break;
+                        }
+
+                        if (input[i] == '>' || input[i] == '<') {
+                            if (i + 1 < input.size() && input[i + 1] == '=') {
+                                tokens.push_back(input.substr(i, 2));
+                                i += 2;
+                            } else {
+                                tokens.push_back(input.substr(i, 1));
+                                ++i;
+                            }
+                            continue;
+                        }
+
+                        size_t start = i;
+                        while (i < input.size() && !std::isspace(static_cast<unsigned char>(input[i])) &&
+                               input[i] != '>' && input[i] != '<') {
+                            ++i;
+                        }
+                        tokens.push_back(input.substr(start, i - start));
+                    }
+                    return tokens;
+                };
+
+                auto parse_length = [](const std::string& input, float& out) {
+                    if (input.empty()) return false;
+                    char* end_ptr = nullptr;
+                    out = std::strtof(input.c_str(), &end_ptr);
+                    if (end_ptr == input.c_str()) return false;
+
+                    if (*end_ptr == '\0') return true;
+
+                    std::string unit;
+                    unit.reserve(input.size());
+                    for (const char ch : std::string(end_ptr)) {
+                        unit.push_back(std::tolower(static_cast<unsigned char>(ch)));
+                    }
+
+                    if (unit == "px") {
+                        return true;
+                    }
+                    if (unit == "em") {
+                        out *= 16.0f;
+                        return true;
+                    }
+                    return false;
+                };
+
+                auto get_feature_value = [&](const std::string& feature, float& out) {
+                    if (feature == "width") {
+                        out = static_cast<float>(viewport_width_);
+                        return true;
+                    }
+                    if (feature == "height") {
+                        out = static_cast<float>(viewport_height_);
+                        return true;
+                    }
+                    return false;
+                };
+
+                auto compare_feature_value = [](float feature_value, const std::string& op, float value) {
+                    if (op == "<") return feature_value < value;
+                    if (op == "<=") return feature_value <= value;
+                    if (op == ">") return feature_value > value;
+                    if (op == ">=") return feature_value >= value;
+                    return false;
+                };
+
+                auto compare_value_feature = [](float value, const std::string& op, float feature_value) {
+                    if (op == "<") return feature_value > value;
+                    if (op == "<=") return feature_value >= value;
+                    if (op == ">") return feature_value < value;
+                    if (op == ">=") return feature_value <= value;
+                    return false;
+                };
+
+                auto evaluate_comparison = [&](const std::string& left, const std::string& op, const std::string& right) {
+                    float left_value = 0.0f;
+                    float right_value = 0.0f;
+                    float value = 0.0f;
+
+                    bool left_is_width_or_height = get_feature_value(left, left_value);
+                    bool right_is_width_or_height = get_feature_value(right, right_value);
+
+                    if (left_is_width_or_height && !right_is_width_or_height) {
+                        if (!parse_length(right, value)) return false;
+                        return compare_feature_value(left_value, op, value);
+                    }
+                    if (!left_is_width_or_height && right_is_width_or_height) {
+                        if (!parse_length(left, value)) return false;
+                        return compare_value_feature(value, op, right_value);
+                    }
+                    return false;
+                };
+
+                bool has_comparison = (inner.find('>') != std::string::npos) || (inner.find('<') != std::string::npos);
+                std::vector<std::string> tokens = tokenize_range(inner);
+                if (tokens.size() == 3) {
+                    return evaluate_comparison(tokens[0], tokens[1], tokens[2]);
+                }
+                if (tokens.size() == 5) {
+                    std::string left_str = tokens[0];
+                    std::string op1 = tokens[1];
+                    std::string feature_str = tokens[2];
+                    std::string op2 = tokens[3];
+                    std::string right_str = tokens[4];
+
+                    float left_val = 0.0f;
+                    float feature_val = 0.0f;
+                    float right_val = 0.0f;
+
+                    // Parse left value
+                    if (!parse_length(left_str, left_val)) return false;
+                    // Get feature value
+                    if (!get_feature_value(feature_str, feature_val)) return false;
+                    // Parse right value
+                    if (!parse_length(right_str, right_val)) return false;
+
+                    // Evaluate both comparisons
+                    bool first = compare_value_feature(left_val, op1, feature_val);
+                    bool second = compare_feature_value(feature_val, op2, right_val);
+                    return first && second;
+                }
+                if (has_comparison) return false;
+
+                // Boolean feature like (color), (hover), (pointer)
+                if (inner == "color" || inner == "hover" || inner == "grid") return true;
+                if (inner == "pointer") return true; // we have a pointer
                 return false;
             }
-        }
-        if (!std::isfinite(num_val)) {
+
+            std::string feature = inner.substr(0, colon_pos);
+            std::string value = inner.substr(colon_pos + 1);
+            while (!feature.empty() && feature.back() == ' ') feature.pop_back();
+            while (!feature.empty() && feature.front() == ' ') feature.erase(feature.begin());
+            while (!value.empty() && value.back() == ' ') value.pop_back();
+            while (!value.empty() && value.front() == ' ') value.erase(value.begin());
+            std::string value_lower = value;
+            std::transform(value_lower.begin(), value_lower.end(), value_lower.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+
+            // Text-valued features.
+            if (feature == "orientation") {
+                if (value_lower == "portrait") return viewport_height_ >= viewport_width_;
+                if (value_lower == "landscape") return viewport_width_ >= viewport_height_;
+                return false;
+            }
+            if (feature == "prefers-color-scheme") {
+                if (value_lower == "dark") return is_dark_mode();
+                if (value_lower == "light") return !is_dark_mode();
+                return false;
+            }
+            if (feature == "prefers-reduced-motion") {
+                if (value_lower == "reduce") return false;
+                if (value_lower == "no-preference") return true;
+                return false;
+            }
+            if (feature == "prefers-contrast") {
+                if (value_lower == "more") return false;
+                if (value_lower == "less") return false;
+                return false;
+            }
+            if (feature == "display-mode") {
+                return value_lower == "browser";
+            }
+
+            // Parse numeric value with optional unit.
+            float num_val = 0.0f;
+            char* end_ptr = nullptr;
+            num_val = std::strtof(value.c_str(), &end_ptr);
+            if (end_ptr == value.c_str()) {
+                return false;
+            }
+            if (*end_ptr != '\0') {
+                std::string unit;
+                for (const char ch : std::string(end_ptr)) {
+                    unit.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+                }
+                if (unit == "px") {
+                    // No conversion needed.
+                } else if (unit == "em") {
+                    num_val *= 16.0f;
+                } else {
+                    return false;
+                }
+            }
+            if (!std::isfinite(num_val)) {
+                return false;
+            }
+
+            if (feature == "min-width") return viewport_width_ >= num_val;
+            if (feature == "max-width") return viewport_width_ <= num_val;
+            if (feature == "min-height") return viewport_height_ >= num_val;
+            if (feature == "max-height") return viewport_height_ <= num_val;
+            if (feature == "width") return viewport_width_ == num_val;
+            if (feature == "height") return viewport_height_ == num_val;
+            if (feature == "min-device-width") return viewport_width_ >= num_val;
+            if (feature == "max-device-width") return viewport_width_ <= num_val;
+            if (feature == "color-gamut") return true;
+            if (feature == "-webkit-min-device-pixel-ratio" ||
+                feature == "min-resolution") return true;
+
+            // Unknown feature — treat as no-match.
             return false;
         }
 
-        if (feature == "min-width") return viewport_width_ >= num_val;
-        if (feature == "max-width") return viewport_width_ <= num_val;
-        if (feature == "min-height") return viewport_height_ >= num_val;
-        if (feature == "max-height") return viewport_height_ <= num_val;
-        if (feature == "width") return viewport_width_ == num_val;
-        if (feature == "height") return viewport_height_ == num_val;
-        if (feature == "min-device-width") return viewport_width_ >= num_val;
-        if (feature == "max-device-width") return viewport_width_ <= num_val;
-        if (feature == "color-gamut") return true;
-        if (feature == "-webkit-min-device-pixel-ratio" ||
-            feature == "min-resolution") return true;
-
-        // Unknown feature — treat as no-match.
+        // Bare media type or unknown — treat as no-match.
         return false;
-    }
+    }();
 
-    // Bare media type or unknown — treat as no-match.
-    return false;
+    media_condition_cache_[condition] = matches;
+    return matches;
 }
 
 bool StyleResolver::evaluate_supports_condition(const std::string& condition) const {
-    std::string cond = condition;
-    while (!cond.empty() && cond.front() == ' ') cond.erase(cond.begin());
-    while (!cond.empty() && cond.back() == ' ') cond.pop_back();
-    if (cond.empty()) {
+    auto cached = supports_condition_cache_.find(condition);
+    if (cached != supports_condition_cache_.end()) {
+        return cached->second;
+    }
+
+    const bool matches = [&]() {
+        std::string cond = condition;
+        while (!cond.empty() && cond.front() == ' ') cond.erase(cond.begin());
+        while (!cond.empty() && cond.back() == ' ') cond.pop_back();
+        if (cond.empty()) {
+            return false;
+        }
+
+        std::string lower = cond;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+
+        // Handle "not"
+        if (lower.substr(0, 4) == "not ") {
+            return !evaluate_supports_condition(cond.substr(4));
+        }
+
+        // Handle "or"
+        {
+            auto or_pos = lower.find(" or ");
+            if (or_pos != std::string::npos) {
+                return evaluate_supports_condition(cond.substr(0, or_pos)) ||
+                       evaluate_supports_condition(cond.substr(or_pos + 4));
+            }
+        }
+
+        // Handle "and"
+        {
+            auto and_pos = lower.find(" and ");
+            if (and_pos != std::string::npos) {
+                return evaluate_supports_condition(cond.substr(0, and_pos)) &&
+                       evaluate_supports_condition(cond.substr(and_pos + 5));
+            }
+        }
+
+        // Handle (property: value)
+        if (lower.front() == '(' && lower.back() == ')') {
+            std::string inner = lower.substr(1, lower.size() - 2);
+            auto colon_pos = inner.find(':');
+            if (colon_pos != std::string::npos) {
+                std::string prop = inner.substr(0, colon_pos);
+                std::string value = inner.substr(colon_pos + 1);
+                while (!prop.empty() && prop.back() == ' ') prop.pop_back();
+                while (!prop.empty() && prop.front() == ' ') prop.erase(prop.begin());
+                while (!value.empty() && value.back() == ' ') value.pop_back();
+                while (!value.empty() && value.front() == ' ') value.erase(value.begin());
+                if (prop.empty() || value.empty()) {
+                    return false;
+                }
+
+                auto supports_known_property = [&](const std::string& name) {
+                    return
+                        name == "display" || name == "flex" || name == "grid" ||
+                        name == "position" || name == "transform" || name == "opacity" ||
+                        name == "transition" || name == "animation" || name == "filter" ||
+                        name == "backdrop-filter" || name == "gap" || name == "aspect-ratio" ||
+                        name == "object-fit" || name == "scroll-snap-type" ||
+                        name == "overflow" || name == "clip-path" || name == "mask" ||
+                        name == "color" || name == "background" || name == "border" ||
+                        name == "margin" || name == "padding" || name == "width" ||
+                        name == "height" || name == "font" || name == "text-decoration" ||
+                        name == "box-shadow" || name == "border-radius" ||
+                        name == "mix-blend-mode" || name == "writing-mode" ||
+                        name == "contain" || name == "content-visibility" ||
+                        name == "container-type" || name == "user-select" ||
+                        name == "pointer-events" || name == "resize" ||
+                        name == "cursor" || name == "visibility" ||
+                        name == "z-index" || name == "flex-direction" ||
+                        name == "flex-wrap" || name == "justify-content" ||
+                        name == "align-items" || name == "align-self" ||
+                        name == "order";
+                };
+
+                if (!supports_known_property(prop)) {
+                    return false;
+                }
+
+                // Guard obvious unsupported values for common feature-detected properties.
+                if (prop == "display" || prop == "flex" || prop == "grid" ||
+                    prop == "position") {
+                    if (prop == "display") {
+                        if (value == "block" || value == "inline" || value == "inline-block" ||
+                            value == "none" || value == "flex" || value == "inline-flex" ||
+                            value == "grid" || value == "inline-grid" || value == "contents" ||
+                            value == "table" || value == "list-item" || value == "flow-root") {
+                            return true;
+                        }
+                        return false;
+                    }
+                    if (prop == "position") {
+                        if (value == "static" || value == "relative" || value == "absolute" ||
+                            value == "fixed" || value == "sticky") {
+                            return true;
+                        }
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+
         return false;
-    }
+    }();
 
-    std::string lower = cond;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-
-    // Handle "not"
-    if (lower.substr(0, 4) == "not ") {
-        return !evaluate_supports_condition(cond.substr(4));
-    }
-
-    // Handle "or"
-    {
-        auto or_pos = lower.find(" or ");
-        if (or_pos != std::string::npos) {
-            return evaluate_supports_condition(cond.substr(0, or_pos)) ||
-                   evaluate_supports_condition(cond.substr(or_pos + 4));
-        }
-    }
-
-    // Handle "and"
-    {
-        auto and_pos = lower.find(" and ");
-        if (and_pos != std::string::npos) {
-            return evaluate_supports_condition(cond.substr(0, and_pos)) &&
-                   evaluate_supports_condition(cond.substr(and_pos + 5));
-        }
-    }
-
-    // Handle (property: value)
-    if (lower.front() == '(' && lower.back() == ')') {
-        std::string inner = lower.substr(1, lower.size() - 2);
-        auto colon_pos = inner.find(':');
-        if (colon_pos != std::string::npos) {
-            std::string prop = inner.substr(0, colon_pos);
-            std::string value = inner.substr(colon_pos + 1);
-            while (!prop.empty() && prop.back() == ' ') prop.pop_back();
-            while (!prop.empty() && prop.front() == ' ') prop.erase(prop.begin());
-            while (!value.empty() && value.back() == ' ') value.pop_back();
-            while (!value.empty() && value.front() == ' ') value.erase(value.begin());
-            if (prop.empty() || value.empty()) {
-                return false;
-            }
-
-            auto supports_known_property = [&](const std::string& name) {
-                return
-                    name == "display" || name == "flex" || name == "grid" ||
-                    name == "position" || name == "transform" || name == "opacity" ||
-                    name == "transition" || name == "animation" || name == "filter" ||
-                    name == "backdrop-filter" || name == "gap" || name == "aspect-ratio" ||
-                    name == "object-fit" || name == "scroll-snap-type" ||
-                    name == "overflow" || name == "clip-path" || name == "mask" ||
-                    name == "color" || name == "background" || name == "border" ||
-                    name == "margin" || name == "padding" || name == "width" ||
-                    name == "height" || name == "font" || name == "text-decoration" ||
-                    name == "box-shadow" || name == "border-radius" ||
-                    name == "mix-blend-mode" || name == "writing-mode" ||
-                    name == "contain" || name == "content-visibility" ||
-                    name == "container-type" || name == "user-select" ||
-                    name == "pointer-events" || name == "resize" ||
-                    name == "cursor" || name == "visibility" ||
-                    name == "z-index" || name == "flex-direction" ||
-                    name == "flex-wrap" || name == "justify-content" ||
-                    name == "align-items" || name == "align-self" ||
-                    name == "order";
-            };
-
-            if (!supports_known_property(prop)) {
-                return false;
-            }
-
-            // Guard obvious unsupported values for common feature-detected properties.
-            if (prop == "display" || prop == "flex" || prop == "grid" ||
-                prop == "position") {
-                if (prop == "display") {
-                    if (value == "block" || value == "inline" || value == "inline-block" ||
-                        value == "none" || value == "flex" || value == "inline-flex" ||
-                        value == "grid" || value == "inline-grid" || value == "contents" ||
-                        value == "table" || value == "list-item" || value == "flow-root") {
-                        return true;
-                    }
-                    return false;
-                }
-                if (prop == "position") {
-                    if (value == "static" || value == "relative" || value == "absolute" ||
-                        value == "fixed" || value == "sticky") {
-                        return true;
-                    }
-                    return false;
-                }
-            }
-            return true;
-        }
-    }
-
-    return false;
+    supports_condition_cache_[condition] = matches;
+    return matches;
 }
 
 bool StyleResolver::is_element_in_scope(const ElementView& element, const ScopeRule& scope) const {

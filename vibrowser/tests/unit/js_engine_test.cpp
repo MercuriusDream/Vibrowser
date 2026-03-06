@@ -1219,6 +1219,7 @@ TEST(JSTimers, SetTimeoutZeroDelayExecutes) {
     clever::js::install_timer_bindings(engine.context());
     engine.evaluate("var x = 0; setTimeout(function() { x = 42; }, 0);");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(engine.evaluate("x"), "0");
     clever::js::flush_pending_timers(engine.context());
     auto result = engine.evaluate("x");
     EXPECT_EQ(result, "42");
@@ -1270,6 +1271,86 @@ TEST(JSTimers, SetIntervalFiresAcrossMultipleFlushes) {
     EXPECT_EQ(after_second, "2");
 
     clever::js::flush_pending_timers(engine.context());
+}
+
+TEST(JSTimers, NestedTimeoutRunsOnNextFlush) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    engine.evaluate(R"(
+        var order = [];
+        setTimeout(function() {
+            order.push('outer');
+            setTimeout(function() { order.push('inner'); }, 0);
+        }, 0);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 0), 1);
+    EXPECT_EQ(engine.evaluate("order.join(',')"), "outer");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 0), 1);
+    EXPECT_EQ(engine.evaluate("order.join(',')"), "outer,inner");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
+TEST(JSTimers, TimerCallbackMicrotasksDrainBeforeNextTimer) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    engine.evaluate(R"(
+        var order = [];
+        setTimeout(function() {
+            order.push('timer1');
+            Promise.resolve().then(function() { order.push('microtask'); });
+        }, 0);
+        setTimeout(function() { order.push('timer2'); }, 0);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 0), 2);
+    EXPECT_EQ(engine.evaluate("order.join(',')"), "timer1,microtask,timer2");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
+TEST(JSTimers, EarlierScheduledTimerCanCancelLaterDueTimer) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    engine.evaluate(R"(
+        var order = [];
+        setTimeout(function() {
+            order.push('canceller');
+            clearTimeout(victim);
+        }, 0);
+        var victim = setTimeout(function() { order.push('victim'); }, 0);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 0), 1);
+    EXPECT_EQ(engine.evaluate("order.join(',')"), "canceller");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
+TEST(JSTimers, IntervalSchedulingStaysAlignedAfterCoarseAdvance) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    engine.evaluate(R"(
+        var ticks = 0;
+        setInterval(function() { ticks = ticks + 1; }, 10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 35), 1);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 4), 0);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 1), 1);
+    EXPECT_EQ(engine.evaluate("ticks"), "2");
+
+    clever::js::cleanup_timers(engine.context());
 }
 
 TEST(JSTimers, ClearIntervalWorks) {

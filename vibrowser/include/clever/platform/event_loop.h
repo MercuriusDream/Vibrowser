@@ -57,6 +57,7 @@ private:
     std::priority_queue<DelayedTask, std::vector<DelayedTask>, std::greater<>> delayed_tasks_;
     mutable std::mutex mutex_;
     std::condition_variable cv_;
+    size_t delayed_queue_generation_ = 0;
     std::atomic<bool> running_{false};
     std::atomic<bool> quit_requested_{false};
 };

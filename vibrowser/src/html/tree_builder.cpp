@@ -48,6 +48,14 @@ static const std::unordered_set<std::string>& special_elements() {
     return s;
 }
 
+static bool is_in_svg_context(const std::vector<SimpleNode*>& open_elements) {
+    for (auto it = open_elements.rbegin(); it != open_elements.rend(); ++it) {
+        const auto& tag = (*it)->tag_name;
+        if (tag == "svg" || tag == "SVG") return true;
+    }
+    return false;
+}
+
 static bool is_phrasing_element_tag(const std::string& tag) {
     static const std::unordered_set<std::string> s = {
         "a", "abbr", "area", "audio", "b", "bdi", "bdo", "br", "button",
@@ -219,8 +227,11 @@ SimpleNode* TreeBuilder::insert_element(const Token& token) {
     node->tag_name = token.name;
     node->attributes = token.attributes;
     auto* raw = current_node()->append_child(std::move(node));
-    // In HTML parsing, self-closing syntax on non-void elements is ignored.
-    if (!is_void_element(token.name)) {
+    const bool treat_self_closing_as_closed =
+        token.self_closing && is_in_svg_context(open_elements_);
+    // In HTML parsing, self-closing syntax on non-void elements is ignored,
+    // but inline SVG self-closing tags must not remain on the open-elements stack.
+    if (!is_void_element(token.name) && !treat_self_closing_as_closed) {
         open_elements_.push_back(raw);
     }
     return raw;

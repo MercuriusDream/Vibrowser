@@ -930,6 +930,134 @@ TEST(StyleResolverTest, OrientationMediaFeatureMatchesPortrait) {
     EXPECT_EQ(result.color.b, 0);
 }
 
+TEST(StyleResolverTest, CachedMediaQueriesStayCorrectAcrossElementsAndViewportChanges) {
+    StyleResolver resolver;
+    resolver.set_viewport(900.0f, 700.0f);
+
+    StyleSheet sheet;
+
+    MediaQuery width_query;
+    width_query.condition = "(min-width: 800px)";
+
+    StyleRule div_rule;
+    CompoundSelector div_compound;
+    div_compound.simple_selectors.push_back(make_type_sel("div"));
+    div_rule.selectors.selectors.push_back(make_simple_complex(div_compound));
+    div_rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    width_query.rules.push_back(div_rule);
+
+    StyleRule span_rule;
+    CompoundSelector span_compound;
+    span_compound.simple_selectors.push_back(make_type_sel("span"));
+    span_rule.selectors.selectors.push_back(make_simple_complex(span_compound));
+    span_rule.declarations.push_back(make_decl("color", "rgb(0, 0, 255)"));
+    width_query.rules.push_back(span_rule);
+
+    sheet.media_queries.push_back(width_query);
+    resolver.add_stylesheet(sheet);
+
+    ComputedStyle parent;
+
+    ElementView div;
+    div.tag_name = "div";
+    auto div_style = resolver.resolve(div, parent);
+    EXPECT_EQ(div_style.color, (Color{255, 0, 0, 255}));
+
+    ElementView span;
+    span.tag_name = "span";
+    auto span_style = resolver.resolve(span, parent);
+    EXPECT_EQ(span_style.color, (Color{0, 0, 255, 255}));
+
+    resolver.set_viewport(640.0f, 700.0f);
+
+    auto narrow_div_style = resolver.resolve(div, parent);
+    EXPECT_EQ(narrow_div_style.color, parent.color);
+
+    auto narrow_span_style = resolver.resolve(span, parent);
+    EXPECT_EQ(narrow_span_style.color, parent.color);
+}
+
+TEST(StyleResolverTest, CachedMediaQueriesStayCorrectWhenDarkModeChanges) {
+    set_dark_mode_override(0);
+
+    StyleResolver resolver;
+    resolver.set_viewport(900.0f, 700.0f);
+
+    StyleSheet sheet;
+    MediaQuery dark_query;
+    dark_query.condition = "(prefers-color-scheme: dark)";
+
+    StyleRule rule;
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_type_sel("div"));
+    rule.selectors.selectors.push_back(make_simple_complex(compound));
+    rule.declarations.push_back(make_decl("color", "rgb(0, 128, 0)"));
+    dark_query.rules.push_back(rule);
+    sheet.media_queries.push_back(dark_query);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    ComputedStyle parent;
+
+    auto light_style = resolver.resolve(elem, parent);
+    EXPECT_EQ(light_style.color, parent.color);
+
+    set_dark_mode_override(1);
+    auto dark_style = resolver.resolve(elem, parent);
+    EXPECT_EQ(dark_style.color, (Color{0, 128, 0, 255}));
+
+    set_dark_mode_override(0);
+    auto light_again_style = resolver.resolve(elem, parent);
+    EXPECT_EQ(light_again_style.color, parent.color);
+
+    set_dark_mode_override(-1);
+}
+
+TEST(StyleResolverTest, CachedSupportsQueriesStayCorrectAcrossMultipleElements) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+
+    SupportsRule supported;
+    supported.condition = "(display: grid)";
+
+    StyleRule div_rule;
+    CompoundSelector div_compound;
+    div_compound.simple_selectors.push_back(make_type_sel("div"));
+    div_rule.selectors.selectors.push_back(make_simple_complex(div_compound));
+    div_rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    supported.rules.push_back(div_rule);
+
+    StyleRule span_rule;
+    CompoundSelector span_compound;
+    span_compound.simple_selectors.push_back(make_type_sel("span"));
+    span_rule.selectors.selectors.push_back(make_simple_complex(span_compound));
+    span_rule.declarations.push_back(make_decl("color", "rgb(0, 0, 255)"));
+    supported.rules.push_back(span_rule);
+
+    SupportsRule unsupported;
+    unsupported.condition = "(display: unsupported-layout)";
+    unsupported.rules.push_back(div_rule);
+
+    sheet.supports_rules.push_back(supported);
+    sheet.supports_rules.push_back(unsupported);
+    resolver.add_stylesheet(sheet);
+
+    ComputedStyle parent;
+
+    ElementView div;
+    div.tag_name = "div";
+    auto div_style = resolver.resolve(div, parent);
+    EXPECT_EQ(div_style.color, (Color{255, 0, 0, 255}));
+
+    ElementView span;
+    span.tag_name = "span";
+    auto span_style = resolver.resolve(span, parent);
+    EXPECT_EQ(span_style.color, (Color{0, 0, 255, 255}));
+}
+
 // ===========================================================================
 // Test 29: StyleResolver: inherited properties (color, font-size)
 // ===========================================================================
