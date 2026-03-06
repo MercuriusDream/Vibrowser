@@ -107,6 +107,9 @@ _bmad-output/
 !.codex/orchestrator/uninstall-launchd.sh
 !.codex/orchestrator/start-full-autonomy-fast.sh
 !.codex/orchestrator/start-full-autonomy-fast.zsh
+!.codex/orchestrator/detect-writer.sh
+!.codex/orchestrator/resume-live.sh
+!.codex/orchestrator/safe-restart.sh
 !.codex/orchestrator/ultra-long-horizon-workload-map.md
 !.codex/orchestrator/phase16-master-checklist.md
 !.codex/orchestrator/schemas/

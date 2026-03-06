@@ -21,3 +21,6 @@
 - Fast launcher: `.codex/orchestrator/start-full-autonomy-fast.sh`
 - zsh fast launcher: `.codex/orchestrator/start-full-autonomy-fast.zsh`
 - Human live view: `.codex/orchestrator/tmux-launch.sh`
+- Active writer detection: `.codex/orchestrator/detect-writer.sh`
+- Safe restart playbook: `.codex/orchestrator/safe-restart.sh`
+- Do not append supervisor ledger entries when planner summary is empty or `No workloads recorded`.

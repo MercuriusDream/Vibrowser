@@ -195,6 +195,11 @@ summarize_cycle() {
   jq -r '[.workloads[]?.title // empty] | if length == 0 then "No workloads recorded" else join(" | ") end' "$cycle_dir/plan.json"
 }
 
+should_append_cycle_log() {
+  local summary=$1
+  [[ -n "$summary" && "$summary" != "n/a" && "$summary" != "No workloads recorded" ]]
+}
+
 cycle_counter=0
 while true; do
   cycle_counter=$((cycle_counter + 1))
@@ -325,7 +330,9 @@ while true; do
   fi
 
   update_state "$cycle" "ledger" "$([[ $verify_ok -eq 1 ]] && echo passed || echo failed)" "ledger" "$summary"
-  append_supervisor_log "$cycle" "$summary" "$cycle_dir/plan.json" "$cycle_dir/verifier.json"
+  if should_append_cycle_log "$summary"; then
+    append_supervisor_log "$cycle" "$summary" "$cycle_dir/plan.json" "$cycle_dir/verifier.json"
+  fi
   update_ledger_metadata "$cycle" "$summary"
   sync_shadow_ledger
 

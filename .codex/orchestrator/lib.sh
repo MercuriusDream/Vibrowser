@@ -193,6 +193,22 @@ append_supervisor_log() {
   local summary=$2
   local plan_path=$3
   local verify_path=$4
+  local safe_summary=$summary
+  local relative_plan_path="${plan_path#$PROJECT_DIR/}"
+  local relative_verify_path="${verify_path#$PROJECT_DIR/}"
+
+  if [[ -z "$safe_summary" ]]; then
+    safe_summary="n/a"
+  fi
+  if [[ -z "$relative_plan_path" ]]; then
+    relative_plan_path="n/a"
+  fi
+  if [[ -z "$relative_verify_path" ]]; then
+    relative_verify_path="n/a"
+  fi
+  if [[ "$safe_summary" == "n/a" || "$safe_summary" == "No workloads recorded" ]]; then
+    return 0
+  fi
 
   if ! grep -q '^## Codex CLI Supervisor Log$' "$CANONICAL_LEDGER"; then
     printf "\n## Codex CLI Supervisor Log\n" >> "$CANONICAL_LEDGER"
@@ -200,11 +216,10 @@ append_supervisor_log() {
 
   {
     printf "\n### Cycle %s — %s\n" "$cycle" "$(date '+%Y-%m-%d %H:%M:%S %z')"
-    printf -- "- Runtime: main `%s/%s` (fast=%s), workers `%s/%s` (fast=%s)\n" \
-      "$MAIN_MODEL" "$MAIN_REASONING" "$MAIN_FAST_FLAG" "$SUBAGENT_MODEL" "$SUBAGENT_REASONING" "$SUBAGENT_FAST_FLAG"
-    printf -- "- Summary: %s\n" "$summary"
-    printf -- "- Planner output: `%s`\n" "${plan_path#$PROJECT_DIR/}"
-    printf -- "- Verification report: `%s`\n" "${verify_path#$PROJECT_DIR/}"
+    printf -- '%s\n' "- Runtime: main \`$MAIN_MODEL/$MAIN_REASONING\` (fast=$MAIN_FAST_FLAG), workers \`$SUBAGENT_MODEL/$SUBAGENT_REASONING\` (fast=$SUBAGENT_FAST_FLAG)"
+    printf -- "- Summary: %s\n" "$safe_summary"
+    printf -- '%s\n' "- Planner output: \`$relative_plan_path\`"
+    printf -- '%s\n' "- Verification report: \`$relative_verify_path\`"
   } >> "$CANONICAL_LEDGER"
 }
 
