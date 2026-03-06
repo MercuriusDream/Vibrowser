@@ -17,13 +17,14 @@ void EventLoop::post_task(Task task) {
 }
 
 void EventLoop::post_delayed_task(Task task, std::chrono::milliseconds delay) {
+    const auto run_at = Clock::now() + delay;
     {
         std::lock_guard lock(mutex_);
         delayed_tasks_.push(DelayedTask{
-            Clock::now() + delay,
+            run_at,
+            next_delayed_task_sequence_++,
             std::move(task)
         });
-        ++delayed_queue_generation_;
     }
     cv_.notify_one();
 }
@@ -67,10 +68,10 @@ void EventLoop::run() {
         // - quit_requested_
         if (!delayed_tasks_.empty()) {
             auto next_time = delayed_tasks_.top().run_at;
-            auto delayed_queue_generation = delayed_queue_generation_;
-            cv_.wait_until(lock, next_time, [this, delayed_queue_generation]() {
+            cv_.wait_until(lock, next_time, [this, next_time]() {
                 return !tasks_.empty() || quit_requested_.load()
-                    || delayed_queue_generation_ != delayed_queue_generation;
+                    || delayed_tasks_.empty()
+                    || delayed_tasks_.top().run_at != next_time;
             });
         } else {
             cv_.wait(lock, [this]() {

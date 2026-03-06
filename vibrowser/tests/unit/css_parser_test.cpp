@@ -856,6 +856,81 @@ TEST(CSSParserTest, NestedConditionalRulesRetainCombinedOuterAndInnerConditions)
               (std::vector<std::string>{"screen", "(min-width: 768px)"}));
     EXPECT_EQ(rule.supports_conditions,
               (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(rule.conditional_rule_contexts.size(), 3u);
+    EXPECT_EQ(rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(rule.conditional_rule_contexts[1].condition, "(display: grid)");
+    EXPECT_EQ(rule.conditional_rule_contexts[2].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(rule.conditional_rule_contexts[2].condition, "(min-width: 768px)");
+}
+
+TEST(CSSParserTest, SupportsMediaSupportsChainPreservesFullNestedConditionalOrder) {
+    auto sheet = parse_stylesheet(
+        "@supports (display: grid) {"
+        "  @media screen and (min-width: 768px) {"
+        "    @supports (grid-template-columns: subgrid) {"
+        "      .layout { display: grid; }"
+        "    }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.supports_rules.size(), 1u);
+    ASSERT_EQ(sheet.supports_rules[0].rules.size(), 1u);
+    const auto& rule = sheet.supports_rules[0].rules[0];
+    EXPECT_EQ(rule.selector_text, ".layout");
+    EXPECT_EQ(rule.media_conditions,
+              (std::vector<std::string>{"screen and (min-width: 768px)"}));
+    EXPECT_EQ(rule.supports_conditions,
+              (std::vector<std::string>{"(display: grid)", "(grid-template-columns: subgrid)"}));
+    ASSERT_EQ(rule.conditional_rule_contexts.size(), 3u);
+    EXPECT_EQ(rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(rule.conditional_rule_contexts[0].condition, "(display: grid)");
+    EXPECT_EQ(rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(rule.conditional_rule_contexts[1].condition, "screen and (min-width: 768px)");
+    EXPECT_EQ(rule.conditional_rule_contexts[2].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(rule.conditional_rule_contexts[2].condition, "(grid-template-columns: subgrid)");
+}
+
+TEST(CSSParserTest, NestedConditionalSiblingsKeepOrderAndOwnCombinedConditions) {
+    auto sheet = parse_stylesheet(
+        "@media screen {"
+        "  .base { color: black; }"
+        "  @supports (display: grid) { .grid { display: grid; } }"
+        "  @media (orientation: landscape) { .wide { display: block; } }"
+        "}");
+
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 3u);
+
+    const auto& base_rule = sheet.media_queries[0].rules[0];
+    EXPECT_EQ(base_rule.selector_text, ".base");
+    EXPECT_EQ(base_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_TRUE(base_rule.supports_conditions.empty());
+    ASSERT_EQ(base_rule.conditional_rule_contexts.size(), 1u);
+    EXPECT_EQ(base_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(base_rule.conditional_rule_contexts[0].condition, "screen");
+
+    const auto& grid_rule = sheet.media_queries[0].rules[1];
+    EXPECT_EQ(grid_rule.selector_text, ".grid");
+    EXPECT_EQ(grid_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_EQ(grid_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(grid_rule.conditional_rule_contexts.size(), 2u);
+    EXPECT_EQ(grid_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(grid_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(grid_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(grid_rule.conditional_rule_contexts[1].condition, "(display: grid)");
+
+    const auto& wide_rule = sheet.media_queries[0].rules[2];
+    EXPECT_EQ(wide_rule.selector_text, ".wide");
+    EXPECT_EQ(wide_rule.media_conditions,
+              (std::vector<std::string>{"screen", "(orientation: landscape)"}));
+    EXPECT_TRUE(wide_rule.supports_conditions.empty());
+    ASSERT_EQ(wide_rule.conditional_rule_contexts.size(), 2u);
+    EXPECT_EQ(wide_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(wide_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(wide_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(wide_rule.conditional_rule_contexts[1].condition, "(orientation: landscape)");
 }
 
 // =============================================================================

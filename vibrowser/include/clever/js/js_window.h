@@ -23,6 +23,12 @@ void cleanup_animation_frames(JSContext* ctx);
 // Call before JS runtime teardown to avoid leaking rooted callback values.
 void cleanup_match_media_listeners(JSContext* ctx);
 
+// Deliver same-thread worker messages that were deferred to the main runtime's
+// next JS checkpoint. Pending delivery is snapshotted, so callbacks that post
+// back into a worker are deferred to a later checkpoint instead of reentering
+// page JS in the same one.
+void process_window_worker_messages(JSContext* ctx);
+
 // Look up a blob: URL in the blob registry.
 // Returns a pointer to (mime_type, data) pair, or nullptr if not found.
 // The pointer is valid until the blob is revoked or the registry is modified.

@@ -1,4 +1,5 @@
 #include <clever/js/js_engine.h>
+#include <clever/js/js_window.h>
 #include <clever/js/js_workers.h>
 
 extern "C" {
@@ -37,6 +38,7 @@ static void run_js_checkpoint(JSRuntime* rt, JSContext* ctx) {
     while (JS_ExecutePendingJob(rt, &ctx_job) > 0) {
         // drain
     }
+    process_window_worker_messages(ctx);
     process_worker_messages(ctx);
     while (JS_ExecutePendingJob(rt, &ctx_job) > 0) {
         // drain

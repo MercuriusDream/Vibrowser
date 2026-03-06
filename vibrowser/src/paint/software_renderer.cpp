@@ -52,15 +52,21 @@ void ensure_scratch_buffer(std::vector<T>& buffer, int& buffer_width, int& buffe
         buffer_height = 0;
         return;
     }
-    const bool dimensions_changed = buffer_width != width || buffer_height != height;
-    if (dimensions_changed) {
-        buffer_width = width;
-        buffer_height = height;
-        buffer.assign(static_cast<size_t>(width) * static_cast<size_t>(height) * elements_per_pixel, T{});
+    const size_t required_size = static_cast<size_t>(width) * static_cast<size_t>(height) * elements_per_pixel;
+    const bool can_reuse_existing =
+        buffer_width >= width &&
+        buffer_height >= height &&
+        buffer.size() >= required_size;
+    if (!can_reuse_existing) {
+        buffer_width = std::max(buffer_width, width);
+        buffer_height = std::max(buffer_height, height);
+        const size_t allocation_size =
+            static_cast<size_t>(buffer_width) * static_cast<size_t>(buffer_height) * elements_per_pixel;
+        buffer.assign(allocation_size, T{});
         ++allocation_count;
         return;
     }
-    std::fill(buffer.begin(), buffer.end(), T{});
+    std::fill_n(buffer.begin(), required_size, T{});
 }
 }  // namespace
 

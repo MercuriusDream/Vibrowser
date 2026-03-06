@@ -267,6 +267,10 @@ std::string HttpCache::make_cache_key(const std::string& url) {
 
     clever::url::URL normalized = *parsed;
     normalized.fragment.clear();
+    if ((normalized.scheme == "http" && normalized.port == 80) ||
+        (normalized.scheme == "https" && normalized.port == 443)) {
+        normalized.port.reset();
+    }
     return normalized.serialize();
 }
 

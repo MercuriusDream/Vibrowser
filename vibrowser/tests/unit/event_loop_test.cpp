@@ -234,6 +234,30 @@ TEST(EventLoopTest, EarlierDelayedTaskWakesRun) {
     EXPECT_LT(elapsed_ms.load(std::memory_order_relaxed), 500);
 }
 
+TEST(EventLoopTest, EarlierDelayedTaskBecomesRunnableWithoutWaitingForOlderDeadline) {
+    EventLoop loop;
+    std::vector<int> order;
+
+    loop.post_delayed_task([&order]() { order.push_back(2); }, 250ms);
+
+    std::this_thread::sleep_for(40ms);
+    loop.post_delayed_task([&order]() { order.push_back(1); }, 20ms);
+
+    std::this_thread::sleep_for(40ms);
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 1u);
+    EXPECT_EQ(order[0], 1);
+    EXPECT_EQ(loop.pending_count(), 1u);
+
+    std::this_thread::sleep_for(220ms);
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 2u);
+    EXPECT_EQ(order[1], 2);
+    EXPECT_EQ(loop.pending_count(), 0u);
+}
+
 TEST(EventLoopTest, RecordsLagForLateDelayedTask) {
     EventLoop loop;
     bool executed = false;

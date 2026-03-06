@@ -66,7 +66,10 @@ struct TextRegion {
 
     // Scrollbar drag state
     BOOL _draggingScrollbar;
+    BOOL _draggingHorizontalScrollbar;
+    CGFloat _scrollbarDragStartX;
     CGFloat _scrollbarDragStartY;
+    CGFloat _scrollbarDragStartOffsetX;
     CGFloat _scrollbarDragStartOffset;
     CGFloat _scrollX;
     CGFloat _scrollY;
@@ -133,6 +136,12 @@ struct TextRegion {
         _imageHeight = 0;
         _scrollX = 0;
         _scrollY = 0;
+        _draggingScrollbar = NO;
+        _draggingHorizontalScrollbar = NO;
+        _scrollbarDragStartX = 0;
+        _scrollbarDragStartY = 0;
+        _scrollbarDragStartOffsetX = 0;
+        _scrollbarDragStartOffset = 0;
         _targetScrollOffset = 0;
         _isAnimatingScroll = NO;
         _scrollAnimationIsMomentum = NO;
@@ -255,6 +264,12 @@ struct TextRegion {
     return documentY * _pageScale;
 }
 
+- (CGFloat)contentWidthInViewPoints {
+    return (_backingScale > 0.0)
+        ? (_imageWidth / _backingScale) * _pageScale
+        : 0.0;
+}
+
 - (CGFloat)documentXForViewOffset:(CGFloat)viewOffset {
     return viewOffset / _pageScale;
 }
@@ -305,9 +320,7 @@ struct TextRegion {
 }
 
 - (void)setScrollOffsetX:(CGFloat)scrollOffsetX {
-    CGFloat contentWidth = (_backingScale > 0.0)
-        ? (_imageWidth / _backingScale) * _pageScale
-        : 0.0;
+    CGFloat contentWidth = [self contentWidthInViewPoints];
     CGFloat maxScrollX = std::max(0.0, contentWidth - self.bounds.size.width);
     _scrollX = std::max(0.0, std::min(scrollOffsetX, maxScrollX));
 }
@@ -635,7 +648,9 @@ struct TextRegion {
 
     // Draw scrollbar (macOS-style overlay)
     CGFloat totalHeight = _contentHeight * _pageScale;
+    CGFloat totalWidth = [self contentWidthInViewPoints];
     CGFloat viewportHeight = self.bounds.size.height;
+    CGFloat viewportWidth = self.bounds.size.width;
     if (totalHeight > viewportHeight) {
         CGFloat scrollbarWidth = 8.0;
         CGFloat scrollbarMargin = 2.0;
@@ -659,6 +674,33 @@ struct TextRegion {
         [[NSColor colorWithCalibratedWhite:0.0 alpha:0.4] setFill];
         NSBezierPath* thumbPath = [NSBezierPath bezierPathWithRoundedRect:thumbRect xRadius:4 yRadius:4];
         [thumbPath fill];
+    }
+    if (totalWidth > viewportWidth) {
+        CGFloat scrollbarThickness = 8.0;
+        CGFloat scrollbarMargin = 2.0;
+        CGFloat reservedRight = (totalHeight > viewportHeight)
+            ? (scrollbarThickness + scrollbarMargin)
+            : 0.0;
+        CGFloat trackWidth = viewportWidth - reservedRight - 2 * scrollbarMargin;
+        if (trackWidth > 0.0) {
+            CGFloat scrollbarY = viewportHeight - scrollbarThickness - scrollbarMargin;
+            CGFloat thumbRatio = viewportWidth / totalWidth;
+            CGFloat thumbWidth = std::max(30.0, trackWidth * thumbRatio);
+            CGFloat scrollRange = totalWidth - viewportWidth;
+            CGFloat thumbOffset = (scrollRange > 0.0)
+                ? (_scrollX / scrollRange) * (trackWidth - thumbWidth)
+                : 0.0;
+
+            NSRect trackRect = NSMakeRect(scrollbarMargin, scrollbarY, trackWidth, scrollbarThickness);
+            [[NSColor colorWithCalibratedWhite:0.0 alpha:0.05] setFill];
+            NSBezierPath* trackPath = [NSBezierPath bezierPathWithRoundedRect:trackRect xRadius:4 yRadius:4];
+            [trackPath fill];
+
+            NSRect thumbRect = NSMakeRect(scrollbarMargin + thumbOffset, scrollbarY, thumbWidth, scrollbarThickness);
+            [[NSColor colorWithCalibratedWhite:0.0 alpha:0.4] setFill];
+            NSBezierPath* thumbPath = [NSBezierPath bezierPathWithRoundedRect:thumbRect xRadius:4 yRadius:4];
+            [thumbPath fill];
+        }
     }
 
     // Draw selection highlight
@@ -830,7 +872,7 @@ struct TextRegion {
     bool clampOverscrollY = (_overscrollBehaviorY == 1 || _overscrollBehaviorY == 2);
 
     CGFloat maxScroll = std::max(0.0, _contentHeight * _pageScale - self.bounds.size.height);
-    CGFloat maxScrollX = std::max(0.0, (_imageWidth / _backingScale) * _pageScale - self.bounds.size.width);
+    CGFloat maxScrollX = std::max(0.0, [self contentWidthInViewPoints] - self.bounds.size.width);
     CGFloat appliedDeltaX = 0;
     CGFloat appliedDeltaY = 0;
 
@@ -844,8 +886,6 @@ struct TextRegion {
                                  (atRight && scrollAmountX > 0 && maxScrollX > 0);
     }
 
-    // Track horizontal wheel movement for delegate/DOM consumers.
-    // Horizontal page translation is not currently rendered in this view.
     CGFloat prevScrollX = _scrollX;
     if (!consumeHorizontalEvent) {
         _scrollX += scrollAmountX;
@@ -903,6 +943,7 @@ struct TextRegion {
 
     if (std::abs(appliedDeltaX) > kScrollDeltaEpsilon) {
         [self reflowTextInputOverlay];
+        [self setNeedsDisplay:YES];
     }
 
     // Notify delegate so the embedding controller can react/re-render.
@@ -1114,6 +1155,33 @@ struct TextRegion {
     return YES;
 }
 
+- (BOOL)horizontalScrollbarGeometryWithTrackRect:(NSRect*)outTrack
+                                       thumbRect:(NSRect*)outThumb {
+    CGFloat totalWidth = [self contentWidthInViewPoints];
+    CGFloat viewportWidth = self.bounds.size.width;
+    if (totalWidth <= viewportWidth) return NO;
+
+    CGFloat scrollbarThickness = 8.0;
+    CGFloat scrollbarMargin = 2.0;
+    CGFloat reservedRight = (_contentHeight * _pageScale > self.bounds.size.height)
+        ? (scrollbarThickness + scrollbarMargin)
+        : 0.0;
+    CGFloat trackWidth = viewportWidth - reservedRight - 2 * scrollbarMargin;
+    if (trackWidth <= 0.0) return NO;
+
+    CGFloat scrollbarY = self.bounds.size.height - scrollbarThickness - scrollbarMargin;
+    CGFloat thumbRatio = viewportWidth / totalWidth;
+    CGFloat thumbWidth = std::max(30.0, trackWidth * thumbRatio);
+    CGFloat scrollRange = totalWidth - viewportWidth;
+    CGFloat thumbOffset = (scrollRange > 0.0)
+        ? (_scrollX / scrollRange) * (trackWidth - thumbWidth)
+        : 0.0;
+
+    if (outTrack) *outTrack = NSMakeRect(scrollbarMargin, scrollbarY, trackWidth, scrollbarThickness);
+    if (outThumb) *outThumb = NSMakeRect(scrollbarMargin + thumbOffset, scrollbarY, thumbWidth, scrollbarThickness);
+    return YES;
+}
+
 - (void)mouseDown:(NSEvent*)event {
     // Explicitly claim first responder so keyboard scrolling works after clicking
     // in the render view. This is the only path that makes RenderView first responder.
@@ -1123,6 +1191,43 @@ struct TextRegion {
 
     // Check if click is on the scrollbar area
     NSRect trackRect, thumbRect;
+    if ([self horizontalScrollbarGeometryWithTrackRect:&trackRect thumbRect:&thumbRect]) {
+        if (NSPointInRect(loc, trackRect)) {
+            if (NSPointInRect(loc, thumbRect)) {
+                _draggingHorizontalScrollbar = YES;
+                _scrollbarDragStartX = loc.x;
+                _scrollbarDragStartOffsetX = _scrollX;
+            } else {
+                CGFloat prevScrollX = _scrollX;
+                CGFloat totalWidth = [self contentWidthInViewPoints];
+                CGFloat viewportWidth = self.bounds.size.width;
+                CGFloat scrollRange = totalWidth - viewportWidth;
+                CGFloat clickRatio = (loc.x - trackRect.origin.x) / trackRect.size.width;
+                _scrollX = clickRatio * scrollRange;
+                _scrollX = std::max(0.0, std::min(_scrollX, scrollRange));
+
+                _draggingHorizontalScrollbar = YES;
+                _scrollbarDragStartX = loc.x;
+                _scrollbarDragStartOffsetX = _scrollX;
+
+                CGFloat deltaX = _scrollX - prevScrollX;
+                if (std::abs(deltaX) > kScrollDeltaEpsilon) {
+                    [self reflowTextInputOverlay];
+                    if ([_delegate respondsToSelector:@selector(renderView:didScrollToX:y:deltaX:deltaY:isMomentum:)]) {
+                        [_delegate renderView:self
+                                 didScrollToX:_scrollX
+                                            y:_scrollY
+                                       deltaX:deltaX
+                                       deltaY:0.0
+                                   isMomentum:NO];
+                    }
+                }
+            }
+            [self setNeedsDisplay:YES];
+            [self.window invalidateCursorRectsForView:self];
+            return;
+        }
+    }
     if ([self scrollbarGeometryWithTrackRect:&trackRect thumbRect:&thumbRect]) {
         if (NSPointInRect(loc, trackRect)) {
             if (NSPointInRect(loc, thumbRect)) {
@@ -1176,6 +1281,37 @@ struct TextRegion {
 - (void)mouseDragged:(NSEvent*)event {
     NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
 
+    if (_draggingHorizontalScrollbar) {
+        CGFloat prevScrollX = _scrollX;
+        CGFloat totalWidth = [self contentWidthInViewPoints];
+        CGFloat viewportWidth = self.bounds.size.width;
+        CGFloat scrollRange = totalWidth - viewportWidth;
+        NSRect trackRect, thumbRect;
+        if ([self horizontalScrollbarGeometryWithTrackRect:&trackRect thumbRect:&thumbRect]) {
+            CGFloat usableTrack = trackRect.size.width - thumbRect.size.width;
+            if (usableTrack > 0.0) {
+                CGFloat deltaX = loc.x - _scrollbarDragStartX;
+                _scrollX = _scrollbarDragStartOffsetX + (deltaX / usableTrack) * scrollRange;
+                _scrollX = std::max(0.0, std::min(_scrollX, scrollRange));
+            }
+        }
+        CGFloat appliedDeltaX = _scrollX - prevScrollX;
+        if (std::abs(appliedDeltaX) > kScrollDeltaEpsilon) {
+            [self reflowTextInputOverlay];
+            if ([_delegate respondsToSelector:@selector(renderView:didScrollToX:y:deltaX:deltaY:isMomentum:)]) {
+                [_delegate renderView:self
+                         didScrollToX:_scrollX
+                                    y:_scrollY
+                               deltaX:appliedDeltaX
+                               deltaY:0.0
+                           isMomentum:NO];
+            }
+        }
+        [self setNeedsDisplay:YES];
+        [self.window invalidateCursorRectsForView:self];
+        return;
+    }
+
     if (_draggingScrollbar) {
         CGFloat prevScrollY = _scrollOffset;
         CGFloat totalHeight = _contentHeight * _pageScale;
@@ -1218,6 +1354,10 @@ struct TextRegion {
 }
 
 - (void)mouseUp:(NSEvent*)event {
+    if (_draggingHorizontalScrollbar) {
+        _draggingHorizontalScrollbar = NO;
+        return;
+    }
     if (_draggingScrollbar) {
         _draggingScrollbar = NO;
         return;

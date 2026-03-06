@@ -24574,6 +24574,39 @@ TEST_F(PaintTest, BackdropFilterBlurReusesScratchBuffersV2064) {
     EXPECT_EQ(first_pixels, renderer.pixels());
 }
 
+TEST_F(PaintTest, BackdropFilterBlurReusesScratchBuffersForSmallerPassesV2073) {
+    DisplayList large_list;
+    large_list.fill_rect({0, 0, 18, 24}, {255, 0, 0, 255});
+    large_list.fill_rect({18, 0, 18, 24}, {0, 0, 255, 255});
+    large_list.apply_backdrop_filter({6, 0, 24, 24}, 9, 4.0f);
+
+    DisplayList small_list;
+    small_list.fill_rect({0, 0, 8, 16}, {255, 0, 0, 255});
+    small_list.fill_rect({8, 0, 8, 16}, {0, 0, 255, 255});
+    small_list.apply_backdrop_filter({4, 0, 8, 16}, 9, 4.0f);
+
+    SoftwareRenderer renderer(36, 24);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(large_list);
+
+    const auto allocations_after_large = renderer.filter_blur_scratch_allocation_count_for_testing();
+    ASSERT_EQ(allocations_after_large, 1u);
+
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(small_list);
+    const auto reused_pixels = renderer.pixels();
+
+    EXPECT_EQ(renderer.filter_blur_scratch_allocation_count_for_testing(), allocations_after_large);
+    const auto mixed_pixel = renderer.get_pixel(7, 8);
+    EXPECT_GT(mixed_pixel.r, 0);
+    EXPECT_GT(mixed_pixel.b, 0);
+
+    SoftwareRenderer fresh_renderer(36, 24);
+    fresh_renderer.clear({255, 255, 255, 255});
+    fresh_renderer.render(small_list);
+    EXPECT_EQ(reused_pixels, fresh_renderer.pixels());
+}
+
 // ============================================================================
 // mask-composite: inline style
 // ============================================================================
@@ -31180,6 +31213,56 @@ TEST_F(PaintTest, DropShadowPixelsStayStableWithScratchReuseV2064) {
     EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(), 1u);
     EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(), 1u);
     EXPECT_EQ(first_pixels, renderer.pixels());
+}
+
+TEST_F(PaintTest, DropShadowReusesScratchBuffersForSmallerPassesV2073) {
+    DisplayList large_list;
+    large_list.fill_rect({12, 12, 18, 18}, {30, 120, 220, 255});
+    large_list.apply_drop_shadow({12, 12, 18, 18}, 6.0f, 4.0f, 3.0f, 0xCC000000);
+
+    DisplayList small_list;
+    small_list.fill_rect({12, 12, 10, 10}, {30, 120, 220, 255});
+    small_list.apply_drop_shadow({12, 12, 10, 10}, 6.0f, 4.0f, 3.0f, 0xCC000000);
+
+    SoftwareRenderer renderer(48, 48);
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(large_list);
+
+    const auto alpha_allocations_after_large =
+        renderer.drop_shadow_alpha_scratch_allocation_count_for_testing();
+    const auto blur_allocations_after_large =
+        renderer.drop_shadow_blur_scratch_allocation_count_for_testing();
+    ASSERT_EQ(alpha_allocations_after_large, 1u);
+    ASSERT_EQ(blur_allocations_after_large, 1u);
+
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(small_list);
+    const auto reused_pixels = renderer.pixels();
+
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(),
+              alpha_allocations_after_large);
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(),
+              blur_allocations_after_large);
+
+    const auto element_pixel = renderer.get_pixel(16, 16);
+    EXPECT_EQ(element_pixel.r, 30);
+    EXPECT_EQ(element_pixel.g, 120);
+    EXPECT_EQ(element_pixel.b, 220);
+    bool found_shadow_pixel = false;
+    for (int y = 24; y < 36 && !found_shadow_pixel; ++y) {
+        for (int x = 24; x < 36 && !found_shadow_pixel; ++x) {
+            if (x >= 12 && x < 22 && y >= 12 && y < 22) continue;
+            if (renderer.get_pixel(x, y).a > 0) {
+                found_shadow_pixel = true;
+            }
+        }
+    }
+    EXPECT_TRUE(found_shadow_pixel);
+
+    SoftwareRenderer fresh_renderer(48, 48);
+    fresh_renderer.clear({0, 0, 0, 0});
+    fresh_renderer.render(small_list);
+    EXPECT_EQ(reused_pixels, fresh_renderer.pixels());
 }
 
 // ============================================================================

@@ -51,9 +51,13 @@ public:
 private:
     struct DelayedTask {
         TimePoint run_at;
+        uint64_t sequence = 0;
         Task task;
         bool operator>(const DelayedTask& other) const {
-            return run_at > other.run_at;
+            if (run_at != other.run_at) {
+                return run_at > other.run_at;
+            }
+            return sequence > other.sequence;
         }
     };
 
@@ -62,7 +66,7 @@ private:
     void move_ready_delayed_tasks_locked(TimePoint now, std::deque<Task>* ready_tasks = nullptr);
     mutable std::mutex mutex_;
     std::condition_variable cv_;
-    size_t delayed_queue_generation_ = 0;
+    uint64_t next_delayed_task_sequence_ = 0;
     std::atomic<int64_t> last_delayed_task_lag_ns_{0};
     std::atomic<bool> running_{false};
     std::atomic<bool> quit_requested_{false};

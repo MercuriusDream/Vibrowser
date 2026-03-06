@@ -21946,6 +21946,67 @@ TEST(HttpCacheTest, DefaultPortAndCaseNormalizeCacheKeyV2064) {
     EXPECT_NE(canonical, custom_port);
 }
 
+TEST(HttpCacheTest, DefaultPortAliasesShareOneStoredEntryV2073) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry entry;
+    entry.url = "http://cache.v2073.test:80/assets/app.js?rev=1#bootstrap";
+    entry.body = "shared-default-port-entry";
+    entry.status = 200;
+    entry.max_age_seconds = 3600;
+    entry.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(entry);
+
+    auto implicit_port = cache.lookup("http://cache.v2073.test/assets/app.js?rev=1#runtime");
+    ASSERT_TRUE(implicit_port.has_value());
+    EXPECT_EQ(implicit_port->body, "shared-default-port-entry");
+    EXPECT_EQ(implicit_port->url, "http://cache.v2073.test/assets/app.js?rev=1");
+
+    auto explicit_port = cache.lookup("http://cache.v2073.test:80/assets/app.js?rev=1#footer");
+    ASSERT_TRUE(explicit_port.has_value());
+    EXPECT_EQ(explicit_port->body, "shared-default-port-entry");
+    EXPECT_EQ(cache.entry_count(), 1u);
+
+    cache.clear();
+}
+
+TEST(HttpCacheTest, NonDefaultPortsRemainDistinctCacheEntriesV2073) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry implicit_default_port;
+    implicit_default_port.url = "https://cache.v2073.test/assets/app.js?rev=2#implicit";
+    implicit_default_port.body = "default-port-entry";
+    implicit_default_port.status = 200;
+    implicit_default_port.max_age_seconds = 3600;
+    implicit_default_port.stored_at = std::chrono::steady_clock::now();
+
+    CacheEntry custom_port;
+    custom_port.url = "https://cache.v2073.test:444/assets/app.js?rev=2#custom";
+    custom_port.body = "custom-port-entry";
+    custom_port.status = 200;
+    custom_port.max_age_seconds = 3600;
+    custom_port.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(implicit_default_port);
+    cache.store(custom_port);
+
+    auto default_alias = cache.lookup("https://cache.v2073.test:443/assets/app.js?rev=2#explicit");
+    ASSERT_TRUE(default_alias.has_value());
+    EXPECT_EQ(default_alias->body, "default-port-entry");
+
+    auto non_default = cache.lookup("https://cache.v2073.test:444/assets/app.js?rev=2#other");
+    ASSERT_TRUE(non_default.has_value());
+    EXPECT_EQ(non_default->body, "custom-port-entry");
+
+    EXPECT_FALSE(cache.lookup("https://cache.v2073.test:445/assets/app.js?rev=2").has_value());
+    EXPECT_EQ(cache.entry_count(), 2u);
+
+    cache.clear();
+}
+
 TEST(HttpClient, FragmentCacheHitUsesCanonicalCacheKeyV2058) {
     auto& cache = HttpCache::instance();
     cache.clear();

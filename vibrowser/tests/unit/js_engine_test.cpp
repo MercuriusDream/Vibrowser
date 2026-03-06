@@ -429,6 +429,29 @@ void install_js_timer_test_helpers(JSContext* ctx) {
     JS_FreeValue(ctx, global);
 }
 
+std::string poll_js_value_until_not(clever::js::JSEngine& engine,
+                                    const std::string& expression,
+                                    const std::string& pending_value,
+                                    std::chrono::milliseconds timeout = std::chrono::milliseconds(80)) {
+    using namespace std::chrono_literals;
+
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    std::string value = pending_value;
+    while (std::chrono::steady_clock::now() < deadline) {
+        engine.evaluate("0");
+        EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+        value = engine.evaluate(expression);
+        EXPECT_FALSE(engine.has_error()) << engine.last_error();
+        if (value != pending_value) {
+            break;
+        }
+
+        std::this_thread::sleep_for(1ms);
+    }
+    return value;
+}
+
 } // namespace
 
 // ============================================================================
@@ -6382,6 +6405,59 @@ TEST(JSWorker, MessagePumpDeliversQueuedMessages) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
 }
 
+TEST(JSWorker, MessageDeliveryDoesNotReenterCurrentTurn) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerOrder = [];
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerOrder.push('worker:' + e.data); };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto inline_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerOrder.push('after-post');
+        __workerOrder.join(',')
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_result, "after-post");
+
+    auto delivered = poll_js_value_until_not(engine, "__workerOrder.join(',')", "after-post");
+    EXPECT_EQ(delivered, "after-post,worker:echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, MicrotasksFlushBeforeQueuedWorkerDelivery) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerOrder = [];
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerOrder.push('worker:' + e.data); };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto inline_result = engine.evaluate(R"(
+        Promise.resolve().then(function() { __workerOrder.push('microtask'); });
+        __worker.postMessage('hello');
+        __workerOrder.push('after-post');
+        __workerOrder.join(',')
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_result, "after-post");
+
+    auto delivered = poll_js_value_until_not(engine, "__workerOrder.join(',')", "after-post,microtask");
+    EXPECT_EQ(delivered, "after-post,microtask,worker:echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
 TEST(JSWorker, TerminateSuppressesQueuedMessagesBeforePump) {
     using namespace std::chrono_literals;
 
@@ -6411,6 +6487,32 @@ TEST(JSWorker, TerminateSuppressesQueuedMessagesBeforePump) {
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "pending,0");
+}
+
+TEST(JSWorker, WorkerCloseSuppressesQueuedMessagesBeforePump) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__workerCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); close(); }');
+        __worker.onmessage = function(e) {
+            __workerCount++;
+            __workerResult = e.data;
+        };
+        __worker.postMessage('hello');
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto result = poll_js_value_until_not(engine,
+                                          "(__workerResult + ',' + __workerCount)",
+                                          "pending,0");
+    EXPECT_EQ(result, "pending,0");
+
+    engine.evaluate("__worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
 }
 
 TEST(JSWorker, WorkerCloseSuppressesQueuedErrorsBeforePump) {
