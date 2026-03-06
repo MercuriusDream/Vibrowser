@@ -1865,6 +1865,102 @@ TEST(LayoutEngineTest, ContentVisibilityHiddenSkippedInIntrinsicWidthV2067) {
         << "max-content width should ignore content-visibility:hidden descendants";
 }
 
+TEST(LayoutEngineTest, MinContentIgnoresAbsoluteDescendantsForIntrinsicWidthV2072) {
+    auto baseline = make_block("div");
+    baseline->specified_width = -2.0f; // min-content
+    baseline->append_child(make_text("tiny wideword", 16.0f));
+
+    auto candidate = make_block("div");
+    candidate->specified_width = -2.0f; // min-content
+    candidate->append_child(make_text("tiny wideword", 16.0f));
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    abs_child->append_child(make_text("supercalifragilisticexpialidocious", 28.0f));
+    candidate->append_child(std::move(abs_child));
+
+    LayoutEngine engine;
+    engine.compute(*baseline, 800.0f, 600.0f);
+    engine.compute(*candidate, 800.0f, 600.0f);
+
+    EXPECT_NEAR(candidate->geometry.width, baseline->geometry.width, 1.0f)
+        << "min-content width should ignore absolutely positioned descendants";
+}
+
+TEST(LayoutEngineTest, MaxContentIgnoresFixedDescendantsForIntrinsicWidthV2072) {
+    auto baseline = make_block("div");
+    baseline->specified_width = -3.0f; // max-content
+    baseline->append_child(make_text("visible text", 18.0f));
+
+    auto candidate = make_block("div");
+    candidate->specified_width = -3.0f; // max-content
+    candidate->append_child(make_text("visible text", 18.0f));
+
+    auto fixed_child = make_block("div");
+    fixed_child->position_type = 3; // fixed
+    fixed_child->append_child(make_text("This fixed child should not expand intrinsic width", 30.0f));
+    candidate->append_child(std::move(fixed_child));
+
+    LayoutEngine engine;
+    engine.compute(*baseline, 800.0f, 600.0f);
+    engine.compute(*candidate, 800.0f, 600.0f);
+
+    EXPECT_NEAR(candidate->geometry.width, baseline->geometry.width, 1.0f)
+        << "max-content width should ignore fixed-positioned descendants";
+}
+
+TEST(LayoutEngineTest, IntrinsicWidthMixedFlowAndOutOfFlowMatchesInFlowOnlyV2072) {
+    auto build_root = [](float specified_width) {
+        auto root = make_block("div");
+        root->specified_width = specified_width;
+
+        auto first = make_block("div");
+        first->append_child(make_text("fit", 16.0f));
+        root->append_child(std::move(first));
+
+        auto second = make_block("div");
+        second->append_child(make_text("broadest", 16.0f));
+        root->append_child(std::move(second));
+        return root;
+    };
+
+    auto min_baseline = build_root(-2.0f);
+    auto min_candidate = build_root(-2.0f);
+    auto max_baseline = build_root(-3.0f);
+    auto max_candidate = build_root(-3.0f);
+
+    auto min_absolute = make_block("div");
+    min_absolute->position_type = 2; // absolute
+    min_absolute->append_child(make_text("absolute runaway width", 26.0f));
+    min_candidate->append_child(std::move(min_absolute));
+
+    auto min_fixed = make_block("div");
+    min_fixed->position_type = 3; // fixed
+    min_fixed->append_child(make_text("fixed runaway width", 26.0f));
+    min_candidate->append_child(std::move(min_fixed));
+
+    auto max_absolute = make_block("div");
+    max_absolute->position_type = 2; // absolute
+    max_absolute->append_child(make_text("absolute runaway width", 26.0f));
+    max_candidate->append_child(std::move(max_absolute));
+
+    auto max_fixed = make_block("div");
+    max_fixed->position_type = 3; // fixed
+    max_fixed->append_child(make_text("fixed runaway width", 26.0f));
+    max_candidate->append_child(std::move(max_fixed));
+
+    LayoutEngine engine;
+    engine.compute(*min_baseline, 800.0f, 600.0f);
+    engine.compute(*min_candidate, 800.0f, 600.0f);
+    engine.compute(*max_baseline, 800.0f, 600.0f);
+    engine.compute(*max_candidate, 800.0f, 600.0f);
+
+    EXPECT_NEAR(min_candidate->geometry.width, min_baseline->geometry.width, 1.0f)
+        << "min-content width should only reflect in-flow descendants";
+    EXPECT_NEAR(max_candidate->geometry.width, max_baseline->geometry.width, 1.0f)
+        << "max-content width should only reflect in-flow descendants";
+}
+
 TEST(LayoutEngineTest, FitContentIgnoresContentVisibilityHiddenDescendantsV2067) {
     auto root = make_block("div");
 

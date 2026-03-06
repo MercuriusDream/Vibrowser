@@ -5,6 +5,9 @@
 
 namespace clever::css {
 
+std::shared_ptr<const SelectorList> compile_function_selector_list(std::string_view pseudo_name,
+                                                                   std::string_view argument);
+
 namespace {
 
 std::string ascii_lower(std::string value) {
@@ -24,12 +27,16 @@ const SelectorList* cached_function_selector_list(const SimpleSelector& selector
 }
 
 const SelectorList& selector_list_for_function(const SimpleSelector& selector,
-                                               SelectorList& reparsed_list) {
+                                               std::shared_ptr<const SelectorList>& compiled_list) {
     if (const SelectorList* cached = cached_function_selector_list(selector)) {
         return *cached;
     }
-    reparsed_list = parse_selector_list(selector.argument);
-    return reparsed_list;
+    compiled_list = compile_function_selector_list(selector.value, selector.argument);
+    if (compiled_list) {
+        return *compiled_list;
+    }
+    static const SelectorList empty_list;
+    return empty_list;
 }
 
 bool attribute_value_equals(std::string_view lhs, std::string_view rhs, bool case_insensitive) {
@@ -654,8 +661,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "not") {
                 // :not() receives a comma-separated selector list. It matches only
                 // when every selector in that list does NOT match this element.
-                SelectorList reparsed_list;
-                const SelectorList& inner_list = selector_list_for_function(simple, reparsed_list);
+                std::shared_ptr<const SelectorList> compiled_list;
+                const SelectorList& inner_list = selector_list_for_function(simple, compiled_list);
                 for (const auto& sel : inner_list.selectors) {
                     if (matches(element, sel)) return false;
                 }
@@ -664,8 +671,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 // :is() / :where() / :matches() / -webkit-any() accept a comma-separated
                 // selector list and match when any listed selector matches.
                 // :where() is identical here; specificity is handled elsewhere.
-                SelectorList reparsed_list;
-                const SelectorList& inner_list = selector_list_for_function(simple, reparsed_list);
+                std::shared_ptr<const SelectorList> compiled_list;
+                const SelectorList& inner_list = selector_list_for_function(simple, compiled_list);
                 for (const auto& sel : inner_list.selectors) {
                     if (matches(element, sel)) return true;
                 }
@@ -705,8 +712,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "has") {
                 // :has() takes a comma-separated selector list. It matches when any
                 // selector in that list matches via the relative matching path.
-                SelectorList reparsed_list;
-                const SelectorList& inner_list = selector_list_for_function(simple, reparsed_list);
+                std::shared_ptr<const SelectorList> compiled_list;
+                const SelectorList& inner_list = selector_list_for_function(simple, compiled_list);
                 for (const auto& sel : inner_list.selectors) {
                     if (has_selector_matches(element, sel)) return true;
                 }

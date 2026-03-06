@@ -2,12 +2,52 @@
 #include <gtest/gtest.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <algorithm>
+#include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <numeric>
+#include <thread>
 #include <vector>
 
 using clever::ipc::MessagePipe;
+
+namespace {
+
+bool write_all_bytes(int fd, const uint8_t* data, size_t len) {
+    size_t written = 0;
+    while (written < len) {
+        const ssize_t result = ::write(fd, data + written, len - written);
+        if (result < 0 && errno == EINTR) {
+            continue;
+        }
+        if (result <= 0) {
+            return false;
+        }
+        written += static_cast<size_t>(result);
+    }
+    return true;
+}
+
+bool write_oversized_frame_payload(int fd, size_t payload_size) {
+    const uint32_t oversized_len = htonl(static_cast<uint32_t>(payload_size));
+    if (!write_all_bytes(fd, reinterpret_cast<const uint8_t*>(&oversized_len), sizeof(oversized_len))) {
+        return false;
+    }
+
+    std::vector<uint8_t> chunk(4096, 0xA5);
+    size_t remaining = payload_size;
+    while (remaining > 0) {
+        const size_t to_write = std::min(remaining, chunk.size());
+        if (!write_all_bytes(fd, chunk.data(), to_write)) {
+            return false;
+        }
+        remaining -= to_write;
+    }
+    return true;
+}
+
+} // namespace
 
 // ------------------------------------------------------------------
 // 1. Create pair and send/receive bytes
@@ -3744,15 +3784,18 @@ TEST(MessagePipeTest, MessagePipeV181_3_SendSingleByteManyTimes) {
 
 TEST(MessagePipeTest, ReceiveRejectsOversizedFramePrefixV2066) {
     auto [sender, receiver] = MessagePipe::create_pair();
-
-    const uint32_t oversized_len =
-        htonl(static_cast<uint32_t>(clever::ipc::kMaxMessagePipeFrameBytes + 1));
-    ASSERT_EQ(::write(sender.fd(), &oversized_len, sizeof(oversized_len)),
-              static_cast<ssize_t>(sizeof(oversized_len)));
+    bool oversized_write_succeeded = false;
+    std::thread writer([&oversized_write_succeeded, sender = std::move(sender)]() mutable {
+        oversized_write_succeeded =
+            write_oversized_frame_payload(sender.fd(), clever::ipc::kMaxMessagePipeFrameBytes + 1);
+        sender.close();
+    });
 
     auto received = receiver.receive();
     EXPECT_FALSE(received.has_value());
-    EXPECT_FALSE(receiver.is_open());
+    EXPECT_TRUE(receiver.is_open());
+    writer.join();
+    EXPECT_TRUE(oversized_write_succeeded);
 }
 
 TEST(MessagePipeTest, SendRejectsOversizedRawPayloadV2066) {
@@ -3764,4 +3807,31 @@ TEST(MessagePipeTest, SendRejectsOversizedRawPayloadV2066) {
     sender.close();
     auto received = receiver.receive();
     EXPECT_FALSE(received.has_value());
+}
+
+TEST(MessagePipeTest, ReceiveRecoversAfterRejectedOversizedFrameV2072) {
+    auto [sender, receiver] = MessagePipe::create_pair();
+    const std::vector<uint8_t> valid_payload = {0x10, 0x20, 0x30, 0x40};
+    bool oversized_write_succeeded = false;
+    bool valid_send_succeeded = false;
+
+    std::thread writer([&oversized_write_succeeded, &valid_send_succeeded,
+                        sender = std::move(sender), valid_payload]() mutable {
+        oversized_write_succeeded =
+            write_oversized_frame_payload(sender.fd(), clever::ipc::kMaxMessagePipeFrameBytes + 1);
+        valid_send_succeeded = sender.send(valid_payload);
+        sender.close();
+    });
+
+    auto rejected = receiver.receive();
+    EXPECT_FALSE(rejected.has_value());
+    EXPECT_TRUE(receiver.is_open());
+
+    auto recovered = receiver.receive();
+    ASSERT_TRUE(recovered.has_value());
+    EXPECT_EQ(*recovered, valid_payload);
+
+    writer.join();
+    EXPECT_TRUE(oversized_write_succeeded);
+    EXPECT_TRUE(valid_send_succeeded);
 }

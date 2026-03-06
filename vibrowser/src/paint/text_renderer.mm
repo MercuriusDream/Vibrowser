@@ -13,6 +13,10 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <CoreText/CoreText.h>
 
+namespace {
+constexpr size_t kTextWidthCacheMaxEntries = 512;
+}
+
 namespace clever::paint {
 
 namespace {
@@ -79,6 +83,7 @@ struct TextWidthCacheKeyHash {
 
 struct TextWidthCacheState {
     std::unordered_map<TextWidthCacheKey, float, TextWidthCacheKeyHash> entries;
+    std::vector<TextWidthCacheKey> insertion_order;
     uint64_t hits = 0;
     uint64_t misses = 0;
 };
@@ -94,7 +99,9 @@ std::mutex& text_width_cache_mutex() {
 }
 
 void invalidate_text_width_cache_locked() {
-    text_width_cache_state().entries.clear();
+    auto& cache = text_width_cache_state();
+    cache.entries.clear();
+    cache.insertion_order.clear();
 }
 
 struct TextLineLayoutCacheKey {
@@ -1103,7 +1110,13 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
                                               letter_spacing, word_spacing);
 
     std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
-    text_width_cache_state().entries.emplace(std::move(key), width);
+    auto& cache = text_width_cache_state();
+    if (cache.entries.size() >= kTextWidthCacheMaxEntries && !cache.insertion_order.empty()) {
+        cache.entries.erase(cache.insertion_order.front());
+        cache.insertion_order.erase(cache.insertion_order.begin());
+    }
+    cache.insertion_order.push_back(key);
+    cache.entries.emplace(std::move(key), width);
     return width;
 }
 

@@ -883,6 +883,170 @@ TEST(HttpClient, QueryOnlyRedirectPreservesBasePath) {
     EXPECT_EQ(requests[1].find("POST /submit?step=2 HTTP/1.1\r\n"), std::string::npos);
 }
 
+TEST(HttpClient, RelativeRedirectTraversesParentDirectories) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 302 Found\r\n"
+        "Location: ../final/report.html?step=2\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/app/start/page.html?step=1";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://127.0.0.1:" + std::to_string(server.port()) +
+                  "/app/final/report.html?step=2");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("GET /app/start/page.html?step=1 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /app/final/report.html?step=2 HTTP/1.1\r\n"),
+              std::string::npos);
+}
+
+TEST(HttpClient, RootRelativeRedirectReusesRequestOrigin) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 302 Found\r\n"
+        "Location: /landing?step=2\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/app/start/page.html";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://127.0.0.1:" + std::to_string(server.port()) + "/landing?step=2");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("GET /app/start/page.html HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /landing?step=2 HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(HttpClient, FragmentOnlyRedirectPreservesPathAndQuery) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 302 Found\r\n"
+        "Location: #tab-2\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) +
+              "/docs/page.html?view=full#intro";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://127.0.0.1:" + std::to_string(server.port()) +
+                  "/docs/page.html?view=full#tab-2");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("GET /docs/page.html?view=full HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /docs/page.html?view=full HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(HttpClient, AbsoluteRedirectLocationStillWinsOverBaseUrl) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 302 Found\r\n"
+        "Location: http://127.0.0.1:" + std::to_string(server.port()) + "/absolute/target\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/app/start/page.html";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://127.0.0.1:" + std::to_string(server.port()) + "/absolute/target");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("GET /app/start/page.html HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /absolute/target HTTP/1.1\r\n"), std::string::npos);
+}
+
 TEST(HttpClient, Redirect301PostBecomesGetV2067) {
     RedirectTestServer server;
     ASSERT_NE(server.port(), 0);

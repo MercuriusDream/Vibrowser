@@ -37,6 +37,22 @@ struct PooledTlsConn {
 std::map<std::string, std::deque<PooledTlsConn>> g_tls_pool;
 std::mutex g_tls_pool_mutex;
 
+bool request_cancelled(const Request& request) {
+    return request.is_cancelled();
+}
+
+void set_request_active_fd(const Request& request, int fd) {
+    if (request.cancellation_state) {
+        request.cancellation_state->set_active_fd(fd);
+    }
+}
+
+void clear_request_active_fd(const Request& request, int fd) {
+    if (request.cancellation_state) {
+        request.cancellation_state->clear_active_fd(fd);
+    }
+}
+
 std::string strip_fragment_from_url(const std::string& url) {
     const size_t fragment_pos = url.find('#');
     if (fragment_pos == std::string::npos) {
@@ -47,7 +63,11 @@ std::string strip_fragment_from_url(const std::string& url) {
 
 std::string request_url_for_redirect_resolution(const Request& request) {
     if (!request.url.empty()) {
-        return request.url;
+        if (auto parsed = clever::url::parse(request.url)) {
+            parsed->fragment.clear();
+            return parsed->serialize();
+        }
+        return strip_fragment_from_url(request.url);
     }
 
     clever::url::URL url;
@@ -59,6 +79,7 @@ std::string request_url_for_redirect_resolution(const Request& request) {
     }
     url.path = request.path.empty() ? "/" : request.path;
     url.query = request.query;
+    url.fragment.clear();
     return url.serialize();
 }
 
@@ -374,7 +395,7 @@ void HttpClient::set_max_redirects(int max) {
     max_redirects_ = max;
 }
 
-int HttpClient::connect_to(const std::string& host, uint16_t port) {
+int HttpClient::connect_to(const std::string& host, uint16_t port, const Request* request) {
     // Resolve hostname
     struct addrinfo hints {};
     hints.ai_family = AF_UNSPEC;
@@ -391,8 +412,14 @@ int HttpClient::connect_to(const std::string& host, uint16_t port) {
 
     int fd = -1;
     for (auto* rp = result; rp != nullptr; rp = rp->ai_next) {
+        if (request && request_cancelled(*request)) {
+            break;
+        }
         fd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (fd < 0) continue;
+        if (request) {
+            set_request_active_fd(*request, fd);
+        }
 
         // Set socket to non-blocking for connect timeout
         int flags = ::fcntl(fd, F_GETFL, 0);
@@ -432,6 +459,9 @@ int HttpClient::connect_to(const std::string& host, uint16_t port) {
         }
 
         // Failed, try next address
+        if (request) {
+            clear_request_active_fd(*request, fd);
+        }
         ::close(fd);
         fd = -1;
     }
@@ -440,9 +470,12 @@ int HttpClient::connect_to(const std::string& host, uint16_t port) {
     return fd;
 }
 
-bool HttpClient::send_all(int fd, const uint8_t* data, size_t len) {
+bool HttpClient::send_all(int fd, const uint8_t* data, size_t len, const Request& request) {
     size_t sent = 0;
     while (sent < len) {
+        if (request_cancelled(request)) {
+            return false;
+        }
         ssize_t n = ::send(fd, data + sent, len - sent, 0);
         if (n < 0) {
             if (errno == EINTR) continue;
@@ -454,7 +487,7 @@ bool HttpClient::send_all(int fd, const uint8_t* data, size_t len) {
     return true;
 }
 
-std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
+std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd, const Request& request) {
     std::vector<uint8_t> buffer;
     constexpr size_t kChunkSize = 8192;
 
@@ -462,6 +495,9 @@ std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
     auto deadline = std::chrono::steady_clock::now() + timeout_;
 
     while (true) {
+        if (request_cancelled(request)) {
+            return std::nullopt;
+        }
         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
             deadline - std::chrono::steady_clock::now());
         if (remaining.count() <= 0) {
@@ -476,6 +512,9 @@ std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
         int poll_rv = ::poll(&pfd, 1, static_cast<int>(remaining.count()));
         if (poll_rv <= 0) {
             break;  // Timeout or error
+        }
+        if (request_cancelled(request)) {
+            return std::nullopt;
         }
 
         uint8_t chunk[kChunkSize];
@@ -562,6 +601,9 @@ std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
 }
 
 std::optional<Response> HttpClient::do_request(const Request& request) {
+    if (request_cancelled(request)) {
+        return std::nullopt;
+    }
     // Serialize the HTTP request bytes
     auto data = request.serialize();
 
@@ -575,19 +617,24 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             if (attempt == 0) {
                 tls = acquire_tls_conn(request.host, request.port, fd);
                 is_reused = (tls != nullptr);
+                if (fd >= 0) {
+                    set_request_active_fd(request, fd);
+                }
 
                 if (!tls) {
-                    fd = connect_to(request.host, request.port);
+                    fd = connect_to(request.host, request.port, &request);
                     if (fd < 0) {
                         return std::nullopt;
                     }
 
                     tls = std::make_unique<TlsSocket>();
                     if (!tls->connect(request.host, request.port, fd)) {
+                        clear_request_active_fd(request, fd);
                         ::close(fd);
                         return std::nullopt;
                     }
                 } else if (!tls->is_connected()) {
+                    clear_request_active_fd(request, fd);
                     tls->close();
                     ::close(fd);
                     fd = -1;
@@ -599,30 +646,34 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             } else {
                 is_reused = false;
                 if (fd >= 0) {
+                    clear_request_active_fd(request, fd);
                     tls->close();
                     ::close(fd);
                     tls.reset();
                 }
 
-                fd = connect_to(request.host, request.port);
+                fd = connect_to(request.host, request.port, &request);
                 if (fd < 0) {
                     return std::nullopt;
                 }
 
                 tls = std::make_unique<TlsSocket>();
                 if (!tls->connect(request.host, request.port, fd)) {
+                    clear_request_active_fd(request, fd);
                     ::close(fd);
                     return std::nullopt;
                 }
             }
 
             // Send request through TLS
-            if (!tls->send(data.data(), data.size())) {
+            if (request_cancelled(request) || !tls->send(data.data(), data.size())) {
                 if (is_reused && attempt == 0) {
+                    clear_request_active_fd(request, fd);
                     tls->close();
                     ::close(fd);
                     continue;
                 }
+                clear_request_active_fd(request, fd);
                 tls->close();
                 ::close(fd);
                 return std::nullopt;
@@ -633,6 +684,10 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             auto deadline = std::chrono::steady_clock::now() + timeout_;
 
             while (true) {
+                if (request_cancelled(request)) {
+                    buffer.clear();
+                    break;
+                }
                 auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
                     deadline - std::chrono::steady_clock::now());
                 if (remaining.count() <= 0) {
@@ -648,6 +703,10 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
                 if (poll_rv < 0) {
                     if (errno == EINTR) continue;
                     break;  // Error
+                }
+                if (request_cancelled(request)) {
+                    buffer.clear();
+                    break;
                 }
 
                 auto chunk = tls->recv();
@@ -738,10 +797,12 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
 
             if (buffer.empty()) {
                 if (is_reused && attempt == 0) {
+                    clear_request_active_fd(request, fd);
                     tls->close();
                     ::close(fd);
                     continue;
                 }
+                clear_request_active_fd(request, fd);
                 tls->close();
                 ::close(fd);
                 return std::nullopt;
@@ -749,6 +810,7 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
 
             auto resp = Response::parse(buffer);
             if (!resp.has_value()) {
+                clear_request_active_fd(request, fd);
                 tls->close();
                 ::close(fd);
                 return std::nullopt;
@@ -789,9 +851,11 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             }
 
             if (!should_keep_alive) {
+                clear_request_active_fd(request, fd);
                 tls->close();
                 ::close(fd);
             } else {
+                clear_request_active_fd(request, fd);
                 release_tls_conn(request.host, request.port, std::move(tls), fd);
             }
 
@@ -807,21 +871,26 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
         // Try to reuse a pooled connection first
         int fd = pool.acquire(request.host, request.port);
         bool reused = (fd >= 0);
+        if (fd >= 0) {
+            set_request_active_fd(request, fd);
+        }
 
         if (!reused) {
-            fd = connect_to(request.host, request.port);
+            fd = connect_to(request.host, request.port, &request);
             if (fd < 0) {
                 return std::nullopt;
             }
         }
 
-        if (!send_all(fd, data.data(), data.size())) {
+        if (!send_all(fd, data.data(), data.size(), request)) {
+            clear_request_active_fd(request, fd);
             ::close(fd);
             // If we reused a stale connection, retry with a fresh one
             if (reused) {
-                fd = connect_to(request.host, request.port);
+                fd = connect_to(request.host, request.port, &request);
                 if (fd < 0) return std::nullopt;
-                if (!send_all(fd, data.data(), data.size())) {
+                if (!send_all(fd, data.data(), data.size(), request)) {
+                    clear_request_active_fd(request, fd);
                     ::close(fd);
                     return std::nullopt;
                 }
@@ -830,20 +899,23 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             }
         }
 
-        auto raw = recv_response(fd);
+        auto raw = recv_response(fd, request);
 
         if (!raw.has_value()) {
+            clear_request_active_fd(request, fd);
             ::close(fd);
             // If we reused a stale connection, retry with a fresh one
             if (reused) {
-                fd = connect_to(request.host, request.port);
+                fd = connect_to(request.host, request.port, &request);
                 if (fd < 0) return std::nullopt;
-                if (!send_all(fd, data.data(), data.size())) {
+                if (!send_all(fd, data.data(), data.size(), request)) {
+                    clear_request_active_fd(request, fd);
                     ::close(fd);
                     return std::nullopt;
                 }
-                raw = recv_response(fd);
+                raw = recv_response(fd, request);
                 if (!raw.has_value()) {
+                    clear_request_active_fd(request, fd);
                     ::close(fd);
                     return std::nullopt;
                 }
@@ -854,6 +926,7 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
 
         auto resp = Response::parse(*raw);
         if (!resp.has_value()) {
+            clear_request_active_fd(request, fd);
             ::close(fd);
             return std::nullopt;
         }
@@ -893,9 +966,11 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
         }
 
         if (!should_keep_alive) {
+            clear_request_active_fd(request, fd);
             ::close(fd);
         } else {
             // Return connection to pool for reuse
+            clear_request_active_fd(request, fd);
             pool.release(request.host, request.port, fd);
         }
 

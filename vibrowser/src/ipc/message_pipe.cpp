@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <stdexcept>
@@ -12,6 +13,8 @@
 namespace clever::ipc {
 
 namespace {
+
+constexpr size_t kFrameDiscardChunkBytes = 4096;
 
 // Write exactly n bytes to fd, handling partial writes and EINTR.
 bool write_all(int fd, const uint8_t* data, size_t len) {
@@ -40,6 +43,19 @@ bool read_all(int fd, uint8_t* buf, size_t len) {
         }
         if (n == 0) return false; // EOF
         total_read += static_cast<size_t>(n);
+    }
+    return true;
+}
+
+bool discard_all(int fd, size_t len) {
+    uint8_t scratch[kFrameDiscardChunkBytes];
+    size_t remaining = len;
+    while (remaining > 0) {
+        const size_t chunk = std::min(remaining, sizeof(scratch));
+        if (!read_all(fd, scratch, chunk)) {
+            return false;
+        }
+        remaining -= chunk;
     }
     return true;
 }
@@ -111,7 +127,10 @@ std::optional<std::vector<uint8_t>> MessagePipe::receive() {
 
     uint32_t len = ntohl(net_len);
     if (len > kMaxMessagePipeFrameBytes) {
-        close();
+        if (!discard_all(fd_, len)) {
+            close();
+            return std::nullopt;
+        }
         return std::nullopt;
     }
 

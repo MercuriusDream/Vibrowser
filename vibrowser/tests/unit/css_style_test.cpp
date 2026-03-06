@@ -2369,6 +2369,37 @@ TEST(SelectorParserTest, NotParsed) {
     EXPECT_FALSE(simple_sels[0].argument.empty());
 }
 
+TEST(SelectorParserTest, FunctionalPseudoSelectorListsReuseCompiledSelectors) {
+    auto first = parse_selector_list(":is(h1, :not(.hidden))");
+    auto second = parse_selector_list(":is(h1, :not(.hidden))");
+
+    ASSERT_EQ(first.selectors.size(), 1u);
+    ASSERT_EQ(second.selectors.size(), 1u);
+
+    auto& first_simple = first.selectors[0].parts[0].compound.simple_selectors[0];
+    auto& second_simple = second.selectors[0].parts[0].compound.simple_selectors[0];
+    ASSERT_TRUE(first_simple.parsed_selector_list);
+    ASSERT_TRUE(second_simple.parsed_selector_list);
+    EXPECT_EQ(first_simple.parsed_selector_list.get(), second_simple.parsed_selector_list.get());
+}
+
+TEST(SelectorParserTest, NestedFunctionalPseudoSelectorsAreCompiled) {
+    auto list = parse_selector_list(":is(:not(.hidden), button.primary)");
+
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+
+    auto& outer_simple = list.selectors[0].parts[0].compound.simple_selectors[0];
+    ASSERT_TRUE(outer_simple.parsed_selector_list);
+    ASSERT_EQ(outer_simple.parsed_selector_list->selectors.size(), 2u);
+
+    auto& nested_simple =
+        outer_simple.parsed_selector_list->selectors[0].parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(nested_simple.value, "not");
+    ASSERT_TRUE(nested_simple.parsed_selector_list);
+    ASSERT_EQ(nested_simple.parsed_selector_list->selectors.size(), 1u);
+}
+
 // ===========================================================================
 // Text-indent cascade
 // ===========================================================================
@@ -6028,6 +6059,27 @@ TEST(SelectorMatcherTest, IsPseudoReusesParsedSelectorListV2064) {
     ElementView h2;
     h2.tag_name = "h2";
     EXPECT_TRUE(matcher.matches(h2, list.selectors[0]));
+}
+
+TEST(SelectorMatcherTest, NestedIsAndNotPseudoClassesStayCorrect) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":is(:not(.hidden), button.primary)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+
+    ElementView visible_div;
+    visible_div.tag_name = "div";
+    EXPECT_TRUE(matcher.matches(visible_div, list.selectors[0]));
+
+    ElementView hidden_div;
+    hidden_div.tag_name = "div";
+    hidden_div.classes = {"hidden"};
+    EXPECT_FALSE(matcher.matches(hidden_div, list.selectors[0]));
+
+    ElementView primary_button;
+    primary_button.tag_name = "button";
+    primary_button.classes = {"primary"};
+    EXPECT_TRUE(matcher.matches(primary_button, list.selectors[0]));
 }
 
 // ============================================================================

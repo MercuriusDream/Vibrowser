@@ -39841,6 +39841,25 @@ TEST_F(PaintTest, TextWidthCacheReusesRepeatedMeasurements) {
     TextRenderer::clear_registered_fonts();
 }
 
+TEST_F(PaintTest, TextWidthCacheSeparatesDistinctFontKeys) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+
+    TextRenderer renderer;
+    float regular = renderer.measure_text_width("Cache me", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    float bold = renderer.measure_text_width("Cache me", 18.0f, "Helvetica", 700, false, 0.0f, 0.0f);
+    float regular_again = renderer.measure_text_width("Cache me", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+
+    EXPECT_GT(regular, 0.0f);
+    EXPECT_GT(bold, 0.0f);
+    EXPECT_FLOAT_EQ(regular, regular_again);
+    EXPECT_EQ(text_width_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+}
+
 TEST_F(PaintTest, TextWidthCacheClearsOnRegisteredFontReset) {
     TextRenderer::clear_registered_fonts();
     reset_text_width_cache_stats_for_testing();
@@ -39859,6 +39878,69 @@ TEST_F(PaintTest, TextWidthCacheClearsOnRegisteredFontReset) {
     EXPECT_EQ(text_width_cache_size_for_testing(), 1u);
     EXPECT_EQ(text_width_cache_miss_count_for_testing(), 2u);
     EXPECT_EQ(text_width_cache_hit_count_for_testing(), 0u);
+
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, PaintTextOverflowCachingPreservesRenderedMetrics) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+
+    auto parent = std::make_unique<LayoutNode>();
+    parent->tag_name = "div";
+    parent->mode = LayoutMode::Block;
+    parent->geometry.width = 78.0f;
+    parent->geometry.height = 24.0f;
+    parent->overflow = 1;
+    parent->white_space_nowrap = true;
+    parent->text_overflow = 1;
+
+    auto child = std::make_unique<LayoutNode>();
+    child->is_text = true;
+    child->text_content = "alpha beta gamma";
+    child->geometry.width = 78.0f;
+    child->geometry.height = 24.0f;
+    child->font_size = 16.0f;
+    child->font_family = "Helvetica";
+    child->font_weight = 400;
+    child->word_spacing = 6.0f;
+    child->line_height = 1.0f;
+    child->color = 0xFF000000;
+
+    parent->append_child(std::move(child));
+
+    Painter painter;
+    auto first = painter.paint(*parent);
+    const uint64_t misses_after_first = text_width_cache_miss_count_for_testing();
+    const uint64_t hits_after_first = text_width_cache_hit_count_for_testing();
+
+    auto second = painter.paint(*parent);
+
+    const PaintCommand* first_text = nullptr;
+    const PaintCommand* second_text = nullptr;
+    for (const auto& cmd : first.commands()) {
+        if (cmd.type == PaintCommand::DrawText) {
+            first_text = &cmd;
+            break;
+        }
+    }
+    for (const auto& cmd : second.commands()) {
+        if (cmd.type == PaintCommand::DrawText) {
+            second_text = &cmd;
+            break;
+        }
+    }
+
+    ASSERT_NE(first_text, nullptr);
+    ASSERT_NE(second_text, nullptr);
+    EXPECT_EQ(first_text->text, second_text->text);
+    EXPECT_FLOAT_EQ(first_text->bounds.x, second_text->bounds.x);
+    EXPECT_FLOAT_EQ(first_text->bounds.y, second_text->bounds.y);
+    EXPECT_FLOAT_EQ(first_text->font_size, second_text->font_size);
+    EXPECT_EQ(first_text->word_spacing, second_text->word_spacing);
+    EXPECT_GT(misses_after_first, 0u);
+    EXPECT_GT(text_width_cache_hit_count_for_testing(), hits_after_first);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), misses_after_first);
 
     TextRenderer::clear_registered_fonts();
 }

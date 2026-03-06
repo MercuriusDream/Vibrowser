@@ -2,6 +2,7 @@
 #include <clever/css/parser/tokenizer.h>
 #include <algorithm>
 #include <cctype>
+#include <unordered_map>
 
 namespace clever::css {
 
@@ -27,6 +28,31 @@ bool should_cache_function_selector_list(std::string_view pseudo_name) {
     const std::string pseudo = ascii_lower(std::string(pseudo_name));
     return pseudo == "is" || pseudo == "where" || pseudo == "not" || pseudo == "has" ||
            pseudo == "matches" || pseudo == "-webkit-any";
+}
+
+struct FunctionSelectorListCacheEntry {
+    std::shared_ptr<const SelectorList> list;
+};
+
+FunctionSelectorListCacheEntry& function_selector_list_cache_entry(std::string_view pseudo_name,
+                                                                   std::string_view argument) {
+    static std::unordered_map<std::string, FunctionSelectorListCacheEntry> cache;
+
+    std::string cache_key = ascii_lower(std::string(pseudo_name));
+    cache_key += '\n';
+    cache_key.append(argument.data(), argument.size());
+
+    auto it = cache.find(cache_key);
+    if (it != cache.end() && it->second.list) {
+        return it->second;
+    }
+
+    auto compiled_list = std::make_shared<SelectorList>(parse_selector_list(argument));
+    auto& entry = cache[cache_key];
+    if (!entry.list) {
+        entry.list = std::move(compiled_list);
+    }
+    return entry;
 }
 
 Specificity max_specificity_in_list(const SelectorList& list) {
@@ -69,6 +95,14 @@ RightmostSelectorKey compute_rightmost_match_key(const ComplexSelector& selector
 
 } // namespace
 
+std::shared_ptr<const SelectorList> compile_function_selector_list(std::string_view pseudo_name,
+                                                                   std::string_view argument) {
+    if (!should_cache_function_selector_list(pseudo_name)) {
+        return {};
+    }
+    return function_selector_list_cache_entry(pseudo_name, argument).list;
+}
+
 // ---------------------------------------------------------------------------
 // Specificity
 // ---------------------------------------------------------------------------
@@ -110,10 +144,10 @@ Specificity compute_specificity(const ComplexSelector& selector) {
                         if (pseudo == "is" || pseudo == "not" || pseudo == "has" ||
                             pseudo == "matches" || pseudo == "-webkit-any") {
                             const SelectorList* inner_list = cached_function_selector_list(ss);
-                            SelectorList parsed_list;
+                            std::shared_ptr<const SelectorList> compiled_list;
                             if (!inner_list) {
-                                parsed_list = parse_selector_list(ss.argument);
-                                inner_list = &parsed_list;
+                                compiled_list = compile_function_selector_list(ss.value, ss.argument);
+                                inner_list = compiled_list.get();
                             }
                             Specificity inner = max_specificity_in_list(*inner_list);
                             spec.a += inner.a;
@@ -431,10 +465,8 @@ CompoundSelector SelectorParser::parse_compound_selector() {
                         advance();
                     }
                     ss.argument = args;
-                    if (should_cache_function_selector_list(ss.value)) {
-                        ss.parsed_selector_list =
-                            std::make_shared<SelectorList>(parse_selector_list(ss.argument));
-                    }
+                    ss.parsed_selector_list =
+                        compile_function_selector_list(ss.value, ss.argument);
                     compound.simple_selectors.push_back(std::move(ss));
                 } else {
                     SimpleSelector ss;

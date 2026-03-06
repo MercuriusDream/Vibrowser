@@ -267,11 +267,14 @@ float LayoutEngine::avg_char_width(float font_size, const std::string& font_fami
 
 // ---------------------------------------------------------------------------
 
+static bool is_out_of_flow_for_intrinsic_measurement(const LayoutNode& node) {
+    return node.position_type >= 2 || node.float_type != 0;
+}
+
 static bool participates_in_intrinsic_width_measurement(const LayoutNode& node) {
     if (node.content_visibility == 1) return false;
     if (node.display == DisplayType::None || node.mode == LayoutMode::None) return false;
-    if (node.position_type == 2 || node.position_type == 3) return false;
-    if (node.float_type != 0) return false;
+    if (is_out_of_flow_for_intrinsic_measurement(node)) return false;
     return true;
 }
 

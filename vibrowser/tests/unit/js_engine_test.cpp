@@ -285,6 +285,132 @@ private:
     std::vector<std::string> responses_;
 };
 
+class CoordinatedHttpResponseServer {
+public:
+    explicit CoordinatedHttpResponseServer(std::string response)
+        : response_(std::move(response)) {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, 1) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~CoordinatedHttpResponseServer() {
+        allow_response();
+        if (listen_fd_ >= 0) {
+            ::shutdown(listen_fd_, SHUT_RDWR);
+            ::close(listen_fd_);
+        }
+        if (client_fd_ >= 0) {
+            ::shutdown(client_fd_, SHUT_RDWR);
+            ::close(client_fd_);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+    bool wait_for_request(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(state_mutex_);
+        return state_cv_.wait_for(lock, timeout, [this] { return request_received_; });
+    }
+
+    void allow_response() {
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            response_allowed_ = true;
+        }
+        state_cv_.notify_all();
+    }
+
+private:
+    void run() {
+        client_fd_ = ::accept(listen_fd_, nullptr, nullptr);
+        if (client_fd_ < 0) {
+            return;
+        }
+
+        std::string request;
+        char buffer[1024];
+        while (request.find("\r\n\r\n") == std::string::npos) {
+            ssize_t n = ::recv(client_fd_, buffer, sizeof(buffer), 0);
+            if (n <= 0) {
+                return;
+            }
+            request.append(buffer, static_cast<size_t>(n));
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            request_received_ = true;
+        }
+        state_cv_.notify_all();
+
+        {
+            std::unique_lock<std::mutex> lock(state_mutex_);
+            state_cv_.wait(lock, [this] { return response_allowed_; });
+        }
+
+        size_t total_sent = 0;
+        while (total_sent < response_.size()) {
+            ssize_t sent = ::send(client_fd_,
+                                  response_.data() + total_sent,
+                                  response_.size() - total_sent,
+                                  0);
+            if (sent <= 0) {
+                break;
+            }
+            total_sent += static_cast<size_t>(sent);
+        }
+
+        ::shutdown(client_fd_, SHUT_RDWR);
+        ::close(client_fd_);
+        client_fd_ = -1;
+    }
+
+    int listen_fd_ = -1;
+    int client_fd_ = -1;
+    uint16_t port_ = 0;
+    std::string response_;
+    std::thread server_thread_;
+    std::mutex state_mutex_;
+    std::condition_variable state_cv_;
+    bool request_received_ = false;
+    bool response_allowed_ = false;
+};
+
 JSValue js_advance_host_timers(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
     int delay_ms = 0;
     if (argc >= 1) {
@@ -4689,6 +4815,139 @@ TEST(JSFetch, FetchRejectsUnsupportedRequestSchemeBeforeDispatch) {
     auto result = engine.evaluate("errMsg");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "TypeError: Failed to fetch (CORS blocked)");
+}
+
+TEST(JSFetch, AbortBeforeDispatchRejectsWithAbortError) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://app.example/", 1024, 768);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"(
+        var fetchAbortResult = 'pending';
+        var controller = new AbortController();
+        controller.abort();
+        fetch('http://127.0.0.1:1/aborted', { signal: controller.signal })
+            .then(function() { fetchAbortResult = 'resolved'; })
+            .catch(function(err) {
+                fetchAbortResult = (err && err.name ? err.name : 'Error') + ':' +
+                    (err && err.message ? err.message : String(err));
+            });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("fetchAbortResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "AbortError:The operation was aborted");
+}
+
+TEST(JSFetch, AbortAfterDispatchRejectsBeforeDelayedResponseArrives) {
+    const std::string delayed_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 7\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "delayed";
+    CoordinatedHttpResponseServer server(delayed_response);
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var fetchAbortAfterDispatch = 'pending';
+        var fetchAbortController = new AbortController();
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/delayed', {
+            signal: fetchAbortController.signal
+        }).then(function() {
+            fetchAbortAfterDispatch = 'resolved';
+        }).catch(function(err) {
+            fetchAbortAfterDispatch = (err && err.name ? err.name : 'Error') + ':' +
+                (err && err.message ? err.message : String(err));
+        });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    ASSERT_TRUE(server.wait_for_request(std::chrono::milliseconds(1000)));
+
+    engine.evaluate("fetchAbortController.abort()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    server.allow_response();
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    std::string result = "pending";
+    while (std::chrono::steady_clock::now() < deadline) {
+        clever::js::flush_fetch_promise_jobs(engine.context());
+        result = engine.evaluate("fetchAbortAfterDispatch");
+        EXPECT_FALSE(engine.has_error()) << engine.last_error();
+        if (result != "pending") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_EQ(result, "AbortError:The operation was aborted.");
+}
+
+TEST(JSFetch, AbortSuppressesLateFulfillmentBodyConsumption) {
+    const std::string delayed_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 9\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "late-body";
+    CoordinatedHttpResponseServer server(delayed_response);
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var fetchLateBodyResult = 'pending';
+        var fetchLateBodyText = 'unset';
+        var fetchLateController = new AbortController();
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/late', {
+            signal: fetchLateController.signal
+        }).then(function(resp) {
+            return resp.text().then(function(text) {
+                fetchLateBodyText = text;
+                fetchLateBodyResult = 'resolved';
+            });
+        }).catch(function(err) {
+            fetchLateBodyResult = err && err.name ? err.name : String(err);
+        });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    ASSERT_TRUE(server.wait_for_request(std::chrono::milliseconds(1000)));
+
+    engine.evaluate("fetchLateController.abort()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    server.allow_response();
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    std::string result = "pending";
+    while (std::chrono::steady_clock::now() < deadline) {
+        clever::js::flush_fetch_promise_jobs(engine.context());
+        result = engine.evaluate("fetchLateBodyResult");
+        EXPECT_FALSE(engine.has_error()) << engine.last_error();
+        if (result != "pending") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_EQ(result, "AbortError");
+    auto body = engine.evaluate("fetchLateBodyText");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(body, "unset");
 }
 
 TEST(JSFetch, XHRRejectsUnsupportedRequestSchemeBeforeDispatch) {
