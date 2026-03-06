@@ -66,6 +66,15 @@ This single entry point:
 4. Reuses the existing cycle/state ledger
 5. Starts a fresh tmux-backed live estate view and attaches immediately
 
+The `state` tmux window now shows:
+
+- current cycle state JSON
+- the active run directory
+- parsed summaries for `plan.json`, `integrator.json`, `verifier.json`, `git-pr.json`, `ci.json`, `fixer.json`, and `ci-fixer.json` when present
+- short tails for `verifier.log`, `ci.log`, `ci-fixer.log`, and `git-pr.log`
+
+The tmux session also includes a dedicated `ci-fixer` window so CI-repair activity is visible without inferring it from the generic `fixer` pane.
+
 ## Unattended full CICD
 
 Use:

@@ -50,6 +50,7 @@ if [[ "$MODE" == "single-session" ]]; then
     tmux new-window -t "$TMUX_SESSION" -n integrator -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh integrator'"
     tmux new-window -t "$TMUX_SESSION" -n verifier -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh verifier'"
     tmux new-window -t "$TMUX_SESSION" -n fixer -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh fixer'"
+    tmux new-window -t "$TMUX_SESSION" -n ci-fixer -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh ci-fixer'"
     tmux new-window -t "$TMUX_SESSION" -n state -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-state.sh'"
   fi
   if [[ $ATTACH -eq 1 ]]; then
@@ -65,6 +66,7 @@ for slot in $(seq 1 "$WORKER_COUNT"); do
 done
 tmux new-session -d -s "${base}-integrator" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh integrator'"
 tmux new-session -d -s "${base}-verifier" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh verifier'"
+tmux new-session -d -s "${base}-ci-fixer" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-role.sh ci-fixer'"
 tmux new-session -d -s "${base}-state" -c "$PROJECT_DIR" "/bin/zsh -lc 'bash .codex/orchestrator/watch-state.sh'"
 
 if [[ $ATTACH -eq 1 ]]; then
