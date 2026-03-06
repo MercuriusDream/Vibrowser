@@ -41976,6 +41976,8 @@ TEST(RenderPipeline, NonFiniteDprFallsBackToOne) {
 }
 
 TEST_F(PaintTest, InterpolateSizeAllowKeywordsEnablesWidthTransitionV2067) {
+    // Keep the transition long enough that slower CI machines still observe
+    // an in-flight width instead of the completed endpoint on the next render.
     const std::string final_html = R"HTML(
         <html><body style="margin:0">
         <div id="v2067-final-width" style="display:inline-block;width:max-content;">
@@ -41994,7 +41996,7 @@ TEST_F(PaintTest, InterpolateSizeAllowKeywordsEnablesWidthTransitionV2067) {
     const std::string initial_html = R"HTML(
         <html><body style="margin:0">
         <div id="v2067-allow-width"
-             style="display:inline-block;width:40px;transition:width 0.2s linear;interpolate-size:allow-keywords;">
+             style="display:inline-block;width:40px;transition:width 1s linear;interpolate-size:allow-keywords;">
           <span style="display:inline-block;width:140px;height:12px;background:red;"></span>
         </div>
         </body></html>
@@ -42007,7 +42009,7 @@ TEST_F(PaintTest, InterpolateSizeAllowKeywordsEnablesWidthTransitionV2067) {
     const std::string transitioned_html = R"HTML(
         <html><body style="margin:0">
         <div id="v2067-allow-width"
-             style="display:inline-block;width:max-content;transition:width 0.2s linear;interpolate-size:allow-keywords;">
+             style="display:inline-block;width:max-content;transition:width 1s linear;interpolate-size:allow-keywords;">
           <span style="display:inline-block;width:140px;height:12px;background:red;"></span>
         </div>
         </body></html>
@@ -42041,7 +42043,7 @@ TEST_F(PaintTest, InterpolateSizeDefaultKeepsIntrinsicTransitionDiscreteV2067) {
     const std::string initial_html = R"HTML(
         <html><body style="margin:0">
         <div id="v2067-discrete-width"
-             style="display:inline-block;width:40px;transition:width 0.2s linear;">
+             style="display:inline-block;width:40px;transition:width 1s linear;">
           <span style="display:inline-block;width:140px;height:12px;background:blue;"></span>
         </div>
         </body></html>
@@ -42054,7 +42056,7 @@ TEST_F(PaintTest, InterpolateSizeDefaultKeepsIntrinsicTransitionDiscreteV2067) {
     const std::string transitioned_html = R"HTML(
         <html><body style="margin:0">
         <div id="v2067-discrete-width"
-             style="display:inline-block;width:max-content;transition:width 0.2s linear;">
+             style="display:inline-block;width:max-content;transition:width 1s linear;">
           <span style="display:inline-block;width:140px;height:12px;background:blue;"></span>
         </div>
         </body></html>
