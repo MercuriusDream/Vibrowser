@@ -2213,6 +2213,29 @@ thread_local std::unordered_map<std::string, std::vector<StyleDecl>> g_inline_st
 thread_local uint64_t g_inline_style_cache_hits = 0;
 thread_local uint64_t g_inline_style_cache_misses = 0;
 
+std::string canonicalize_inline_style_cache_key(const std::string& style_str) {
+    std::string key;
+    std::istringstream iss(style_str);
+    std::string token;
+    while (std::getline(iss, token, ';')) {
+        auto colon = token.find(':');
+        if (colon == std::string::npos) continue;
+        std::string prop = trim(to_lower(token.substr(0, colon)));
+        std::string val = trim(token.substr(colon + 1));
+        auto imp = val.find("!important");
+        if (imp == std::string::npos) imp = val.find("! important");
+        if (imp != std::string::npos) {
+            val = trim(val.substr(0, imp));
+        }
+        if (prop.empty() || val.empty()) continue;
+        key += prop;
+        key += ':';
+        key += val;
+        key += ';';
+    }
+    return key;
+}
+
 std::vector<StyleDecl> parse_inline_style_uncached(const std::string& style_str) {
     std::vector<StyleDecl> decls;
     std::istringstream iss(style_str);
@@ -2238,7 +2261,8 @@ std::vector<StyleDecl> parse_inline_style_uncached(const std::string& style_str)
 }
 
 const std::vector<StyleDecl>& parse_inline_style(const std::string& style_str) {
-    auto it = g_inline_style_cache.find(style_str);
+    const std::string cache_key = canonicalize_inline_style_cache_key(style_str);
+    auto it = g_inline_style_cache.find(cache_key);
     if (it != g_inline_style_cache.end()) {
         ++g_inline_style_cache_hits;
         return it->second;
@@ -2246,7 +2270,7 @@ const std::vector<StyleDecl>& parse_inline_style(const std::string& style_str) {
 
     ++g_inline_style_cache_misses;
     auto [inserted_it, _] =
-        g_inline_style_cache.emplace(style_str, parse_inline_style_uncached(style_str));
+        g_inline_style_cache.emplace(cache_key, parse_inline_style_uncached(style_str));
     return inserted_it->second;
 }
 

@@ -256,6 +256,105 @@ TEST(Http2ConnectionTest, SettingsInitialWindowRejectsOverflowV2062) {
     close(fds[1]);
 }
 
+TEST(Http2ConnectionTest, DataFramesDecrementReceiveWindowsWithoutEarlyWindowUpdate) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    {
+        Http2Connection connection(fds[0]);
+        connection.streams_[1].state = Http2Connection::StreamState::Open;
+
+        Http2Connection::Frame frame;
+        frame.type = Http2Connection::FRAME_TYPE_DATA;
+        frame.stream_id = 1;
+        frame.payload.assign(Http2Connection::kWindowUpdateThreshold - 1, 0x41);
+
+        std::optional<Response> response;
+        ASSERT_TRUE(connection.handle_data(frame, response, 1));
+        EXPECT_FALSE(response.has_value());
+        EXPECT_EQ(connection.streams_[1].recv_window,
+                  static_cast<int64_t>(Http2Connection::kInitialWindowSize) -
+                      static_cast<int64_t>(frame.payload.size()));
+        EXPECT_EQ(connection.connection_recv_window_,
+                  static_cast<int64_t>(Http2Connection::kInitialWindowSize) -
+                      static_cast<int64_t>(frame.payload.size()));
+
+        uint8_t raw_frame[13];
+        EXPECT_EQ(::recv(fds[1], raw_frame, sizeof(raw_frame), MSG_DONTWAIT), -1);
+    }
+
+    close(fds[1]);
+}
+
+TEST(Http2ConnectionTest, DataFramesEmitThresholdedWindowUpdatesAfterConsumption) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    {
+        Http2Connection connection(fds[0]);
+        connection.streams_[1].state = Http2Connection::StreamState::Open;
+
+        Http2Connection::Frame first;
+        first.type = Http2Connection::FRAME_TYPE_DATA;
+        first.stream_id = 1;
+        first.payload.assign(Http2Connection::kWindowUpdateThreshold - 1, 0x41);
+
+        std::optional<Response> response;
+        ASSERT_TRUE(connection.handle_data(first, response, 1));
+
+        Http2Connection::Frame second;
+        second.type = Http2Connection::FRAME_TYPE_DATA;
+        second.stream_id = 1;
+        second.payload = {0x42, 0x43};
+
+        ASSERT_TRUE(connection.handle_data(second, response, 1));
+        EXPECT_EQ(connection.streams_[1].recv_window,
+                  static_cast<int64_t>(Http2Connection::kInitialWindowSize));
+        EXPECT_EQ(connection.connection_recv_window_,
+                  static_cast<int64_t>(Http2Connection::kInitialWindowSize));
+
+        uint8_t raw_frames[26];
+        ASSERT_EQ(::read(fds[1], raw_frames, sizeof(raw_frames)),
+                  static_cast<ssize_t>(sizeof(raw_frames)));
+
+        bool saw_connection_update = false;
+        bool saw_stream_update = false;
+        uint32_t expected_increment = Http2Connection::kWindowUpdateThreshold + 1;
+        for (size_t offset = 0; offset < sizeof(raw_frames); offset += 13) {
+            const uint8_t* raw_frame = raw_frames + offset;
+            uint32_t length = (static_cast<uint32_t>(raw_frame[0]) << 16) |
+                              (static_cast<uint32_t>(raw_frame[1]) << 8) |
+                              static_cast<uint32_t>(raw_frame[2]);
+            uint32_t stream_id = ((static_cast<uint32_t>(raw_frame[5]) << 24) |
+                                  (static_cast<uint32_t>(raw_frame[6]) << 16) |
+                                  (static_cast<uint32_t>(raw_frame[7]) << 8) |
+                                  static_cast<uint32_t>(raw_frame[8])) &
+                                 0x7FFFFFFF;
+            uint32_t increment = ((static_cast<uint32_t>(raw_frame[9]) << 24) |
+                                  (static_cast<uint32_t>(raw_frame[10]) << 16) |
+                                  (static_cast<uint32_t>(raw_frame[11]) << 8) |
+                                  static_cast<uint32_t>(raw_frame[12])) &
+                                 0x7FFFFFFF;
+
+            EXPECT_EQ(length, 4u);
+            EXPECT_EQ(raw_frame[3], Http2Connection::FRAME_TYPE_WINDOW_UPDATE);
+            EXPECT_EQ(raw_frame[4], 0);
+            EXPECT_EQ(increment, expected_increment);
+
+            if (stream_id == 0) {
+                saw_connection_update = true;
+            } else if (stream_id == 1) {
+                saw_stream_update = true;
+            }
+        }
+
+        EXPECT_TRUE(saw_connection_update);
+        EXPECT_TRUE(saw_stream_update);
+    }
+
+    close(fds[1]);
+}
+
 // ===========================================================================
 // Integration Tests
 // ===========================================================================

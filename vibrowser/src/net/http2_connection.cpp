@@ -450,6 +450,14 @@ bool Http2Connection::handle_data(const Frame& frame, std::optional<Response>& o
         return false;
     }
 
+    const int64_t received_bytes = static_cast<int64_t>(frame.payload.size());
+    if (received_bytes > it->second.recv_window ||
+        received_bytes > connection_recv_window_) {
+        return false;
+    }
+
+    it->second.recv_window -= received_bytes;
+    connection_recv_window_ -= received_bytes;
     it->second.response_body.insert(it->second.response_body.end(),
                                     frame.payload.begin(), frame.payload.end());
 
@@ -462,10 +470,20 @@ bool Http2Connection::handle_data(const Frame& frame, std::optional<Response>& o
         }
     }
 
-    uint32_t increment = kWindowUpdateThreshold - it->second.recv_window;
-    if (increment > 0) {
+    if (connection_recv_window_ < kWindowUpdateThreshold) {
+        uint32_t increment = static_cast<uint32_t>(kInitialWindowSize - connection_recv_window_);
+        connection_recv_window_ += increment;
+        if (!send_window_update(0, increment)) {
+            return false;
+        }
+    }
+
+    if (it->second.recv_window < kWindowUpdateThreshold) {
+        uint32_t increment = static_cast<uint32_t>(kInitialWindowSize - it->second.recv_window);
         it->second.recv_window += increment;
-        send_window_update(frame.stream_id, increment);
+        if (!send_window_update(frame.stream_id, increment)) {
+            return false;
+        }
     }
 
     return true;

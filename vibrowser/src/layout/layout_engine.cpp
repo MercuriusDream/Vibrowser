@@ -5754,6 +5754,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         // Scan ALL rows: use maximum explicit/intrinsic width per column.
         // Use scan_occupancy to skip columns already occupied by rowspans from prior rows,
         // ensuring correct column index assignment when rowspan cells are present.
+        std::unordered_map<const LayoutNode*, std::array<float, 2>> auto_cell_width_hints;
         for (size_t ri = 0; ri < rows.size(); ri++) {
             auto* row = rows[ri];
             int col_idx = 0;
@@ -5781,7 +5782,17 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                     width_hint = cell->css_width->to_px(available_for_cols);
                 } else {
                     bool cell_nowrap = (cell->white_space == 1);
-                    width_hint = measure_intrinsic_width(*cell, cell_nowrap);
+                    auto hint_it = auto_cell_width_hints.find(cell.get());
+                    if (hint_it == auto_cell_width_hints.end()) {
+                        hint_it = auto_cell_width_hints.emplace(
+                            cell.get(),
+                            std::array<float, 2>{-1.0f, -1.0f}).first;
+                    }
+                    float& cached_hint = hint_it->second[cell_nowrap ? 1 : 0];
+                    if (cached_hint < 0.0f) {
+                        cached_hint = measure_intrinsic_width(*cell, cell_nowrap);
+                    }
+                    width_hint = cached_hint;
                 }
 
                 if (width_hint > 0 && span == 1 && col_idx < num_cols) {

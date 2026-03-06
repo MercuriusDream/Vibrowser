@@ -23248,6 +23248,59 @@ static JSValue create_mouse_event_object(JSContext* ctx,
     return event_obj;
 }
 
+static JSValue create_keyboard_event_object(JSContext* ctx,
+                                             const std::string& event_type,
+                                             bool bubbles, bool cancelable,
+                                             const KeyboardEventInit& init) {
+    JSValue event_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "type",
+        JS_NewString(ctx, event_type.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "bubbles",
+        JS_NewBool(ctx, bubbles));
+    JS_SetPropertyStr(ctx, event_obj, "cancelable",
+        JS_NewBool(ctx, cancelable));
+    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "eventPhase",
+        JS_NewInt32(ctx, 0)); // NONE
+    JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp", JS_NewFloat64(ctx, 0.0));
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_TRUE); // browser-dispatched
+
+    // KeyboardEvent-specific properties
+    JS_SetPropertyStr(ctx, event_obj, "key",
+        JS_NewString(ctx, init.key.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "code",
+        JS_NewString(ctx, init.code.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "keyCode",
+        JS_NewInt32(ctx, init.key_code));
+    JS_SetPropertyStr(ctx, event_obj, "charCode",
+        JS_NewInt32(ctx, init.char_code));
+    JS_SetPropertyStr(ctx, event_obj, "which",
+        JS_NewInt32(ctx, init.key_code));
+    JS_SetPropertyStr(ctx, event_obj, "location",
+        JS_NewInt32(ctx, init.location));
+    JS_SetPropertyStr(ctx, event_obj, "altKey",
+        JS_NewBool(ctx, init.alt_key));
+    JS_SetPropertyStr(ctx, event_obj, "ctrlKey",
+        JS_NewBool(ctx, init.ctrl_key));
+    JS_SetPropertyStr(ctx, event_obj, "metaKey",
+        JS_NewBool(ctx, init.meta_key));
+    JS_SetPropertyStr(ctx, event_obj, "shiftKey",
+        JS_NewBool(ctx, init.shift_key));
+    JS_SetPropertyStr(ctx, event_obj, "repeat",
+        JS_NewBool(ctx, init.repeat));
+    JS_SetPropertyStr(ctx, event_obj, "isComposing",
+        JS_NewBool(ctx, init.is_composing));
+
+    // Hidden propagation state
+    JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
+    install_event_methods(ctx, event_obj, true);
+
+    return event_obj;
+}
+
 bool dispatch_event(JSContext* ctx, clever::html::SimpleNode* target,
                     const std::string& event_type) {
     auto* state = get_dom_state(ctx);
@@ -23318,86 +23371,8 @@ bool dispatch_keyboard_event(JSContext* ctx, clever::html::SimpleNode* target,
     bool bubbles = true;
     bool cancelable = true;
 
-    // Create the event object with standard Event properties
-    JSValue event_obj = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, event_obj, "type",
-        JS_NewString(ctx, event_type.c_str()));
-    JS_SetPropertyStr(ctx, event_obj, "bubbles",
-        JS_NewBool(ctx, bubbles));
-    JS_SetPropertyStr(ctx, event_obj, "cancelable",
-        JS_NewBool(ctx, cancelable));
-    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
-    JS_SetPropertyStr(ctx, event_obj, "eventPhase",
-        JS_NewInt32(ctx, 0)); // NONE
-    JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
-    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
-    JS_SetPropertyStr(ctx, event_obj, "timeStamp",
-        JS_NewFloat64(ctx, 0));
-    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_TRUE); // browser-dispatched
-
-    // KeyboardEvent-specific properties
-    JS_SetPropertyStr(ctx, event_obj, "key",
-        JS_NewString(ctx, init.key.c_str()));
-    JS_SetPropertyStr(ctx, event_obj, "code",
-        JS_NewString(ctx, init.code.c_str()));
-    JS_SetPropertyStr(ctx, event_obj, "keyCode",
-        JS_NewInt32(ctx, init.key_code));
-    JS_SetPropertyStr(ctx, event_obj, "charCode",
-        JS_NewInt32(ctx, init.char_code));
-    JS_SetPropertyStr(ctx, event_obj, "which",
-        JS_NewInt32(ctx, init.key_code)); // 'which' defaults to keyCode
-    JS_SetPropertyStr(ctx, event_obj, "location",
-        JS_NewInt32(ctx, init.location));
-    JS_SetPropertyStr(ctx, event_obj, "altKey",
-        JS_NewBool(ctx, init.alt_key));
-    JS_SetPropertyStr(ctx, event_obj, "ctrlKey",
-        JS_NewBool(ctx, init.ctrl_key));
-    JS_SetPropertyStr(ctx, event_obj, "metaKey",
-        JS_NewBool(ctx, init.meta_key));
-    JS_SetPropertyStr(ctx, event_obj, "shiftKey",
-        JS_NewBool(ctx, init.shift_key));
-    JS_SetPropertyStr(ctx, event_obj, "repeat",
-        JS_NewBool(ctx, init.repeat));
-    JS_SetPropertyStr(ctx, event_obj, "isComposing",
-        JS_NewBool(ctx, init.is_composing));
-
-    // Hidden propagation state
-    JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
-    JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
-
-    // Install methods (preventDefault, stopPropagation, getModifierState, etc.)
-    const char* method_code = R"JS(
-        (function() {
-            var evt = this;
-            evt.preventDefault = function() { evt.defaultPrevented = true; };
-            evt.stopPropagation = function() { evt.__stopped = true; };
-            evt.stopImmediatePropagation = function() {
-                evt.__stopped = true;
-                evt.__immediate_stopped = true;
-            };
-            evt.composedPath = function() {
-                var arr = evt.__composedPathArray;
-                if (!arr) return [];
-                var result = [];
-                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
-                return result;
-            };
-            evt.getModifierState = function(key) {
-                if (key === 'Control') return evt.ctrlKey;
-                if (key === 'Shift') return evt.shiftKey;
-                if (key === 'Alt') return evt.altKey;
-                if (key === 'Meta') return evt.metaKey;
-                return false;
-            };
-        })
-    )JS";
-    JSValue setup_fn = JS_Eval(ctx, method_code, std::strlen(method_code),
-                                "<keyboard-event-dispatch-setup>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsFunction(ctx, setup_fn)) {
-        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
-        JS_FreeValue(ctx, setup_ret);
-    }
-    JS_FreeValue(ctx, setup_fn);
+    JSValue event_obj = create_keyboard_event_object(
+        ctx, event_type, bubbles, cancelable, init);
 
     bool default_prevented = dispatch_event_propagated(
         ctx, state, target, event_obj, event_type, bubbles);
