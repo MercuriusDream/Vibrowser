@@ -37,6 +37,14 @@ struct PooledTlsConn {
 std::map<std::string, std::deque<PooledTlsConn>> g_tls_pool;
 std::mutex g_tls_pool_mutex;
 
+std::string strip_fragment_from_url(const std::string& url) {
+    const size_t fragment_pos = url.find('#');
+    if (fragment_pos == std::string::npos) {
+        return url;
+    }
+    return url.substr(0, fragment_pos);
+}
+
 std::string request_url_for_redirect_resolution(const Request& request) {
     if (!request.url.empty()) {
         return request.url;
@@ -231,11 +239,14 @@ HttpCache& HttpCache::instance() {
 }
 
 std::string HttpCache::make_cache_key(const std::string& url) {
-    const size_t fragment_pos = url.find('#');
-    if (fragment_pos == std::string::npos) {
-        return url;
+    const auto parsed = clever::url::parse(url);
+    if (!parsed.has_value()) {
+        return strip_fragment_from_url(url);
     }
-    return url.substr(0, fragment_pos);
+
+    clever::url::URL normalized = *parsed;
+    normalized.fragment.clear();
+    return normalized.serialize();
 }
 
 std::optional<CacheEntry> HttpCache::lookup(const std::string& url) {

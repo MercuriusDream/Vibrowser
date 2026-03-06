@@ -35,8 +35,28 @@ struct IntrinsicHeightCacheKeyHash {
 };
 
 using IntrinsicHeightCache = std::unordered_map<IntrinsicHeightCacheKey, float, IntrinsicHeightCacheKeyHash>;
+struct MaxContentWidthCacheKey {
+    const LayoutNode* node = nullptr;
+    float specified_width = 0;
+
+    bool operator==(const MaxContentWidthCacheKey& other) const {
+        return node == other.node && specified_width == other.specified_width;
+    }
+};
+
+struct MaxContentWidthCacheKeyHash {
+    size_t operator()(const MaxContentWidthCacheKey& key) const {
+        size_t seed = std::hash<const LayoutNode*>{}(key.node);
+        seed ^= std::hash<float>{}(key.specified_width) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
+using MaxContentWidthCache =
+    std::unordered_map<MaxContentWidthCacheKey, float, MaxContentWidthCacheKeyHash>;
 
 thread_local IntrinsicHeightCache g_intrinsic_height_cache;
+thread_local MaxContentWidthCache g_max_content_width_cache;
 
 float collapse_vertical_margins(float first, float second) {
     // CSS2.1 8.3.1: collapse two vertical margins by taking the
@@ -229,6 +249,14 @@ size_t LayoutEngine::IntrinsicWidthCacheKeyHash::operator()(const IntrinsicWidth
 float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_content, int depth) {
     if (depth > 256) return 0;
 
+    if (max_content) {
+        MaxContentWidthCacheKey max_content_cache_key{&node, node.specified_width};
+        auto max_content_cache_it = g_max_content_width_cache.find(max_content_cache_key);
+        if (max_content_cache_it != g_max_content_width_cache.end()) {
+            return max_content_cache_it->second;
+        }
+    }
+
     IntrinsicWidthCacheKey cache_key{&node, max_content, node.specified_width};
     auto cache_it = intrinsic_width_cache_.find(cache_key);
     if (cache_it != intrinsic_width_cache_.end()) return cache_it->second;
@@ -324,7 +352,11 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
     float padding_border = node.geometry.padding.left + node.geometry.padding.right +
                            node.geometry.border.left + node.geometry.border.right;
     float measured = std::max(width, children_width) + padding_border;
-    intrinsic_width_cache_.emplace(cache_key, measured);
+    if (max_content) {
+        g_max_content_width_cache.emplace(MaxContentWidthCacheKey{&node, node.specified_width}, measured);
+    } else {
+        intrinsic_width_cache_.emplace(cache_key, measured);
+    }
     return measured;
 }
 
@@ -402,6 +434,7 @@ static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
 void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewport_height) {
     intrinsic_width_cache_.clear();
     g_intrinsic_height_cache.clear();
+    g_max_content_width_cache.clear();
     inline_block_shrink_wrap_relayout_count_ = 0;
     viewport_width_ = viewport_width;
     viewport_height_ = viewport_height;
@@ -468,6 +501,7 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
             root.geometry.height = 0;
             intrinsic_width_cache_.clear();
             g_intrinsic_height_cache.clear();
+            g_max_content_width_cache.clear();
             return;
         default:
             layout_block(root, viewport_width);
@@ -475,6 +509,7 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
     }
     intrinsic_width_cache_.clear();
     g_intrinsic_height_cache.clear();
+    g_max_content_width_cache.clear();
 }
 
 // Aspect-ratio resolution:

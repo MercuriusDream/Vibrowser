@@ -24409,6 +24409,29 @@ TEST_F(PaintTest, BackdropFilterNotInherited) {
     EXPECT_TRUE(found) << "Should find span with empty backdrop_filters (not inherited)";
 }
 
+TEST_F(PaintTest, BackdropFilterBlurReusesScratchBuffersV2064) {
+    DisplayList list;
+    list.fill_rect({0, 0, 12, 24}, {255, 0, 0, 255});
+    list.fill_rect({12, 0, 12, 24}, {0, 0, 255, 255});
+    list.apply_backdrop_filter({6, 0, 12, 24}, 9, 4.0f);
+
+    SoftwareRenderer renderer(24, 24);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(list);
+
+    const auto first_pixels = renderer.pixels();
+    const auto mixed_pixel = renderer.get_pixel(11, 12);
+    EXPECT_GT(mixed_pixel.r, 0);
+    EXPECT_GT(mixed_pixel.b, 0);
+    EXPECT_EQ(renderer.filter_blur_scratch_allocation_count_for_testing(), 1u);
+
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(list);
+
+    EXPECT_EQ(renderer.filter_blur_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(first_pixels, renderer.pixels());
+}
+
 // ============================================================================
 // mask-composite: inline style
 // ============================================================================
@@ -30979,6 +31002,42 @@ TEST_F(PaintTest, FilterDropShadowWithColor) {
     EXPECT_EQ((ds_color >> 16) & 0xFF, 0xFF) << "drop-shadow color R should be 255";
     EXPECT_EQ((ds_color >> 8) & 0xFF, 0x00) << "drop-shadow color G should be 0";
     EXPECT_EQ(ds_color & 0xFF, 0x00) << "drop-shadow color B should be 0";
+}
+
+TEST_F(PaintTest, DropShadowPixelsStayStableWithScratchReuseV2064) {
+    DisplayList list;
+    list.fill_rect({12, 12, 14, 14}, {30, 120, 220, 255});
+    list.apply_drop_shadow({12, 12, 14, 14}, 5.0f, 4.0f, 3.0f, 0xCC000000);
+
+    SoftwareRenderer renderer(48, 48);
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(list);
+
+    const auto first_pixels = renderer.pixels();
+    const auto element_pixel = renderer.get_pixel(18, 18);
+    bool found_shadow_pixel = false;
+    for (int y = 26; y < 40 && !found_shadow_pixel; ++y) {
+        for (int x = 26; x < 40 && !found_shadow_pixel; ++x) {
+            if (x >= 12 && x < 26 && y >= 12 && y < 26) continue;
+            const auto shadow_pixel = renderer.get_pixel(x, y);
+            if (shadow_pixel.a > 0) {
+                found_shadow_pixel = true;
+            }
+        }
+    }
+    EXPECT_EQ(element_pixel.r, 30);
+    EXPECT_EQ(element_pixel.g, 120);
+    EXPECT_EQ(element_pixel.b, 220);
+    EXPECT_TRUE(found_shadow_pixel);
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(), 1u);
+
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(list);
+
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(first_pixels, renderer.pixels());
 }
 
 // ============================================================================

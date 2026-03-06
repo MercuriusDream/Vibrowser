@@ -23977,12 +23977,15 @@ const std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*>*
     return &state->shadow_roots;
 }
 
-void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h, float scroll_y) {
+void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h,
+                           float scroll_x, float scroll_y) {
     auto* state = get_dom_state(ctx);
     if (!state) return;
 
-    // Update window.scrollY
+    // Update window scroll offsets in CSS pixels before firing listeners.
     JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "scrollX", JS_NewFloat64(ctx, scroll_x));
+    JS_SetPropertyStr(ctx, global, "pageXOffset", JS_NewFloat64(ctx, scroll_x));
     JS_SetPropertyStr(ctx, global, "scrollY", JS_NewFloat64(ctx, scroll_y));
     JS_SetPropertyStr(ctx, global, "pageYOffset", JS_NewFloat64(ctx, scroll_y));
 

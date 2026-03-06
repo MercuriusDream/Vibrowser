@@ -42,6 +42,26 @@ std::vector<float> make_gaussian_kernel(float radius, int& kernel_radius) {
     }
     return kernel;
 }
+
+template <typename T>
+void ensure_scratch_buffer(std::vector<T>& buffer, int& buffer_width, int& buffer_height,
+                           size_t& allocation_count, int width, int height, size_t elements_per_pixel) {
+    if (width <= 0 || height <= 0) {
+        buffer.clear();
+        buffer_width = 0;
+        buffer_height = 0;
+        return;
+    }
+    const bool dimensions_changed = buffer_width != width || buffer_height != height;
+    if (dimensions_changed) {
+        buffer_width = width;
+        buffer_height = height;
+        buffer.assign(static_cast<size_t>(width) * static_cast<size_t>(height) * elements_per_pixel, T{});
+        ++allocation_count;
+        return;
+    }
+    std::fill(buffer.begin(), buffer.end(), T{});
+}
 }  // namespace
 
 SoftwareRenderer::SoftwareRenderer(int width, int height, float dpr)
@@ -1867,8 +1887,10 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
         std::vector<float> kernel = make_gaussian_kernel(radius, kernel_radius);
         if (kernel.empty()) return;
 
-        // Temporary buffer for intermediate results (same size as region, RGBA, float precision)
-        std::vector<float> temp(rw * rh * 4, 0.0f);
+        ensure_scratch_buffer(filter_blur_scratch_, filter_blur_scratch_width_,
+                              filter_blur_scratch_height_, filter_blur_scratch_allocations_,
+                              rw, rh, 4);
+        std::vector<float>& temp = filter_blur_scratch_;
 
         // --- Horizontal pass: read from pixels_, write to temp ---
         for (int py = y0; py < y1; py++) {
@@ -2031,7 +2053,10 @@ void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blu
     uint8_t sc_b = static_cast<uint8_t>(shadow_color & 0xFF);
 
     // Step 1: Create alpha silhouette of the element, offset by (offset_x, offset_y)
-    std::vector<uint8_t> shadow_alpha(ew * eh, 0);
+    ensure_scratch_buffer(drop_shadow_alpha_scratch_, drop_shadow_alpha_scratch_width_,
+                          drop_shadow_alpha_scratch_height_, drop_shadow_alpha_scratch_allocations_,
+                          ew, eh, 1);
+    std::vector<uint8_t>& shadow_alpha = drop_shadow_alpha_scratch_;
     int ox = static_cast<int>(offset_x);
     int oy = static_cast<int>(offset_y);
 
@@ -2065,7 +2090,10 @@ void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blu
             int y1 = y0 + eh;
             int rw = x1 - x0;
             int rh = y1 - y0;
-            std::vector<float> temp(ew * eh, 0.0f);
+            ensure_scratch_buffer(drop_shadow_blur_scratch_, drop_shadow_blur_scratch_width_,
+                                  drop_shadow_blur_scratch_height_, drop_shadow_blur_scratch_allocations_,
+                                  ew, eh, 1);
+            std::vector<float>& temp = drop_shadow_blur_scratch_;
 
             // Horizontal pass
             for (int py = y0; py < y1; py++) {

@@ -206,6 +206,7 @@ struct TextRegion {
             : 1.0;
     }
     _contentHeight = _imageHeight / _backingScale; // logical points
+    [self clampScrollOffsetsToContentBounds];
 
     // Convert RGBA pixel buffer to CGImage.
     // Our pixel buffer is top-left origin (row 0 = top of page).
@@ -245,8 +246,16 @@ struct TextRegion {
     return (rendererY / _backingScale) * _pageScale;
 }
 
+- (CGFloat)viewOffsetForDocumentX:(CGFloat)documentX {
+    return documentX * _pageScale;
+}
+
 - (CGFloat)viewOffsetForDocumentY:(CGFloat)documentY {
     return documentY * _pageScale;
+}
+
+- (CGFloat)documentXForViewOffset:(CGFloat)viewOffset {
+    return viewOffset / _pageScale;
 }
 
 - (CGFloat)rendererYForViewOffset:(CGFloat)viewOffset {
@@ -262,7 +271,7 @@ struct TextRegion {
 }
 
 - (CGFloat)logicalXForViewX:(CGFloat)viewX {
-    return viewX / _pageScale;
+    return (viewX + _scrollX) / _pageScale;
 }
 
 - (CGFloat)logicalYForViewY:(CGFloat)viewY {
@@ -282,10 +291,42 @@ struct TextRegion {
 
 - (NSRect)viewRectForRendererRect:(const clever::paint::Rect&)rect {
     return NSMakeRect(
-        (rect.x / _backingScale) * _pageScale,
+        [self viewOffsetForDocumentX:(rect.x / _backingScale)] - _scrollX,
         [self viewOffsetForRendererY:rect.y] - _scrollOffset,
         (rect.width / _backingScale) * _pageScale,
         (rect.height / _backingScale) * _pageScale);
+}
+
+- (void)setScrollOffset:(CGFloat)scrollOffset {
+    CGFloat maxScrollY = std::max(0.0, _contentHeight * _pageScale - self.bounds.size.height);
+    _scrollOffset = std::max(0.0, std::min(scrollOffset, maxScrollY));
+    _scrollY = _scrollOffset;
+}
+
+- (void)setScrollOffsetX:(CGFloat)scrollOffsetX {
+    CGFloat contentWidth = (_backingScale > 0.0)
+        ? (_imageWidth / _backingScale) * _pageScale
+        : 0.0;
+    CGFloat maxScrollX = std::max(0.0, contentWidth - self.bounds.size.width);
+    _scrollX = std::max(0.0, std::min(scrollOffsetX, maxScrollX));
+}
+
+- (CGFloat)scrollOffsetX {
+    return _scrollX;
+}
+
+- (void)clampScrollOffsetsToContentBounds {
+    CGFloat currentScrollX = _scrollX;
+    CGFloat currentScrollY = _scrollOffset;
+    [self setScrollOffsetX:currentScrollX];
+    [self setScrollOffset:currentScrollY];
+    CGFloat maxScrollY = std::max(0.0, _contentHeight * _pageScale - self.bounds.size.height);
+    _targetScrollOffset = std::max(0.0, std::min(_targetScrollOffset, maxScrollY));
+}
+
+- (void)setPageScale:(CGFloat)pageScale {
+    _pageScale = std::max(0.25, std::min(4.0, pageScale));
+    [self clampScrollOffsetsToContentBounds];
 }
 
 - (void)updateLinks:(const std::vector<clever::paint::LinkRegion>&)links {
@@ -488,6 +529,7 @@ struct TextRegion {
     // divide by _backingScale to get the correct logical point dimensions.
     CGFloat img_w = (_imageWidth / _backingScale) * _pageScale;
     CGFloat img_h = (_imageHeight / _backingScale) * _pageScale;
+    CGFloat img_x = -_scrollX;
     CGFloat img_y = -_scrollOffset;
 
     CGContextRef cgctx = [[NSGraphicsContext currentContext] CGContext];
@@ -495,7 +537,7 @@ struct TextRegion {
     // Clip to viewport bounds to prevent horizontal overflow
     CGContextClipToRect(cgctx, CGRectMake(0, 0, self.bounds.size.width, self.bounds.size.height));
     // Flip vertically within the destination rect
-    CGContextTranslateCTM(cgctx, 0, img_y + img_h);
+    CGContextTranslateCTM(cgctx, img_x, img_y + img_h);
     CGContextScaleCTM(cgctx, 1.0, -1.0);
     CGContextDrawImage(cgctx, CGRectMake(0, 0, img_w, img_h), _cgImage);
     CGContextRestoreGState(cgctx);
@@ -552,7 +594,10 @@ struct TextRegion {
         }
 
         // Convert from renderer pixels/CSS coords to logical view points.
-        CGFloat draw_x = elem.logical_x * _pageScale;
+        CGFloat draw_x = [self viewOffsetForDocumentX:elem.logical_x] - _scrollX;
+        if (!elem.is_page_sticky) {
+            draw_x -= [self viewOffsetForDocumentX:elem.container_scroll_x];
+        }
         CGFloat draw_y = [self viewOffsetForDocumentY:draw_y_css] - _scrollOffset;
         CGFloat draw_w = elem.logical_width * _pageScale;
         CGFloat draw_h = elem.logical_height * _pageScale;
@@ -642,7 +687,7 @@ struct TextRegion {
             if (bx + bw >= sx && bx <= ex &&
                 by + bh >= sy && by <= ey) {
                 NSRect highlight = NSMakeRect(
-                    bx * _pageScale,
+                    [self viewOffsetForDocumentX:bx] - _scrollX,
                     by * _pageScale - _scrollOffset,
                     bw * _pageScale,
                     bh * _pageScale);
@@ -659,10 +704,6 @@ struct TextRegion {
                                                 canScrollDown:(BOOL)canScrollDown
                                                 canScrollRight:(BOOL)canScrollRight {
     if (!_layoutRoot) return nullptr;
-
-    // Convert page coordinates to viewport coordinates for easier calculation
-    // (page coords = viewport coords shifted by _scrollOffset)
-    CGFloat viewportY = pageY + _scrollOffset;
 
     // Recursive search: find the deepest scrollable container at this point
     std::function<clever::layout::LayoutNode*(clever::layout::LayoutNode&,
@@ -682,7 +723,7 @@ struct TextRegion {
 
         // Check if point is within this node's border box
         if (pageX < absX || pageX > absX + w ||
-            viewportY < absY || viewportY > absY + h) {
+            pageY < absY || pageY > absY + h) {
             return nullptr;
         }
 
@@ -751,8 +792,9 @@ struct TextRegion {
     NSPoint mouseLocation = [NSEvent mouseLocation];
     NSPoint screenPoint = [self.window convertPointFromScreen:mouseLocation];
     NSPoint viewMouseLocation = [self convertPoint:screenPoint fromView:nil];
-    CGFloat pageX = [self logicalXForViewX:viewMouseLocation.x];
-    CGFloat pageY = viewMouseLocation.y / _pageScale;
+    NSPoint documentPoint = [self documentPointForViewPoint:viewMouseLocation];
+    CGFloat pageX = documentPoint.x;
+    CGFloat pageY = documentPoint.y;
 
     // Check if we should try scrolling a child container
     auto scrollTarget = [self findScrollableContainerAtPageX:pageX
@@ -1044,8 +1086,7 @@ struct TextRegion {
 }
 
 - (void)magnifyWithEvent:(NSEvent*)event {
-    _pageScale += event.magnification;
-    _pageScale = std::max(0.25, std::min(4.0, _pageScale));
+    self.pageScale = _pageScale + event.magnification;
     [self setNeedsDisplay:YES];
     [self.window invalidateCursorRectsForView:self];
 }

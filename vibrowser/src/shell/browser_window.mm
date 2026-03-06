@@ -1727,7 +1727,9 @@ static std::string build_shell_message_html(const std::string& page_title,
     if (!jsEngine || !jsEngine->context()) return;
     double scroll_x = 0.0, scroll_y = 0.0;
     if (clever::js::get_pending_scroll(jsEngine->context(), &scroll_x, &scroll_y)) {
+        CGFloat viewX = [tab.renderView viewOffsetForDocumentX:static_cast<CGFloat>(scroll_x)];
         CGFloat viewY = [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(scroll_y)];
+        tab.renderView.scrollOffsetX = viewX;
         tab.renderView.scrollOffset = viewY;
         [tab.renderView setNeedsDisplay:YES];
         clever::js::clear_pending_scroll(jsEngine->context());
@@ -1773,6 +1775,7 @@ static std::string build_shell_message_html(const std::string& page_title,
 
     if (result.success && result.renderer) {
         if (_toggledDetails.empty() && !_isAnimationRerender) {
+            tab.renderView.scrollOffsetX = 0;
             tab.renderView.scrollOffset = 0;
         }
         if (isActiveTab) {
@@ -1838,6 +1841,8 @@ static std::string build_shell_message_html(const std::string& page_title,
             // This runs AFTER fragment scroll so scrollIntoView can override it.
             double pendScrollX = 0.0, pendScrollY = 0.0;
             if (clever::js::get_pending_scroll(jsEngine->context(), &pendScrollX, &pendScrollY)) {
+                tab.renderView.scrollOffsetX =
+                    [tab.renderView viewOffsetForDocumentX:static_cast<CGFloat>(pendScrollX)];
                 tab.renderView.scrollOffset =
                     [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(pendScrollY)];
                 clever::js::clear_pending_scroll(jsEngine->context());
@@ -1884,6 +1889,7 @@ static std::string build_shell_message_html(const std::string& page_title,
             struct StickyContainerContext {
                 float top = 0;
                 float bottom = 0;
+                float scroll_x = 0;
                 float x = 0;
                 float y = 0;
                 float scroll_y = 0;
@@ -1902,6 +1908,7 @@ static std::string build_shell_message_html(const std::string& page_title,
                 // container, its content area defines the scrollable constraint region.
                 float child_container_top = container.top;
                 float child_container_bottom = container.bottom;
+                float child_container_scroll_x = container.scroll_x;
                 float child_container_x = container.x;
                 float child_container_y = container.y;
                 float child_container_scroll_y = container.scroll_y;
@@ -1922,6 +1929,7 @@ static std::string build_shell_message_html(const std::string& page_title,
                 // by page-level scrolling via RenderView::_scrollOffset).
                 if (depth > 0 && n.is_scroll_container && n.overflow == 3) {
                     // First non-root scroll container encountered becomes container-relative sticky.
+                    child_container_scroll_x = n.scroll_left;
                     child_container_scroll_y = n.scroll_top;
                     child_container_x = abs_x;
                     child_container_y = abs_y;
@@ -1936,6 +1944,7 @@ static std::string build_shell_message_html(const std::string& page_title,
                     info.top_offset = n.pos_top;
                     info.container_top = child_container_top;
                     info.container_bottom = child_container_bottom;
+                    info.container_scroll_x = child_container_scroll_x;
                     info.container_scroll_y = child_container_scroll_y;
                     info.container_x = child_container_x;
                     info.container_y = child_container_y;
@@ -1978,6 +1987,7 @@ static std::string build_shell_message_html(const std::string& page_title,
                                   StickyContainerContext{
                                       child_container_top,
                                       child_container_bottom,
+                                      child_container_scroll_x,
                                       child_container_x,
                                       child_container_y,
                                       child_container_scroll_y,
@@ -1987,7 +1997,7 @@ static std::string build_shell_message_html(const std::string& page_title,
             };
 
             float page_bottom = static_cast<float>(rh);
-            collectSticky(*result.root, 0, 0, StickyContainerContext{0, page_bottom, 0, 0, 0, true}, 0);
+            collectSticky(*result.root, 0, 0, StickyContainerContext{0, page_bottom, 0, 0, 0, 0, true}, 0);
         }
         [tab.renderView updateStickyElements:std::move(stickyElements)];
 
@@ -2621,8 +2631,8 @@ static std::string build_shell_message_html(const std::string& page_title,
             deltaX:(CGFloat)deltaX
             deltaY:(CGFloat)deltaY
         isMomentum:(BOOL)isMomentum {
-    (void)renderView; (void)scrollX; (void)deltaX; (void)deltaY; (void)isMomentum;
-    // Update window.scrollY and fire scroll event in the JS engine.
+    (void)deltaX; (void)deltaY; (void)isMomentum;
+    // Update window scroll offsets using document-space CSS pixels.
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
     auto& jsEngine = [tab jsEngine];
@@ -2630,7 +2640,11 @@ static std::string build_shell_message_html(const std::string& page_title,
     JSContext* ctx = jsEngine->context();
     int vpW = static_cast<int>(renderView.bounds.size.width);
     int vpH = static_cast<int>(renderView.bounds.size.height);
-    clever::js::dispatch_scroll_event(ctx, vpW, vpH, static_cast<float>(scrollY));
+    CGFloat documentScrollX = [renderView documentXForViewOffset:scrollX];
+    CGFloat documentScrollY = [renderView documentYForViewOffset:scrollY];
+    clever::js::dispatch_scroll_event(ctx, vpW, vpH,
+                                      static_cast<float>(documentScrollX),
+                                      static_cast<float>(documentScrollY));
 }
 
 - (void)renderView:(RenderView*)view didSubmitForm:(const clever::paint::FormData&)formData {
@@ -3389,7 +3403,9 @@ static std::string build_shell_message_html(const std::string& page_title,
     // Apply any pending programmatic scroll (scrollIntoView / window.scrollTo).
     // Captured before doRender because doRender replaces the JS engine.
     if (hasPendingScroll) {
+        CGFloat viewX = [tab.renderView viewOffsetForDocumentX:static_cast<CGFloat>(pendingScrollX)];
         CGFloat viewY = [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(pendingScrollY)];
+        tab.renderView.scrollOffsetX = viewX;
         tab.renderView.scrollOffset = viewY;
         // Clear from current engine too (in case doRender was skipped and engine is same)
         auto& curEngine = [tab jsEngine];

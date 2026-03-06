@@ -1557,7 +1557,7 @@ TEST(LayoutEngineTest, InlineBlockAutoWidthRespectsMinContentFloorInNarrowContai
     EXPECT_NEAR(child->geometry.width, 192.0f, 1.0f);
 }
 
-TEST(LayoutEngineTest, IntrinsicWidthMemoizesInlineBlockSubtreeAcrossFitContentAndShrinkWrap) {
+TEST(LayoutEngineTest, MaxContentMemoizesRepeatedSubtreeMeasurementsV2064) {
     auto root = make_block("div");
     root->specified_width = -4.0f; // fit-content
 
@@ -1565,19 +1565,21 @@ TEST(LayoutEngineTest, IntrinsicWidthMemoizesInlineBlockSubtreeAcrossFitContentA
     ib->tag_name = "span";
     ib->mode = LayoutMode::InlineBlock;
     ib->display = DisplayType::InlineBlock;
+    ib->tab_size = 4;
 
-    auto text = make_text("alpha beta", 16.0f);
+    auto text = make_text("alpha\tbeta", 16.0f);
+    text->tab_size = 4;
     ib->append_child(std::move(text));
     root->append_child(std::move(ib));
 
-    int full_text_measurements = 0;
+    int max_content_measurements = 0;
     int word_measurements = 0;
 
     LayoutEngine engine;
     engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
                                  int, bool, float) {
-        if (measured == "alpha beta") {
-            full_text_measurements++;
+        if (measured == "alpha    beta") {
+            max_content_measurements++;
         } else if (measured == "alpha" || measured == "beta") {
             word_measurements++;
         }
@@ -1586,11 +1588,33 @@ TEST(LayoutEngineTest, IntrinsicWidthMemoizesInlineBlockSubtreeAcrossFitContentA
 
     engine.compute(*root, 500.0f, 600.0f);
 
-    EXPECT_EQ(full_text_measurements, 3)
-        << "The full text should be measured once for layout and once per shared max-content path";
+    EXPECT_EQ(max_content_measurements, 1)
+        << "fit-content sizing and inline-block shrink-wrap should share one cached max-content subtree walk";
     EXPECT_EQ(word_measurements, 2)
         << "fit-content root sizing and inline-block shrink-wrap should share the cached min-content width";
     EXPECT_GT(root->children[0]->geometry.width, 0.0f);
+}
+
+TEST(LayoutEngineTest, ShrinkWrapWidthStillMatchesMaxContentAfterMemoizationV2064) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->append_child(make_text("alpha beta", 16.0f));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    float char_w = 16.0f * 0.6f;
+    float expected_max_content = 10.0f * char_w; // "alpha beta"
+    auto* child = root->children[0].get();
+    EXPECT_NEAR(child->geometry.width, expected_max_content, 1.0f)
+        << "inline-block shrink-wrap width should still resolve to max-content";
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
 }
 
 TEST(LayoutEngineTest, IntrinsicHeightMemoizesRepeatedSubtreeMeasurements) {

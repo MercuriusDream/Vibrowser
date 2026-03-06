@@ -2016,6 +2016,23 @@ TEST(SelectorMatcherTest, NotPseudoClassWithType) {
     EXPECT_FALSE(matcher.matches(div_elem, complex));
 }
 
+TEST(SelectorMatcherTest, NotPseudoReusesParsedSelectorListV2064) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":not(.hidden)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    auto& simple_sels = list.selectors[0].parts[0].compound.simple_selectors;
+    ASSERT_EQ(simple_sels.size(), 1u);
+    ASSERT_TRUE(simple_sels[0].parsed_selector_list);
+
+    simple_sels[0].argument = "span";
+
+    ElementView span_elem;
+    span_elem.tag_name = "span";
+    EXPECT_TRUE(matcher.matches(span_elem, list.selectors[0]));
+}
+
 // ===========================================================================
 // :first-of-type pseudo-class
 // ===========================================================================
@@ -5686,6 +5703,23 @@ TEST(SelectorMatcherTest, IsPseudoClass) {
     ElementView h4;
     h4.tag_name = "h4";
     EXPECT_FALSE(matcher.matches(h4, complex));
+}
+
+TEST(SelectorMatcherTest, IsPseudoReusesParsedSelectorListV2064) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":is(h1, h2, h3)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    auto& simple_sels = list.selectors[0].parts[0].compound.simple_selectors;
+    ASSERT_EQ(simple_sels.size(), 1u);
+    ASSERT_TRUE(simple_sels[0].parsed_selector_list);
+
+    simple_sels[0].argument = "article";
+
+    ElementView h2;
+    h2.tag_name = "h2";
+    EXPECT_TRUE(matcher.matches(h2, list.selectors[0]));
 }
 
 // ============================================================================

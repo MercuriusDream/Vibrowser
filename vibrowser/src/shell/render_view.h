@@ -17,6 +17,7 @@ struct StickyElementInfo {
     float top_offset = 0;      // CSS `top` value in CSS pixels
     float container_top = 0;   // top of the scrollable container (CSS pixels)
     float container_bottom = 0;// bottom of the scrollable container (CSS pixels)
+    float container_scroll_x = 0; // scroll_left of the sticky container (CSS pixels)
     float container_scroll_y = 0; // scroll_top of the sticky container (CSS pixels)
     float container_x = 0;     // x position of the scroll container in page coordinates (CSS pixels)
     float container_y = 0;     // y position of the scroll container in page coordinates (CSS pixels)
@@ -125,6 +126,7 @@ struct PixelTransition {
 @interface RenderView : NSView
 
 @property (nonatomic) CGFloat scrollOffset;
+@property (nonatomic) CGFloat scrollOffsetX;
 @property (nonatomic) CGFloat contentHeight;
 @property (nonatomic) CGFloat pageScale;
 @property (nonatomic, weak) id<RenderViewDelegate> delegate;
@@ -153,6 +155,8 @@ struct PixelTransition {
 - (void)clearContent;
 - (NSString*)selectedText;
 - (CGFloat)rendererScale;
+- (CGFloat)viewOffsetForDocumentX:(CGFloat)documentX;
+- (CGFloat)documentXForViewOffset:(CGFloat)viewOffset;
 - (CGFloat)viewOffsetForDocumentY:(CGFloat)documentY;
 - (CGFloat)documentYForViewOffset:(CGFloat)viewOffset;
 - (CGFloat)viewOffsetForRendererY:(CGFloat)rendererY;

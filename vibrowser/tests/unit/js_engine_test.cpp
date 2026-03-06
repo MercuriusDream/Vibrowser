@@ -9,11 +9,186 @@ extern "C" {
 #include <quickjs.h>
 }
 
+#include <CommonCrypto/CommonDigest.h>
+#include <arpa/inet.h>
+#include <array>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <netinet/in.h>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
+#include <unistd.h>
 
 namespace {
+
+static const char kBase64Chars[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::string base64_encode_bytes(const uint8_t* data, size_t size) {
+    std::string output;
+    output.reserve(((size + 2) / 3) * 4);
+
+    unsigned int value = 0;
+    int bits = -6;
+    for (size_t i = 0; i < size; ++i) {
+        value = (value << 8) + data[i];
+        bits += 8;
+        while (bits >= 0) {
+            output.push_back(kBase64Chars[(value >> bits) & 0x3F]);
+            bits -= 6;
+        }
+    }
+    if (bits > -6) {
+        output.push_back(kBase64Chars[((value << 8) >> (bits + 8)) & 0x3F]);
+    }
+    while (output.size() % 4 != 0) {
+        output.push_back('=');
+    }
+    return output;
+}
+
+std::string websocket_accept_from_request(const std::string& request) {
+    static constexpr std::string_view kHeader = "Sec-WebSocket-Key:";
+    const size_t key_start = request.find(kHeader);
+    if (key_start == std::string::npos) {
+        return {};
+    }
+    size_t value_start = key_start + kHeader.size();
+    while (value_start < request.size() &&
+           (request[value_start] == ' ' || request[value_start] == '\t')) {
+        ++value_start;
+    }
+    const size_t value_end = request.find("\r\n", value_start);
+    if (value_end == std::string::npos || value_end <= value_start) {
+        return {};
+    }
+
+    std::string key = request.substr(value_start, value_end - value_start);
+    key += "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    std::array<uint8_t, CC_SHA1_DIGEST_LENGTH> digest {};
+    CC_SHA1(reinterpret_cast<const unsigned char*>(key.data()),
+            static_cast<CC_LONG>(key.size()),
+            digest.data());
+    return base64_encode_bytes(digest.data(), digest.size());
+}
+
+class ScopedWebSocketTestServer {
+public:
+    ScopedWebSocketTestServer() {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, 1) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~ScopedWebSocketTestServer() {
+        if (listen_fd_ >= 0) {
+            ::shutdown(listen_fd_, SHUT_RDWR);
+            ::close(listen_fd_);
+        }
+        if (client_fd_ >= 0) {
+            ::shutdown(client_fd_, SHUT_RDWR);
+            ::close(client_fd_);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+    bool wait_until_open(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(state_mutex_);
+        return state_cv_.wait_for(lock, timeout, [this] { return handshake_complete_; });
+    }
+
+private:
+    void run() {
+        int accepted_fd = ::accept(listen_fd_, nullptr, nullptr);
+        if (accepted_fd < 0) {
+            return;
+        }
+        client_fd_ = accepted_fd;
+
+        std::string request;
+        char buffer[1024];
+        while (request.find("\r\n\r\n") == std::string::npos) {
+            ssize_t n = ::recv(client_fd_, buffer, sizeof(buffer), 0);
+            if (n <= 0) {
+                return;
+            }
+            request.append(buffer, static_cast<size_t>(n));
+        }
+
+        const std::string accept = websocket_accept_from_request(request);
+        if (accept.empty()) {
+            return;
+        }
+
+        const std::string handshake_response =
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: " + accept + "\r\n"
+            "\r\n";
+        if (::send(client_fd_, handshake_response.data(), handshake_response.size(), 0) < 0) {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            handshake_complete_ = true;
+        }
+        state_cv_.notify_all();
+
+        while (true) {
+            ssize_t n = ::recv(client_fd_, buffer, sizeof(buffer), 0);
+            if (n <= 0) {
+                break;
+            }
+        }
+    }
+
+    int listen_fd_ = -1;
+    int client_fd_ = -1;
+    uint16_t port_ = 0;
+    std::thread server_thread_;
+    std::mutex state_mutex_;
+    std::condition_variable state_cv_;
+    bool handshake_complete_ = false;
+};
 
 JSValue js_advance_host_timers(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
     int delay_ms = 0;
@@ -2017,6 +2192,40 @@ TEST(JSWebSocket, CloseOnClosedSocketIsNoop) {
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3"); // CLOSED
+}
+
+TEST(JSWebSocket, ClosePathStopsReceiveThreadWithoutSleepPollingV2064) {
+    ScopedWebSocketTestServer server;
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto create_result = engine.evaluate((std::string(R"(
+        (() => {
+            globalThis.__v2064ws = new WebSocket('ws://127.0.0.1:)")
+        + std::to_string(server.port())
+        + R"(/test');
+            return 'created';
+        })()
+    )"));
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(create_result, "created");
+    ASSERT_TRUE(server.wait_until_open(std::chrono::milliseconds(500)));
+
+    auto started = std::chrono::steady_clock::now();
+    auto result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2064ws.close(1000, 'done');
+            return globalThis.__v2064ws.readyState;
+        })()
+    )");
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started);
+
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+    EXPECT_LT(elapsed_ms.count(), 250);
 }
 
 TEST(JSWebSocket, EventHandlerGetterSetterOnopen) {

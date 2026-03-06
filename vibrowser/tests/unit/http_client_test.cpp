@@ -21662,6 +21662,36 @@ TEST(HttpCacheTest, RemoveIgnoresFragmentWhenEvictingEntryV2058) {
     EXPECT_EQ(cache.entry_count(), 0u);
 }
 
+TEST(HttpCacheTest, FragmentDoesNotChangeCacheKeyV2064) {
+    const std::string intro =
+        HttpCache::make_cache_key("HTTPS://Example.COM:443/docs/page?q=1#intro");
+    const std::string details =
+        HttpCache::make_cache_key("https://example.com/docs/page?q=1#details");
+    const std::string different_query =
+        HttpCache::make_cache_key("https://example.com/docs/page?q=2#intro");
+
+    EXPECT_EQ(intro, "https://example.com/docs/page?q=1");
+    EXPECT_EQ(details, "https://example.com/docs/page?q=1");
+    EXPECT_EQ(intro, details);
+    EXPECT_NE(intro, different_query);
+}
+
+TEST(HttpCacheTest, DefaultPortAndCaseNormalizeCacheKeyV2064) {
+    const std::string canonical =
+        HttpCache::make_cache_key("HTTP://Example.COM:80/Assets/Image.PNG");
+    const std::string normalized_alias =
+        HttpCache::make_cache_key("http://example.com/Assets/Image.PNG#view");
+    const std::string https_origin =
+        HttpCache::make_cache_key("https://example.com:443/Assets/Image.PNG");
+    const std::string custom_port =
+        HttpCache::make_cache_key("http://example.com:8080/Assets/Image.PNG");
+
+    EXPECT_EQ(canonical, "http://example.com/Assets/Image.PNG");
+    EXPECT_EQ(canonical, normalized_alias);
+    EXPECT_NE(canonical, https_origin);
+    EXPECT_NE(canonical, custom_port);
+}
+
 TEST(HttpClient, FragmentCacheHitUsesCanonicalCacheKeyV2058) {
     auto& cache = HttpCache::instance();
     cache.clear();
