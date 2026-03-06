@@ -2226,6 +2226,16 @@ TEST(JSWebSocket, ClosePathStopsReceiveThreadWithoutSleepPollingV2064) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3");
     EXPECT_LT(elapsed_ms.count(), 250);
+
+    auto cleanup_result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2064ws = undefined;
+            return 'cleared';
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(cleanup_result, "cleared");
+    JS_RunGC(engine.runtime());
 }
 
 TEST(JSWebSocket, EventHandlerGetterSetterOnopen) {
