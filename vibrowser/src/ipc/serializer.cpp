@@ -3,6 +3,14 @@
 
 namespace clever::ipc {
 
+static void check_payload_size(size_t len, const char* operation, const char* type_name) {
+    if (len > kMaxSerializedPayloadBytes) {
+        throw std::runtime_error(
+            std::string("IPC ") + operation + " " + type_name + " payload exceeds limit of " +
+            std::to_string(kMaxSerializedPayloadBytes) + " bytes");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Serializer
 // ---------------------------------------------------------------------------
@@ -57,12 +65,14 @@ void Serializer::write_bool(bool value) {
 }
 
 void Serializer::write_string(std::string_view str) {
+    check_payload_size(str.size(), "write", "string");
     write_u32(static_cast<uint32_t>(str.size()));
     const auto* bytes = reinterpret_cast<const uint8_t*>(str.data());
     buffer_.insert(buffer_.end(), bytes, bytes + str.size());
 }
 
 void Serializer::write_bytes(const uint8_t* data, size_t len) {
+    check_payload_size(len, "write", "bytes");
     write_u32(static_cast<uint32_t>(len));
     if (data != nullptr && len > 0) {
         buffer_.insert(buffer_.end(), data, data + len);
@@ -151,6 +161,7 @@ bool Deserializer::read_bool() {
 
 std::string Deserializer::read_string() {
     uint32_t len = read_u32();
+    check_payload_size(len, "read", "string");
     check_remaining(len);
     std::string result(reinterpret_cast<const char*>(data_ + offset_), len);
     offset_ += len;
@@ -159,6 +170,7 @@ std::string Deserializer::read_string() {
 
 std::vector<uint8_t> Deserializer::read_bytes() {
     uint32_t len = read_u32();
+    check_payload_size(len, "read", "bytes");
     check_remaining(len);
     std::vector<uint8_t> result(data_ + offset_, data_ + offset_ + len);
     offset_ += len;
