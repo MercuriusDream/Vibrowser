@@ -3195,8 +3195,8 @@ TEST(LayoutSmallCaps, SmallCapsDetected) {
 
 TEST(LayoutSmallCaps, SmallCapsInheritedFromParent) {
     // Build a tree: <div font_variant=1> containing a text node.
-    // After layout, the text should be transformed to uppercase and
-    // font_variant should be propagated to the child.
+    // After layout, the source text should be preserved while the
+    // font-variant style remains on the child.
     auto root = make_block("div");
     root->font_variant = 1;
 
@@ -3209,8 +3209,8 @@ TEST(LayoutSmallCaps, SmallCapsInheritedFromParent) {
 
     // After layout, the text child should have font_variant == 1
     EXPECT_EQ(root->children[0]->font_variant, 1);
-    // The layout engine transforms small-caps text to uppercase for measuring
-    EXPECT_EQ(root->children[0]->text_content, "HELLO");
+    // Inline layout should not rewrite the source node content in place
+    EXPECT_EQ(root->children[0]->text_content, "hello");
 }
 
 TEST(LayoutSmallCaps, SmallCapsDoesNotAffectNormalText) {
@@ -3232,6 +3232,51 @@ TEST(LayoutSmallCaps, SmallCapsDoesNotAffectNormalText) {
     // Width should use normal font_size (16 * 0.6 = 9.6 per char, 5 chars = 48)
     float expected_width = 5.0f * (16.0f * 0.6f);
     EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 0.1f);
+}
+
+TEST(LayoutEngineTest, InlineLayoutPreservesSourceTextContentV2062) {
+    auto root = make_text("hello   world", 16.0f);
+    root->text_transform = 2; // uppercase
+    root->white_space = 0;    // normal
+    root->white_space_pre = false;
+    root->white_space_collapse = 0;
+
+    LayoutEngine engine;
+    std::vector<std::string> measured_texts;
+    engine.set_text_measurer([&](const std::string& measured, float, const std::string&,
+                                 int, bool, float) -> float {
+        measured_texts.push_back(measured);
+        return static_cast<float>(measured.size()) * 9.0f;
+    });
+
+    engine.compute(*root, 400.0f, 200.0f);
+
+    ASSERT_FALSE(measured_texts.empty());
+    EXPECT_EQ(measured_texts.back(), "HELLO WORLD");
+    EXPECT_EQ(root->text_content, "hello   world");
+}
+
+TEST(LayoutEngineTest, SmallCapsMeasurementDoesNotRewriteNodeTextV2062) {
+    auto root = make_text("hello", 16.0f);
+    root->font_variant = 1;
+
+    LayoutEngine engine;
+    std::vector<std::string> measured_texts;
+    std::vector<float> measured_font_sizes;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) -> float {
+        measured_texts.push_back(measured);
+        measured_font_sizes.push_back(font_size);
+        return static_cast<float>(measured.size()) * font_size;
+    });
+
+    engine.compute(*root, 400.0f, 200.0f);
+
+    ASSERT_FALSE(measured_texts.empty());
+    ASSERT_FALSE(measured_font_sizes.empty());
+    EXPECT_EQ(measured_texts.back(), "HELLO");
+    EXPECT_NEAR(measured_font_sizes.back(), 12.8f, 0.001f);
+    EXPECT_EQ(root->text_content, "hello");
 }
 
 // ===========================================================================

@@ -1117,22 +1117,23 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
             node.geometry.height = 0;
             return;
         }
+        std::string layout_text = node.text_content;
         // Apply text-transform before measuring
         if (node.text_transform == 2) { // uppercase
-            std::transform(node.text_content.begin(), node.text_content.end(),
-                           node.text_content.begin(),
+            std::transform(layout_text.begin(), layout_text.end(),
+                           layout_text.begin(),
                            [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
         } else if (node.text_transform == 3) { // lowercase
-            std::transform(node.text_content.begin(), node.text_content.end(),
-                           node.text_content.begin(),
+            std::transform(layout_text.begin(), layout_text.end(),
+                           layout_text.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         } else if (node.text_transform == 1) { // capitalize
             bool cap_next = true;
-            for (size_t i = 0; i < node.text_content.size(); i++) {
-                if (node.text_content[i] == ' ') {
+            for (size_t i = 0; i < layout_text.size(); i++) {
+                if (layout_text[i] == ' ') {
                     cap_next = true;
                 } else if (cap_next) {
-                    node.text_content[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(node.text_content[i])));
+                    layout_text[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(layout_text[i])));
                     cap_next = false;
                 }
             }
@@ -1141,7 +1142,7 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
         // Apply CSS white-space collapsing before measuring and font-variant processing.
         // Skip for <br> elements — their newline must be preserved regardless of white-space.
         if (node.tag_name != "br") {
-            node.text_content = collapse_whitespace(node.text_content, node.white_space, node.white_space_pre, node.white_space_collapse);
+            layout_text = collapse_whitespace(layout_text, node.white_space, node.white_space_pre, node.white_space_collapse);
         }
 
         // font-variant: small-caps — measure per-character width since
@@ -1153,7 +1154,7 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
             // lowercase vs uppercase characters in the original text.
             int lower_count = 0;
             int upper_count = 0;
-            for (char c : node.text_content) {
+            for (char c : layout_text) {
                 if (std::islower(static_cast<unsigned char>(c))) lower_count++;
                 else if (std::isupper(static_cast<unsigned char>(c))) upper_count++;
             }
@@ -1165,8 +1166,8 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
                 effective_font_size = node.font_size * blend;
             }
             // Transform text to uppercase for display (small-caps shows all caps)
-            std::transform(node.text_content.begin(), node.text_content.end(),
-                           node.text_content.begin(),
+            std::transform(layout_text.begin(), layout_text.end(),
+                           layout_text.begin(),
                            [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
         }
 
@@ -1184,7 +1185,7 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
                 float max_line_width = 0;
                 int line_count = 1;
                 std::string current_line;
-                for (char c : node.text_content) {
+                for (char c : layout_text) {
                     if (c == '\n') {
                         float lw = current_line.empty() ? 0.0f :
                             measure_text(current_line, effective_font_size, node.font_family,
@@ -1221,7 +1222,7 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
                 int line_count = 1;
                 float current_line_width = 0;
 
-                for (char c : node.text_content) {
+                for (char c : layout_text) {
                     if (c == '\n') {
                         max_line_width = std::max(max_line_width, current_line_width);
                         current_line_width = 0;
@@ -1242,11 +1243,11 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
             }
         } else {
             // Normal text: use real measurement or fallback
-            float text_width = measure_text(node.text_content, effective_font_size, node.font_family,
+            float text_width = measure_text(layout_text, effective_font_size, node.font_family,
                                             node.font_weight, node.font_italic, node.letter_spacing);
             // Add word_spacing for each space character
             if (node.word_spacing != 0) {
-                for (char c : node.text_content) {
+                for (char c : layout_text) {
                     if (c == ' ') text_width += node.word_spacing;
                 }
             }

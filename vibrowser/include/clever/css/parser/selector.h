@@ -64,6 +64,18 @@ struct CompoundSelector {
     std::vector<SimpleSelector> simple_selectors;
 };
 
+enum class RightmostSelectorKeyType {
+    None,
+    Type,
+    Class,
+    Id,
+};
+
+struct RightmostSelectorKey {
+    RightmostSelectorKeyType type = RightmostSelectorKeyType::None;
+    std::string value;
+};
+
 struct ComplexSelector {
     struct Part {
         CompoundSelector compound;
@@ -71,6 +83,7 @@ struct ComplexSelector {
     };
     std::vector<Part> parts;
     std::optional<Specificity> precomputed_specificity;
+    RightmostSelectorKey rightmost_match_key;
 };
 
 struct SelectorList {

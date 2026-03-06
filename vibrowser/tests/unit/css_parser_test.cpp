@@ -292,6 +292,26 @@ TEST_F(CSSSelectorTest, UniversalSelector) {
     EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Universal);
 }
 
+TEST(CSSParserTest, SelectorStoresRightmostMatchKeyV2062) {
+    auto list = parse_selector_list("#hero.card, .item.active, nav, *, :where(.cta)");
+    ASSERT_EQ(list.selectors.size(), 5u);
+
+    EXPECT_EQ(list.selectors[0].rightmost_match_key.type, RightmostSelectorKeyType::Id);
+    EXPECT_EQ(list.selectors[0].rightmost_match_key.value, "hero");
+
+    EXPECT_EQ(list.selectors[1].rightmost_match_key.type, RightmostSelectorKeyType::Class);
+    EXPECT_EQ(list.selectors[1].rightmost_match_key.value, "item");
+
+    EXPECT_EQ(list.selectors[2].rightmost_match_key.type, RightmostSelectorKeyType::Type);
+    EXPECT_EQ(list.selectors[2].rightmost_match_key.value, "nav");
+
+    EXPECT_EQ(list.selectors[3].rightmost_match_key.type, RightmostSelectorKeyType::None);
+    EXPECT_TRUE(list.selectors[3].rightmost_match_key.value.empty());
+
+    EXPECT_EQ(list.selectors[4].rightmost_match_key.type, RightmostSelectorKeyType::None);
+    EXPECT_TRUE(list.selectors[4].rightmost_match_key.value.empty());
+}
+
 // Test 19: Attribute selector [href]
 TEST_F(CSSSelectorTest, AttributeSelectorExists) {
     auto list = parse_selector_list("[href]");

@@ -53,6 +53,23 @@ Specificity selector_specificity(const ComplexSelector& selector) {
     return compute_specificity(selector);
 }
 
+bool matches_rightmost_selector_key(const ElementView& element, const ComplexSelector& selector) {
+    switch (selector.rightmost_match_key.type) {
+        case RightmostSelectorKeyType::None:
+            return true;
+        case RightmostSelectorKeyType::Type:
+            return element.tag_name == selector.rightmost_match_key.value;
+        case RightmostSelectorKeyType::Class:
+            return std::find(element.classes.begin(),
+                             element.classes.end(),
+                             selector.rightmost_match_key.value) != element.classes.end();
+        case RightmostSelectorKeyType::Id:
+            return element.id == selector.rightmost_match_key.value;
+    }
+
+    return true;
+}
+
 // Get the string value from a declaration's ComponentValue vector
 std::string decl_value_string(const Declaration& decl) {
     return component_values_to_string(decl.values);
@@ -8041,6 +8058,9 @@ void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
         bool matched_any = false;
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
+            if (!matches_rightmost_selector_key(element, complex_sel)) {
+                continue;
+            }
             if (matcher_.matches(element, complex_sel)) {
                 Specificity spec = selector_specificity(complex_sel);
                 if (!matched_any || best_specificity < spec) {
@@ -8068,6 +8088,7 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
             if (complex_sel.parts.empty()) continue;
+            if (!matches_rightmost_selector_key(element, complex_sel)) continue;
 
             const auto& last_compound = complex_sel.parts.back().compound;
             bool has_pseudo = false;

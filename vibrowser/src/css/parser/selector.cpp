@@ -42,6 +42,31 @@ Specificity max_specificity_in_list(const SelectorList& list) {
     return max_spec;
 }
 
+RightmostSelectorKey compute_rightmost_match_key(const ComplexSelector& selector) {
+    if (selector.parts.empty()) {
+        return {};
+    }
+
+    const auto& simple_selectors = selector.parts.back().compound.simple_selectors;
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::Id) {
+            return {RightmostSelectorKeyType::Id, simple.value};
+        }
+    }
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::Class) {
+            return {RightmostSelectorKeyType::Class, simple.value};
+        }
+    }
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::Type) {
+            return {RightmostSelectorKeyType::Type, simple.value};
+        }
+    }
+
+    return {};
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -244,6 +269,7 @@ ComplexSelector SelectorParser::parse_complex_selector() {
         result.parts.push_back(std::move(part));
     }
 
+    result.rightmost_match_key = compute_rightmost_match_key(result);
     return result;
 }
 

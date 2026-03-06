@@ -107,6 +107,12 @@ struct DOMState {
                        std::unordered_map<std::string, std::vector<EventListenerEntry>>> listeners;
     // The context that owns this state (for freeing listener JSValues)
     JSContext* ctx = nullptr;
+    // Reusable event helper functions installed once per context.
+    JSValue event_prevent_default_fn = JS_UNDEFINED;
+    JSValue event_stop_propagation_fn = JS_UNDEFINED;
+    JSValue event_stop_immediate_propagation_fn = JS_UNDEFINED;
+    JSValue event_composed_path_fn = JS_UNDEFINED;
+    JSValue event_get_modifier_state_fn = JS_UNDEFINED;
     // document.cookie storage: name -> value
     std::map<std::string, std::string> cookies;
 
@@ -23042,6 +23048,115 @@ void set_pending_scroll(JSContext* ctx, double scroll_x, double scroll_y) {
 // Event dispatch
 // =========================================================================
 
+static JSValue js_event_prevent_default(JSContext* ctx, JSValueConst this_val,
+                                        int /*argc*/, JSValueConst* /*argv*/) {
+    JS_SetPropertyStr(ctx, this_val, "defaultPrevented", JS_TRUE);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_event_stop_propagation(JSContext* ctx, JSValueConst this_val,
+                                         int /*argc*/, JSValueConst* /*argv*/) {
+    JS_SetPropertyStr(ctx, this_val, "__stopped", JS_TRUE);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_event_stop_immediate_propagation(JSContext* ctx, JSValueConst this_val,
+                                                   int /*argc*/, JSValueConst* /*argv*/) {
+    JS_SetPropertyStr(ctx, this_val, "__stopped", JS_TRUE);
+    JS_SetPropertyStr(ctx, this_val, "__immediate_stopped", JS_TRUE);
+    return JS_UNDEFINED;
+}
+
+static JSValue js_event_composed_path(JSContext* ctx, JSValueConst this_val,
+                                      int /*argc*/, JSValueConst* /*argv*/) {
+    JSValue path = JS_GetPropertyStr(ctx, this_val, "__composedPathArray");
+    if (JS_IsUndefined(path) || JS_IsNull(path) || JS_IsException(path)) {
+        JS_FreeValue(ctx, path);
+        return JS_NewArray(ctx);
+    }
+
+    JSValue length_val = JS_GetPropertyStr(ctx, path, "length");
+    uint32_t length = 0;
+    if (!JS_IsException(length_val)) {
+        JS_ToUint32(ctx, &length, length_val);
+    }
+    JS_FreeValue(ctx, length_val);
+
+    JSValue result = JS_NewArray(ctx);
+    for (uint32_t i = 0; i < length; ++i) {
+        JS_SetPropertyUint32(ctx, result, i, JS_GetPropertyUint32(ctx, path, i));
+    }
+
+    JS_FreeValue(ctx, path);
+    return result;
+}
+
+static JSValue js_event_get_modifier_state(JSContext* ctx, JSValueConst this_val,
+                                           int argc, JSValueConst* argv) {
+    if (argc < 1) {
+        return JS_FALSE;
+    }
+
+    const char* key = JS_ToCString(ctx, argv[0]);
+    if (!key) {
+        return JS_FALSE;
+    }
+
+    const char* property_name = nullptr;
+    if (std::strcmp(key, "Control") == 0) {
+        property_name = "ctrlKey";
+    } else if (std::strcmp(key, "Shift") == 0) {
+        property_name = "shiftKey";
+    } else if (std::strcmp(key, "Alt") == 0) {
+        property_name = "altKey";
+    } else if (std::strcmp(key, "Meta") == 0) {
+        property_name = "metaKey";
+    }
+    JS_FreeCString(ctx, key);
+
+    if (!property_name) {
+        return JS_FALSE;
+    }
+
+    return JS_GetPropertyStr(ctx, this_val, property_name);
+}
+
+static void ensure_event_helper_functions(JSContext* ctx, DOMState* state) {
+    if (!state) return;
+    if (!JS_IsUndefined(state->event_prevent_default_fn)) return;
+
+    state->event_prevent_default_fn =
+        JS_NewCFunction(ctx, js_event_prevent_default, "preventDefault", 0);
+    state->event_stop_propagation_fn =
+        JS_NewCFunction(ctx, js_event_stop_propagation, "stopPropagation", 0);
+    state->event_stop_immediate_propagation_fn =
+        JS_NewCFunction(ctx, js_event_stop_immediate_propagation, "stopImmediatePropagation", 0);
+    state->event_composed_path_fn =
+        JS_NewCFunction(ctx, js_event_composed_path, "composedPath", 0);
+    state->event_get_modifier_state_fn =
+        JS_NewCFunction(ctx, js_event_get_modifier_state, "getModifierState", 1);
+}
+
+static void install_event_methods(JSContext* ctx, JSValue event_obj,
+                                  bool include_modifier_state) {
+    auto* state = get_dom_state(ctx);
+    if (!state) return;
+
+    ensure_event_helper_functions(ctx, state);
+    JS_SetPropertyStr(ctx, event_obj, "preventDefault",
+        JS_DupValue(ctx, state->event_prevent_default_fn));
+    JS_SetPropertyStr(ctx, event_obj, "stopPropagation",
+        JS_DupValue(ctx, state->event_stop_propagation_fn));
+    JS_SetPropertyStr(ctx, event_obj, "stopImmediatePropagation",
+        JS_DupValue(ctx, state->event_stop_immediate_propagation_fn));
+    JS_SetPropertyStr(ctx, event_obj, "composedPath",
+        JS_DupValue(ctx, state->event_composed_path_fn));
+    if (include_modifier_state) {
+        JS_SetPropertyStr(ctx, event_obj, "getModifierState",
+            JS_DupValue(ctx, state->event_get_modifier_state_fn));
+    }
+}
+
 // Helper: create a standard event object with all propagation methods
 static JSValue create_event_object(JSContext* ctx,
                                     const std::string& event_type,
@@ -23064,33 +23179,7 @@ static JSValue create_event_object(JSContext* ctx,
     // Hidden propagation state
     JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
-
-    // Install methods via eval
-    const char* method_code = R"JS(
-        (function() {
-            var evt = this;
-            evt.preventDefault = function() { evt.defaultPrevented = true; };
-            evt.stopPropagation = function() { evt.__stopped = true; };
-            evt.stopImmediatePropagation = function() {
-                evt.__stopped = true;
-                evt.__immediate_stopped = true;
-            };
-            evt.composedPath = function() {
-                var arr = evt.__composedPathArray;
-                if (!arr) return [];
-                var result = [];
-                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
-                return result;
-            };
-        })
-    )JS";
-    JSValue setup_fn = JS_Eval(ctx, method_code, std::strlen(method_code),
-                                "<event-setup>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsFunction(ctx, setup_fn)) {
-        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
-        JS_FreeValue(ctx, setup_ret);
-    }
-    JS_FreeValue(ctx, setup_fn);
+    install_event_methods(ctx, event_obj, false);
 
     return event_obj;
 }
@@ -23154,40 +23243,7 @@ static JSValue create_mouse_event_object(JSContext* ctx,
     // Hidden propagation state
     JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
-
-    // Install methods via eval
-    const char* method_code = R"JS(
-        (function() {
-            var evt = this;
-            evt.preventDefault = function() { evt.defaultPrevented = true; };
-            evt.stopPropagation = function() { evt.__stopped = true; };
-            evt.stopImmediatePropagation = function() {
-                evt.__stopped = true;
-                evt.__immediate_stopped = true;
-            };
-            evt.composedPath = function() {
-                var arr = evt.__composedPathArray;
-                if (!arr) return [];
-                var result = [];
-                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
-                return result;
-            };
-            evt.getModifierState = function(key) {
-                if (key === 'Control') return evt.ctrlKey;
-                if (key === 'Shift') return evt.shiftKey;
-                if (key === 'Alt') return evt.altKey;
-                if (key === 'Meta') return evt.metaKey;
-                return false;
-            };
-        })
-    )JS";
-    JSValue setup_fn = JS_Eval(ctx, method_code, std::strlen(method_code),
-                                "<mouse-event-setup>", JS_EVAL_TYPE_GLOBAL);
-    if (JS_IsFunction(ctx, setup_fn)) {
-        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
-        JS_FreeValue(ctx, setup_ret);
-    }
-    JS_FreeValue(ctx, setup_fn);
+    install_event_methods(ctx, event_obj, true);
 
     return event_obj;
 }
@@ -23899,6 +23955,12 @@ void cleanup_dom_bindings(JSContext* ctx) {
         JS_FreeValue(ctx, pending.observer_obj);
     }
     state->pending_mutations.clear();
+
+    JS_FreeValue(ctx, state->event_prevent_default_fn);
+    JS_FreeValue(ctx, state->event_stop_propagation_fn);
+    JS_FreeValue(ctx, state->event_stop_immediate_propagation_fn);
+    JS_FreeValue(ctx, state->event_composed_path_fn);
+    JS_FreeValue(ctx, state->event_get_modifier_state_fn);
 
     delete state;
 

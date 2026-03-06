@@ -41699,6 +41699,85 @@ TEST_F(PaintTest, TextWrapBalancePureText) {
     EXPECT_NE(result.root, nullptr);
 }
 
+TEST_F(PaintTest, BoxShadowBlurClampCapsOversizedRadiusV2062) {
+    const Rect element_rect{96.0f, 96.0f, 32.0f, 32.0f};
+    const float huge_blur = 5000.0f;
+    const float huge_expand = huge_blur * SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+    const float capped_blur = SoftwareRenderer::kMaxBoxShadowBlurRadius;
+    const float capped_expand = capped_blur * SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+
+    SoftwareRenderer huge_renderer(256, 256);
+    huge_renderer.clear({255, 255, 255, 255});
+    DisplayList huge_shadow;
+    huge_shadow.fill_box_shadow(
+        {element_rect.x - huge_expand, element_rect.y - huge_expand,
+         element_rect.width + huge_expand * 2.0f, element_rect.height + huge_expand * 2.0f},
+        element_rect, {0, 0, 0, 255}, huge_blur, 0.0f);
+    huge_renderer.render(huge_shadow);
+
+    SoftwareRenderer capped_renderer(256, 256);
+    capped_renderer.clear({255, 255, 255, 255});
+    DisplayList capped_shadow;
+    capped_shadow.fill_box_shadow(
+        {element_rect.x - capped_expand, element_rect.y - capped_expand,
+         element_rect.width + capped_expand * 2.0f, element_rect.height + capped_expand * 2.0f},
+        element_rect, {0, 0, 0, 255}, capped_blur, 0.0f);
+    capped_renderer.render(capped_shadow);
+
+    const struct {
+        int x;
+        int y;
+    } samples[] = {{0, 0}, {72, 112}, {96, 112}, {140, 112}, {255, 255}};
+
+    for (const auto& sample : samples) {
+        const auto huge_pixel = huge_renderer.get_pixel(sample.x, sample.y);
+        const auto capped_pixel = capped_renderer.get_pixel(sample.x, sample.y);
+        EXPECT_EQ(huge_pixel.r, capped_pixel.r) << "r mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(huge_pixel.g, capped_pixel.g) << "g mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(huge_pixel.b, capped_pixel.b) << "b mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(huge_pixel.a, capped_pixel.a) << "a mismatch at (" << sample.x << "," << sample.y << ")";
+    }
+}
+
+TEST_F(PaintTest, BoxShadowBlurClampKeepsNormalShadowPixelsV2062) {
+    const Rect element_rect{90.0f, 90.0f, 48.0f, 48.0f};
+    const float normal_blur = 12.0f;
+    const float exact_expand = normal_blur * SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+    const float oversized_expand = 400.0f;
+
+    SoftwareRenderer exact_renderer(256, 256);
+    exact_renderer.clear({255, 255, 255, 255});
+    DisplayList exact_shadow;
+    exact_shadow.fill_box_shadow(
+        {element_rect.x - exact_expand, element_rect.y - exact_expand,
+         element_rect.width + exact_expand * 2.0f, element_rect.height + exact_expand * 2.0f},
+        element_rect, {0, 0, 0, 200}, normal_blur, 0.0f);
+    exact_renderer.render(exact_shadow);
+
+    SoftwareRenderer oversized_renderer(256, 256);
+    oversized_renderer.clear({255, 255, 255, 255});
+    DisplayList oversized_shadow;
+    oversized_shadow.fill_box_shadow(
+        {element_rect.x - oversized_expand, element_rect.y - oversized_expand,
+         element_rect.width + oversized_expand * 2.0f, element_rect.height + oversized_expand * 2.0f},
+        element_rect, {0, 0, 0, 200}, normal_blur, 0.0f);
+    oversized_renderer.render(oversized_shadow);
+
+    const struct {
+        int x;
+        int y;
+    } samples[] = {{32, 32}, {84, 114}, {114, 114}, {148, 114}, {220, 220}};
+
+    for (const auto& sample : samples) {
+        const auto exact_pixel = exact_renderer.get_pixel(sample.x, sample.y);
+        const auto oversized_pixel = oversized_renderer.get_pixel(sample.x, sample.y);
+        EXPECT_EQ(exact_pixel.r, oversized_pixel.r) << "r mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(exact_pixel.g, oversized_pixel.g) << "g mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(exact_pixel.b, oversized_pixel.b) << "b mismatch at (" << sample.x << "," << sample.y << ")";
+        EXPECT_EQ(exact_pixel.a, oversized_pixel.a) << "a mismatch at (" << sample.x << "," << sample.y << ")";
+    }
+}
+
 TEST(RenderPipeline, InvalidDprFallsBackToOne) {
     auto result = render_html("<html><body>ok</body></html>", 320, 200, 0.0f);
     ASSERT_TRUE(result.success);

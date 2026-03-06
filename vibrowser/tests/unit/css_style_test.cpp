@@ -830,6 +830,62 @@ TEST(StyleResolverTest, UsesPrecomputedSelectorSpecificity) {
     EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
 }
 
+TEST(StyleResolverTest, RightmostSelectorPrefilterKeepsCascadeResultsV2062) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ":where(.card) { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }"
+        "* { display: block; }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(style.display, Display::Block);
+}
+
+TEST(StyleResolverTest, RightmostSelectorPrefilterSkipsImpossibleClassRulesV2062) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+
+    StyleRule impossible_rule;
+    CompoundSelector impossible_compound;
+    impossible_compound.simple_selectors.push_back(make_type_sel("div"));
+    auto impossible_selector = make_simple_complex(impossible_compound);
+    impossible_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "missing"};
+    impossible_rule.selectors.selectors.push_back(impossible_selector);
+    impossible_rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    sheet.rules.push_back(impossible_rule);
+
+    StyleRule matching_rule;
+    CompoundSelector matching_compound;
+    matching_compound.simple_selectors.push_back(make_class_sel("card"));
+    auto matching_selector = make_simple_complex(matching_compound);
+    matching_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "card"};
+    matching_rule.selectors.selectors.push_back(matching_selector);
+    matching_rule.declarations.push_back(make_decl("display", "flex"));
+    sheet.rules.push_back(matching_rule);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, Color::black());
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
 TEST(StyleResolverTest, WhereSelectorKeepsZeroSpecificity) {
     StyleResolver resolver;
     auto sheet = parse_stylesheet(

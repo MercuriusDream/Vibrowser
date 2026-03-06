@@ -4708,6 +4708,104 @@ TEST(JSEventPropagation, ComposedPathReturnsAncestorChain) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, EventObjectMethodsStillWorkWithoutPerDispatchEvalV2062) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='parent'><button id='child'>x</button></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        var eventLog = '';
+        var parent = document.getElementById('parent');
+        var child = document.getElementById('child');
+
+        child.addEventListener('click', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.push('mutated');
+            var secondPath = e.composedPath();
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            eventLog = [
+                e.defaultPrevented,
+                e.__stopped,
+                e.__immediate_stopped,
+                firstPath.length === secondPath.length + 1,
+                secondPath.length >= 4,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'child',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent'
+            ].join('|');
+        });
+
+        child.addEventListener('click', function() {
+            eventLog += '|unexpected-second-listener';
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* child_node = find_node_by_id(doc.get(), "child");
+    ASSERT_NE(child_node, nullptr);
+
+    bool prevented = clever::js::dispatch_event(engine.context(), child_node, "click");
+    EXPECT_TRUE(prevented);
+    EXPECT_EQ(engine.evaluate("eventLog"), "true|true|true|true|true|true|true");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MouseEventObjectMethodsStillWorkWithoutPerDispatchEvalV2062) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='parent'><button id='child'>x</button></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        var mouseLog = '';
+        var parent = document.getElementById('parent');
+        var child = document.getElementById('child');
+
+        child.addEventListener('mousedown', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.pop();
+            var secondPath = e.composedPath();
+            e.stopPropagation();
+            e.preventDefault();
+            mouseLog = [
+                e.getModifierState('Control'),
+                e.getModifierState('Shift'),
+                e.getModifierState('Alt'),
+                e.getModifierState('Meta'),
+                e.getModifierState('CapsLock'),
+                e.defaultPrevented,
+                e.__stopped,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'child',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent',
+                e.clientX,
+                e.clientY,
+                secondPath.length >= 4
+            ].join('|');
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* child_node = find_node_by_id(doc.get(), "child");
+    ASSERT_NE(child_node, nullptr);
+
+    bool prevented = clever::js::dispatch_mouse_event(
+        engine.context(), child_node, "mousedown",
+        12.0, 34.0, 56.0, 78.0,
+        1, 1,
+        true, false, true, false,
+        2);
+    EXPECT_TRUE(prevented);
+    EXPECT_EQ(engine.evaluate("mouseLog"), "true|false|true|false|false|true|true|true|true|12|34|true");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // Test: addEventListener with options object {capture: true}
 TEST(JSEventPropagation, AddEventListenerWithOptionsObject) {
     auto doc = clever::html::parse(
