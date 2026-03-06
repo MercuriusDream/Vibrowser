@@ -12,20 +12,24 @@
 // scrollable container bounds, and a copy of the rendered pixels so we
 // can composite the element at the "stuck" position during scroll.
 struct StickyElementInfo {
-    float abs_y;           // absolute Y of the element in page coordinates (CSS pixels)
-    float height;          // border-box height of the element (CSS pixels)
-    float top_offset;      // CSS `top` value in CSS pixels
-    float container_top;   // top of the scrollable container (CSS pixels)
-    float container_bottom;// bottom of the scrollable container (CSS pixels)
-    float container_scroll_y; // scroll_top of the sticky container (CSS pixels)
-    float container_x;     // x position of the scroll container in page coordinates (CSS pixels)
-    float container_y;     // y position of the scroll container in page coordinates (CSS pixels)
-    bool is_page_sticky;   // true when relative to viewport (page scroll), false for container-relative sticky
+    float abs_y = 0;           // absolute Y of the element in page coordinates (CSS pixels)
+    float height = 0;          // border-box height of the element (CSS pixels)
+    float top_offset = 0;      // CSS `top` value in CSS pixels
+    float container_top = 0;   // top of the scrollable container (CSS pixels)
+    float container_bottom = 0;// bottom of the scrollable container (CSS pixels)
+    float container_scroll_y = 0; // scroll_top of the sticky container (CSS pixels)
+    float container_x = 0;     // x position of the scroll container in page coordinates (CSS pixels)
+    float container_y = 0;     // y position of the scroll container in page coordinates (CSS pixels)
+    bool is_page_sticky = true;   // true when relative to viewport (page scroll), false for container-relative sticky
     // Pixel data for the sticky element's region (RGBA, row-major)
     std::vector<uint8_t> pixels;
-    int pixel_x;           // x position in the rendered buffer
-    int pixel_width;       // width in pixels
-    int pixel_height;      // height in pixels
+    int pixel_x = 0;           // x position in the rendered buffer
+    int pixel_width = 0;       // width in pixels
+    int pixel_height = 0;      // height in pixels
+    float renderer_dpr = 1.0f; // DPR used when this overlay snapshot was captured
+    float logical_x = 0;       // overlay x in CSS pixels
+    float logical_width = 0;   // overlay width in CSS pixels
+    float logical_height = 0;  // overlay height in CSS pixels
 };
 
 // Info about a position:fixed element extracted after layout + render.
@@ -34,12 +38,15 @@ struct StickyElementInfo {
 // composite them at their viewport-relative position during drawRect.
 struct FixedElementInfo {
     // Viewport-relative position in CSS/page coordinates.
-    float viewport_x;      // X position in viewport (CSS pixels)
-    float viewport_y;      // Y position in viewport (CSS pixels)
+    float viewport_x = 0;      // X position in viewport (CSS pixels)
+    float viewport_y = 0;      // Y position in viewport (CSS pixels)
     // Pixel data for the fixed element's region (RGBA, row-major)
     std::vector<uint8_t> pixels;
-    int pixel_width;       // width in pixels
-    int pixel_height;      // height in pixels
+    int pixel_width = 0;       // width in pixels
+    int pixel_height = 0;      // height in pixels
+    float renderer_dpr = 1.0f; // DPR used when this overlay snapshot was captured
+    float logical_width = 0;   // overlay width in CSS pixels
+    float logical_height = 0;  // overlay height in CSS pixels
 };
 
 // Pixel-based CSS transition: crossfade between old and new rendered state.

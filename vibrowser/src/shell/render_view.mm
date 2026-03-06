@@ -344,10 +344,23 @@ struct TextRegion {
     }
     _stickyImages.clear();
     _stickyElements = std::move(elements);
+    CGFloat overlayScale = (std::isfinite(_backingScale) && _backingScale >= 1.0) ? _backingScale : 1.0;
 
     // Pre-create CGImages for each sticky element from their pixel data
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     for (auto& elem : _stickyElements) {
+        if (!std::isfinite(elem.renderer_dpr) || elem.renderer_dpr < 1.0f) {
+            elem.renderer_dpr = overlayScale;
+        }
+        if (elem.pixel_x > 0 || elem.logical_x == 0.0f) {
+            elem.logical_x = static_cast<float>(elem.pixel_x) / elem.renderer_dpr;
+        }
+        if (elem.logical_width <= 0.0f && elem.pixel_width > 0) {
+            elem.logical_width = static_cast<float>(elem.pixel_width) / elem.renderer_dpr;
+        }
+        if (elem.logical_height <= 0.0f && elem.pixel_height > 0) {
+            elem.logical_height = static_cast<float>(elem.pixel_height) / elem.renderer_dpr;
+        }
         if (elem.pixels.empty() || elem.pixel_width <= 0 || elem.pixel_height <= 0) {
             _stickyImages.push_back(nullptr);
             continue;
@@ -376,10 +389,20 @@ struct TextRegion {
     }
     _fixedImages.clear();
     _fixedElements = std::move(elements);
+    CGFloat overlayScale = (std::isfinite(_backingScale) && _backingScale >= 1.0) ? _backingScale : 1.0;
 
     // Pre-create CGImages for each fixed element from their pixel data
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     for (auto& elem : _fixedElements) {
+        if (!std::isfinite(elem.renderer_dpr) || elem.renderer_dpr < 1.0f) {
+            elem.renderer_dpr = overlayScale;
+        }
+        if (elem.logical_width <= 0.0f && elem.pixel_width > 0) {
+            elem.logical_width = static_cast<float>(elem.pixel_width) / elem.renderer_dpr;
+        }
+        if (elem.logical_height <= 0.0f && elem.pixel_height > 0) {
+            elem.logical_height = static_cast<float>(elem.pixel_height) / elem.renderer_dpr;
+        }
         if (elem.pixels.empty() || elem.pixel_width <= 0 || elem.pixel_height <= 0) {
             _fixedImages.push_back(nullptr);
             continue;
@@ -481,8 +504,8 @@ struct TextRegion {
     // For each sticky element, determine if it should be "stuck" at its
     // CSS `top` offset based on the current scroll position. If so, draw
     // its pre-rendered pixels at the stuck position on top of the main image.
-    // All coordinates here are in device pixels (renderer coords) that we
-    // convert to logical points via _backingScale and then scale by _pageScale.
+    // Overlay snapshots carry their own renderer DPR so a newly-rendered main
+    // surface cannot mis-size or misplace an older sticky snapshot mid-update.
     for (size_t i = 0; i < _stickyElements.size(); i++) {
         if (i >= _stickyImages.size() || !_stickyImages[i]) continue;
         auto& elem = _stickyElements[i];
@@ -503,7 +526,9 @@ struct TextRegion {
         // past the bottom of its container. When the container's bottom edge
         // minus the element's height reaches the stick threshold, the element
         // should start scrolling away with the container.
-        float max_stick_y = elem.container_bottom - elem.height;
+        float container_bottom_css = elem.is_page_sticky ? static_cast<float>(_contentHeight)
+                                                         : elem.container_bottom;
+        float max_stick_y = container_bottom_css - elem.height;
         bool past_container = elem.is_page_sticky
             ? (stickyScrollCss + stick_threshold > max_stick_y)
             : (elem.container_y + stick_threshold > max_stick_y);
@@ -527,10 +552,10 @@ struct TextRegion {
         }
 
         // Convert from renderer pixels/CSS coords to logical view points.
-        CGFloat draw_x = (elem.pixel_x / _backingScale) * _pageScale;
+        CGFloat draw_x = elem.logical_x * _pageScale;
         CGFloat draw_y = [self viewOffsetForDocumentY:draw_y_css] - _scrollOffset;
-        CGFloat draw_w = (elem.pixel_width / _backingScale) * _pageScale;
-        CGFloat draw_h = (elem.pixel_height / _backingScale) * _pageScale;
+        CGFloat draw_w = elem.logical_width * _pageScale;
+        CGFloat draw_h = elem.logical_height * _pageScale;
 
         // Draw the sticky element overlay with the same flip transform as the main image
         CGContextSaveGState(cgctx);
@@ -550,8 +575,8 @@ struct TextRegion {
 
         CGFloat fx = felem.viewport_x * _pageScale;
         CGFloat fy = felem.viewport_y * _pageScale;
-        CGFloat fw = (felem.pixel_width / _backingScale) * _pageScale;
-        CGFloat fh = (felem.pixel_height / _backingScale) * _pageScale;
+        CGFloat fw = felem.logical_width * _pageScale;
+        CGFloat fh = felem.logical_height * _pageScale;
 
         // Draw with the same flip transform as the main image.
         CGContextSaveGState(cgctx);

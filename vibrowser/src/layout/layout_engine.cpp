@@ -202,6 +202,22 @@ static bool participates_in_intrinsic_height_measurement(const LayoutNode& node)
     return participates_in_intrinsic_width_measurement(node);
 }
 
+float inline_block_used_width_from_children(const LayoutNode& node) {
+    float max_child_width = 0.0f;
+    for (const auto& child : node.children) {
+        if (!participates_in_intrinsic_width_measurement(*child)) continue;
+        float child_width = child->geometry.margin_box_width();
+        if (node.text_align == 0) {
+            max_child_width = std::max(max_child_width, child->geometry.x + child_width);
+        } else {
+            max_child_width = std::max(max_child_width, child_width);
+        }
+    }
+    return max_child_width
+        + node.geometry.padding.left + node.geometry.padding.right
+        + node.geometry.border.left + node.geometry.border.right;
+}
+
 size_t LayoutEngine::IntrinsicWidthCacheKeyHash::operator()(const IntrinsicWidthCacheKey& key) const {
     size_t seed = std::hash<const LayoutNode*>{}(key.node);
     seed ^= std::hash<bool>{}(key.max_content) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -386,6 +402,7 @@ static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
 void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewport_height) {
     intrinsic_width_cache_.clear();
     g_intrinsic_height_cache.clear();
+    inline_block_shrink_wrap_relayout_count_ = 0;
     viewport_width_ = viewport_width;
     viewport_height_ = viewport_height;
     root.geometry.x = 0;
@@ -667,7 +684,7 @@ float LayoutEngine::compute_height(LayoutNode& node, float containing_height) {
     return -1; // signal: compute from children
 }
 
-void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
+void LayoutEngine::layout_block(LayoutNode& node, float containing_width, float known_width) {
     if (node.display == DisplayType::None || node.mode == LayoutMode::None) {
         node.geometry.width = 0;
         node.geometry.height = 0;
@@ -731,7 +748,11 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
 
     // Compute width FIRST (resolves css_width percentage) — needed before auto margins
     if (node.parent != nullptr) {
-        node.geometry.width = compute_width(node, containing_width);
+        if (known_width >= 0.0f) {
+            node.geometry.width = known_width;
+        } else {
+            node.geometry.width = compute_width(node, containing_width);
+        }
     }
 
     // Resolve auto margins for centering (AFTER width is resolved)
@@ -1542,29 +1563,14 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                     child->geometry.width = child->specified_width;
                     layout_block(*child, layout_width);
                 } else {
-                    layout_block(*child, layout_width);
-                    // Shrink-wrap width to content
-                    // When text-align is center/right, gc.x includes the centering
-                    // offset which would inflate the width. Use just gc.margin_box_width()
-                    // in that case to get the correct intrinsic width.
-                    float max_cw = 0;
-                    for (auto& gc : child->children) {
-                        if (!participates_in_intrinsic_width_measurement(*gc)) continue;
-                        if (child->text_align == 0) {
-                            max_cw = std::max(max_cw, gc->geometry.x + gc->geometry.margin_box_width());
-                        } else {
-                            max_cw = std::max(max_cw, gc->geometry.margin_box_width());
-                        }
-                    }
-                    float sw = max_cw
-                        + child->geometry.padding.left + child->geometry.padding.right
-                        + child->geometry.border.left + child->geometry.border.right;
-                    // Re-layout with shrink-wrapped width so internal alignment
-                    // (text-align) uses the correct content area, not the original
-                    // containing width.
-                    if (sw != child->geometry.width) {
-                        child->geometry.width = sw;
-                        layout_block(*child, sw);
+                    float shrink_wrap_width = compute_width(*child, layout_width);
+                    layout_block(*child, layout_width, shrink_wrap_width);
+                    float used_width = inline_block_used_width_from_children(*child);
+                    if (std::abs(used_width - child->geometry.width) > kMarginCollapseEpsilon) {
+                        ++inline_block_shrink_wrap_relayout_count_;
+                        float relayout_width = compute_width(*child, used_width);
+                        child->geometry.width = relayout_width;
+                        layout_block(*child, used_width, relayout_width);
                     }
                 }
                 break;
@@ -2315,30 +2321,17 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 // (unit tests that use children.push_back instead of append_child).
                 child->geometry.width = child->specified_width;
             }
-            layout_block(*child, containing_width);
-            // Shrink-wrap width to content if no explicit width
-            if (child->specified_width < 0) {
-                // When parent has text-align center/right, the centering offset
-                // in gc.x inflates the measurement. Use just gc.margin_box_width()
-                // in that case to avoid double-centering.
-                float max_child_w = 0;
-                for (auto& gc : child->children) {
-                    if (!participates_in_intrinsic_width_measurement(*gc)) continue;
-                    float w = gc->geometry.margin_box_width();
-                    if (child->text_align == 0) {
-                        max_child_w = std::max(max_child_w, gc->geometry.x + w);
-                    } else {
-                        max_child_w = std::max(max_child_w, w);
-                    }
-                }
-                float sw = max_child_w
-                    + child->geometry.padding.left + child->geometry.padding.right
-                    + child->geometry.border.left + child->geometry.border.right;
-                // Re-layout with shrink-wrapped width so internal alignment
-                // (text-align) uses the correct content area.
-                if (sw != child->geometry.width) {
-                    child->geometry.width = sw;
-                    layout_block(*child, sw);
+            if (child->specified_width >= 0) {
+                layout_block(*child, containing_width);
+            } else {
+                float shrink_wrap_width = compute_width(*child, containing_width);
+                layout_block(*child, containing_width, shrink_wrap_width);
+                float used_width = inline_block_used_width_from_children(*child);
+                if (std::abs(used_width - child->geometry.width) > kMarginCollapseEpsilon) {
+                    ++inline_block_shrink_wrap_relayout_count_;
+                    float relayout_width = compute_width(*child, used_width);
+                    child->geometry.width = relayout_width;
+                    layout_block(*child, used_width, relayout_width);
                 }
             }
         } else {

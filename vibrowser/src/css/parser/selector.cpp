@@ -59,9 +59,13 @@ bool Specificity::operator==(const Specificity& other) const {
 }
 
 Specificity compute_specificity(const ComplexSelector& selector) {
+    if (selector.precomputed_specificity.has_value()) {
+        return *selector.precomputed_specificity;
+    }
+
     Specificity spec;
-    for (auto& part : selector.parts) {
-        for (auto& ss : part.compound.simple_selectors) {
+    for (const auto& part : selector.parts) {
+        for (const auto& ss : part.compound.simple_selectors) {
             switch (ss.type) {
                 case SimpleSelectorType::Id:
                     spec.a++;
@@ -175,6 +179,7 @@ SelectorList SelectorParser::parse() {
 
     ComplexSelector first = parse_complex_selector();
     if (!first.parts.empty()) {
+        first.precomputed_specificity = compute_specificity(first);
         list.selectors.push_back(std::move(first));
     }
 
@@ -187,6 +192,7 @@ SelectorList SelectorParser::parse() {
                 if (!at_end()) {
                     ComplexSelector next = parse_complex_selector();
                     if (!next.parts.empty()) {
+                        next.precomputed_specificity = compute_specificity(next);
                         list.selectors.push_back(std::move(next));
                     }
                 }

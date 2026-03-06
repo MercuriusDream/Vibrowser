@@ -8,6 +8,8 @@
 #include <clever/html/tree_builder.h>
 #include <clever/paint/animation_controller.h>
 #include <memory>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <set>
 #include <string>
@@ -134,6 +136,12 @@ std::string extract_preferred_font_url(const std::string& src);
 
 // Decode a data: URL payload for @font-face font sources (exposed for testing)
 std::optional<std::vector<uint8_t>> decode_font_data_url(const std::string& url);
+
+// Inline style cache stats (exposed for testing)
+void reset_inline_style_cache_stats_for_testing();
+size_t inline_style_cache_size_for_testing();
+uint64_t inline_style_cache_hit_count_for_testing();
+uint64_t inline_style_cache_miss_count_for_testing();
 
 // CSS Transition easing functions (exposed for testing)
 float ease_linear(float t);

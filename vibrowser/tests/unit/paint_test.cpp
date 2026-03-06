@@ -39662,6 +39662,54 @@ TEST_F(PaintTest, TextWidthCacheClearsOnRegisteredFontReset) {
     TextRenderer::clear_registered_fonts();
 }
 
+TEST_F(PaintTest, InlineStyleCacheReusesParsedDeclarations) {
+    reset_inline_style_cache_stats_for_testing();
+
+    auto result = render_html(
+        "<html><body>"
+        "<div style='width:20px;height:20px;background:red;'></div>"
+        "<div style='width:20px;height:20px;background:red;'></div>"
+        "</body></html>",
+        120, 120);
+
+    ASSERT_TRUE(result.success) << result.error;
+    EXPECT_EQ(inline_style_cache_size_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_hit_count_for_testing(), 1u);
+}
+
+TEST_F(PaintTest, InlineStyleCacheDoesNotLeakAcrossDifferentStyleStrings) {
+    reset_inline_style_cache_stats_for_testing();
+
+    auto red_result = render_html(
+        "<html><body><div id='box' style='width:20px;height:20px;background:red;'></div></body></html>",
+        120, 120);
+    ASSERT_TRUE(red_result.success) << red_result.error;
+    EXPECT_EQ(inline_style_cache_size_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_hit_count_for_testing(), 0u);
+
+    auto blue_result = render_html(
+        "<html><body><div id='box' style='width:20px;height:20px;background:blue;'></div></body></html>",
+        120, 120);
+    ASSERT_TRUE(blue_result.success) << blue_result.error;
+    EXPECT_EQ(inline_style_cache_size_for_testing(), 1u);
+    EXPECT_EQ(inline_style_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(inline_style_cache_hit_count_for_testing(), 0u);
+
+    bool found_blue_box = false;
+    std::function<void(const clever::layout::LayoutNode&)> check =
+        [&](const clever::layout::LayoutNode& node) {
+        if (node.element_id == "box") {
+            EXPECT_EQ(node.background_color, 0xFF0000FFu);
+            found_blue_box = true;
+        }
+        for (const auto& child : node.children) check(*child);
+    };
+    check(*blue_result.root);
+    EXPECT_TRUE(found_blue_box);
+}
+
 TEST(WebFontRegistration, FontDisplayPropertyCollected) {
     auto result = render_html(
         "<html><head><style>"

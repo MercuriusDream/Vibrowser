@@ -4,9 +4,36 @@
 #include <clever/js/js_window.h>
 #include <clever/html/tree_builder.h>
 #include <gtest/gtest.h>
+
+extern "C" {
+#include <quickjs.h>
+}
+
 #include <chrono>
 #include <string>
 #include <thread>
+
+namespace {
+
+JSValue js_advance_host_timers(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
+    int delay_ms = 0;
+    if (argc >= 1) {
+        JS_ToInt32(ctx, &delay_ms, argv[0]);
+    }
+    return JS_NewInt32(ctx, clever::js::flush_ready_timers(ctx, delay_ms));
+}
+
+void install_js_timer_test_helpers(JSContext* ctx) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(
+        ctx,
+        global,
+        "__advanceHostTimers",
+        JS_NewCFunction(ctx, js_advance_host_timers, "__advanceHostTimers", 1));
+    JS_FreeValue(ctx, global);
+}
+
+} // namespace
 
 // ============================================================================
 // 1. JSEngine basic initialization and destruction
@@ -1351,6 +1378,59 @@ TEST(JSTimers, IntervalSchedulingStaysAlignedAfterCoarseAdvance) {
 
     EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 1), 1);
     EXPECT_EQ(engine.evaluate("ticks"), "2");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
+TEST(JSTimers, IntervalAvoidsCallbackDrift) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    install_js_timer_test_helpers(engine.context());
+    engine.evaluate(R"(
+        var ticks = [];
+        var id = setInterval(function() {
+            ticks.push(ticks.length + 1);
+            if (ticks.length === 1) {
+                __advanceHostTimers(35);
+            }
+            if (ticks.length === 2) {
+                clearInterval(id);
+            }
+        }, 10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 10), 1);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 4), 0);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 1), 1);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1,2");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
+TEST(JSTimers, ClearedIntervalDoesNotRescheduleAfterCallback) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    install_js_timer_test_helpers(engine.context());
+    engine.evaluate(R"(
+        var ticks = 0;
+        var id = setInterval(function() {
+            ticks = ticks + 1;
+            clearInterval(id);
+            __advanceHostTimers(100);
+        }, 10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 10), 1);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 100), 0);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
 
     clever::js::cleanup_timers(engine.context());
 }

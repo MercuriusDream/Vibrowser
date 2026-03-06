@@ -973,14 +973,14 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
 
                 std::string one_cookie = trim(raw_value.substr(segment_start, i - segment_start));
                 if (!one_cookie.empty()) {
-                    CookieJar::shared().set_from_header(one_cookie, current.host);
+                    CookieJar::shared().set_from_header(one_cookie, current.host, current.path);
                 }
                 segment_start = i + 1;
             }
 
             std::string trailing_cookie = trim(raw_value.substr(segment_start));
             if (!trailing_cookie.empty()) {
-                CookieJar::shared().set_from_header(trailing_cookie, current.host);
+                CookieJar::shared().set_from_header(trailing_cookie, current.host, current.path);
             }
         }
 

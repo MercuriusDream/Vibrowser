@@ -1626,7 +1626,7 @@ static std::string build_shell_message_html(const std::string& page_title,
 
         // Store cookies from response
         for (auto& cookie_val : response->headers.get_all("set-cookie")) {
-            jar.set_from_header(cookie_val, req.host);
+            jar.set_from_header(cookie_val, req.host, req.path);
         }
 
         // Follow redirects
@@ -1940,6 +1940,10 @@ static std::string build_shell_message_html(const std::string& page_title,
                     info.container_x = child_container_x;
                     info.container_y = child_container_y;
                     info.is_page_sticky = child_is_page_sticky;
+                    info.renderer_dpr = pixel_scale;
+                    info.logical_x = abs_x;
+                    info.logical_width = border_box_w;
+                    info.logical_height = border_box_h;
 
                     // Compute pixel rect in the rendered buffer
                     int px_x = std::max(0, static_cast<int>(std::round(abs_x * pixel_scale)));
@@ -2021,6 +2025,9 @@ static std::string build_shell_message_html(const std::string& page_title,
                     FixedElementInfo info;
                     info.viewport_x = vp_x;
                     info.viewport_y = vp_y;
+                    info.renderer_dpr = pixel_scale;
+                    info.logical_width = border_box_w;
+                    info.logical_height = border_box_h;
 
                     int px_x = std::max(0, static_cast<int>(std::round(vp_x * pixel_scale)));
                     int px_y = std::max(0, static_cast<int>(std::round(vp_y * pixel_scale)));
@@ -2762,7 +2769,7 @@ static std::string build_shell_message_html(const std::string& page_title,
 
         // Store cookies from response
         for (auto& cookie_val : response->headers.get_all("set-cookie")) {
-            jar.set_from_header(cookie_val, req.host);
+            jar.set_from_header(cookie_val, req.host, req.path);
         }
 
         // Follow redirects

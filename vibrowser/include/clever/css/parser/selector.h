@@ -9,6 +9,16 @@ namespace clever::css {
 
 struct SelectorList;
 
+struct Specificity {
+    int a = 0;  // ID selectors
+    int b = 0;  // class, attribute, pseudo-class
+    int c = 0;  // type, pseudo-element
+
+    bool operator<(const Specificity& other) const;
+    bool operator==(const Specificity& other) const;
+    bool operator>(const Specificity& other) const { return other < *this; }
+};
+
 enum class SimpleSelectorType {
     Type,        // div, p, span
     Class,       // .foo
@@ -60,20 +70,11 @@ struct ComplexSelector {
         std::optional<Combinator> combinator;  // combinator BEFORE this compound
     };
     std::vector<Part> parts;
+    std::optional<Specificity> precomputed_specificity;
 };
 
 struct SelectorList {
     std::vector<ComplexSelector> selectors;
-};
-
-struct Specificity {
-    int a = 0;  // ID selectors
-    int b = 0;  // class, attribute, pseudo-class
-    int c = 0;  // type, pseudo-element
-
-    bool operator<(const Specificity& other) const;
-    bool operator==(const Specificity& other) const;
-    bool operator>(const Specificity& other) const { return other < *this; }
 };
 
 Specificity compute_specificity(const ComplexSelector& selector);

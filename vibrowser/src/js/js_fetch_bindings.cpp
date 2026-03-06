@@ -311,7 +311,7 @@ static JSValue js_xhr_send(JSContext* ctx, JSValueConst this_val,
         // Store Set-Cookie from response
         auto set_cookie = resp->headers.get("set-cookie");
         if (should_send_cookies && set_cookie.has_value()) {
-            jar.set_from_header(*set_cookie, req.host);
+            jar.set_from_header(*set_cookie, req.host, req.path);
         }
 
         // Copy response headers
@@ -2335,7 +2335,7 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
         auto set_cookie = resp->headers.get("set-cookie");
         if (set_cookie.has_value()) {
             auto& jar = clever::net::CookieJar::shared();
-            jar.set_from_header(*set_cookie, req.host);
+            jar.set_from_header(*set_cookie, req.host, req.path);
         }
     }
 

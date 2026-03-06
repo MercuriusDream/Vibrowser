@@ -1693,6 +1693,49 @@ TEST(LayoutEngineTest, InlineBlockShrinkWrapIgnoresAbsoluteDescendants) {
         << "inline-block shrink-wrap should ignore absolutely positioned descendants";
 }
 
+TEST(LayoutEngineTest, InlineBlockShrinkWrapAvoidsSecondLayoutPass) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->text_align = 1; // center
+    inline_block->append_child(make_text("alpha beta", 16.0f));
+
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, ShrinkWrapWidthStillMatchesIntrinsicContent) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->geometry.padding.left = 6.0f;
+    inline_block->geometry.padding.right = 4.0f;
+    inline_block->geometry.border.left = 2.0f;
+    inline_block->geometry.border.right = 3.0f;
+    inline_block->append_child(make_text("wide", 20.0f));
+
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    float expected_text_width = 4.0f * 20.0f * 0.6f;
+    float expected_width = expected_text_width + 6.0f + 4.0f + 2.0f + 3.0f;
+    EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 0.1f);
+}
+
 TEST(LayoutEngineTest, FitContentIgnoresFloatedDescendantsForIntrinsicWidth) {
     auto root = make_block("div");
 

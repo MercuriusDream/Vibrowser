@@ -1452,6 +1452,16 @@ TEST_F(CSSSelectorTest, FunctionalPseudoSpecificityUsesCachedSelectorList) {
     EXPECT_EQ(after.c, 0);
 }
 
+TEST_F(CSSSelectorTest, SelectorStoresPrecomputedSpecificity) {
+    auto list = parse_selector_list("div:is(.card, #hero):not(section):where(article, .lead)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+
+    const auto& selector = list.selectors[0];
+    ASSERT_TRUE(selector.precomputed_specificity.has_value());
+    EXPECT_EQ(*selector.precomputed_specificity, (Specificity{1, 0, 2}));
+    EXPECT_EQ(compute_specificity(selector), (Specificity{1, 0, 2}));
+}
+
 TEST_F(CSSSelectorTest, AttributeSelectorDashMatchLang) {
     auto list = parse_selector_list("[lang|=en]");
     ASSERT_EQ(list.selectors.size(), 1u);

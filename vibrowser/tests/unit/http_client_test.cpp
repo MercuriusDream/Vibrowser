@@ -32190,3 +32190,84 @@ TEST(HttpClient, CookieJarReplacementUpdatesDomainScopeV2056) {
     EXPECT_EQ(subdomain_after_host.find("session2056=host-again"), std::string::npos)
         << "Host-only replacement should stop subdomain serialization, got: " << subdomain_after_host;
 }
+
+TEST(HttpClient, CookieDefaultPathUsesRequestDirectory) {
+    CookieJar jar;
+    jar.set_from_header("dir2061=alpha", "example.com", "/docs/guides/index.html");
+
+    std::string same_directory = jar.get_cookie_header("example.com", "/docs/guides/chapter-1", false);
+    EXPECT_NE(same_directory.find("dir2061=alpha"), std::string::npos)
+        << "Cookie should default to the request directory, got: " << same_directory;
+
+    std::string nested = jar.get_cookie_header("example.com", "/docs/guides/deep/page.html", false);
+    EXPECT_NE(nested.find("dir2061=alpha"), std::string::npos)
+        << "Cookie should remain visible to nested paths under the default directory, got: " << nested;
+
+    std::string sibling = jar.get_cookie_header("example.com", "/docs/other/page.html", false);
+    EXPECT_EQ(sibling.find("dir2061=alpha"), std::string::npos)
+        << "Cookie should not leak outside the derived default directory, got: " << sibling;
+}
+
+TEST(HttpClient, CookieDefaultPathMatchesNestedRequests) {
+    CookieJar::shared().clear();
+
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 302 Found\r\n"
+        "Set-Cookie: session2061=beta\r\n"
+        "Location: /app/start/deeper/next.html\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 4\r\n"
+        "\r\n"
+        "DONE"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request initial;
+    initial.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/app/start/page.html";
+    initial.method = Method::GET;
+    initial.parse_url();
+
+    auto redirected = client.fetch(initial);
+    ASSERT_TRUE(redirected.has_value());
+    EXPECT_EQ(redirected->status, 200);
+    EXPECT_EQ(redirected->body_as_string(), "OK");
+
+    Request sibling;
+    sibling.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/app/other/page.html";
+    sibling.method = Method::GET;
+    sibling.parse_url();
+
+    auto sibling_response = client.fetch(sibling);
+    ASSERT_TRUE(sibling_response.has_value());
+    EXPECT_EQ(sibling_response->status, 200);
+    EXPECT_EQ(sibling_response->body_as_string(), "DONE");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 3u);
+    EXPECT_EQ(requests[0].find("Cookie:"), std::string::npos)
+        << "Initial request should not send a cookie before it is set, got: " << requests[0];
+    EXPECT_NE(requests[1].find("GET /app/start/deeper/next.html HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("Cookie: session2061=beta\r\n"), std::string::npos)
+        << "Redirected nested request should receive the default-path cookie, got: " << requests[1];
+    EXPECT_NE(requests[2].find("GET /app/other/page.html HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_EQ(requests[2].find("Cookie: session2061=beta\r\n"), std::string::npos)
+        << "Sibling path outside the derived directory should not receive the cookie, got: "
+        << requests[2];
+
+    CookieJar::shared().clear();
+}

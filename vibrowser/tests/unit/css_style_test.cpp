@@ -805,6 +805,49 @@ TEST(StyleResolverTest, SelectorListUsesHighestMatchingSpecificityForCascadeRank
     EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
 }
 
+TEST(StyleResolverTest, UsesPrecomputedSelectorSpecificity) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "div { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }");
+
+    ASSERT_EQ(sheet.rules.size(), 2u);
+    ASSERT_EQ(sheet.rules[0].selectors.selectors.size(), 1u);
+    ASSERT_EQ(sheet.rules[1].selectors.selectors.size(), 1u);
+
+    sheet.rules[0].selectors.selectors[0].precomputed_specificity = Specificity{2, 0, 0};
+    sheet.rules[1].selectors.selectors[0].precomputed_specificity = Specificity{0, 1, 0};
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, WhereSelectorKeepsZeroSpecificity) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ":where(.card) { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+}
+
 TEST(StyleResolverTest, AppliesSupportsRulesWhenConditionMatches) {
     StyleResolver resolver;
 
