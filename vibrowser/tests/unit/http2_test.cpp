@@ -1,7 +1,11 @@
+#define private public
 #include <clever/net/hpack.h>
 #include <clever/net/http2_connection.h>
 #include <clever/net/header_map.h>
+#undef private
 #include <gtest/gtest.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 using namespace clever::net;
 
@@ -98,6 +102,158 @@ TEST(Http2ConnectionTest, FrameStructure) {
     EXPECT_EQ(frame.flags, 0x1);
     EXPECT_EQ(frame.stream_id, 1u);
     EXPECT_EQ(frame.payload.size(), 5u);
+}
+
+TEST(Http2ConnectionTest, SettingsFrameSendsAck) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    {
+        Http2Connection connection(fds[0]);
+        Http2Connection::Frame frame;
+        frame.type = Http2Connection::FRAME_TYPE_SETTINGS;
+        frame.stream_id = 0;
+        frame.payload = {
+            0x00, Http2Connection::SETTINGS_INITIAL_WINDOW_SIZE,
+            0x00, 0x01, 0x00, 0x00
+        };
+
+        ASSERT_TRUE(connection.handle_settings(frame));
+
+        uint8_t raw_frame[9];
+        ASSERT_EQ(::read(fds[1], raw_frame, sizeof(raw_frame)),
+                  static_cast<ssize_t>(sizeof(raw_frame)));
+        EXPECT_EQ(raw_frame[0], 0);
+        EXPECT_EQ(raw_frame[1], 0);
+        EXPECT_EQ(raw_frame[2], 0);
+        EXPECT_EQ(raw_frame[3], Http2Connection::FRAME_TYPE_SETTINGS);
+        EXPECT_EQ(raw_frame[4], Http2Connection::FLAG_ACK);
+        EXPECT_EQ(raw_frame[5], 0);
+        EXPECT_EQ(raw_frame[6], 0);
+        EXPECT_EQ(raw_frame[7], 0);
+        EXPECT_EQ(raw_frame[8], 0);
+        EXPECT_EQ(connection.remote_initial_window_size_, 65536u);
+    }
+
+    close(fds[1]);
+}
+
+TEST(Http2ConnectionTest, WindowUpdateAdjustsSendWindow) {
+    Http2Connection connection(-1);
+    connection.streams_[1].send_window = 1024;
+
+    Http2Connection::Frame connection_frame;
+    connection_frame.type = Http2Connection::FRAME_TYPE_WINDOW_UPDATE;
+    connection_frame.stream_id = 0;
+    connection_frame.payload = {0x00, 0x00, 0x04, 0x00};
+
+    ASSERT_TRUE(connection.handle_window_update(connection_frame));
+    EXPECT_EQ(connection.connection_send_window_, 65535 + 1024);
+
+    Http2Connection::Frame stream_frame;
+    stream_frame.type = Http2Connection::FRAME_TYPE_WINDOW_UPDATE;
+    stream_frame.stream_id = 1;
+    stream_frame.payload = {0x00, 0x00, 0x00, 0x80};
+
+    ASSERT_TRUE(connection.handle_window_update(stream_frame));
+    EXPECT_EQ(connection.streams_[1].send_window, 1024 + 128);
+}
+
+TEST(Http2ConnectionTest, SettingsInitialWindowDeltaUpdatesExistingStreamsV2062) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    {
+        Http2Connection connection(fds[0]);
+        connection.remote_initial_window_size_ = 65535;
+        connection.streams_[1].state = Http2Connection::StreamState::Open;
+        connection.streams_[1].send_window = 1000;
+        connection.streams_[3].state = Http2Connection::StreamState::HalfClosedRemote;
+        connection.streams_[3].send_window = -64;
+        connection.streams_[5].state = Http2Connection::StreamState::Closed;
+        connection.streams_[5].send_window = 777;
+
+        Http2Connection::Frame frame;
+        frame.type = Http2Connection::FRAME_TYPE_SETTINGS;
+        frame.stream_id = 0;
+        frame.payload = {
+            0x00, Http2Connection::SETTINGS_INITIAL_WINDOW_SIZE,
+            0x00, 0x01, 0x01, 0x00
+        };
+
+        ASSERT_TRUE(connection.handle_settings(frame));
+        EXPECT_EQ(connection.remote_initial_window_size_, 65792u);
+        EXPECT_EQ(connection.streams_[1].send_window, 1257);
+        EXPECT_EQ(connection.streams_[3].send_window, 193);
+        EXPECT_EQ(connection.streams_[5].send_window, 777);
+
+        uint8_t raw_frame[9];
+        ASSERT_EQ(::read(fds[1], raw_frame, sizeof(raw_frame)),
+                  static_cast<ssize_t>(sizeof(raw_frame)));
+        EXPECT_EQ(raw_frame[0], 0);
+        EXPECT_EQ(raw_frame[1], 0);
+        EXPECT_EQ(raw_frame[2], 0);
+        EXPECT_EQ(raw_frame[3], Http2Connection::FRAME_TYPE_SETTINGS);
+        EXPECT_EQ(raw_frame[4], Http2Connection::FLAG_ACK);
+        EXPECT_EQ(raw_frame[5], 0);
+        EXPECT_EQ(raw_frame[6], 0);
+        EXPECT_EQ(raw_frame[7], 0);
+        EXPECT_EQ(raw_frame[8], 0);
+    }
+
+    close(fds[1]);
+}
+
+TEST(Http2ConnectionTest, SettingsInitialWindowRejectsOverflowV2062) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    {
+        Http2Connection connection(fds[0]);
+        connection.remote_initial_window_size_ = 65535;
+        connection.streams_[1].state = Http2Connection::StreamState::Open;
+        connection.streams_[1].send_window =
+            Http2Connection::kMaxFlowControlWindowSize - 16;
+
+        Http2Connection::Frame overflow_frame;
+        overflow_frame.type = Http2Connection::FRAME_TYPE_SETTINGS;
+        overflow_frame.stream_id = 0;
+        overflow_frame.payload = {
+            0x00, Http2Connection::SETTINGS_INITIAL_WINDOW_SIZE,
+            0x00, 0x01, 0xFF, 0xFF
+        };
+
+        ASSERT_FALSE(connection.handle_settings(overflow_frame));
+        EXPECT_EQ(connection.remote_initial_window_size_, 65535u);
+        EXPECT_EQ(connection.streams_[1].send_window,
+                  Http2Connection::kMaxFlowControlWindowSize - 16);
+
+        uint8_t raw_frame[9];
+        EXPECT_EQ(::recv(fds[1], raw_frame, sizeof(raw_frame), MSG_DONTWAIT), -1);
+
+        Http2Connection::Frame illegal_value_frame;
+        illegal_value_frame.type = Http2Connection::FRAME_TYPE_SETTINGS;
+        illegal_value_frame.stream_id = 0;
+        illegal_value_frame.payload = {
+            0x00, Http2Connection::SETTINGS_INITIAL_WINDOW_SIZE,
+            0x80, 0x00, 0x00, 0x00
+        };
+
+        ASSERT_FALSE(connection.handle_settings(illegal_value_frame));
+        EXPECT_EQ(connection.remote_initial_window_size_, 65535u);
+        EXPECT_EQ(connection.streams_[1].send_window,
+                  Http2Connection::kMaxFlowControlWindowSize - 16);
+
+        Http2Connection::Frame ack_frame;
+        ack_frame.type = Http2Connection::FRAME_TYPE_SETTINGS;
+        ack_frame.flags = Http2Connection::FLAG_ACK;
+        ack_frame.stream_id = 0;
+        ack_frame.payload = {0x00};
+
+        EXPECT_FALSE(connection.handle_settings(ack_frame));
+    }
+
+    close(fds[1]);
 }
 
 // ===========================================================================

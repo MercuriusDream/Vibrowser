@@ -85,6 +85,7 @@ private:
     static constexpr uint32_t kInitialWindowSize = 65535;
     static constexpr uint32_t kDefaultMaxFrameSize = 16384;
     static constexpr uint32_t kWindowUpdateThreshold = 32768;
+    static constexpr int64_t kMaxFlowControlWindowSize = 2147483647;
 
     int fd_ = -1;
     TlsSocket* tls_socket_ = nullptr;
@@ -130,4 +131,3 @@ private:
 };
 
 } // namespace clever::net
-

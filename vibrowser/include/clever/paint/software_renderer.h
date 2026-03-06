@@ -61,6 +61,9 @@ struct AffineTransform {
 
 class SoftwareRenderer {
 public:
+    static constexpr float kMaxBoxShadowBlurRadius = 64.0f;
+    static constexpr float kBoxShadowBlurWorkRegionMultiplier = 3.0f;
+
     SoftwareRenderer(int width, int height, float dpr = 1.0f);
     ~SoftwareRenderer();
 

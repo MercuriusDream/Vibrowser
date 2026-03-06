@@ -61,12 +61,14 @@ SimpleSelector make_id_sel(const std::string& id) {
 }
 
 SimpleSelector make_attr_sel(const std::string& attr_name, const std::string& attr_val,
-                             AttributeMatch match = AttributeMatch::Exact) {
+                             AttributeMatch match = AttributeMatch::Exact,
+                             std::string flag = {}) {
     SimpleSelector s;
     s.type = SimpleSelectorType::Attribute;
     s.attr_name = attr_name;
     s.attr_match = match;
     s.attr_value = attr_val;
+    s.argument = flag;
     return s;
 }
 
@@ -557,6 +559,32 @@ TEST(SelectorMatcherTest, AttributeSelectorParsesUnquotedNumericValue) {
     EXPECT_EQ(attr_sel.attr_value, "2");
 }
 
+TEST(SelectorMatcherTest, AttributeSelectorCaseInsensitiveFlagMatches) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "input";
+    elem.attributes = {{"type", "button"}};
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_attr_sel("type", "BUTTON", AttributeMatch::Exact, "i"));
+
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(compound)));
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorCaseSensitiveFlagDoesNotFold) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.attributes = {{"data-id", "abc"}};
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_attr_sel("data-id", "AbC", AttributeMatch::Exact, "s"));
+
+    EXPECT_FALSE(matcher.matches(elem, make_simple_complex(compound)));
+}
+
 // ===========================================================================
 // Test 24: PropertyCascade: single rule applied
 // ===========================================================================
@@ -775,6 +803,105 @@ TEST(StyleResolverTest, SelectorListUsesHighestMatchingSpecificityForCascadeRank
     auto style = resolver.resolve(elem, parent);
 
     EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, UsesPrecomputedSelectorSpecificity) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "div { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }");
+
+    ASSERT_EQ(sheet.rules.size(), 2u);
+    ASSERT_EQ(sheet.rules[0].selectors.selectors.size(), 1u);
+    ASSERT_EQ(sheet.rules[1].selectors.selectors.size(), 1u);
+
+    sheet.rules[0].selectors.selectors[0].precomputed_specificity = Specificity{2, 0, 0};
+    sheet.rules[1].selectors.selectors[0].precomputed_specificity = Specificity{0, 1, 0};
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorPrefilterKeepsCascadeResultsV2062) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ":where(.card) { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }"
+        "* { display: block; }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(style.display, Display::Block);
+}
+
+TEST(StyleResolverTest, RightmostSelectorPrefilterSkipsImpossibleClassRulesV2062) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+
+    StyleRule impossible_rule;
+    CompoundSelector impossible_compound;
+    impossible_compound.simple_selectors.push_back(make_type_sel("div"));
+    auto impossible_selector = make_simple_complex(impossible_compound);
+    impossible_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "missing"};
+    impossible_rule.selectors.selectors.push_back(impossible_selector);
+    impossible_rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    sheet.rules.push_back(impossible_rule);
+
+    StyleRule matching_rule;
+    CompoundSelector matching_compound;
+    matching_compound.simple_selectors.push_back(make_class_sel("card"));
+    auto matching_selector = make_simple_complex(matching_compound);
+    matching_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "card"};
+    matching_rule.selectors.selectors.push_back(matching_selector);
+    matching_rule.declarations.push_back(make_decl("display", "flex"));
+    sheet.rules.push_back(matching_rule);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, Color::black());
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(StyleResolverTest, WhereSelectorKeepsZeroSpecificity) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ":where(.card) { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
 }
 
 TEST(StyleResolverTest, AppliesSupportsRulesWhenConditionMatches) {
