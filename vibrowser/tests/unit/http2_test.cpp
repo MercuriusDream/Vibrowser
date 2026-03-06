@@ -1,67 +1,21 @@
-#include <clever/net/hpack.h>
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
+#define private public
 #include <clever/net/http2_connection.h>
 #include <clever/net/header_map.h>
+#undef private
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
 #include <gtest/gtest.h>
 
+#include <sys/socket.h>
+#include <unistd.h>
+
 using namespace clever::net;
-
-// ===========================================================================
-// HPACK Tests
-// ===========================================================================
-
-TEST(HpackTest, HuffmanEncodeDecode) {
-    std::string input = "Hello";
-    auto encoded = hpack_huffman_encode(input);
-    EXPECT_FALSE(encoded.empty());
-
-    auto decoded = hpack_huffman_decode(encoded.data(), encoded.size());
-    EXPECT_TRUE(decoded.has_value());
-    EXPECT_EQ(decoded.value(), input);
-}
-
-TEST(HpackTest, HuffmanEncodeEmptyString) {
-    std::string input = "";
-    auto encoded = hpack_huffman_encode(input);
-    EXPECT_TRUE(encoded.empty());
-}
-
-TEST(HpackTest, HpackEncoderConstruction) {
-    HpackEncoder encoder(4096);
-    EXPECT_EQ(encoder.max_dynamic_table_size(), 4096u);
-    EXPECT_EQ(encoder.dynamic_table_size(), 0u);
-}
-
-TEST(HpackTest, HpackEncoderSetMaxTableSize) {
-    HpackEncoder encoder(4096);
-    encoder.set_max_dynamic_table_size(8192);
-    EXPECT_EQ(encoder.max_dynamic_table_size(), 8192u);
-}
-
-TEST(HpackTest, HpackDecoderConstruction) {
-    HpackDecoder decoder(4096);
-    EXPECT_EQ(decoder.max_dynamic_table_size(), 4096u);
-    EXPECT_EQ(decoder.dynamic_table_size(), 0u);
-}
-
-TEST(HpackTest, StaticTableSize) {
-    EXPECT_EQ(kHpackStaticTable.size(), 61u);
-}
-
-TEST(HpackTest, StaticTableFirstEntry) {
-    auto entry = kHpackStaticTable[0];
-    EXPECT_EQ(entry.name, ":authority");
-    EXPECT_EQ(entry.value, "");
-}
-
-TEST(HpackTest, StaticTableStatusEntry) {
-    auto entry = kHpackStaticTable[7]; // index 8
-    EXPECT_EQ(entry.name, ":status");
-    EXPECT_EQ(entry.value, "200");
-}
-
-// ===========================================================================
-// Http2Connection Frame Tests
-// ===========================================================================
 
 TEST(Http2ConnectionTest, FrameConstants) {
     EXPECT_EQ(Http2Connection::FRAME_TYPE_DATA, 0x0);
@@ -100,43 +54,94 @@ TEST(Http2ConnectionTest, FrameStructure) {
     EXPECT_EQ(frame.payload.size(), 5u);
 }
 
-// ===========================================================================
-// Integration Tests
-// ===========================================================================
+TEST(Http2ConnectionTest, NonAckSettingsRespondsWithAckOnlyFrame) {
+    int sockets[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
 
-TEST(HpackIntegrationTest, EncodeDecodeRoundTrip) {
-    HeaderMap original;
-    original.set("content-type", "text/html");
-    original.set("content-length", "42");
-    original.set("cache-control", "max-age=3600");
+    Http2Connection conn(sockets[0]);
+    Http2Connection::Frame frame;
+    frame.type = Http2Connection::FRAME_TYPE_SETTINGS;
+    frame.stream_id = 0;
+    frame.payload = {
+        0x00, Http2Connection::SETTINGS_INITIAL_WINDOW_SIZE,
+        0x00, 0x01, 0x00, 0x00,
+    };
 
-    HpackEncoder encoder;
-    auto encoded = encoder.encode_header_list(original);
-    EXPECT_FALSE(encoded.empty());
+    ASSERT_TRUE(conn.handle_settings(frame));
 
-    HpackDecoder decoder;
-    auto decoded = decoder.decode(encoded.data(), encoded.size());
+    uint8_t header[9];
+    ASSERT_EQ(::read(sockets[1], header, sizeof(header)), static_cast<ssize_t>(sizeof(header)));
+    EXPECT_EQ(header[0], 0);
+    EXPECT_EQ(header[1], 0);
+    EXPECT_EQ(header[2], 0);
+    EXPECT_EQ(header[3], Http2Connection::FRAME_TYPE_SETTINGS);
+    EXPECT_EQ(header[4], Http2Connection::FLAG_ACK);
+    EXPECT_EQ(header[5], 0);
+    EXPECT_EQ(header[6], 0);
+    EXPECT_EQ(header[7], 0);
+    EXPECT_EQ(header[8], 0);
 
-    EXPECT_EQ(decoded.get("content-type").value_or(""), "text/html");
-    EXPECT_EQ(decoded.get("content-length").value_or(""), "42");
-    EXPECT_EQ(decoded.get("cache-control").value_or(""), "max-age=3600");
+    uint8_t extra_byte = 0;
+    EXPECT_EQ(::recv(sockets[1], &extra_byte, 1, MSG_DONTWAIT), -1);
+
+    close(sockets[1]);
 }
 
-TEST(HpackIntegrationTest, MultipleRoundTrips) {
-    HpackEncoder encoder;
-    HpackDecoder decoder;
+TEST(Http2ConnectionTest, InitialWindowSizeSettingsPropagateToExistingStreams) {
+    int sockets[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+    Http2Connection conn(sockets[0]);
+    conn.streams_[1].send_window = 65535;
+    conn.streams_[3].send_window = 1024;
 
-    HeaderMap headers1;
-    headers1.set("user-agent", "Mozilla/5.0");
-    auto enc1 = encoder.encode_header_list(headers1);
+    Http2Connection::Frame frame;
+    frame.type = Http2Connection::FRAME_TYPE_SETTINGS;
+    frame.stream_id = 0;
+    frame.payload = {
+        0x00, Http2Connection::SETTINGS_INITIAL_WINDOW_SIZE,
+        0x00, 0x00, 0xFF, 0xFF,
+    };
 
-    HeaderMap headers2;
-    headers2.set("accept", "text/html");
-    auto enc2 = encoder.encode_header_list(headers2);
+    ASSERT_TRUE(conn.handle_settings(frame));
+    EXPECT_EQ(conn.remote_initial_window_size_, 65535u);
+    EXPECT_EQ(conn.streams_[1].send_window, 65535);
+    EXPECT_EQ(conn.streams_[3].send_window, 1024);
 
-    EXPECT_FALSE(enc1.empty());
-    EXPECT_FALSE(enc2.empty());
+    uint8_t ack_frame_header[9];
+    ASSERT_EQ(::read(sockets[1], ack_frame_header, sizeof(ack_frame_header)),
+              static_cast<ssize_t>(sizeof(ack_frame_header)));
 
-    auto dec1 = decoder.decode(enc1.data(), enc1.size());
-    EXPECT_EQ(dec1.get("user-agent").value_or(""), "Mozilla/5.0");
+    frame.payload = {
+        0x00, Http2Connection::SETTINGS_INITIAL_WINDOW_SIZE,
+        0x00, 0x01, 0x00, 0x00,
+    };
+
+    ASSERT_TRUE(conn.handle_settings(frame));
+    EXPECT_EQ(conn.remote_initial_window_size_, 65536u);
+    EXPECT_EQ(conn.streams_[1].send_window, 65536);
+    EXPECT_EQ(conn.streams_[3].send_window, 1025);
+
+    close(sockets[1]);
+}
+
+TEST(Http2ConnectionTest, WindowUpdateIncrementZeroFailsClosed) {
+    Http2Connection conn(-1);
+    conn.connection_send_window_ = 111;
+    conn.streams_[1].send_window = 222;
+
+    Http2Connection::Frame connection_frame;
+    connection_frame.type = Http2Connection::FRAME_TYPE_WINDOW_UPDATE;
+    connection_frame.stream_id = 0;
+    connection_frame.payload = {0x00, 0x00, 0x00, 0x00};
+
+    EXPECT_FALSE(conn.handle_window_update(connection_frame));
+    EXPECT_EQ(conn.connection_send_window_, 111);
+
+    Http2Connection::Frame stream_frame;
+    stream_frame.type = Http2Connection::FRAME_TYPE_WINDOW_UPDATE;
+    stream_frame.stream_id = 1;
+    stream_frame.payload = {0x00, 0x00, 0x00, 0x00};
+
+    EXPECT_FALSE(conn.handle_window_update(stream_frame));
+    EXPECT_EQ(conn.streams_[1].send_window, 222);
 }

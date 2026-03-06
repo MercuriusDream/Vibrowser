@@ -18,6 +18,8 @@ class TextRenderer {
 public:
     TextRenderer();
     ~TextRenderer();
+    TextRenderer(const TextRenderer&) = delete;
+    TextRenderer& operator=(const TextRenderer&) = delete;
 
     // Register a web font (downloaded @font-face data) with CoreText.
     // family_name: the CSS font-family name (e.g., "Open Sans")
@@ -60,6 +62,10 @@ public:
                              int font_weight, bool font_italic,
                              float letter_spacing, float word_spacing = 0);
 
+    void clear_caches();
+    size_t cached_font_count_for_testing() const;
+    size_t cached_measurement_count_for_testing() const;
+
 private:
     // Render a single line (no newlines) at the given position
     void render_single_line(const std::string& text, float x, float y,
@@ -70,6 +76,12 @@ private:
                             int font_kerning = 0, float word_spacing = 0,
                             float clip_x = -1, float clip_y = -1,
                             float clip_w = -1, float clip_h = -1);
+
+    CTFontRef get_cached_font(float font_size, const std::string& font_family,
+                              int font_weight, bool font_italic);
+
+    std::unordered_map<std::string, CTFontRef> font_cache_;
+    std::unordered_map<std::string, float> measurement_cache_;
 };
 
 } // namespace clever::paint

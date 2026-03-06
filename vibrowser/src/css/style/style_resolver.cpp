@@ -8035,7 +8035,7 @@ void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
         Specificity best_specificity{0, 0, 0};
         for (const auto& complex_sel : rule.selectors.selectors) {
             if (matcher_.matches(element, complex_sel)) {
-                Specificity spec = compute_specificity(complex_sel);
+                Specificity spec = selector_specificity(complex_sel);
                 if (!matched_any || best_specificity < spec) {
                     best_specificity = spec;
                 }
@@ -8090,7 +8090,7 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
             }
 
             if (matches) {
-                Specificity spec = compute_specificity(complex_sel);
+                Specificity spec = selector_specificity(complex_sel);
                 if (!matched_any || best_specificity < spec) {
                     best_specificity = spec;
                 }

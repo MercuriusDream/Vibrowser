@@ -51,18 +51,6 @@ struct CompoundSelector {
     std::vector<SimpleSelector> simple_selectors;
 };
 
-struct ComplexSelector {
-    struct Part {
-        CompoundSelector compound;
-        std::optional<Combinator> combinator;  // combinator BEFORE this compound
-    };
-    std::vector<Part> parts;
-};
-
-struct SelectorList {
-    std::vector<ComplexSelector> selectors;
-};
-
 struct Specificity {
     int a = 0;  // ID selectors
     int b = 0;  // class, attribute, pseudo-class
@@ -73,7 +61,21 @@ struct Specificity {
     bool operator>(const Specificity& other) const { return other < *this; }
 };
 
+struct ComplexSelector {
+    struct Part {
+        CompoundSelector compound;
+        std::optional<Combinator> combinator;  // combinator BEFORE this compound
+    };
+    std::vector<Part> parts;
+    std::optional<Specificity> specificity;
+};
+
+struct SelectorList {
+    std::vector<ComplexSelector> selectors;
+};
+
 Specificity compute_specificity(const ComplexSelector& selector);
+Specificity selector_specificity(const ComplexSelector& selector);
 SelectorList parse_selector_list(std::string_view input);
 
 } // namespace clever::css

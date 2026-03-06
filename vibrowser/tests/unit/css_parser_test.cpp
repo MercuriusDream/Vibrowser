@@ -441,6 +441,14 @@ TEST_F(CSSSelectorTest, ComplexSpecificity) {
     EXPECT_EQ(spec.c, 1);
 }
 
+TEST_F(CSSSelectorTest, ParsedSelectorCachesSpecificity) {
+    auto list = parse_selector_list("section:is(.card, #hero):where(.unused)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_TRUE(list.selectors[0].specificity.has_value());
+    EXPECT_EQ(*list.selectors[0].specificity, compute_specificity(list.selectors[0]));
+    EXPECT_EQ(*list.selectors[0].specificity, (Specificity{1, 0, 1}));
+}
+
 TEST_F(CSSSelectorTest, SpecificityComparison) {
     Specificity a{1, 0, 0};
     Specificity b{0, 1, 0};

@@ -10,12 +10,27 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <limits>
 #include <set>
 #include <string>
+#include <vector>
 
 using namespace clever::paint;
 using namespace clever::layout;
+
+namespace {
+
+std::vector<uint8_t> read_font_file_bytes(const std::string& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return {};
+    }
+    return std::vector<uint8_t>((std::istreambuf_iterator<char>(input)),
+                                std::istreambuf_iterator<char>());
+}
+
+} // namespace
 
 // ============================================================================
 // 1. DisplayList: fill_rect adds command
@@ -39654,6 +39669,82 @@ TEST(WebFontRegistration, NormalizeFamilyNameCaseInsensitive) {
     EXPECT_FALSE(TextRenderer::has_registered_font("Open Sans"));
     EXPECT_FALSE(TextRenderer::has_registered_font("open sans"));
     EXPECT_FALSE(TextRenderer::has_registered_font("OPEN SANS"));
+
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST(TextRenderer, MeasureTextWidthCachesRepeatedRequests) {
+    TextRenderer renderer;
+    renderer.clear_caches();
+
+    EXPECT_EQ(renderer.cached_font_count_for_testing(), 0u);
+    EXPECT_EQ(renderer.cached_measurement_count_for_testing(), 0u);
+
+    const float first = renderer.measure_text_width(
+        "Cache this width", 16.0f, "Helvetica", 400, false, 0.0f);
+    ASSERT_GT(first, 0.0f);
+    EXPECT_EQ(renderer.cached_font_count_for_testing(), 1u);
+    EXPECT_EQ(renderer.cached_measurement_count_for_testing(), 1u);
+
+    const float second = renderer.measure_text_width(
+        "Cache this width", 16.0f, "Helvetica", 400, false, 0.0f);
+    EXPECT_FLOAT_EQ(first, second);
+    EXPECT_EQ(renderer.cached_font_count_for_testing(), 1u);
+    EXPECT_EQ(renderer.cached_measurement_count_for_testing(), 1u);
+
+    const float third = renderer.measure_text_width(
+        "Different text", 16.0f, "Helvetica", 400, false, 0.0f);
+    ASSERT_GT(third, 0.0f);
+    EXPECT_EQ(renderer.cached_font_count_for_testing(), 1u);
+    EXPECT_EQ(renderer.cached_measurement_count_for_testing(), 2u);
+}
+
+TEST(TextRenderer, RegisteredWebFontMatchesSystemFontMeasurements) {
+    struct FontFixture {
+        const char* path;
+        const char* family;
+    };
+    const FontFixture candidates[] = {
+        {"/System/Library/Fonts/Menlo.ttc", "Menlo"},
+        {"/System/Library/Fonts/Supplemental/Courier New.ttf", "Courier New"},
+        {"/System/Library/Fonts/Supplemental/Arial.ttf", "Arial"},
+    };
+
+    const FontFixture* fixture = nullptr;
+    std::vector<uint8_t> font_data;
+    for (const auto& candidate : candidates) {
+        font_data = read_font_file_bytes(candidate.path);
+        if (!font_data.empty()) {
+            fixture = &candidate;
+            break;
+        }
+    }
+
+    if (!fixture) {
+        GTEST_SKIP() << "No readable macOS font fixture found for web-font parity test";
+    }
+
+    TextRenderer::clear_registered_fonts();
+    TextRenderer renderer;
+    const std::string text = "Parity check text";
+    const float system_width = renderer.measure_text_width(
+        text, 18.0f, fixture->family, 400, false, 0.0f);
+    ASSERT_GT(system_width, 0.0f);
+
+    if (!TextRenderer::register_font("ParityFont", font_data)) {
+        TextRenderer::clear_registered_fonts();
+        GTEST_SKIP() << "CoreText rejected font fixture " << fixture->path;
+    }
+
+    const float web_width = renderer.measure_text_width(
+        text, 18.0f, "ParityFont", 400, false, 0.0f);
+    EXPECT_NEAR(web_width, system_width, 0.01f);
+
+    const float repeated_web_width = renderer.measure_text_width(
+        text, 18.0f, "ParityFont", 400, false, 0.0f);
+    EXPECT_FLOAT_EQ(repeated_web_width, web_width);
+    EXPECT_EQ(renderer.cached_font_count_for_testing(), 2u);
+    EXPECT_EQ(renderer.cached_measurement_count_for_testing(), 2u);
 
     TextRenderer::clear_registered_fonts();
 }

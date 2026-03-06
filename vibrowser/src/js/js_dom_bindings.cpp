@@ -19926,6 +19926,7 @@ globalThis.structuredClone = function(obj, options) {
         const char* sw_src = R"JS(
 (function() {
     if (typeof navigator === 'undefined' || !navigator) return;
+    var fallbackBase = 'https://serviceworker.invalid/';
 
     // Define ServiceWorker class (stub)
     if (typeof globalThis.ServiceWorker === 'undefined') {
@@ -19948,10 +19949,19 @@ globalThis.structuredClone = function(obj, options) {
             this.active = null;
             this.scope = '/';
             this.updateViaCache = 'imports';
+            this.navigationPreload = {};
             this.onupdatefound = null;
         };
         ServiceWorkerRegistration.prototype.update = function() { return Promise.resolve(); };
-        ServiceWorkerRegistration.prototype.unregister = function() { return Promise.resolve(true); };
+        ServiceWorkerRegistration.prototype.unregister = function() {
+            var record = this && this.__swRecord;
+            if (!record || !record.state) return Promise.resolve(false);
+            var registrations = record.state.registrations;
+            var index = registrations.indexOf(this);
+            if (index === -1) return Promise.resolve(false);
+            registrations.splice(index, 1);
+            return Promise.resolve(true);
+        };
         ServiceWorkerRegistration.prototype.addEventListener = function() {};
         ServiceWorkerRegistration.prototype.removeEventListener = function() {};
     }
@@ -19972,22 +19982,181 @@ globalThis.structuredClone = function(obj, options) {
         ServiceWorkerContainer.prototype.removeEventListener = function() {};
     }
 
-    // Add `ready` promise to existing serviceWorker container
-    // (ready resolves to a ServiceWorkerRegistration with an active ServiceWorker)
-    if (navigator.serviceWorker && !navigator.serviceWorker.ready) {
-        var activeWorker = new ServiceWorker();
-        activeWorker.state = 'activated';
-        activeWorker.scriptURL = '';
-        var readyReg = new ServiceWorkerRegistration();
-        readyReg.active = activeWorker;
-        try {
-            Object.defineProperty(navigator.serviceWorker, 'ready', {
-                get: function() { return Promise.resolve(readyReg); },
-                configurable: true
-            });
-        } catch(e) {
-            navigator.serviceWorker.ready = Promise.resolve(readyReg);
+    if (!navigator.serviceWorker) return;
+
+    function currentBaseURL() {
+        if (typeof location !== 'undefined' && location && location.href) {
+            return location.href;
         }
+        return fallbackBase;
+    }
+
+    function toPath(value) {
+        try {
+            return new URL(String(value), currentBaseURL()).pathname || '/';
+        } catch (e) {
+            var text = String(value || '');
+            if (!text) return '/';
+            if (text.charAt(0) !== '/') text = '/' + text;
+            return text;
+        }
+    }
+
+    function normalizeScriptURL(scriptURL) {
+        return toPath(scriptURL || '');
+    }
+
+    function normalizeScope(options, scriptPath) {
+        var scopeValue = options && options.scope != null ? options.scope : null;
+        var scopePath = scopeValue ? toPath(scopeValue) : scriptPath.replace(/[^/]*$/, '');
+        if (!scopePath) scopePath = '/';
+        if (scopePath.charAt(0) !== '/') scopePath = '/' + scopePath;
+        if (scopePath !== '/' && scopePath.charAt(scopePath.length - 1) !== '/') {
+            scopePath += '/';
+        }
+        return scopePath;
+    }
+
+    function ensureState(container) {
+        if (container.__swState) return container.__swState;
+        var state = {
+            registrations: [],
+            readyPromise: null,
+            readyResolve: null
+        };
+        Object.defineProperty(container, '__swState', {
+            value: state,
+            configurable: true
+        });
+        return state;
+    }
+
+    function getBestRegistration(state, urlValue) {
+        var urlPath = urlValue == null ? toPath(currentBaseURL()) : toPath(urlValue);
+        var best = null;
+        for (var i = 0; i < state.registrations.length; i++) {
+            var candidate = state.registrations[i];
+            if (!candidate || typeof candidate.scope !== 'string') continue;
+            if (urlPath.indexOf(candidate.scope) !== 0) continue;
+            if (!best || candidate.scope.length > best.scope.length) {
+                best = candidate;
+            }
+        }
+        return best || undefined;
+    }
+
+    function ensureReadyPromise(state) {
+        if (!state.readyPromise) {
+            state.readyPromise = new Promise(function(resolve) {
+                state.readyResolve = resolve;
+            });
+        }
+        return state.readyPromise;
+    }
+
+    function notifyReady(state, fallbackReg) {
+        if (!state.readyResolve) return;
+        var readyReg = getBestRegistration(state) || fallbackReg || state.registrations[0] || undefined;
+        if (!readyReg) return;
+        var resolve = state.readyResolve;
+        state.readyResolve = null;
+        state.readyPromise = null;
+        resolve(readyReg);
+    }
+
+    function createRegistration(state, scriptPath, scopePath) {
+        var worker = new ServiceWorker();
+        worker.state = 'activated';
+        worker.scriptURL = scriptPath;
+
+        var reg = new ServiceWorkerRegistration();
+        reg.installing = null;
+        reg.waiting = null;
+        reg.active = worker;
+        reg.scope = scopePath;
+        reg.updateViaCache = 'imports';
+        reg.navigationPreload = {};
+        reg.onupdatefound = null;
+        Object.defineProperty(reg, '__swRecord', {
+            value: { state: state },
+            configurable: true
+        });
+        return reg;
+    }
+
+    var swContainer = navigator.serviceWorker;
+    var swState = ensureState(swContainer);
+    try {
+        Object.setPrototypeOf(swContainer, ServiceWorkerContainer.prototype);
+    } catch (e) {
+    }
+
+    ServiceWorkerContainer.prototype.register = function(scriptURL, options) {
+        var state = ensureState(this);
+        var scriptPath = normalizeScriptURL(scriptURL);
+        var scopePath = normalizeScope(options || {}, scriptPath);
+        var existing = null;
+        for (var i = 0; i < state.registrations.length; i++) {
+            if (state.registrations[i].scope === scopePath) {
+                existing = state.registrations[i];
+                break;
+            }
+        }
+        if (existing) {
+            if (existing.active) existing.active.scriptURL = scriptPath;
+            notifyReady(state, existing);
+            return Promise.resolve(existing);
+        }
+        var reg = createRegistration(state, scriptPath, scopePath);
+        state.registrations.push(reg);
+        notifyReady(state, reg);
+        return Promise.resolve(reg);
+    };
+
+    ServiceWorkerContainer.prototype.getRegistrations = function() {
+        var state = ensureState(this);
+        return Promise.resolve(state.registrations.slice());
+    };
+
+    ServiceWorkerContainer.prototype.getRegistration = function(url) {
+        var state = ensureState(this);
+        return Promise.resolve(getBestRegistration(state, url));
+    };
+
+    swContainer.register = function(scriptURL, options) {
+        return ServiceWorkerContainer.prototype.register.call(swContainer, scriptURL, options);
+    };
+    swContainer.getRegistrations = function() {
+        return ServiceWorkerContainer.prototype.getRegistrations.call(swContainer);
+    };
+    swContainer.getRegistration = function(url) {
+        return ServiceWorkerContainer.prototype.getRegistration.call(swContainer, url);
+    };
+
+    try {
+        Object.defineProperty(swContainer, 'controller', {
+            get: function() {
+                var state = ensureState(this);
+                var reg = getBestRegistration(state) || state.registrations[0];
+                return reg && reg.active ? reg.active : null;
+            },
+            configurable: true
+        });
+    } catch (e) {
+        swContainer.controller = null;
+    }
+
+    try {
+        Object.defineProperty(swContainer, 'ready', {
+            get: function() {
+                var state = ensureState(this);
+                var reg = getBestRegistration(state) || state.registrations[0];
+                return reg ? Promise.resolve(reg) : ensureReadyPromise(state);
+            },
+            configurable: true
+        });
+    } catch (e) {
+        swContainer.ready = ensureReadyPromise(swState);
     }
 
     // Add navigator.connection if not already present

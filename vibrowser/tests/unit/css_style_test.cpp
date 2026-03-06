@@ -83,6 +83,7 @@ ComplexSelector make_simple_complex(const CompoundSelector& compound) {
     part.compound = compound;
     part.combinator = std::nullopt;  // No combinator for the first/only part
     cs.parts.push_back(part);
+    cs.specificity = compute_specificity(cs);
     return cs;
 }
 
@@ -98,6 +99,7 @@ ComplexSelector make_complex_chain(
         part.combinator = comb;
         cs.parts.push_back(part);
     }
+    cs.specificity = compute_specificity(cs);
     return cs;
 }
 
@@ -764,6 +766,32 @@ TEST(StyleResolverTest, SelectorListUsesHighestMatchingSpecificityForCascadeRank
 
     StyleResolver resolver;
     auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, ParsedSelectorSpecificityCacheDrivesCascadeRanking) {
+    const std::string css =
+        "div:is(.card, #hero) { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }";
+
+    auto sheet = parse_stylesheet(css);
+    ASSERT_EQ(sheet.rules.size(), 2u);
+    ASSERT_EQ(sheet.rules[0].selectors.selectors.size(), 1u);
+    ASSERT_TRUE(sheet.rules[0].selectors.selectors[0].specificity.has_value());
+    EXPECT_EQ(*sheet.rules[0].selectors.selectors[0].specificity,
+              (Specificity{1, 0, 1}));
+
+    StyleResolver resolver;
     resolver.add_stylesheet(sheet);
 
     ElementView elem;
@@ -1590,6 +1618,13 @@ TEST(SpecificityTest, HasPseudoUsesArgumentSpecificity) {
     EXPECT_EQ(spec.a, 1);
     EXPECT_EQ(spec.b, 0);
     EXPECT_EQ(spec.c, 1);
+}
+
+TEST(SpecificityTest, ParsedSelectorSpecificityCacheMatchesComputedValue) {
+    auto list = parse_selector_list("section:is(.card, #hero):where(.unused)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_TRUE(list.selectors[0].specificity.has_value());
+    EXPECT_EQ(*list.selectors[0].specificity, compute_specificity(list.selectors[0]));
 }
 
 // ============================================================================
