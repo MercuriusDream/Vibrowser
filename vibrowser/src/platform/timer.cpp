@@ -128,6 +128,15 @@ int TimerScheduler::schedule(Duration delay, Duration interval, bool repeating, 
 }
 
 struct Timer::Impl {
+    struct OneShotState {
+        Callback callback;
+        mutable std::mutex mutex;
+        std::atomic<bool> active { true };
+
+        explicit OneShotState(Callback callback_)
+            : callback(std::move(callback_)) {}
+    };
+
     struct RepeatingState {
         EventLoop& loop;
         std::chrono::milliseconds interval;
@@ -145,7 +154,7 @@ struct Timer::Impl {
     EventLoop& loop;
     std::chrono::milliseconds interval;
     Callback callback;
-    std::shared_ptr<std::atomic<bool>> active;
+    std::shared_ptr<OneShotState> one_shot_state;
     std::shared_ptr<RepeatingState> repeating_state;
     bool repeating;
 
@@ -153,20 +162,29 @@ struct Timer::Impl {
         : loop(loop_)
         , interval(interval_)
         , callback(std::move(callback_))
-        , active(std::make_shared<std::atomic<bool>>(true))
+        , one_shot_state(repeating_ ? nullptr : std::make_shared<OneShotState>(callback))
         , repeating_state(repeating_ ? std::make_shared<RepeatingState>(loop_, interval_, callback) : nullptr)
         , repeating(repeating_) {}
 
     void schedule_one_shot() {
-        auto cb = callback;
-        auto active_flag = active;
+        auto state = one_shot_state;
 
         loop.post_delayed_task(
-            [cb, active_flag]() {
-                if (!active_flag->exchange(false)) {
+            [state]() {
+                if (!state->active.exchange(false)) {
                     return;
                 }
-                cb();
+
+                Callback callback;
+                {
+                    std::lock_guard lock(state->mutex);
+                    callback = std::move(state->callback);
+                }
+
+                if (!callback) {
+                    return;
+                }
+                callback();
             },
             interval);
     }
@@ -255,8 +273,9 @@ void Timer::cancel() {
         impl_->repeating_state->cancelled = true;
     }
 
-    if (impl_->active) {
-        impl_->active->store(false);
+    if (impl_->one_shot_state && impl_->one_shot_state->active.exchange(false)) {
+        std::lock_guard lock(impl_->one_shot_state->mutex);
+        impl_->one_shot_state->callback = {};
     }
 }
 
@@ -268,7 +287,7 @@ bool Timer::is_active() const {
         std::lock_guard lock(impl_->repeating_state->mutex);
         return !impl_->repeating_state->cancelled;
     }
-    return impl_->active && impl_->active->load();
+    return impl_->one_shot_state && impl_->one_shot_state->active.load();
 }
 
 } // namespace clever::platform

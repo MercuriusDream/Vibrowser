@@ -886,6 +886,7 @@ struct ResponseState {
     bool redirected = false; // true if at least one redirect was followed
     std::string type = "basic"; // "basic", "cors", "opaque", "error", "default"
     bool body_used = false;
+    bool body_locked = false;
     bool stream_drained = false;
 };
 
@@ -895,6 +896,7 @@ struct ResponseBodyStreamState {
 
 struct ResponseBodyReaderState {
     JSValue response = JS_UNDEFINED;
+    bool released = false;
 };
 
 static ResponseState* get_response_state(JSContext* /*ctx*/, JSValueConst this_val) {
@@ -990,11 +992,11 @@ static JSValue js_reject_promise_with_message(JSContext* ctx, const char* messag
 }
 
 static bool response_body_is_unusable(ResponseState* state) {
-    return state->body_used || state->stream_drained;
+    return state->body_locked || state->body_used || state->stream_drained;
 }
 
 static bool mark_response_body_consumed(ResponseState* state) {
-    if (response_body_is_unusable(state)) {
+    if (!state || response_body_is_unusable(state)) {
         return false;
     }
     state->body_used = true;
@@ -1123,6 +1125,7 @@ static JSValue js_response_clone(JSContext* ctx, JSValueConst this_val,
     new_state->redirected = state->redirected;
     new_state->type = state->type;
     new_state->body_used = state->body_used;
+    new_state->body_locked = state->body_locked;
     new_state->stream_drained = state->stream_drained;
     JS_SetOpaque(obj, new_state);
 
@@ -1408,6 +1411,9 @@ static JSValue js_response_body_reader_read(JSContext* ctx, JSValueConst this_va
     auto* reader_state = static_cast<ResponseBodyReaderState*>(
         JS_GetOpaque(this_val, response_body_reader_class_id));
     if (!reader_state) return JS_ThrowTypeError(ctx, "Invalid Response body reader");
+    if (reader_state->released) {
+        return JS_ThrowTypeError(ctx, "Response body reader is released");
+    }
 
     auto* response_state = get_response_state(ctx, reader_state->response);
     if (!response_state) {
@@ -1418,11 +1424,14 @@ static JSValue js_response_body_reader_read(JSContext* ctx, JSValueConst this_va
     }
 
     JSValue result = JS_NewObject(ctx);
-    if (!mark_response_body_consumed(response_state)) {
+    if (response_state->stream_drained) {
         JS_SetPropertyStr(ctx, result, "done", JS_TRUE);
         JS_SetPropertyStr(ctx, result, "value", JS_UNDEFINED);
         return js_resolve_promise_with_value(ctx, result);
     }
+    response_state->body_locked = true;
+    response_state->body_used = true;
+    response_state->stream_drained = true;
 
     JSValue array_buf = JS_NewArrayBufferCopy(ctx,
         response_state->body_bytes.data(),
@@ -1456,13 +1465,31 @@ static JSValue js_response_body_reader_read(JSContext* ctx, JSValueConst this_va
     return js_resolve_promise_with_value(ctx, result);
 }
 
-static JSValue js_response_body_reader_cancel(JSContext* ctx, JSValueConst /*this_val*/,
+static JSValue js_response_body_reader_cancel(JSContext* ctx, JSValueConst this_val,
                                                int /*argc*/, JSValueConst* /*argv*/) {
+    auto* reader_state = static_cast<ResponseBodyReaderState*>(
+        JS_GetOpaque(this_val, response_body_reader_class_id));
+    if (reader_state && !reader_state->released) {
+        auto* response_state = get_response_state(ctx, reader_state->response);
+        if (response_state && !response_state->body_used) {
+            response_state->body_locked = false;
+        }
+        reader_state->released = true;
+    }
     return js_resolve_promise_with_value(ctx, JS_UNDEFINED);
 }
 
-static JSValue js_response_body_reader_release_lock(JSContext* /*ctx*/, JSValueConst /*this_val*/,
+static JSValue js_response_body_reader_release_lock(JSContext* ctx, JSValueConst this_val,
                                                      int /*argc*/, JSValueConst* /*argv*/) {
+    auto* reader_state = static_cast<ResponseBodyReaderState*>(
+        JS_GetOpaque(this_val, response_body_reader_class_id));
+    if (reader_state && !reader_state->released) {
+        auto* response_state = get_response_state(ctx, reader_state->response);
+        if (response_state && !response_state->body_used) {
+            response_state->body_locked = false;
+        }
+        reader_state->released = true;
+    }
     return JS_UNDEFINED;
 }
 
@@ -1477,6 +1504,13 @@ static JSValue js_response_body_stream_get_reader(JSContext* ctx, JSValueConst t
     auto* stream_state = static_cast<ResponseBodyStreamState*>(
         JS_GetOpaque(this_val, response_body_stream_class_id));
     if (!stream_state) return JS_ThrowTypeError(ctx, "Invalid Response body stream");
+    auto* response_state = get_response_state(ctx, stream_state->response);
+    if (!response_state) {
+        return JS_ThrowTypeError(ctx, "Invalid Response object");
+    }
+    if (response_body_is_unusable(response_state)) {
+        return JS_ThrowTypeError(ctx, "Response body is already used");
+    }
 
     JSValue reader = JS_NewObjectClass(ctx, static_cast<int>(response_body_reader_class_id));
     if (JS_IsException(reader)) return reader;
@@ -1484,6 +1518,7 @@ static JSValue js_response_body_stream_get_reader(JSContext* ctx, JSValueConst t
     auto* reader_state = new ResponseBodyReaderState();
     reader_state->response = JS_DupValue(ctx, stream_state->response);
     JS_SetOpaque(reader, reader_state);
+    response_state->body_locked = true;
     JS_SetPropertyStr(ctx, reader, "closed",
                       js_resolve_promise_with_value(ctx, JS_UNDEFINED));
     return reader;
@@ -1532,7 +1567,7 @@ static JSValue js_response_get_body(JSContext* ctx, JSValueConst this_val) {
     auto* stream_state = new ResponseBodyStreamState();
     stream_state->response = JS_DupValue(ctx, this_val);
     JS_SetOpaque(stream, stream_state);
-    JS_SetPropertyStr(ctx, stream, "locked", JS_FALSE);
+    JS_SetPropertyStr(ctx, stream, "locked", JS_NewBool(ctx, state->body_locked));
     return stream;
 }
 

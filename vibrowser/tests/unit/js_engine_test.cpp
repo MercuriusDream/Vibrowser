@@ -10031,6 +10031,47 @@ TEST(JSFetch, ResponseBodyStreamReadsFetchedBytesOnceV2069) {
               "false|true|false|87,88,89,90|true|true|Response body is already used");
 }
 
+TEST(JSFetch, ResponseBodyReaderLockBlocksOtherConsumersV2070) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var lockOutcome = 'pending';
+        var r = new Response('locked', { status: 200 });
+        var before = r.bodyUsed;
+        var reader = r.body.getReader();
+        Promise.all([
+            r.text().then(
+                function() { return 'text-resolved'; },
+                function(err) { return err && err.message ? err.message : String(err); }
+            ),
+            Promise.resolve((function() {
+                try {
+                    r.clone();
+                    return 'clone-resolved';
+                } catch (err) {
+                    return err && err.message ? err.message : String(err);
+                }
+            })())
+        ]).then(function(values) {
+            lockOutcome = [
+                String(before),
+                String(r.bodyUsed),
+                values[0],
+                values[1]
+            ].join('|');
+            reader.releaseLock();
+        });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("lockOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              "false|false|Response body is already used|Response body is already used");
+}
+
 // ============================================================================
 // Web API: HTMLCanvasElement.toDataURL() / toBlob()
 // ============================================================================
