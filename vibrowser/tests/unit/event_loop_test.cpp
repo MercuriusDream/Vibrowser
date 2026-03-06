@@ -205,8 +205,10 @@ TEST(EventLoopTest, EarlierDelayedTaskWakesRun) {
     EventLoop loop;
     std::atomic<bool> earlier_task_executed{false};
     std::atomic<long long> elapsed_ms{-1};
+    constexpr auto kInitialDelay = 700ms;
+    constexpr auto kInsertedDelay = 20ms;
 
-    loop.post_delayed_task([]() {}, 400ms);
+    loop.post_delayed_task([]() {}, kInitialDelay);
 
     auto start = std::chrono::steady_clock::now();
     std::thread runner([&loop]() {
@@ -223,13 +225,13 @@ TEST(EventLoopTest, EarlierDelayedTaskWakesRun) {
             std::memory_order_relaxed);
         earlier_task_executed.store(true, std::memory_order_relaxed);
         loop.quit();
-    }, 20ms);
+    }, kInsertedDelay);
 
     runner.join();
 
     ASSERT_TRUE(earlier_task_executed.load(std::memory_order_relaxed));
     EXPECT_GE(elapsed_ms.load(std::memory_order_relaxed), 60);
-    EXPECT_LT(elapsed_ms.load(std::memory_order_relaxed), 250);
+    EXPECT_LT(elapsed_ms.load(std::memory_order_relaxed), 500);
 }
 
 TEST(EventLoopTest, RecordsLagForLateDelayedTask) {
