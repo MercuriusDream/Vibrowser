@@ -73,7 +73,7 @@ TEST(JSDocumentLifecycle, VisibleDocumentDoesNotFireInitialVisibilityChangeV2068
     EXPECT_EQ(result, R"({"state":"visible","hidden":false,"fired":0})");
 }
 
-TEST(JSDocumentLifecycle, VisibilityChangeRequiresStateFlipV2068) {
+TEST(JSDocumentLifecycle, VisibilityChangeStaysSilentUntilRealTransitionV2085) {
     ScopedDocumentBindings bindings("<html><body><p>hello</p></body></html>");
 
     const auto initial_result = bindings.engine().evaluate(R"(
@@ -88,10 +88,25 @@ TEST(JSDocumentLifecycle, VisibilityChangeRequiresStateFlipV2068) {
     ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
     EXPECT_EQ(initial_result, "0");
 
+    bindings.engine().evaluate("document.visibilityState = 'hidden'; document.hidden = true;");
+    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
     clever::js::dispatch_visibility_change(bindings.engine().context());
     auto result = bindings.engine().evaluate("window.__visibilityEvents.length");
     ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
     EXPECT_EQ(result, "0");
+
+    clever::js::dispatch_dom_content_loaded(bindings.engine().context());
+    bindings.engine().evaluate("document.visibilityState = 'visible'; document.hidden = false;");
+    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
+    clever::js::dispatch_visibility_change(bindings.engine().context());
+    result = bindings.engine().evaluate("JSON.stringify(window.__visibilityEvents)");
+    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
+    EXPECT_EQ(result, R"(["visible:false"])");
+
+    clever::js::dispatch_visibility_change(bindings.engine().context());
+    result = bindings.engine().evaluate("window.__visibilityEvents.length");
+    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
+    EXPECT_EQ(result, "1");
 
     bindings.engine().evaluate("document.visibilityState = 'hidden'; document.hidden = true;");
     ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
@@ -99,20 +114,32 @@ TEST(JSDocumentLifecycle, VisibilityChangeRequiresStateFlipV2068) {
 
     result = bindings.engine().evaluate("JSON.stringify(window.__visibilityEvents)");
     ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
+    EXPECT_EQ(result, R"(["visible:false","hidden:true"])");
+}
+
+TEST(JSDocumentLifecycle, VisibilityChangeDispatchesAfterLoadBoundaryV2086) {
+    ScopedDocumentBindings bindings("<html><body><p>hello</p></body></html>");
+
+    const auto initial_result = bindings.engine().evaluate(R"(
+        (() => {
+            window.__visibilityEvents = [];
+            window.addEventListener('visibilitychange', () => {
+                window.__visibilityEvents.push(`${document.visibilityState}:${document.hidden}`);
+            });
+            return `${document.visibilityState}:${document.hidden}`;
+        })()
+    )");
+    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
+    EXPECT_EQ(initial_result, "visible:false");
+
+    clever::js::dispatch_dom_content_loaded(bindings.engine().context());
+    bindings.engine().evaluate("document.visibilityState = 'hidden'; document.hidden = true;");
+    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
+    clever::js::dispatch_visibility_change(bindings.engine().context());
+
+    const auto result = bindings.engine().evaluate("JSON.stringify(window.__visibilityEvents)");
+    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
     EXPECT_EQ(result, R"(["hidden:true"])");
-
-    clever::js::dispatch_visibility_change(bindings.engine().context());
-    result = bindings.engine().evaluate("window.__visibilityEvents.length");
-    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
-    EXPECT_EQ(result, "1");
-
-    bindings.engine().evaluate("document.visibilityState = 'visible'; document.hidden = false;");
-    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
-    clever::js::dispatch_visibility_change(bindings.engine().context());
-
-    result = bindings.engine().evaluate("JSON.stringify(window.__visibilityEvents)");
-    ASSERT_FALSE(bindings.engine().has_error()) << bindings.engine().last_error();
-    EXPECT_EQ(result, R"(["hidden:true","visible:false"])");
 }
 
 }  // namespace

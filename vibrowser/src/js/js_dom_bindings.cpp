@@ -1,5 +1,6 @@
 #include <clever/js/js_dom_bindings.h>
 #include <clever/js/js_window.h>
+#include <clever/dom/document.h>
 #include <clever/layout/box.h>
 #include <clever/net/cookie_jar.h>
 #include <clever/paint/image_fetch.h>
@@ -92,6 +93,12 @@ struct ConstraintValidationState {
 };
 
 struct DOMState {
+    enum class AsyncObserverCheckpointPhase {
+        idle,
+        intersection,
+        resize,
+    };
+
     clever::html::SimpleNode* root = nullptr;
     bool modified = false;
     std::string title;
@@ -115,9 +122,7 @@ struct DOMState {
     JSValue event_get_modifier_state_fn = JS_UNDEFINED;
     // document.cookie storage: name -> value
     std::map<std::string, std::string> cookies;
-    std::string visibility_state = "visible";
-    bool hidden = false;
-    bool visibility_initialized = false;
+    clever::dom::DocumentVisibilityLifecycle visibility_lifecycle;
 
     // Layout geometry cache: SimpleNode* -> absolute position box geometry + computed style
     struct LayoutRect {
@@ -240,6 +245,24 @@ struct DOMState {
     };
     std::vector<IntersectionObserverEntry> intersection_observers;
 
+    struct PendingIntersectionRecord {
+        clever::html::SimpleNode* element = nullptr;
+        JSValue entry = JS_UNDEFINED;
+        float ratio = 0.0f;
+        bool is_intersecting = false;
+    };
+    struct PendingIntersection {
+        int32_t observer_index = -1;
+        JSValue observer_obj;   // which observer to call
+        JSValue callback;       // cached callback
+        std::vector<PendingIntersectionRecord> records;
+    };
+    std::vector<DOMState::PendingIntersection> pending_intersections;
+    std::vector<DOMState::PendingIntersection>* active_intersection_delivery = nullptr;
+    size_t active_intersection_delivery_index = 0;
+    bool intersection_observer_delivery_scheduled = false;
+    bool intersection_observer_delivery_running = false;
+
     // ResizeObserver registry
     struct ResizeObserverEntry {
         JSValue observer_obj;   // the ResizeObserver JS object
@@ -251,12 +274,29 @@ struct DOMState {
     std::vector<ResizeObserverEntry> resize_observers;
 
     // Pending resize notifications
+    struct PendingResizeRecord {
+        clever::html::SimpleNode* element = nullptr;
+        LayoutRect geometry_snapshot;
+        bool has_geometry_snapshot = false;
+        double device_pixel_ratio = 1.0;
+        float tracked_width = 0.0f;
+        float tracked_height = 0.0f;
+    };
     struct PendingResize {
+        int32_t observer_index = -1;
         JSValue observer_obj;    // which observer to call
         JSValue callback;        // cached callback
-        std::vector<JSValue> resize_entries;  // array of ResizeObserverEntry objects
+        std::vector<PendingResizeRecord> records;
     };
     std::vector<DOMState::PendingResize> pending_resizes;
+    std::vector<DOMState::PendingResize>* active_resize_delivery = nullptr;
+    size_t active_resize_delivery_index = 0;
+    bool resize_observer_delivery_scheduled = false;
+    bool resize_observer_delivery_running = false;
+    bool async_observer_checkpoint_scheduled = false;
+    bool async_observer_checkpoint_running = false;
+    AsyncObserverCheckpointPhase async_observer_checkpoint_phase =
+        AsyncObserverCheckpointPhase::idle;
 
     // Shadow DOM: element -> shadow root node
     std::unordered_map<clever::html::SimpleNode*, clever::html::SimpleNode*> shadow_roots;
@@ -5658,15 +5698,65 @@ static JSValue mutation_observer_delivery_job(JSContext* ctx,
 }
 
 static void schedule_mutation_observer_delivery(JSContext* ctx, DOMState* state) {
-    if (!state || state->pending_mutations.empty() ||
-        state->mutation_observer_delivery_scheduled) {
+    if (!state || state->pending_mutations.empty()) {
+        return;
+    }
+    if (state->mutation_observer_delivery_running) {
+        return;
+    }
+    if (state->mutation_observer_delivery_scheduled) {
         return;
     }
     state->mutation_observer_delivery_scheduled = true;
     if (JS_EnqueueJob(ctx, mutation_observer_delivery_job, 0, nullptr) < 0) {
         state->mutation_observer_delivery_scheduled = false;
-        flush_mutation_observers(ctx, state);
     }
+}
+
+static void deliver_mutation_observers_at_checkpoint(JSContext* ctx,
+                                                     DOMState* state,
+                                                     bool drain_pending_jobs) {
+    if (!state) return;
+    if (state->mutation_observer_delivery_running) return;
+    if (state->pending_mutations.empty()) {
+        state->mutation_observer_delivery_scheduled = false;
+        return;
+    }
+
+    state->mutation_observer_delivery_scheduled = false;
+    state->mutation_observer_delivery_running = true;
+
+    // MutationObserver callbacks run at the compound-microtask checkpoint, so
+    // drain any already-queued Promise jobs first and batch their mutations.
+    if (drain_pending_jobs) {
+        JSContext* ctx_job = nullptr;
+        while (JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx_job) > 0) {
+            // drain
+        }
+    }
+
+    auto batch = std::move(state->pending_mutations);
+    state->pending_mutations.clear();
+
+    for (auto& pm : batch) {
+        JSValue records_arr = JS_NewArray(ctx);
+        for (size_t i = 0; i < pm.mutation_records.size(); ++i) {
+            JS_SetPropertyUint32(ctx, records_arr, static_cast<uint32_t>(i),
+                                 pm.mutation_records[i]);
+        }
+
+        JSValue args[2] = { records_arr, pm.observer_obj };
+        JSValue ret = JS_Call(ctx, pm.callback, JS_UNDEFINED, 2, args);
+        if (JS_IsException(ret)) {
+            JS_FreeValue(ctx, ret);
+        }
+        JS_FreeValue(ctx, args[0]);
+        JS_FreeValue(ctx, pm.observer_obj);
+        JS_FreeValue(ctx, pm.callback);
+    }
+
+    state->mutation_observer_delivery_running = false;
+    if (!state->pending_mutations.empty()) schedule_mutation_observer_delivery(ctx, state);
 }
 
 // Helper: notify all mutation observers of a mutation
@@ -5762,34 +5852,7 @@ static void notify_mutation_observers(JSContext* ctx,
 // Uses a re-entrancy counter so mutations triggered inside a callback are
 // queued and delivered in subsequent rounds rather than causing infinite recursion.
 static void flush_mutation_observers(JSContext* ctx, DOMState* state) {
-    if (!state) return;
-    if (state->mutation_observer_delivery_running) return;
-
-    state->mutation_observer_delivery_scheduled = false;
-    state->mutation_observer_delivery_running = true;
-
-    auto batch = std::move(state->pending_mutations);
-    state->pending_mutations.clear();
-
-    for (auto& pm : batch) {
-        JSValue records_arr = JS_NewArray(ctx);
-        for (size_t i = 0; i < pm.mutation_records.size(); ++i) {
-            JS_SetPropertyUint32(ctx, records_arr, static_cast<uint32_t>(i),
-                                 pm.mutation_records[i]);
-        }
-
-        JSValue args[2] = { records_arr, pm.observer_obj };
-        JSValue ret = JS_Call(ctx, pm.callback, JS_UNDEFINED, 2, args);
-        if (JS_IsException(ret)) {
-            JS_FreeValue(ctx, ret);
-        }
-        JS_FreeValue(ctx, args[0]);
-        JS_FreeValue(ctx, pm.observer_obj);
-        JS_FreeValue(ctx, pm.callback);
-    }
-
-    state->mutation_observer_delivery_running = false;
-    if (!state->pending_mutations.empty()) schedule_mutation_observer_delivery(ctx, state);
+    deliver_mutation_observers_at_checkpoint(ctx, state, true);
 }
 
 static void js_mutation_observer_finalizer(JSRuntime* rt, JSValue val) {
@@ -7830,73 +7893,6 @@ static JSValue js_intersection_observer_observe(JSContext* ctx,
             if (e == elem) return JS_UNDEFINED;
         }
         entry.observed_elements.push_back(elem);
-
-        // Fire initial callback with real intersection data (spec behavior)
-        if (JS_IsFunction(ctx, entry.callback)) {
-            JSValue entries_arr = JS_NewArray(ctx);
-            JSValue init_entry = JS_NewObject(ctx);
-
-            // Compute real intersection
-            float elem_x = 0, elem_y = 0, elem_w = 0, elem_h = 0;
-            auto geom_it = state->layout_geometry.find(elem);
-            if (geom_it != state->layout_geometry.end()) {
-                auto& lr = geom_it->second;
-                elem_x = lr.abs_border_x;
-                elem_y = lr.abs_border_y;
-                elem_w = lr.border_left + lr.padding_left + lr.width +
-                         lr.padding_right + lr.border_right;
-                elem_h = lr.border_top + lr.padding_top + lr.height +
-                         lr.padding_bottom + lr.border_bottom;
-            }
-            float vw = static_cast<float>(state->viewport_width > 0 ? state->viewport_width : 800);
-            float vh = static_cast<float>(state->viewport_height > 0 ? state->viewport_height : 600);
-            float ix1 = std::max(elem_x, 0.0f);
-            float iy1 = std::max(elem_y, 0.0f);
-            float ix2 = std::min(elem_x + elem_w, vw);
-            float iy2 = std::min(elem_y + elem_h, vh);
-            float inter_w = std::max(0.0f, ix2 - ix1);
-            float inter_h = std::max(0.0f, iy2 - iy1);
-            float elem_area = elem_w * elem_h;
-            float ratio = (elem_area > 0) ? ((inter_w * inter_h) / elem_area) : 0.0f;
-            bool is_intersecting = (ratio > 0) || (elem_w > 0 && elem_h > 0 && inter_w > 0 && inter_h > 0);
-
-            JS_SetPropertyStr(ctx, init_entry, "target", wrap_element(ctx, elem));
-            JS_SetPropertyStr(ctx, init_entry, "isIntersecting", JS_NewBool(ctx, is_intersecting));
-            JS_SetPropertyStr(ctx, init_entry, "intersectionRatio", JS_NewFloat64(ctx, ratio));
-            JS_SetPropertyStr(ctx, init_entry, "time", JS_NewFloat64(ctx, 0.0));
-            JS_SetPropertyStr(ctx, init_entry, "rootBounds", JS_NULL);
-
-            // boundingClientRect
-            JSValue bcr = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, bcr, "x", JS_NewFloat64(ctx, elem_x));
-            JS_SetPropertyStr(ctx, bcr, "y", JS_NewFloat64(ctx, elem_y));
-            JS_SetPropertyStr(ctx, bcr, "width", JS_NewFloat64(ctx, elem_w));
-            JS_SetPropertyStr(ctx, bcr, "height", JS_NewFloat64(ctx, elem_h));
-            JS_SetPropertyStr(ctx, bcr, "top", JS_NewFloat64(ctx, elem_y));
-            JS_SetPropertyStr(ctx, bcr, "left", JS_NewFloat64(ctx, elem_x));
-            JS_SetPropertyStr(ctx, bcr, "bottom", JS_NewFloat64(ctx, elem_y + elem_h));
-            JS_SetPropertyStr(ctx, bcr, "right", JS_NewFloat64(ctx, elem_x + elem_w));
-            JS_SetPropertyStr(ctx, init_entry, "boundingClientRect", bcr);
-
-            // intersectionRect
-            JSValue ir = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, ir, "x", JS_NewFloat64(ctx, ix1));
-            JS_SetPropertyStr(ctx, ir, "y", JS_NewFloat64(ctx, iy1));
-            JS_SetPropertyStr(ctx, ir, "width", JS_NewFloat64(ctx, inter_w));
-            JS_SetPropertyStr(ctx, ir, "height", JS_NewFloat64(ctx, inter_h));
-            JS_SetPropertyStr(ctx, ir, "top", JS_NewFloat64(ctx, iy1));
-            JS_SetPropertyStr(ctx, ir, "left", JS_NewFloat64(ctx, ix1));
-            JS_SetPropertyStr(ctx, ir, "bottom", JS_NewFloat64(ctx, iy1 + inter_h));
-            JS_SetPropertyStr(ctx, ir, "right", JS_NewFloat64(ctx, ix1 + inter_w));
-            JS_SetPropertyStr(ctx, init_entry, "intersectionRect", ir);
-
-            JS_SetPropertyUint32(ctx, entries_arr, 0, init_entry);
-
-            JSValue args[2] = { entries_arr, entry.observer_obj };
-            JSValue ret = JS_Call(ctx, entry.callback, JS_UNDEFINED, 2, args);
-            JS_FreeValue(ctx, ret);
-            JS_FreeValue(ctx, entries_arr);
-        }
     }
     return JS_UNDEFINED;
 }
@@ -7922,6 +7918,8 @@ static JSValue js_intersection_observer_unobserve(JSContext* ctx,
         entry.observed_elements.erase(
             std::remove(entry.observed_elements.begin(), entry.observed_elements.end(), elem),
             entry.observed_elements.end());
+        entry.prev_ratio.erase(elem);
+        entry.prev_intersecting.erase(elem);
     }
     return JS_UNDEFINED;
 }
@@ -7939,16 +7937,93 @@ static JSValue js_intersection_observer_disconnect(JSContext* ctx,
     JS_FreeValue(ctx, idx_val);
 
     if (idx >= 0 && idx < static_cast<int32_t>(state->intersection_observers.size())) {
-        state->intersection_observers[idx].observed_elements.clear();
+        auto& entry = state->intersection_observers[idx];
+        entry.observed_elements.clear();
+        entry.prev_ratio.clear();
+        entry.prev_intersecting.clear();
     }
     return JS_UNDEFINED;
 }
 
 static JSValue js_intersection_observer_take_records(JSContext* ctx,
-                                                      JSValueConst /*this_val*/,
+                                                      JSValueConst this_val,
                                                       int /*argc*/,
                                                       JSValueConst* /*argv*/) {
-    return JS_NewArray(ctx);
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_NewArray(ctx);
+
+    JSValue records_arr = JS_NewArray(ctx);
+    uint32_t count = 0;
+
+    auto pending_it = state->pending_intersections.begin();
+    while (pending_it != state->pending_intersections.end()) {
+        if (!JS_StrictEq(ctx, pending_it->observer_obj, this_val)) {
+            ++pending_it;
+            continue;
+        }
+
+        DOMState::IntersectionObserverEntry* observer = nullptr;
+        if (pending_it->observer_index >= 0 &&
+            pending_it->observer_index < static_cast<int32_t>(state->intersection_observers.size())) {
+            observer = &state->intersection_observers[pending_it->observer_index];
+        }
+
+        for (auto& record : pending_it->records) {
+            if (observer) {
+                const bool still_observed =
+                    std::find(observer->observed_elements.begin(),
+                              observer->observed_elements.end(),
+                              record.element) != observer->observed_elements.end();
+                if (still_observed) {
+                    observer->prev_ratio[record.element] = record.ratio;
+                    observer->prev_intersecting[record.element] = record.is_intersecting;
+                }
+            }
+            JS_SetPropertyUint32(ctx, records_arr, count++, JS_DupValue(ctx, record.entry));
+            JS_FreeValue(ctx, record.entry);
+        }
+        JS_FreeValue(ctx, pending_it->observer_obj);
+        JS_FreeValue(ctx, pending_it->callback);
+        pending_it = state->pending_intersections.erase(pending_it);
+    }
+
+    if (state->intersection_observer_delivery_running &&
+        state->active_intersection_delivery) {
+        auto& active_batch = *state->active_intersection_delivery;
+        const size_t start_index =
+            std::min(state->active_intersection_delivery_index + 1, active_batch.size());
+        for (size_t i = start_index; i < active_batch.size(); ++i) {
+            auto& pending = active_batch[i];
+            if (!JS_StrictEq(ctx, pending.observer_obj, this_val)) {
+                continue;
+            }
+
+            DOMState::IntersectionObserverEntry* observer = nullptr;
+            if (pending.observer_index >= 0 &&
+                pending.observer_index < static_cast<int32_t>(state->intersection_observers.size())) {
+                observer = &state->intersection_observers[pending.observer_index];
+            }
+
+            for (auto& record : pending.records) {
+                if (observer) {
+                    const bool still_observed =
+                        std::find(observer->observed_elements.begin(),
+                                  observer->observed_elements.end(),
+                                  record.element) != observer->observed_elements.end();
+                    if (still_observed) {
+                        observer->prev_ratio[record.element] = record.ratio;
+                        observer->prev_intersecting[record.element] = record.is_intersecting;
+                    }
+                }
+                JS_SetPropertyUint32(ctx, records_arr, count++, JS_DupValue(ctx, record.entry));
+                JS_FreeValue(ctx, record.entry);
+                record.entry = JS_UNDEFINED;
+            }
+            pending.records.clear();
+        }
+    }
+
+    return records_arr;
 }
 
 // Parse rootMargin string like "10px 20px 30px 40px" or "10px"
@@ -8070,6 +8145,58 @@ static JSClassDef resize_observer_class_def = {
     nullptr, nullptr, nullptr
 };
 
+static JSValue create_resize_observer_entry(JSContext* ctx,
+                                            const DOMState::PendingResizeRecord& record) {
+    JSValue entry = JS_NewObject(ctx);
+
+    float content_x = 0.0f;
+    float content_y = 0.0f;
+    float content_w = 0.0f;
+    float content_h = 0.0f;
+    float border_w = 0.0f;
+    float border_h = 0.0f;
+    if (record.has_geometry_snapshot) {
+        const auto& snapshot = record.geometry_snapshot;
+        content_x = snapshot.x;
+        content_y = snapshot.y;
+        content_w = snapshot.width;
+        content_h = snapshot.height;
+        border_w = snapshot.border_left + snapshot.padding_left + snapshot.width +
+                   snapshot.padding_right + snapshot.border_right;
+        border_h = snapshot.border_top + snapshot.padding_top + snapshot.height +
+                   snapshot.padding_bottom + snapshot.border_bottom;
+    }
+
+    JSValue cr = make_dom_rect(ctx, content_x, content_y, content_w, content_h);
+    JS_SetPropertyStr(ctx, entry, "contentRect", cr);
+
+    JSValue cbs_arr = JS_NewArray(ctx);
+    JSValue cbs = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, cbs, "inlineSize", JS_NewFloat64(ctx, content_w));
+    JS_SetPropertyStr(ctx, cbs, "blockSize", JS_NewFloat64(ctx, content_h));
+    JS_SetPropertyUint32(ctx, cbs_arr, 0, cbs);
+    JS_SetPropertyStr(ctx, entry, "contentBoxSize", cbs_arr);
+
+    JSValue bbs_arr = JS_NewArray(ctx);
+    JSValue bbs = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, bbs, "inlineSize", JS_NewFloat64(ctx, border_w));
+    JS_SetPropertyStr(ctx, bbs, "blockSize", JS_NewFloat64(ctx, border_h));
+    JS_SetPropertyUint32(ctx, bbs_arr, 0, bbs);
+    JS_SetPropertyStr(ctx, entry, "borderBoxSize", bbs_arr);
+
+    JSValue dpbs_arr = JS_NewArray(ctx);
+    JSValue dpbs = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, dpbs, "inlineSize",
+                      JS_NewFloat64(ctx, content_w * record.device_pixel_ratio));
+    JS_SetPropertyStr(ctx, dpbs, "blockSize",
+                      JS_NewFloat64(ctx, content_h * record.device_pixel_ratio));
+    JS_SetPropertyUint32(ctx, dpbs_arr, 0, dpbs);
+    JS_SetPropertyStr(ctx, entry, "devicePixelContentBoxSize", dpbs_arr);
+
+    JS_SetPropertyStr(ctx, entry, "target", wrap_element(ctx, record.element));
+    return entry;
+}
+
 static JSValue js_resize_observer_observe(JSContext* ctx,
                                            JSValueConst this_val,
                                            int argc,
@@ -8173,6 +8300,88 @@ static JSValue js_resize_observer_disconnect(JSContext* ctx,
     return JS_UNDEFINED;
 }
 
+static JSValue js_resize_observer_take_records(JSContext* ctx,
+                                                JSValueConst this_val,
+                                                int /*argc*/,
+                                                JSValueConst* /*argv*/) {
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_NewArray(ctx);
+
+    JSValue records_arr = JS_NewArray(ctx);
+    uint32_t count = 0;
+    const bool advance_tracked_sizes =
+        state->async_observer_checkpoint_phase !=
+        DOMState::AsyncObserverCheckpointPhase::intersection;
+
+    auto pending_it = state->pending_resizes.begin();
+    while (pending_it != state->pending_resizes.end()) {
+        if (!JS_StrictEq(ctx, pending_it->observer_obj, this_val)) {
+            ++pending_it;
+            continue;
+        }
+
+        DOMState::ResizeObserverEntry* observer = nullptr;
+        if (pending_it->observer_index >= 0 &&
+            pending_it->observer_index < static_cast<int32_t>(state->resize_observers.size())) {
+            observer = &state->resize_observers[pending_it->observer_index];
+        }
+
+        for (auto& record : pending_it->records) {
+            if (advance_tracked_sizes && observer) {
+                const bool still_observed =
+                    std::find(observer->observed_elements.begin(),
+                              observer->observed_elements.end(),
+                              record.element) != observer->observed_elements.end();
+                if (still_observed) {
+                    observer->previous_sizes[record.element] =
+                        std::make_pair(record.tracked_width, record.tracked_height);
+                }
+            }
+            JS_SetPropertyUint32(ctx, records_arr, count++,
+                                 create_resize_observer_entry(ctx, record));
+        }
+        JS_FreeValue(ctx, pending_it->observer_obj);
+        JS_FreeValue(ctx, pending_it->callback);
+        pending_it = state->pending_resizes.erase(pending_it);
+    }
+
+    if (state->resize_observer_delivery_running && state->active_resize_delivery) {
+        auto& active_batch = *state->active_resize_delivery;
+        const size_t start_index =
+            std::min(state->active_resize_delivery_index + 1, active_batch.size());
+        for (size_t i = start_index; i < active_batch.size(); ++i) {
+            auto& pending = active_batch[i];
+            if (!JS_StrictEq(ctx, pending.observer_obj, this_val)) {
+                continue;
+            }
+
+            DOMState::ResizeObserverEntry* observer = nullptr;
+            if (pending.observer_index >= 0 &&
+                pending.observer_index < static_cast<int32_t>(state->resize_observers.size())) {
+                observer = &state->resize_observers[pending.observer_index];
+            }
+
+            for (auto& record : pending.records) {
+                if (observer) {
+                    const bool still_observed =
+                        std::find(observer->observed_elements.begin(),
+                                  observer->observed_elements.end(),
+                                  record.element) != observer->observed_elements.end();
+                    if (still_observed) {
+                        observer->previous_sizes[record.element] =
+                            std::make_pair(record.tracked_width, record.tracked_height);
+                    }
+                }
+                JS_SetPropertyUint32(ctx, records_arr, count++,
+                                     create_resize_observer_entry(ctx, record));
+            }
+            pending.records.clear();
+        }
+    }
+
+    return records_arr;
+}
+
 static JSValue js_resize_observer_constructor(JSContext* ctx,
                                                JSValueConst /*new_target*/,
                                                int argc,
@@ -8205,6 +8414,8 @@ static JSValue js_resize_observer_constructor(JSContext* ctx,
         JS_NewCFunction(ctx, js_resize_observer_unobserve, "unobserve", 1));
     JS_SetPropertyStr(ctx, obj, "disconnect",
         JS_NewCFunction(ctx, js_resize_observer_disconnect, "disconnect", 0));
+    JS_SetPropertyStr(ctx, obj, "takeRecords",
+        JS_NewCFunction(ctx, js_resize_observer_take_records, "takeRecords", 0));
 
     return obj;
 }
@@ -15290,24 +15501,12 @@ void dispatch_visibility_change(JSContext* ctx) {
     JS_FreeValue(ctx, hidden);
     JS_FreeValue(ctx, visibility_state);
 
-    if (!state->visibility_initialized) {
-        state->visibility_state = next_visibility_state;
-        state->hidden = next_hidden;
-        state->visibility_initialized = true;
+    if (!state->visibility_lifecycle.update_and_should_dispatch(next_visibility_state,
+                                                                next_hidden)) {
         JS_FreeValue(ctx, doc);
         JS_FreeValue(ctx, global);
         return;
     }
-
-    if (state->visibility_state == next_visibility_state &&
-        state->hidden == next_hidden) {
-        JS_FreeValue(ctx, doc);
-        JS_FreeValue(ctx, global);
-        return;
-    }
-
-    state->visibility_state = next_visibility_state;
-    state->hidden = next_hidden;
 
     // Create event object
     JSValue event = JS_NewObject(ctx);
@@ -16030,9 +16229,7 @@ void install_dom_bindings(JSContext* ctx,
     JS_SetPropertyStr(ctx, doc_obj, "hidden",
         JS_NewBool(ctx, false));
     if (auto* state = get_dom_state(ctx)) {
-        state->visibility_state = "visible";
-        state->hidden = false;
-        state->visibility_initialized = true;
+        state->visibility_lifecycle.synchronize("visible", false);
     }
 
     // ---- document.hasFocus() ----
@@ -23521,6 +23718,8 @@ void dispatch_dom_content_loaded(JSContext* ctx) {
             JS_FreeValue(ctx, event_obj);
         }
     }
+
+    state->visibility_lifecycle.arm_dispatch();
 }
 
 void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr) {
@@ -23702,28 +23901,227 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr) {
     walk(*root, 0, 0, nullptr);
 }
 
+static void flush_intersection_observers(JSContext* ctx, DOMState* state);
+static void flush_async_observer_checkpoint(JSContext* ctx, DOMState* state);
+static void schedule_async_observer_checkpoint(JSContext* ctx, DOMState* state);
+static void schedule_intersection_observer_delivery(JSContext* ctx, DOMState* state);
+
+static JSValue async_observer_checkpoint_job(JSContext* ctx,
+                                             int /*argc*/,
+                                             JSValueConst* /*argv*/) {
+    auto* state = get_dom_state(ctx);
+    flush_async_observer_checkpoint(ctx, state);
+    return JS_UNDEFINED;
+}
+
+static void schedule_async_observer_checkpoint(JSContext* ctx, DOMState* state) {
+    if (!state) return;
+    if (state->async_observer_checkpoint_running) return;
+    if (state->async_observer_checkpoint_scheduled) return;
+    if (state->pending_intersections.empty() && state->pending_resizes.empty()) return;
+    state->async_observer_checkpoint_scheduled = true;
+    if (JS_EnqueueJob(ctx, async_observer_checkpoint_job, 0, nullptr) < 0) {
+        state->async_observer_checkpoint_scheduled = false;
+    }
+}
+
+static void schedule_intersection_observer_delivery(JSContext* ctx, DOMState* state) {
+    if (!state || state->pending_intersections.empty()) return;
+    if (state->intersection_observer_delivery_running) return;
+    if (state->intersection_observer_delivery_scheduled) return;
+    state->intersection_observer_delivery_scheduled = true;
+    schedule_async_observer_checkpoint(ctx, state);
+}
+
+static void deliver_intersection_observers_at_checkpoint(JSContext* ctx,
+                                                         DOMState* state,
+                                                         bool drain_pending_jobs) {
+    if (!state) return;
+    if (state->intersection_observer_delivery_running) return;
+    if (state->pending_intersections.empty()) {
+        state->intersection_observer_delivery_scheduled = false;
+        return;
+    }
+
+    state->intersection_observer_delivery_scheduled = false;
+    state->intersection_observer_delivery_running = true;
+
+    // Keep IntersectionObserver delivery on the same compound-checkpoint
+    // contract as MutationObserver so already-queued Promise jobs settle first.
+    if (drain_pending_jobs) {
+        JSContext* ctx_job = nullptr;
+        while (JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx_job) > 0) {
+            // drain
+        }
+    }
+
+    auto batch = std::move(state->pending_intersections);
+    state->pending_intersections.clear();
+    state->active_intersection_delivery = &batch;
+    state->active_intersection_delivery_index = 0;
+
+    for (size_t batch_index = 0; batch_index < batch.size(); ++batch_index) {
+        state->active_intersection_delivery_index = batch_index;
+        auto& pending = batch[batch_index];
+        JSValue entries = JS_NewArray(ctx);
+        uint32_t entry_idx = 0;
+
+        DOMState::IntersectionObserverEntry* observer = nullptr;
+        if (pending.observer_index >= 0 &&
+            pending.observer_index < static_cast<int32_t>(state->intersection_observers.size())) {
+            observer = &state->intersection_observers[pending.observer_index];
+        }
+
+        if (observer) {
+            for (auto& record : pending.records) {
+                bool still_observed = std::find(observer->observed_elements.begin(),
+                                                observer->observed_elements.end(),
+                                                record.element) != observer->observed_elements.end();
+                observer->prev_ratio[record.element] = record.ratio;
+                observer->prev_intersecting[record.element] = record.is_intersecting;
+                if (!still_observed) {
+                    observer->prev_ratio.erase(record.element);
+                    observer->prev_intersecting.erase(record.element);
+                }
+                JS_SetPropertyUint32(ctx, entries, entry_idx++, record.entry);
+            }
+
+            if (entry_idx > 0 && JS_IsFunction(ctx, pending.callback)) {
+                JSValue args[2] = { entries, pending.observer_obj };
+                JSValue ret = JS_Call(ctx, pending.callback, JS_UNDEFINED, 2, args);
+                if (JS_IsException(ret)) {
+                    JS_FreeValue(ctx, ret);
+                } else {
+                    JS_FreeValue(ctx, ret);
+                }
+            }
+        } else {
+            for (auto& record : pending.records) {
+                JS_FreeValue(ctx, record.entry);
+            }
+        }
+
+        JS_FreeValue(ctx, entries);
+        JS_FreeValue(ctx, pending.observer_obj);
+        JS_FreeValue(ctx, pending.callback);
+    }
+
+    state->active_intersection_delivery = nullptr;
+    state->active_intersection_delivery_index = 0;
+
+    state->intersection_observer_delivery_running = false;
+}
+
+static void flush_intersection_observers(JSContext* ctx, DOMState* state) {
+    deliver_intersection_observers_at_checkpoint(ctx, state, false);
+}
+
+static JSValue create_intersection_observer_entry(JSContext* ctx,
+                                                  clever::html::SimpleNode* elem,
+                                                  float elem_x,
+                                                  float elem_y,
+                                                  float elem_w,
+                                                  float elem_h,
+                                                  float ix1,
+                                                  float iy1,
+                                                  float inter_w,
+                                                  float inter_h,
+                                                  float root_x,
+                                                  float root_y,
+                                                  float root_w,
+                                                  float root_h,
+                                                  float ratio,
+                                                  bool is_intersecting) {
+    JSValue entry = JS_NewObject(ctx);
+
+    JSValue bcr = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, bcr, "x", JS_NewFloat64(ctx, elem_x));
+    JS_SetPropertyStr(ctx, bcr, "y", JS_NewFloat64(ctx, elem_y));
+    JS_SetPropertyStr(ctx, bcr, "top", JS_NewFloat64(ctx, elem_y));
+    JS_SetPropertyStr(ctx, bcr, "left", JS_NewFloat64(ctx, elem_x));
+    JS_SetPropertyStr(ctx, bcr, "bottom", JS_NewFloat64(ctx, elem_y + elem_h));
+    JS_SetPropertyStr(ctx, bcr, "right", JS_NewFloat64(ctx, elem_x + elem_w));
+    JS_SetPropertyStr(ctx, bcr, "width", JS_NewFloat64(ctx, elem_w));
+    JS_SetPropertyStr(ctx, bcr, "height", JS_NewFloat64(ctx, elem_h));
+    JS_SetPropertyStr(ctx, entry, "boundingClientRect", bcr);
+
+    JSValue ir = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, ir, "x", JS_NewFloat64(ctx, ix1));
+    JS_SetPropertyStr(ctx, ir, "y", JS_NewFloat64(ctx, iy1));
+    JS_SetPropertyStr(ctx, ir, "top", JS_NewFloat64(ctx, iy1));
+    JS_SetPropertyStr(ctx, ir, "left", JS_NewFloat64(ctx, ix1));
+    JS_SetPropertyStr(ctx, ir, "bottom", JS_NewFloat64(ctx, iy1 + inter_h));
+    JS_SetPropertyStr(ctx, ir, "right", JS_NewFloat64(ctx, ix1 + inter_w));
+    JS_SetPropertyStr(ctx, ir, "width", JS_NewFloat64(ctx, inter_w));
+    JS_SetPropertyStr(ctx, ir, "height", JS_NewFloat64(ctx, inter_h));
+    JS_SetPropertyStr(ctx, entry, "intersectionRect", ir);
+
+    JSValue rb = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, rb, "x", JS_NewFloat64(ctx, root_x));
+    JS_SetPropertyStr(ctx, rb, "y", JS_NewFloat64(ctx, root_y));
+    JS_SetPropertyStr(ctx, rb, "top", JS_NewFloat64(ctx, root_y));
+    JS_SetPropertyStr(ctx, rb, "left", JS_NewFloat64(ctx, root_x));
+    JS_SetPropertyStr(ctx, rb, "bottom", JS_NewFloat64(ctx, root_y + root_h));
+    JS_SetPropertyStr(ctx, rb, "right", JS_NewFloat64(ctx, root_x + root_w));
+    JS_SetPropertyStr(ctx, rb, "width", JS_NewFloat64(ctx, root_w));
+    JS_SetPropertyStr(ctx, rb, "height", JS_NewFloat64(ctx, root_h));
+    JS_SetPropertyStr(ctx, entry, "rootBounds", rb);
+
+    JS_SetPropertyStr(ctx, entry, "intersectionRatio", JS_NewFloat64(ctx, ratio));
+    JS_SetPropertyStr(ctx, entry, "isIntersecting", JS_NewBool(ctx, is_intersecting));
+
+    JSValue global_obj = JS_GetGlobalObject(ctx);
+    JSValue perf = JS_GetPropertyStr(ctx, global_obj, "performance");
+    double ts = 0.0;
+    if (!JS_IsUndefined(perf) && !JS_IsException(perf)) {
+        JSValue now_fn = JS_GetPropertyStr(ctx, perf, "now");
+        if (JS_IsFunction(ctx, now_fn)) {
+            JSValue now_val = JS_Call(ctx, now_fn, perf, 0, nullptr);
+            if (!JS_IsException(now_val)) {
+                JS_ToFloat64(ctx, &ts, now_val);
+            }
+            JS_FreeValue(ctx, now_val);
+        }
+        JS_FreeValue(ctx, now_fn);
+    }
+    JS_FreeValue(ctx, perf);
+    JS_FreeValue(ctx, global_obj);
+    JS_SetPropertyStr(ctx, entry, "time", JS_NewFloat64(ctx, ts));
+    JS_SetPropertyStr(ctx, entry, "target", wrap_element(ctx, elem));
+
+    return entry;
+}
+
 void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h) {
     auto* state = get_dom_state(ctx);
     if (!state) return;
     state->viewport_width = viewport_w;
     state->viewport_height = viewport_h;
 
-    for (auto& io : state->intersection_observers) {
+    for (int32_t observer_index = 0;
+         observer_index < static_cast<int32_t>(state->intersection_observers.size());
+         ++observer_index) {
+        auto& io = state->intersection_observers[observer_index];
         if (!JS_IsFunction(ctx, io.callback)) continue;
         if (io.observed_elements.empty()) continue;
 
-        // Build array of IntersectionObserverEntry objects
-        JSValue entries = JS_NewArray(ctx);
-        int entry_idx = 0;
+        DOMState::PendingIntersection* pending_batch = nullptr;
+        for (auto& pending : state->pending_intersections) {
+            if (pending.observer_index == observer_index) {
+                pending_batch = &pending;
+                break;
+            }
+        }
 
         for (auto* elem : io.observed_elements) {
-            // Look up element geometry
-            auto it = state->layout_geometry.find(elem);
+            auto geom_it = state->layout_geometry.find(elem);
 
-            // Compute border-box rect for the element using precomputed abs_border_x/y
-            float elem_x = 0, elem_y = 0, elem_w = 0, elem_h = 0;
-            if (it != state->layout_geometry.end()) {
-                auto& lr = it->second;
+            float elem_x = 0.0f;
+            float elem_y = 0.0f;
+            float elem_w = 0.0f;
+            float elem_h = 0.0f;
+            if (geom_it != state->layout_geometry.end()) {
+                auto& lr = geom_it->second;
                 elem_x = lr.abs_border_x;
                 elem_y = lr.abs_border_y;
                 elem_w = lr.border_left + lr.padding_left + lr.width +
@@ -23732,7 +24130,6 @@ void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h)
                          lr.padding_bottom + lr.border_bottom;
             }
 
-            // Root rect (viewport + rootMargin)
             float root_x = -io.root_margin_left;
             float root_y = -io.root_margin_top;
             float root_w = static_cast<float>(viewport_w) +
@@ -23740,7 +24137,6 @@ void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h)
             float root_h = static_cast<float>(viewport_h) +
                            io.root_margin_top + io.root_margin_bottom;
 
-            // Compute intersection rect
             float ix1 = std::max(elem_x, root_x);
             float iy1 = std::max(elem_y, root_y);
             float ix2 = std::min(elem_x + elem_w, root_x + root_w);
@@ -23748,118 +24144,217 @@ void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h)
             float inter_w = std::max(0.0f, ix2 - ix1);
             float inter_h = std::max(0.0f, iy2 - iy1);
 
-            float intersection_area = inter_w * inter_h;
             float element_area = elem_w * elem_h;
-            float ratio = (element_area > 0) ? (intersection_area / element_area) : 0.0f;
-            bool is_intersecting = (ratio > 0) || (elem_w > 0 && elem_h > 0 &&
-                                   inter_w > 0 && inter_h > 0);
+            float ratio = element_area > 0.0f ? ((inter_w * inter_h) / element_area) : 0.0f;
+            bool is_intersecting = (ratio > 0.0f) ||
+                                   (elem_w > 0.0f && elem_h > 0.0f && inter_w > 0.0f && inter_h > 0.0f);
 
-            // Check against thresholds — fire if:
-            // (a) not seen this element before (initial observation), OR
-            // (b) isIntersecting state changes, OR
-            // (c) ratio crosses any threshold
             auto prev_ratio_it = io.prev_ratio.find(elem);
             auto prev_inter_it = io.prev_intersecting.find(elem);
-            bool is_first_time = (prev_ratio_it == io.prev_ratio.end());
+            bool is_first_time = prev_ratio_it == io.prev_ratio.end();
             bool prev_is_intersecting = is_first_time ? !is_intersecting : prev_inter_it->second;
-            float prev_r = is_first_time ? -1.0f : prev_ratio_it->second;
+            float prev_ratio = is_first_time ? -1.0f : prev_ratio_it->second;
 
-            bool should_fire = is_first_time;
-            if (!should_fire && prev_is_intersecting != is_intersecting) {
-                should_fire = true;
-            }
+            bool should_fire = is_first_time || prev_is_intersecting != is_intersecting;
             if (!should_fire) {
-                for (float t : io.thresholds) {
-                    bool was_above = (prev_r >= t);
-                    bool now_above = (ratio >= t);
-                    if (was_above != now_above) { should_fire = true; break; }
+                for (float threshold : io.thresholds) {
+                    if ((prev_ratio >= threshold) != (ratio >= threshold)) {
+                        should_fire = true;
+                        break;
+                    }
                 }
             }
 
-            if (should_fire) {
-                // Create IntersectionObserverEntry
-                JSValue entry = JS_NewObject(ctx);
+            if (!pending_batch && should_fire) {
+                DOMState::PendingIntersection pending;
+                pending.observer_index = observer_index;
+                pending.observer_obj = JS_DupValue(ctx, io.observer_obj);
+                pending.callback = JS_DupValue(ctx, io.callback);
+                state->pending_intersections.push_back(std::move(pending));
+                pending_batch = &state->pending_intersections.back();
+            }
 
-                // boundingClientRect
-                JSValue bcr = JS_NewObject(ctx);
-                JS_SetPropertyStr(ctx, bcr, "x", JS_NewFloat64(ctx, elem_x));
-                JS_SetPropertyStr(ctx, bcr, "y", JS_NewFloat64(ctx, elem_y));
-                JS_SetPropertyStr(ctx, bcr, "top", JS_NewFloat64(ctx, elem_y));
-                JS_SetPropertyStr(ctx, bcr, "left", JS_NewFloat64(ctx, elem_x));
-                JS_SetPropertyStr(ctx, bcr, "bottom", JS_NewFloat64(ctx, elem_y + elem_h));
-                JS_SetPropertyStr(ctx, bcr, "right", JS_NewFloat64(ctx, elem_x + elem_w));
-                JS_SetPropertyStr(ctx, bcr, "width", JS_NewFloat64(ctx, elem_w));
-                JS_SetPropertyStr(ctx, bcr, "height", JS_NewFloat64(ctx, elem_h));
-                JS_SetPropertyStr(ctx, entry, "boundingClientRect", bcr);
+            if (!pending_batch) continue;
 
-                // intersectionRect
-                JSValue ir = JS_NewObject(ctx);
-                JS_SetPropertyStr(ctx, ir, "x", JS_NewFloat64(ctx, ix1));
-                JS_SetPropertyStr(ctx, ir, "y", JS_NewFloat64(ctx, iy1));
-                JS_SetPropertyStr(ctx, ir, "top", JS_NewFloat64(ctx, iy1));
-                JS_SetPropertyStr(ctx, ir, "left", JS_NewFloat64(ctx, ix1));
-                JS_SetPropertyStr(ctx, ir, "bottom", JS_NewFloat64(ctx, iy1 + inter_h));
-                JS_SetPropertyStr(ctx, ir, "right", JS_NewFloat64(ctx, ix1 + inter_w));
-                JS_SetPropertyStr(ctx, ir, "width", JS_NewFloat64(ctx, inter_w));
-                JS_SetPropertyStr(ctx, ir, "height", JS_NewFloat64(ctx, inter_h));
-                JS_SetPropertyStr(ctx, entry, "intersectionRect", ir);
+            auto record_it = std::find_if(
+                pending_batch->records.begin(),
+                pending_batch->records.end(),
+                [elem](const DOMState::PendingIntersectionRecord& record) {
+                    return record.element == elem;
+                });
 
-                // rootBounds
-                JSValue rb = JS_NewObject(ctx);
-                JS_SetPropertyStr(ctx, rb, "x", JS_NewFloat64(ctx, root_x));
-                JS_SetPropertyStr(ctx, rb, "y", JS_NewFloat64(ctx, root_y));
-                JS_SetPropertyStr(ctx, rb, "top", JS_NewFloat64(ctx, root_y));
-                JS_SetPropertyStr(ctx, rb, "left", JS_NewFloat64(ctx, root_x));
-                JS_SetPropertyStr(ctx, rb, "bottom", JS_NewFloat64(ctx, root_y + root_h));
-                JS_SetPropertyStr(ctx, rb, "right", JS_NewFloat64(ctx, root_x + root_w));
-                JS_SetPropertyStr(ctx, rb, "width", JS_NewFloat64(ctx, root_w));
-                JS_SetPropertyStr(ctx, rb, "height", JS_NewFloat64(ctx, root_h));
-                JS_SetPropertyStr(ctx, entry, "rootBounds", rb);
-
-                JS_SetPropertyStr(ctx, entry, "intersectionRatio",
-                    JS_NewFloat64(ctx, ratio));
-                JS_SetPropertyStr(ctx, entry, "isIntersecting",
-                    JS_NewBool(ctx, is_intersecting));
-
-                // time — DOMHighResTimeStamp via performance.now()
-                {
-                    JSValue global_obj = JS_GetGlobalObject(ctx);
-                    JSValue perf = JS_GetPropertyStr(ctx, global_obj, "performance");
-                    double ts = 0.0;
-                    if (!JS_IsUndefined(perf) && !JS_IsException(perf)) {
-                        JSValue now_fn = JS_GetPropertyStr(ctx, perf, "now");
-                        if (JS_IsFunction(ctx, now_fn)) {
-                            JSValue now_val = JS_Call(ctx, now_fn, perf, 0, nullptr);
-                            if (!JS_IsException(now_val)) {
-                                JS_ToFloat64(ctx, &ts, now_val);
-                            }
-                            JS_FreeValue(ctx, now_val);
-                        }
-                        JS_FreeValue(ctx, now_fn);
-                    }
-                    JS_FreeValue(ctx, perf);
-                    JS_FreeValue(ctx, global_obj);
-                    JS_SetPropertyStr(ctx, entry, "time", JS_NewFloat64(ctx, ts));
+            if (!should_fire) {
+                if (record_it != pending_batch->records.end()) {
+                    JS_FreeValue(ctx, record_it->entry);
+                    pending_batch->records.erase(record_it);
                 }
+                continue;
+            }
 
-                // target — wrap the SimpleNode as an element proxy
-                JS_SetPropertyStr(ctx, entry, "target", wrap_element(ctx, elem));
+            JSValue entry = create_intersection_observer_entry(
+                ctx, elem, elem_x, elem_y, elem_w, elem_h, ix1, iy1, inter_w, inter_h,
+                root_x, root_y, root_w, root_h, ratio, is_intersecting);
 
-                JS_SetPropertyUint32(ctx, entries, entry_idx++, entry);
-
-                // Update tracked state after firing
-                io.prev_ratio[elem] = ratio;
-                io.prev_intersecting[elem] = is_intersecting;
+            if (record_it != pending_batch->records.end()) {
+                JS_FreeValue(ctx, record_it->entry);
+                record_it->entry = entry;
+                record_it->ratio = ratio;
+                record_it->is_intersecting = is_intersecting;
+            } else {
+                DOMState::PendingIntersectionRecord record;
+                record.element = elem;
+                record.entry = entry;
+                record.ratio = ratio;
+                record.is_intersecting = is_intersecting;
+                pending_batch->records.push_back(std::move(record));
             }
         }
+    }
 
-        if (entry_idx > 0) {
-            // Call the callback with (entries, observer)
-            JSValue args[2] = { entries, io.observer_obj };
-            JSValue ret = JS_Call(ctx, io.callback, JS_UNDEFINED, 2, args);
+    state->pending_intersections.erase(
+        std::remove_if(
+            state->pending_intersections.begin(),
+            state->pending_intersections.end(),
+            [ctx](DOMState::PendingIntersection& pending) {
+                if (!pending.records.empty()) return false;
+                JS_FreeValue(ctx, pending.callback);
+                JS_FreeValue(ctx, pending.observer_obj);
+                return true;
+            }),
+        state->pending_intersections.end());
+
+    schedule_intersection_observer_delivery(ctx, state);
+}
+
+static void flush_resize_observers(JSContext* ctx, DOMState* state);
+static void schedule_resize_observer_delivery(JSContext* ctx, DOMState* state);
+
+static void schedule_resize_observer_delivery(JSContext* ctx, DOMState* state) {
+    if (!state || state->pending_resizes.empty()) return;
+    if (state->resize_observer_delivery_running) return;
+    if (state->resize_observer_delivery_scheduled) return;
+    state->resize_observer_delivery_scheduled = true;
+    schedule_async_observer_checkpoint(ctx, state);
+}
+
+static void deliver_resize_observers_at_checkpoint(JSContext* ctx,
+                                                   DOMState* state,
+                                                   bool drain_pending_jobs) {
+    if (!state) return;
+    if (state->resize_observer_delivery_running) return;
+    if (state->pending_resizes.empty()) {
+        state->resize_observer_delivery_scheduled = false;
+        return;
+    }
+
+    state->resize_observer_delivery_scheduled = false;
+    state->resize_observer_delivery_running = true;
+
+    // Match MutationObserver checkpoint ordering so Promise jobs that start a
+    // turn still run before ResizeObserver delivery for that same checkpoint.
+    if (drain_pending_jobs) {
+        JSContext* ctx_job = nullptr;
+        while (JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx_job) > 0) {
+            // drain
+        }
+    }
+
+    auto batch = std::move(state->pending_resizes);
+    state->pending_resizes.clear();
+    state->active_resize_delivery = &batch;
+    state->active_resize_delivery_index = 0;
+
+    for (size_t batch_index = 0; batch_index < batch.size(); ++batch_index) {
+        state->active_resize_delivery_index = batch_index;
+        auto& pending = batch[batch_index];
+        JSValue entries = JS_NewArray(ctx);
+        uint32_t entry_idx = 0;
+
+        DOMState::ResizeObserverEntry* observer = nullptr;
+        if (pending.observer_index >= 0 &&
+            pending.observer_index < static_cast<int32_t>(state->resize_observers.size())) {
+            observer = &state->resize_observers[pending.observer_index];
+        }
+
+        if (!observer) {
+            JS_FreeValue(ctx, entries);
+            JS_FreeValue(ctx, pending.callback);
+            JS_FreeValue(ctx, pending.observer_obj);
+            continue;
+        }
+
+        for (auto& record : pending.records) {
+            const bool still_observed =
+                std::find(observer->observed_elements.begin(),
+                          observer->observed_elements.end(),
+                          record.element) != observer->observed_elements.end();
+            if (still_observed) {
+                observer->previous_sizes[record.element] =
+                    std::make_pair(record.tracked_width, record.tracked_height);
+            }
+            JSValue entry = create_resize_observer_entry(ctx, record);
+            JS_SetPropertyUint32(ctx, entries, entry_idx++, entry);
+        }
+
+        if (entry_idx > 0 && JS_IsFunction(ctx, pending.callback)) {
+            JSValue args[2] = { entries, pending.observer_obj };
+            JSValue ret = JS_Call(ctx, pending.callback, JS_UNDEFINED, 2, args);
             JS_FreeValue(ctx, ret);
         }
+
         JS_FreeValue(ctx, entries);
+        JS_FreeValue(ctx, pending.callback);
+        JS_FreeValue(ctx, pending.observer_obj);
+    }
+
+    state->active_resize_delivery = nullptr;
+    state->active_resize_delivery_index = 0;
+
+    state->resize_observer_delivery_running = false;
+}
+
+static void flush_resize_observers(JSContext* ctx, DOMState* state) {
+    deliver_resize_observers_at_checkpoint(ctx, state, false);
+}
+
+static void flush_async_observer_checkpoint(JSContext* ctx, DOMState* state) {
+    if (!state) return;
+    if (state->async_observer_checkpoint_running) return;
+    if (state->pending_intersections.empty() && state->pending_resizes.empty()) {
+        state->async_observer_checkpoint_scheduled = false;
+        state->intersection_observer_delivery_scheduled = false;
+        state->resize_observer_delivery_scheduled = false;
+        state->async_observer_checkpoint_phase =
+            DOMState::AsyncObserverCheckpointPhase::idle;
+        return;
+    }
+
+    state->async_observer_checkpoint_scheduled = false;
+    state->async_observer_checkpoint_running = true;
+    state->async_observer_checkpoint_phase =
+        DOMState::AsyncObserverCheckpointPhase::idle;
+
+    // IntersectionObserver and ResizeObserver share one compound checkpoint:
+    // drain already-queued Promise jobs once, then deliver observers in the
+    // same deterministic order the main thread requested them.
+    JSContext* ctx_job = nullptr;
+    while (JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx_job) > 0) {
+        // drain
+    }
+
+    state->async_observer_checkpoint_phase =
+        DOMState::AsyncObserverCheckpointPhase::intersection;
+    flush_intersection_observers(ctx, state);
+
+    state->async_observer_checkpoint_phase =
+        DOMState::AsyncObserverCheckpointPhase::resize;
+    flush_resize_observers(ctx, state);
+
+    state->async_observer_checkpoint_running = false;
+    state->async_observer_checkpoint_phase =
+        DOMState::AsyncObserverCheckpointPhase::idle;
+    if (!state->pending_intersections.empty() || !state->pending_resizes.empty()) {
+        schedule_async_observer_checkpoint(ctx, state);
     }
 }
 
@@ -23881,103 +24376,115 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h) {
         device_pixel_ratio = 1.0;
     }
 
-    for (auto& ro : state->resize_observers) {
+    for (int32_t observer_index = 0;
+         observer_index < static_cast<int32_t>(state->resize_observers.size());
+         ++observer_index) {
+        auto& ro = state->resize_observers[observer_index];
         if (!JS_IsFunction(ctx, ro.callback)) continue;
         if (ro.observed_elements.empty()) continue;
 
-        // Build array of ResizeObserverEntry objects
-        JSValue entries = JS_NewArray(ctx);
-        int entry_idx = 0;
-        bool has_size_change = false;
-        std::unordered_map<clever::html::SimpleNode*, std::pair<float, float>> current_sizes;
+        DOMState::PendingResize* pending_batch = nullptr;
+        for (auto& pending : state->pending_resizes) {
+            if (pending.observer_index == observer_index) {
+                pending_batch = &pending;
+                break;
+            }
+        }
 
         for (auto* elem : ro.observed_elements) {
-            // Look up element geometry
-            auto it = state->layout_geometry.find(elem);
+            auto geom_it = state->layout_geometry.find(elem);
 
-            // Content box dimensions
-            float content_x = 0, content_y = 0, content_w = 0, content_h = 0;
-            // Border box dimensions
-            float border_w = 0, border_h = 0;
+            DOMState::LayoutRect geometry_snapshot;
+            const bool has_geometry_snapshot = geom_it != state->layout_geometry.end();
+            float content_w = 0.0f;
+            float content_h = 0.0f;
+            float border_w = 0.0f;
+            float border_h = 0.0f;
 
-            if (it != state->layout_geometry.end()) {
-                auto& lr = it->second;
-                content_x = lr.x;
-                content_y = lr.y;
-                content_w = lr.width;
-                content_h = lr.height;
-                border_w = lr.border_left + lr.padding_left + lr.width +
-                           lr.padding_right + lr.border_right;
-                border_h = lr.border_top + lr.padding_top + lr.height +
-                           lr.padding_bottom + lr.border_bottom;
+            if (has_geometry_snapshot) {
+                geometry_snapshot = geom_it->second;
+                content_w = geometry_snapshot.width;
+                content_h = geometry_snapshot.height;
+                border_w = geometry_snapshot.border_left + geometry_snapshot.padding_left +
+                           geometry_snapshot.width + geometry_snapshot.padding_right +
+                           geometry_snapshot.border_right;
+                border_h = geometry_snapshot.border_top + geometry_snapshot.padding_top +
+                           geometry_snapshot.height + geometry_snapshot.padding_bottom +
+                           geometry_snapshot.border_bottom;
             }
 
-            // Determine which size to track based on box mode (default: content-box per spec)
-            float track_w = content_w, track_h = content_h;
+            float tracked_w = content_w;
+            float tracked_h = content_h;
             auto mode_it = ro.box_modes.find(elem);
-            if (mode_it != ro.box_modes.end()) {
-                if (mode_it->second == "border-box" || mode_it->second == "device-pixel-content-box") {
-                    track_w = border_w;
-                    track_h = border_h;
-                }
+            if (mode_it != ro.box_modes.end() &&
+                (mode_it->second == "border-box" ||
+                 mode_it->second == "device-pixel-content-box")) {
+                tracked_w = border_w;
+                tracked_h = border_h;
             }
-
-            current_sizes[elem] = std::make_pair(track_w, track_h);
 
             auto prev_it = ro.previous_sizes.find(elem);
-            if (prev_it == ro.previous_sizes.end() ||
-                prev_it->second.first != track_w ||
-                prev_it->second.second != track_h) {
-                has_size_change = true;
+            bool should_fire = prev_it == ro.previous_sizes.end() ||
+                               prev_it->second.first != tracked_w ||
+                               prev_it->second.second != tracked_h;
+
+            if (!pending_batch && should_fire) {
+                DOMState::PendingResize pending;
+                pending.observer_index = observer_index;
+                pending.observer_obj = JS_DupValue(ctx, ro.observer_obj);
+                pending.callback = JS_DupValue(ctx, ro.callback);
+                state->pending_resizes.push_back(std::move(pending));
+                pending_batch = &state->pending_resizes.back();
             }
 
-            // Create ResizeObserverEntry
-            JSValue entry = JS_NewObject(ctx);
+            if (!pending_batch) continue;
 
-            // contentRect (DOMRectReadOnly) — content-box in page coordinates
-            JSValue cr = make_dom_rect(ctx, content_x, content_y,
-                                        content_w, content_h);
-            JS_SetPropertyStr(ctx, entry, "contentRect", cr);
+            auto record_it = std::find_if(
+                pending_batch->records.begin(),
+                pending_batch->records.end(),
+                [elem](const DOMState::PendingResizeRecord& record) {
+                    return record.element == elem;
+                });
 
-            // contentBoxSize (array of one ResizeObserverSize)
-            JSValue cbs_arr = JS_NewArray(ctx);
-            JSValue cbs = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, cbs, "inlineSize", JS_NewFloat64(ctx, content_w));
-            JS_SetPropertyStr(ctx, cbs, "blockSize", JS_NewFloat64(ctx, content_h));
-            JS_SetPropertyUint32(ctx, cbs_arr, 0, cbs);
-            JS_SetPropertyStr(ctx, entry, "contentBoxSize", cbs_arr);
+            if (!should_fire) {
+                if (record_it != pending_batch->records.end()) {
+                    pending_batch->records.erase(record_it);
+                }
+                continue;
+            }
 
-            // borderBoxSize (array of one ResizeObserverSize)
-            JSValue bbs_arr = JS_NewArray(ctx);
-            JSValue bbs = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, bbs, "inlineSize", JS_NewFloat64(ctx, border_w));
-            JS_SetPropertyStr(ctx, bbs, "blockSize", JS_NewFloat64(ctx, border_h));
-            JS_SetPropertyUint32(ctx, bbs_arr, 0, bbs);
-            JS_SetPropertyStr(ctx, entry, "borderBoxSize", bbs_arr);
-
-            // devicePixelContentBoxSize (array of one ResizeObserverSize)
-            JSValue dpbs_arr = JS_NewArray(ctx);
-            JSValue dpbs = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, dpbs, "inlineSize", JS_NewFloat64(ctx, content_w * device_pixel_ratio));
-            JS_SetPropertyStr(ctx, dpbs, "blockSize", JS_NewFloat64(ctx, content_h * device_pixel_ratio));
-            JS_SetPropertyUint32(ctx, dpbs_arr, 0, dpbs);
-            JS_SetPropertyStr(ctx, entry, "devicePixelContentBoxSize", dpbs_arr);
-
-            // target — wrap the SimpleNode as an element proxy
-            JS_SetPropertyStr(ctx, entry, "target", wrap_element(ctx, elem));
-
-            JS_SetPropertyUint32(ctx, entries, entry_idx++, entry);
+            if (record_it != pending_batch->records.end()) {
+                record_it->geometry_snapshot = geometry_snapshot;
+                record_it->has_geometry_snapshot = has_geometry_snapshot;
+                record_it->device_pixel_ratio = device_pixel_ratio;
+                record_it->tracked_width = tracked_w;
+                record_it->tracked_height = tracked_h;
+            } else {
+                DOMState::PendingResizeRecord record;
+                record.element = elem;
+                record.geometry_snapshot = geometry_snapshot;
+                record.has_geometry_snapshot = has_geometry_snapshot;
+                record.device_pixel_ratio = device_pixel_ratio;
+                record.tracked_width = tracked_w;
+                record.tracked_height = tracked_h;
+                pending_batch->records.push_back(std::move(record));
+            }
         }
-
-        if (has_size_change && entry_idx > 0) {
-            // Call the callback with (entries, observer)
-            JSValue args[2] = { entries, ro.observer_obj };
-            JSValue ret = JS_Call(ctx, ro.callback, JS_UNDEFINED, 2, args);
-            JS_FreeValue(ctx, ret);
-            ro.previous_sizes = std::move(current_sizes);
-        }
-        JS_FreeValue(ctx, entries);
     }
+
+    state->pending_resizes.erase(
+        std::remove_if(
+            state->pending_resizes.begin(),
+            state->pending_resizes.end(),
+            [ctx](DOMState::PendingResize& pending) {
+                if (!pending.records.empty()) return false;
+                JS_FreeValue(ctx, pending.callback);
+                JS_FreeValue(ctx, pending.observer_obj);
+                return true;
+            }),
+        state->pending_resizes.end());
+
+    schedule_resize_observer_delivery(ctx, state);
 }
 
 void cleanup_dom_bindings(JSContext* ctx) {
@@ -24002,12 +24509,27 @@ void cleanup_dom_bindings(JSContext* ctx) {
     }
     state->intersection_observers.clear();
 
+    for (auto& pending : state->pending_intersections) {
+        for (auto& record : pending.records) {
+            JS_FreeValue(ctx, record.entry);
+        }
+        JS_FreeValue(ctx, pending.callback);
+        JS_FreeValue(ctx, pending.observer_obj);
+    }
+    state->pending_intersections.clear();
+
     // Free ResizeObserver JS values
     for (auto& ro : state->resize_observers) {
         JS_FreeValue(ctx, ro.callback);
         JS_FreeValue(ctx, ro.observer_obj);
     }
     state->resize_observers.clear();
+
+    for (auto& pending : state->pending_resizes) {
+        JS_FreeValue(ctx, pending.callback);
+        JS_FreeValue(ctx, pending.observer_obj);
+    }
+    state->pending_resizes.clear();
 
     for (auto& mo : state->mutation_observers) {
         JS_FreeValue(ctx, mo.callback);

@@ -1594,6 +1594,7 @@ TEST(LayoutEngineTest, MaxContentMemoizesRepeatedSubtreeMeasurementsV2064) {
            "one additional full-text measurement for the final inline layout";
     EXPECT_EQ(word_measurements, 2)
         << "fit-content root sizing and inline-block shrink-wrap should share the cached min-content width";
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
     EXPECT_GT(root->children[0]->geometry.width, 0.0f);
 }
 
@@ -1693,6 +1694,53 @@ TEST(LayoutEngineTest, FitContentIgnoresAbsoluteDescendantsForIntrinsicWidth) {
         << "fit-content should ignore absolutely positioned descendants when computing intrinsic width";
 }
 
+TEST(LayoutEngineTest, FitContentRelayoutReusesIntrinsicHintsDespiteAbsoluteMutationV2105) {
+    auto root = make_block("div");
+    root->specified_width = 420.0f;
+
+    auto container = make_block("div");
+    container->specified_width = -4.0f; // fit-content
+    LayoutNode* container_ptr = container.get();
+    container->append_child(make_text("steady signal", 16.0f));
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    auto abs_text = make_text("overlay note", 16.0f);
+    LayoutNode* abs_text_ptr = abs_text.get();
+    abs_child->append_child(std::move(abs_text));
+    container->append_child(std::move(abs_child));
+
+    root->append_child(std::move(container));
+
+    int steady_measurements = 0;
+    int signal_measurements = 0;
+
+    LayoutEngine engine;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) {
+        if (measured == "steady") {
+            steady_measurements++;
+        } else if (measured == "signal") {
+            signal_measurements++;
+        }
+        return static_cast<float>(measured.size()) * font_size * 0.6f;
+    });
+
+    engine.compute(*root, 420.0f, 600.0f);
+    const float first_width = container_ptr->geometry.width;
+
+    container_ptr->specified_width = -4.0f;
+    abs_text_ptr->text_content = "absolute overlay mutation should stay out of flow";
+    engine.compute(*root, 420.0f, 600.0f);
+    const float second_width = container_ptr->geometry.width;
+
+    EXPECT_NEAR(second_width, first_width, 0.1f);
+    EXPECT_EQ(steady_measurements, 1);
+    EXPECT_EQ(signal_measurements, 1);
+    EXPECT_GT(engine.relayout_min_content_width_memo_hit_count(), 0);
+    EXPECT_GT(engine.relayout_max_content_width_memo_hit_count(), 0);
+}
+
 TEST(LayoutEngineTest, InlineBlockShrinkWrapIgnoresAbsoluteDescendants) {
     auto root = make_block("div");
     root->specified_width = 800.0f;
@@ -1717,6 +1765,83 @@ TEST(LayoutEngineTest, InlineBlockShrinkWrapIgnoresAbsoluteDescendants) {
     float expected_width = 2.0f * 16.0f * 0.6f;
     EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 2.0f)
         << "inline-block shrink-wrap should ignore absolutely positioned descendants";
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, InlineBlockShrinkWrapIgnoresNestedAbsoluteInlineDescendantsV2084) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+
+    auto inline_child = make_inline("span");
+    inline_child->append_child(make_text("Hi", 16.0f));
+
+    auto abs_child = make_inline("span");
+    abs_child->position_type = 2; // absolute
+    abs_child->specified_width = 400.0f;
+    abs_child->specified_height = 20.0f;
+    inline_child->append_child(std::move(abs_child));
+
+    inline_block->append_child(std::move(inline_child));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float expected_width = 2.0f * 16.0f * 0.6f;
+    EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 2.0f)
+        << "nested absolutely positioned inline descendants should not widen shrink-wrap width";
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, InlineBlockShrinkWrapOutOfFlowAbsoluteMutationDoesNotInvalidateIntrinsicHintV2092) {
+    auto root = make_block("div");
+    root->specified_width = 420.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->append_child(make_text("steady signal", 16.0f));
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    auto abs_text = make_text("overlay note", 16.0f);
+    LayoutNode* abs_text_ptr = abs_text.get();
+    abs_child->append_child(std::move(abs_text));
+    inline_block->append_child(std::move(abs_child));
+
+    root->append_child(std::move(inline_block));
+
+    int steady_measurements = 0;
+    int signal_measurements = 0;
+
+    LayoutEngine engine;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) {
+        if (measured == "steady") {
+            steady_measurements++;
+        } else if (measured == "signal") {
+            signal_measurements++;
+        }
+        return static_cast<float>(measured.size()) * font_size * 0.6f;
+    });
+
+    engine.compute(*root, 420.0f, 600.0f);
+    const float first_width = root->children[0]->geometry.width;
+
+    abs_text_ptr->text_content = "absolute overlay mutation should stay out of flow";
+    engine.compute(*root, 420.0f, 600.0f);
+    const float second_width = root->children[0]->geometry.width;
+
+    EXPECT_NEAR(second_width, first_width, 0.1f);
+    EXPECT_EQ(steady_measurements, 1);
+    EXPECT_EQ(signal_measurements, 1);
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
 }
 
 TEST(LayoutEngineTest, InlineBlockShrinkWrapAvoidsSecondLayoutPass) {
@@ -1786,6 +1911,132 @@ TEST(LayoutEngineTest, InlineBlockShrinkWrapAvoidsRedundantRelayoutV2066) {
     EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
 }
 
+TEST(LayoutEngineTest, NestedInlineBlockShrinkWrapAvoidsRelayoutWhenIntrinsicBoundsAreStableV2064) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    root->append_child(make_text("prefix ", 16.0f));
+
+    auto outer = std::make_unique<LayoutNode>();
+    outer->tag_name = "span";
+    outer->mode = LayoutMode::InlineBlock;
+    outer->display = DisplayType::InlineBlock;
+    outer->geometry.padding.left = 6.0f;
+    outer->geometry.padding.right = 4.0f;
+
+    auto inner = std::make_unique<LayoutNode>();
+    inner->tag_name = "span";
+    inner->mode = LayoutMode::InlineBlock;
+    inner->display = DisplayType::InlineBlock;
+    inner->append_child(make_text("alpha beta gamma", 16.0f));
+    outer->append_child(std::move(inner));
+
+    root->append_child(std::move(outer));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    auto* inline_block = root->children[1].get();
+    EXPECT_GT(inline_block->geometry.width, 0.0f);
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, InlineBlockRelayoutReusesSameTreeIntrinsicHintsV2088) {
+    auto root = make_block("div");
+    root->specified_width = 420.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->append_child(make_text("alpha beta gamma", 16.0f));
+    root->append_child(std::move(inline_block));
+
+    int full_text_measurements = 0;
+    int word_measurements = 0;
+
+    LayoutEngine engine;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) {
+        if (measured == "alpha beta gamma") {
+            full_text_measurements++;
+        } else if (measured == "alpha" || measured == "beta" || measured == "gamma") {
+            word_measurements++;
+        }
+        return static_cast<float>(measured.size()) * font_size * 0.6f;
+    });
+
+    engine.compute(*root, 420.0f, 600.0f);
+    root->specified_width = 360.0f;
+    engine.compute(*root, 360.0f, 600.0f);
+    root->specified_width = 420.0f;
+    engine.compute(*root, 420.0f, 600.0f);
+
+    EXPECT_EQ(full_text_measurements, 4)
+        << "relayouts of the same inline-block subtree should only pay one max-content measurement on top of the repeated layout passes";
+    EXPECT_EQ(word_measurements, 3)
+        << "relayouts of the same inline-block subtree should reuse cached min-content hints";
+    EXPECT_GT(root->children[0]->geometry.width, 0.0f);
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, InlineBlockShrinkWrapInvalidatesMutatedSameTreeHintV2089) {
+    auto root = make_block("div");
+    root->specified_width = 420.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->append_child(make_text("steady signal", 16.0f));
+
+    auto mutating_text = make_text("stretching delta", 16.0f);
+    LayoutNode* mutating_text_ptr = mutating_text.get();
+    inline_block->append_child(std::move(mutating_text));
+    root->append_child(std::move(inline_block));
+
+    int steady_measurements = 0;
+    int signal_measurements = 0;
+    int stretching_measurements = 0;
+    int tiny_measurements = 0;
+    int delta_measurements = 0;
+
+    LayoutEngine engine;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) {
+        if (measured == "steady") {
+            steady_measurements++;
+        } else if (measured == "signal") {
+            signal_measurements++;
+        } else if (measured == "stretching") {
+            stretching_measurements++;
+        } else if (measured == "tiny") {
+            tiny_measurements++;
+        } else if (measured == "delta") {
+            delta_measurements++;
+        }
+        return static_cast<float>(measured.size()) * font_size * 0.6f;
+    });
+
+    engine.compute(*root, 420.0f, 600.0f);
+    const float wide_width = root->children[0]->geometry.width;
+
+    mutating_text_ptr->text_content = "tiny delta";
+    engine.compute(*root, 420.0f, 600.0f);
+    const float narrow_width = root->children[0]->geometry.width;
+
+    EXPECT_LT(narrow_width, wide_width);
+    EXPECT_GT(wide_width - narrow_width, 40.0f);
+    EXPECT_EQ(steady_measurements, 1)
+        << "unchanged descendant words should keep reusing their same-tree min-content hint";
+    EXPECT_EQ(signal_measurements, 1);
+    EXPECT_EQ(stretching_measurements, 1);
+    EXPECT_EQ(tiny_measurements, 1)
+        << "the mutated descendant should be remeasured after its intrinsic width changes";
+    EXPECT_EQ(delta_measurements, 2);
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
 TEST(LayoutEngineTest, InlineFormattingShrinkWrapAvoidsRedundantRelayoutV2066) {
     auto root = make_block("div");
     root->specified_width = 400.0f;
@@ -1812,6 +2063,99 @@ TEST(LayoutEngineTest, InlineFormattingShrinkWrapAvoidsRedundantRelayoutV2066) {
     EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
 }
 
+TEST(LayoutEngineTest, InlineBlockShrinkWrapWrappedTextAvoidsDuplicateWrapMeasurementV2098) {
+    auto root = make_block("div");
+    root->specified_width = 120.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->append_child(make_text("alpha beta gamma", 16.0f));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) {
+        return static_cast<float>(measured.size()) * font_size * 0.6f;
+    });
+
+    engine.compute(*root, 120.0f, 600.0f);
+
+    auto* laid_out_inline_block = root->children[0].get();
+    EXPECT_NEAR(laid_out_inline_block->geometry.width, 120.0f, 0.1f);
+    EXPECT_GT(laid_out_inline_block->geometry.height, 16.0f * 1.2f);
+    EXPECT_EQ(engine.inline_block_wrapped_text_measure_reuse_count(), 1)
+        << "wrapped shrink-wrap inline-blocks should reuse the measured text width instead of remeasuring it during wrap analysis";
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, InlineBlockShrinkWrapRespectsBreakAllWrappedDescendantsV2099) {
+    auto root = make_block("div");
+    root->specified_width = 60.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+
+    auto wrapped_text = make_text("ABCDEFGHIJKLMNOPQRST", 16.0f);
+    wrapped_text->word_break = 1; // break-all
+    inline_block->append_child(std::move(wrapped_text));
+
+    auto abs_child = make_inline("span");
+    abs_child->position_type = 2; // absolute
+    abs_child->specified_width = 320.0f;
+    abs_child->specified_height = 18.0f;
+    inline_block->append_child(std::move(abs_child));
+
+    auto hidden_child = make_inline("span");
+    hidden_child->content_visibility = 1; // hidden
+    hidden_child->specified_width = 280.0f;
+    hidden_child->specified_height = 16.0f;
+    inline_block->append_child(std::move(hidden_child));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 60.0f, 300.0f);
+
+    auto* laid_out_inline_block = root->children[0].get();
+    EXPECT_NEAR(laid_out_inline_block->geometry.width, 60.0f, 0.1f)
+        << "break-all descendants should let shrink-wrap inline-blocks honor the available width";
+    EXPECT_GT(laid_out_inline_block->geometry.height, 16.0f * 1.2f)
+        << "the wrapped descendant should still wrap onto multiple lines";
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
+TEST(LayoutEngineTest, WrappedInlineBlockRelayoutInvalidatesOverflowWrapAnywhereHintV2099) {
+    auto root = make_block("div");
+    root->specified_width = 60.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+
+    auto wrapped_text = make_text("ABCDEFGHIJKLMNOPQRST", 16.0f);
+    LayoutNode* wrapped_text_ptr = wrapped_text.get();
+    inline_block->append_child(std::move(wrapped_text));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 60.0f, 300.0f);
+    const float unwrapped_width = root->children[0]->geometry.width;
+
+    wrapped_text_ptr->overflow_wrap = 2; // anywhere
+    engine.compute(*root, 60.0f, 300.0f);
+    const float wrapped_width = root->children[0]->geometry.width;
+
+    EXPECT_GT(unwrapped_width, 180.0f);
+    EXPECT_NEAR(wrapped_width, 60.0f, 0.1f)
+        << "changing overflow-wrap to anywhere must invalidate the cached intrinsic width hint";
+    EXPECT_GT(root->children[0]->geometry.height, 16.0f * 1.2f);
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
+}
+
 TEST(LayoutEngineTest, FitContentIgnoresFloatedDescendantsForIntrinsicWidth) {
     auto root = make_block("div");
 
@@ -1833,6 +2177,75 @@ TEST(LayoutEngineTest, FitContentIgnoresFloatedDescendantsForIntrinsicWidth) {
     float expected_width = 2.0f * 16.0f * 0.6f;
     EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 2.0f)
         << "fit-content should ignore floated descendants when computing intrinsic width";
+}
+
+TEST(LayoutEngineTest, FitContentRelayoutInvalidatesOverflowWrapAnywhereHintV2105) {
+    auto root = make_block("div");
+    root->specified_width = 60.0f;
+
+    auto container = make_block("div");
+    container->specified_width = -4.0f; // fit-content
+
+    auto wrapped_text = make_text("ABCDEFGHIJKLMNOPQRST", 16.0f);
+    LayoutNode* wrapped_text_ptr = wrapped_text.get();
+    container->append_child(std::move(wrapped_text));
+    root->append_child(std::move(container));
+
+    LayoutEngine engine;
+    engine.compute(*root, 60.0f, 300.0f);
+    const float unwrapped_width = root->children[0]->geometry.width;
+
+    root->children[0]->specified_width = -4.0f;
+    wrapped_text_ptr->overflow_wrap = 2; // anywhere
+    engine.compute(*root, 60.0f, 300.0f);
+    const float wrapped_width = root->children[0]->geometry.width;
+
+    EXPECT_GT(unwrapped_width, 180.0f);
+    EXPECT_NEAR(wrapped_width, 60.0f, 0.1f)
+        << "changing overflow-wrap to anywhere must invalidate the cached fit-content intrinsic width hint";
+    EXPECT_GT(root->children[0]->geometry.height, 16.0f * 1.2f);
+}
+
+TEST(LayoutEngineTest, InlineBlockShrinkWrapIgnoresNestedNonParticipatingInlineDescendantsV2084) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+
+    auto inline_block = std::make_unique<LayoutNode>();
+    inline_block->tag_name = "span";
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+
+    auto inline_child = make_inline("span");
+    inline_child->append_child(make_text("Hi", 16.0f));
+
+    auto fixed_child = make_inline("span");
+    fixed_child->position_type = 3; // fixed
+    fixed_child->specified_width = 420.0f;
+    fixed_child->specified_height = 18.0f;
+    inline_child->append_child(std::move(fixed_child));
+
+    auto hidden_child = make_inline("span");
+    hidden_child->content_visibility = 1; // hidden
+    hidden_child->specified_width = 360.0f;
+    hidden_child->specified_height = 16.0f;
+    inline_child->append_child(std::move(hidden_child));
+
+    auto float_child = make_inline("span");
+    float_child->float_type = 1; // float:left
+    float_child->specified_width = 300.0f;
+    float_child->specified_height = 14.0f;
+    inline_child->append_child(std::move(float_child));
+
+    inline_block->append_child(std::move(inline_child));
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float expected_width = 2.0f * 16.0f * 0.6f;
+    EXPECT_NEAR(root->children[0]->geometry.width, expected_width, 2.0f)
+        << "nested fixed, hidden, and floated inline descendants should not widen shrink-wrap width";
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
 }
 
 TEST(LayoutEngineTest, ContentVisibilityHiddenSkippedInIntrinsicWidthV2067) {
@@ -1885,6 +2298,51 @@ TEST(LayoutEngineTest, MinContentIgnoresAbsoluteDescendantsForIntrinsicWidthV207
 
     EXPECT_NEAR(candidate->geometry.width, baseline->geometry.width, 1.0f)
         << "min-content width should ignore absolutely positioned descendants";
+}
+
+TEST(LayoutEngineTest, MinContentOutOfFlowFixedMutationDoesNotInvalidateIntrinsicHintV2092) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto container = make_block("div");
+    container->specified_width = -2.0f; // min-content
+    LayoutNode* container_ptr = container.get();
+    container->append_child(make_text("steady signal", 16.0f));
+
+    auto fixed_child = make_block("div");
+    fixed_child->position_type = 3; // fixed
+    auto fixed_text = make_text("fixed note", 16.0f);
+    LayoutNode* fixed_text_ptr = fixed_text.get();
+    fixed_child->append_child(std::move(fixed_text));
+    container->append_child(std::move(fixed_child));
+
+    root->append_child(std::move(container));
+
+    int steady_measurements = 0;
+    int signal_measurements = 0;
+
+    LayoutEngine engine;
+    engine.set_text_measurer([&](const std::string& measured, float font_size, const std::string&,
+                                 int, bool, float) {
+        if (measured == "steady") {
+            steady_measurements++;
+        } else if (measured == "signal") {
+            signal_measurements++;
+        }
+        return static_cast<float>(measured.size()) * font_size * 0.6f;
+    });
+
+    engine.compute(*root, 500.0f, 600.0f);
+    const float first_width = container_ptr->geometry.width;
+
+    fixed_text_ptr->text_content = "fixed mutation should stay outside intrinsic sizing";
+    container_ptr->specified_width = -2.0f;
+    engine.compute(*root, 500.0f, 600.0f);
+    const float second_width = container_ptr->geometry.width;
+
+    EXPECT_NEAR(second_width, first_width, 0.1f);
+    EXPECT_EQ(steady_measurements, 1);
+    EXPECT_EQ(signal_measurements, 1);
 }
 
 TEST(LayoutEngineTest, MaxContentIgnoresFixedDescendantsForIntrinsicWidthV2072) {
@@ -1995,6 +2453,7 @@ TEST(LayoutEngineTest, FitContentIgnoresContentVisibilityHiddenDescendantsV2067)
         << "fit-content width should ignore content-visibility:hidden descendants";
     EXPECT_NEAR(shrink_wrap->geometry.width, expected_width, 2.0f)
         << "inline-block shrink-wrap width should ignore hidden descendants after recompute";
+    EXPECT_EQ(engine.inline_block_shrink_wrap_relayout_count(), 0);
 }
 
 // ============================================================================
@@ -12677,17 +13136,87 @@ TEST(LayoutEngineTest, DisplayModesInlineBlockAndNoneBehaviorV63) {
     LayoutEngine engine;
     engine.compute(*root, 400.0f, 300.0f);
 
+    ASSERT_EQ(root->children.size(), 4u);
     EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 0.0f);
     EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 0.0f);
-    // After anonymous block wrapping (CSS 2.1 §9.2.1.1), inline-block and
-    // inline children are wrapped in an anonymous block at children[2].
-    // The inline-block is at children[2]->children[0].
-    ASSERT_GE(root->children.size(), 3u);
-    auto& anon_block = root->children[2];
-    ASSERT_GE(anon_block->children.size(), 2u);
-    EXPECT_FLOAT_EQ(anon_block->children[0]->geometry.width, 90.0f);
-    EXPECT_FLOAT_EQ(anon_block->children[0]->geometry.height, 30.0f);
-    EXPECT_EQ(anon_block->children[1]->display, DisplayType::Inline);
+    EXPECT_FALSE(root->children[0]->is_anonymous);
+    EXPECT_FALSE(root->children[2]->is_anonymous);
+    EXPECT_FALSE(root->children[3]->is_anonymous);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.width, 90.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.height, 30.0f);
+    EXPECT_EQ(root->children[3]->display, DisplayType::Inline);
+}
+
+TEST(LayoutEngineTest, MixedFlowAnonymousBlockWrappingPreservesSourceChildOrderV2085) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto leading_text = make_text("abc", 16.0f);
+    auto hidden_inline = make_inline("span");
+    hidden_inline->display = DisplayType::None;
+    hidden_inline->mode = LayoutMode::None;
+
+    auto trailing_text = make_text("de", 16.0f);
+
+    auto block_child = make_block("div");
+    block_child->specified_height = 30.0f;
+
+    LayoutNode* leading_text_ptr = leading_text.get();
+    LayoutNode* hidden_inline_ptr = hidden_inline.get();
+    LayoutNode* trailing_text_ptr = trailing_text.get();
+    LayoutNode* block_child_ptr = block_child.get();
+
+    root->append_child(std::move(leading_text));
+    root->append_child(std::move(hidden_inline));
+    root->append_child(std::move(trailing_text));
+    root->append_child(std::move(block_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    ASSERT_EQ(root->children.size(), 4u);
+    EXPECT_EQ(root->children[0].get(), leading_text_ptr);
+    EXPECT_EQ(root->children[1].get(), hidden_inline_ptr);
+    EXPECT_EQ(root->children[2].get(), trailing_text_ptr);
+    EXPECT_EQ(root->children[3].get(), block_child_ptr);
+
+    for (const auto& child : root->children) {
+        EXPECT_FALSE(child->is_anonymous);
+    }
+
+    EXPECT_EQ(root->children[0]->text_content, "abc");
+    EXPECT_EQ(root->children[2]->text_content, "de");
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 0.0f);
+    EXPECT_NEAR(root->children[0]->geometry.x, 0.0f, 0.01f);
+    EXPECT_NEAR(root->children[0]->geometry.y, 0.0f, 0.01f);
+    EXPECT_NEAR(root->children[2]->geometry.x, 28.8f, 0.1f);
+    EXPECT_NEAR(root->children[2]->geometry.y, 0.0f, 0.01f);
+    EXPECT_NEAR(root->children[3]->geometry.y, 19.2f, 0.1f);
+    EXPECT_NEAR(root->geometry.height, 49.2f, 0.1f);
+}
+
+TEST(LayoutEngineTest, MixedFlowAnonymousBlockWrappingRestoresSourceChildrenBeforeLineClampV2086) {
+    auto root = make_block("div");
+    root->specified_width = 96.0f;
+    root->line_clamp = 1;
+
+    auto leading_text = make_text("alpha beta gamma delta", 16.0f);
+
+    auto block_child = make_block("div");
+    block_child->specified_height = 10.0f;
+
+    root->append_child(std::move(leading_text));
+    root->append_child(std::move(block_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 96.0f, 300.0f);
+
+    ASSERT_EQ(root->children.size(), 2u);
+    EXPECT_FALSE(root->children[0]->is_anonymous);
+    EXPECT_EQ(root->children[0]->text_content, "alpha beta gamma delta");
+    EXPECT_NEAR(root->children[0]->geometry.height, 19.2f, 0.1f);
+    EXPECT_NEAR(root->children[0]->geometry.width, 96.0f, 0.1f);
 }
 
 // Test V63_006: Relative positioning applies top/left offsets

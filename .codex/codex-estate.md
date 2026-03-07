@@ -7,9 +7,9 @@
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-07
-**Current Focus**: Cycle 2073 — Wake The Event Loop For Earlier Delayed Tasks | Deliver Worker Messages At JS Checkpoints | Normalize HTTP Cache Keys Across Default-Port Aliases | Preserve Deeply Nested Conditional At-Rule Semantics | Reuse Software Filter Scratch Buffers | Render Horizontal Viewport Scrolling In The Shell
+**Current Focus**: Cycle 2106 — WebSocket Checkpoint Delivery Retirement Guards | EventLoop Earlier-Deadline Rearm Wake Determinism | HTTP/2 GOAWAY And Late-Continuation Fail-Closed Cleanup | StyleResolver Conditional Cache Generation Hardening | Inline-Block Min-Content Relayout Memo Reuse | TextRenderer Clipped Raster Cache Invalidation Parity
 **Momentum**: C2007 complete — render views now prefer renderer DPR over transient window scale, with successful vibrowser app build and targeted DPR/JS regressions passing. From C1995 to C2007: 12 implementation cycles advanced.
-**Cycle**: 2073
+**Cycle**: 2106
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -2557,3 +2557,159 @@ Future cycles will append fresh entries with the corrected format from `.codex/o
 - Summary: Wake The Event Loop For Earlier Delayed Tasks | Deliver Worker Messages At JS Checkpoints | Normalize HTTP Cache Keys Across Default-Port Aliases | Preserve Deeply Nested Conditional At-Rule Semantics | Reuse Software Filter Scratch Buffers | Render Horizontal Viewport Scrolling In The Shell
 - Planner output: `.codex/orchestrator/state/runs/cycle-2073/plan.json`
 - Verification report: `.codex/orchestrator/state/runs/cycle-2073/verifier.json`
+
+### Cycle 2080 — 2026-03-07 02:14:28 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.3-codex-spark/xhigh` (fast=0)
+- Summary: Keep Repeating EventLoop Timers On Cadence | Deliver MutationObserver Batches At Checkpoints | Harden HTTP/2 Flow-Control State Updates | Stabilize Cookie Host-Only And Path Matching | Eliminate One Remaining Intrinsic Measurement Rewalk | Expose EventLoop Lag And Starvation Telemetry
+- Planner output: `.codex/orchestrator/state/runs/cycle-2080/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2080/verifier.json`
+
+### Cycle 2081 — 2026-03-07 02:37:28 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.3-codex-spark/xhigh` (fast=0)
+- Summary: Marshal WebSocket Callbacks Onto The Main JS Checkpoint | Expose Connection-Pool Reuse And Eviction Telemetry | Cache Conditional Rule Decisions Across Element Matches | Recompute Auto-Table Width Hints Cleanly After Width Oscillation | Add One More Reusable Text Raster Cache Layer | Keep Mixed-DPR Hit-Testing And Overlay Geometry Stable
+- Planner output: `.codex/orchestrator/state/runs/cycle-2081/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2081/verifier.json`
+
+### Cycle 2082 — 2026-03-07 03:04:44 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.3-codex-spark/xhigh` (fast=0)
+- Summary: Introduce Task-Source Priorities In EventLoop | Stream Fetch Body Readers Across Multiple Chunks | Bucket Rules By Rightmost Simple Selector | Skip Stable Inline-Block Shrink-Wrap Relayouts | Make Decoded Image Cache Touch And Evict O(1) | Eliminate One Remaining Mixed-DPR Overlay Resync Gap
+- Planner output: `.codex/orchestrator/state/runs/cycle-2082/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2082/verifier.json`
+
+### Cycle 2084 — 2026-03-07 03:35:14 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Finalize EventLoop task-source priority semantics | Stream fetch response bodies through multi-chunk readers | Harden rightmost-selector buckets across conditional rule groups | Eliminate stable inline-block shrink-wrap relayouts | Make decoded image cache touch and eviction strictly O(1) | Fix mixed-DPR overlay geometry resync in RenderView
+- Planner output: `.codex/orchestrator/state/runs/cycle-2084/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2084/verifier.json`
+
+### Cycle 2085 — 2026-03-07 03:59:27 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Align initial visibilitychange semantics with page-load state | Propagate fetch abort through active body readers | Harden nested at-rule parsing inside CSS nesting blocks | Preserve source-tree integrity through anonymous block wrapping | Make text run raster cache recency O(1) | Close mixed-DPR anchor and overlay parity gaps in the shell
+- Planner output: `.codex/orchestrator/state/runs/cycle-2085/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2085/verifier.json`
+
+### Cycle 2086 — 2026-03-07 04:14:07 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Align initial document visibilitychange dispatch with page-load state | Propagate fetch abort into active response body readers | Recursively parse nested conditional at-rules inside CSS nesting blocks | Preserve source-tree integrity through anonymous block wrapping | Make text run raster cache recency updates O(1) | Close mixed-DPR anchor scroll and overlay geometry parity gaps in the shell
+- Planner output: `.codex/orchestrator/state/runs/cycle-2086/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2086/verifier.json`
+
+### Cycle 2087 — 2026-03-07 04:40:59 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Defer IntersectionObserver and ResizeObserver delivery to the JS checkpoint | Fail closed on invalid HTTP/2 WINDOW_UPDATE increments | Parse `<template>` descendants into `template_content` instead of live children | Extend rightmost-selector bucketing to one more attribute-selector family | Convert text-width cache eviction to O(1) LRU | Keep mixed-DPR overlay geometry stable when snapshots are clipped on both axes
+- Planner output: `.codex/orchestrator/state/runs/cycle-2087/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2087/verifier.json`
+
+### Cycle 2088 — 2026-03-07 05:07:41 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Checkpoint-Queued Worker Message Delivery | Canonical HTTP Cache Keys | Template Content Parsing Edge Cases | Conditional Rule Decision Caching | Intrinsic Relayout Dirtiness Guard | Renderer-DPR Overlay Stability
+- Planner output: `.codex/orchestrator/state/runs/cycle-2088/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2088/verifier.json`
+
+### Cycle 2089 — 2026-03-07 05:26:16 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Checkpoint-Ordered Fetch/XHR Completion | HTTP/2 WINDOW_UPDATE Fail-Closed Hardening | Template Foster-Parenting Integrity | Nested Conditional At-Rule Context Preservation | Intrinsic Hint Invalidation On Width-Affecting Changes | Retina Hit-Testing And Anchor-Scroll Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2089/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2089/verifier.json`
+
+### Cycle 2090 — 2026-03-07 05:43:45 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Checkpoint Order For Fetch Body Streams | Cookie Scope Semantics Hardening | Template Adoption Agency Fragment Integrity | Compiled Functional Pseudo Reuse | Intrinsic Width Memoization For Table Relayout | Mixed-DPR Overlay Geometry Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2090/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2090/verifier.json`
+
+### Cycle 2091 — 2026-03-07 06:00:38 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Checkpoint-Ordered Fetch Stream EOF And Cancel | Cookie Request-Path Canonicalization | Template Formatting Reconstruction Boundaries | Compiled Relative Selector Reuse For `:has()` | Min-Content Memoization For Shrink-Wrap Relayout | Mixed-DPR Input Overlay Frame Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2091/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2091/verifier.json`
+
+### Cycle 2092 — 2026-03-07 06:18:09 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: ResizeObserver Next-Checkpoint Reentry Guard | HTTP/2 SETTINGS ACK And Window Update Strictness | Rightmost Attribute Bucket Expansion | Out-Of-Flow Intrinsic Participation Filter | Text Line Layout Cache Churn Resistance | Horizontal Scroll Frame And Hit-Test Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2092/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2092/verifier.json`
+
+### Cycle 2093 — 2026-03-07 06:36:19 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: ResizeObserver Border Box Size Baseline | Redirect URL Parser Merge Correctness | Case-Flag-Safe Attribute Bucket Completion | Intrinsic Relayout Dirtiness Boundary | Text Run Raster Scratch Reuse | Nested Scroll Overlay Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2093/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2093/verifier.json`
+
+### Cycle 2094 — 2026-03-07 06:53:29 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: ResizeObserver Border Box Size Baseline | Redirect URL Parser Merge Correctness | Case-Flag-Safe Attribute Bucket Completion | Intrinsic Relayout Dirtiness Boundary | Text Run Raster Scratch Reuse | Nested Scroll Overlay Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2094/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2094/verifier.json`
+
+### Cycle 2095 — 2026-03-07 07:11:36 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: MutationObserver Compound-Microtask Batching | HTTP/2 Closed-Stream Flow-Control Cleanup | Compiled Functional Pseudo Reuse | Colspan-Aware Intrinsic Memo Retention | Dirty-Rect Clip Propagation In SoftwareRenderer | Retina Anchor Scroll And Hit-Test Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2095/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2095/verifier.json`
+
+### Cycle 2096 — 2026-03-07 07:30:19 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Observer Delivery Checkpoint Hardening | HTTP/2 Closed-Stream Flow-Control Cleanup | Compiled Functional Pseudo Cache Parity | Table Intrinsic Memo Dirty-Path Retention | Dirty-Rect Effect Pass Constraining | HiDPI Anchor Scroll And Hit-Test Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2096/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2096/verifier.json`
+
+### Cycle 2097 — 2026-03-07 07:53:13 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Observer takeRecords Reentrancy Isolation | HTTP/2 Reset-Stream Late-Frame Rejection | Safe Functional-Pseudo Bucket Key Inference | Table Intrinsic Memo Topology Eviction | Text Raster Dirty-Clip Constraining | HiDPI Overlay Snapshot Rebase
+- Planner output: `.codex/orchestrator/state/runs/cycle-2097/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2097/verifier.json`
+
+### Cycle 2098 — 2026-03-07 08:21:29 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: WebSocket And Worker Main-Runtime Delivery | Earlier-Deadline Event-Loop Wakeups | HTTP/2 SETTINGS ACK State Accounting | Cached @media/@supports Resolver Decisions | Shrink-Wrap Double-Layout Collapse | Text Width And Glyph Cache Hot Path
+- Planner output: `.codex/orchestrator/state/runs/cycle-2098/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2098/verifier.json`
+
+### Cycle 2099 — 2026-03-07 08:38:50 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Runtime checkpoint delivery parity for Worker and WebSocket | Event-loop earlier-deadline wake telemetry | HTTP/2 SETTINGS ACK and window rebasing edges | Conditional-rule cache invalidation hardening | Shrink-wrap relayout collapse for intrinsic measurement | Text width and glyph cache hot-path reuse
+- Planner output: `.codex/orchestrator/state/runs/cycle-2099/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2099/verifier.json`
+
+### Cycle 2100 — 2026-03-07 08:57:06 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Observer checkpoint delivery parity for IntersectionObserver and ResizeObserver | Finalize EventLoop task-source priority semantics | Harden HTTP/2 closed-stream and late-frame flow-control handling | Compile and reuse functional pseudo selectors in hot match paths | Invalidate table intrinsic width hints on real width-affecting mutations | Constrain software-renderer effect passes to dirty clips
+- Planner output: `.codex/orchestrator/state/runs/cycle-2100/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2100/verifier.json`
+
+### Cycle 2101 — 2026-03-07 09:15:28 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Observer checkpoint delivery parity for IntersectionObserver and ResizeObserver | Finalize EventLoop task-source priority semantics | Harden HTTP/2 closed-stream and late-frame flow-control handling | Compile and reuse functional pseudo selectors in hot match paths | Invalidate table intrinsic width hints on real width-affecting mutations | Constrain software-renderer effect passes to dirty clips
+- Planner output: `.codex/orchestrator/state/runs/cycle-2101/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2101/verifier.json`
+
+### Cycle 2102 — 2026-03-07 09:30:40 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Checkpoint-Order IntersectionObserver/ResizeObserver Delivery | EventLoop Task-Source Priority Finalization | HTTP/2 Closed-Stream And Late-Frame Flow-Control Hardening | Compiled Functional Pseudo Reuse In Hot Selector Matching | Table Intrinsic Width Hint Invalidation On Real Width-Affecting Mutations | Dirty-Clip Constraining For Software Renderer Effect Passes
+- Planner output: `.codex/orchestrator/state/runs/cycle-2102/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2102/verifier.json`
+
+### Cycle 2103 — 2026-03-07 09:44:58 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Checkpoint-Order IntersectionObserver/ResizeObserver Delivery | EventLoop Task-Source Priority Finalization | HTTP/2 Closed-Stream And Late-Frame Flow-Control Hardening | Compiled Functional Pseudo Reuse In Hot Selector Matching | Table Intrinsic Width Hint Invalidation On Real Width-Affecting Mutations | Dirty-Clip Constraining For Software Renderer Effect Passes
+- Planner output: `.codex/orchestrator/state/runs/cycle-2103/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2103/verifier.json`
+
+### Cycle 2104 — 2026-03-07 10:04:13 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Observer Compound-Checkpoint Queue Isolation | EventLoop Source-Queue Ordering And Zero-Delay Promotion | HTTP/2 Retired-Stream Frame Rejection | Functional-Pseudo Selector Program Reuse | Table Intrinsic Cache Eviction For Span Topology Changes | Dirty-Clip Bounded Effect Scratch Buffers
+- Planner output: `.codex/orchestrator/state/runs/cycle-2104/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2104/verifier.json`
+
+### Cycle 2105 — 2026-03-07 10:22:22 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: Worker Checkpoint Delivery Retirement Guards | Timer Rearm And Cancel Race Determinism | HTTP/2 Continuation State Fail-Closed Cleanup | StyleResolver Conditional Rule Pass Caching | Inline-Block Shrink-Wrap Relayout Elision | TextRenderer Clipped Raster Cache Reuse
+- Planner output: `.codex/orchestrator/state/runs/cycle-2105/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2105/verifier.json`
+
+### Cycle 2106 — 2026-03-07 10:42:15 +0900
+- Runtime: main `gpt-5.4/high` (fast=0), workers `gpt-5.4/high` (fast=0)
+- Summary: WebSocket Checkpoint Delivery Retirement Guards | EventLoop Earlier-Deadline Rearm Wake Determinism | HTTP/2 GOAWAY And Late-Continuation Fail-Closed Cleanup | StyleResolver Conditional Cache Generation Hardening | Inline-Block Min-Content Relayout Memo Reuse | TextRenderer Clipped Raster Cache Invalidation Parity
+- Planner output: `.codex/orchestrator/state/runs/cycle-2106/plan.json`
+- Verification report: `.codex/orchestrator/state/runs/cycle-2106/verifier.json`

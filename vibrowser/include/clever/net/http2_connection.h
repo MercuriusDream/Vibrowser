@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <clever/net/hpack.h>
@@ -27,6 +28,7 @@ public:
     static constexpr uint8_t FRAME_TYPE_HEADERS = 0x1;
     static constexpr uint8_t FRAME_TYPE_RST_STREAM = 0x3;
     static constexpr uint8_t FRAME_TYPE_SETTINGS = 0x4;
+    static constexpr uint8_t FRAME_TYPE_GOAWAY = 0x7;
     static constexpr uint8_t FRAME_TYPE_WINDOW_UPDATE = 0x8;
     static constexpr uint8_t FRAME_TYPE_CONTINUATION = 0x9;
 
@@ -82,6 +84,11 @@ private:
         std::string request_url;
     };
 
+    struct PendingLocalSettings {
+        std::optional<uint32_t> header_table_size;
+        std::optional<uint32_t> initial_window_size;
+    };
+
     static constexpr uint32_t kInitialWindowSize = 65535;
     static constexpr uint32_t kDefaultMaxFrameSize = 16384;
     static constexpr uint32_t kWindowUpdateThreshold = 32768;
@@ -97,8 +104,11 @@ private:
     std::vector<uint8_t> recv_buffer_;
 
     bool preface_sent_ = false;
+    bool goaway_received_ = false;
+    uint32_t goaway_last_stream_id_ = 0;
     bool continuation_expected_ = false;
     uint32_t continuation_stream_id_ = 0;
+    bool continuation_end_stream_ = false;
     std::vector<uint8_t> continuation_header_block_;
 
     uint32_t next_stream_id_ = 1;
@@ -107,11 +117,13 @@ private:
     int64_t connection_send_window_ = kInitialWindowSize;
     [[maybe_unused]] int64_t connection_recv_window_ = kInitialWindowSize;
     [[maybe_unused]] uint32_t max_frame_size_ = kDefaultMaxFrameSize;
+    std::vector<PendingLocalSettings> pending_local_settings_;
 
     HpackEncoder encoder_;
     HpackDecoder decoder_;
 
     std::unordered_map<uint32_t, StreamContext> streams_;
+    std::unordered_set<uint32_t> closed_stream_ids_;
 
     bool ensure_started();
     uint32_t allocate_stream_id();
@@ -120,6 +132,7 @@ private:
     std::optional<Frame> try_parse_frame();
 
     bool handle_settings(const Frame& frame);
+    bool handle_goaway(const Frame& frame);
     bool handle_window_update(const Frame& frame);
     bool handle_rst_stream(const Frame& frame);
     bool handle_headers_or_continuation(const Frame& frame, std::optional<Response>& out, uint32_t target_stream_id);
@@ -127,6 +140,11 @@ private:
     std::optional<Response> maybe_finalize_response_locked(uint32_t stream_id);
     void update_stream_state_after_send(uint32_t stream_id, bool end_stream);
     void update_stream_state_after_recv(uint32_t stream_id, bool end_stream);
+    bool violates_continuation_sequence_locked(const Frame& frame) const;
+    void clear_continuation_state_locked();
+    void retire_stream_flow_control_locked(uint32_t stream_id);
+    bool reject_goaway_stream_frame_locked(uint32_t stream_id);
+    bool reject_closed_stream_frame_locked(uint32_t stream_id);
     bool stream_can_send_data(StreamState state) const;
 };
 

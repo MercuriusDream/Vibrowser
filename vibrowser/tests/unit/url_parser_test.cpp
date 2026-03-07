@@ -760,6 +760,48 @@ TEST(URLParser, PathWithDotSegmentNormalization) {
     EXPECT_EQ(result->path, "/a/c");
 }
 
+TEST(URLParser, RedirectMergeNestedRelativeThenQueryOnlyUsesLatestResponseURL) {
+    auto base = parse("https://example.com/app/start/page.html?step=1#intro");
+    ASSERT_TRUE(base.has_value());
+
+    auto nested = parse("../next/step.html?step=2", &*base);
+    ASSERT_TRUE(nested.has_value());
+    EXPECT_EQ(nested->scheme, "https");
+    EXPECT_EQ(nested->host, "example.com");
+    EXPECT_EQ(nested->path, "/app/next/step.html");
+    EXPECT_EQ(nested->query, "step=2");
+    EXPECT_TRUE(nested->fragment.empty());
+
+    auto query_only = parse("?step=3&mode=preview", &*nested);
+    ASSERT_TRUE(query_only.has_value());
+    EXPECT_EQ(query_only->scheme, "https");
+    EXPECT_EQ(query_only->host, "example.com");
+    EXPECT_EQ(query_only->path, "/app/next/step.html");
+    EXPECT_EQ(query_only->query, "step=3&mode=preview");
+    EXPECT_TRUE(query_only->fragment.empty());
+}
+
+TEST(URLParser, RedirectMergeNestedRelativeThenFragmentOnlyKeepsLatestPathAndQuery) {
+    auto base = parse("https://example.com/docs/page.html?step=1#intro");
+    ASSERT_TRUE(base.has_value());
+
+    auto nested = parse("sibling/final.html?step=2", &*base);
+    ASSERT_TRUE(nested.has_value());
+    EXPECT_EQ(nested->scheme, "https");
+    EXPECT_EQ(nested->host, "example.com");
+    EXPECT_EQ(nested->path, "/docs/sibling/final.html");
+    EXPECT_EQ(nested->query, "step=2");
+    EXPECT_TRUE(nested->fragment.empty());
+
+    auto fragment_only = parse("#done", &*nested);
+    ASSERT_TRUE(fragment_only.has_value());
+    EXPECT_EQ(fragment_only->scheme, "https");
+    EXPECT_EQ(fragment_only->host, "example.com");
+    EXPECT_EQ(fragment_only->path, "/docs/sibling/final.html");
+    EXPECT_EQ(fragment_only->query, "step=2");
+    EXPECT_EQ(fragment_only->fragment, "done");
+}
+
 TEST(URLParser, HTTPPortDefaultNotStored) {
     // HTTP default port 80 should be treated as no explicit port
     auto result = parse("http://example.com:80/path");

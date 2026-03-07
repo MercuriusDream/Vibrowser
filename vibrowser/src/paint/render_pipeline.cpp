@@ -40,6 +40,7 @@
 #include <future>
 #include <iomanip>
 #include <limits>
+#include <list>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -7458,7 +7459,12 @@ std::optional<clever::net::Response> fetch_with_redirects(
                 if (final_url) *final_url = response_url;
                 return response;
             }
-            current_url = resolve_url(*location, response_url);
+            std::string next_url = resolve_url(*location, response_url);
+            if (next_url.empty()) {
+                if (final_url) *final_url = response_url;
+                return response;
+            }
+            current_url = std::move(next_url);
             continue;
         }
         if (final_url) *final_url = response_url;
@@ -7615,11 +7621,12 @@ DecodedImage decode_image_native(const uint8_t* data, size_t length) {
 struct ImageCacheEntry {
     DecodedImage image;
     bool is_negative = false;
+    std::list<std::string>::iterator lru_iterator = std::list<std::string>::iterator {};
 };
 
 static std::mutex s_image_cache_mutex;
 static std::unordered_map<std::string, ImageCacheEntry> s_image_cache;
-static std::vector<std::string> s_image_cache_order;
+static std::list<std::string> s_image_cache_order;
 static size_t s_image_cache_bytes = 0;
 static constexpr size_t IMAGE_CACHE_DEFAULT_MAX_BYTES = 64 * 1024 * 1024; // 64MB
 static size_t s_image_cache_max_bytes = IMAGE_CACHE_DEFAULT_MAX_BYTES;
@@ -7633,72 +7640,58 @@ static std::string normalize_decoded_image_cache_key(const std::string& url) {
 }
 
 // Internal helpers — callers must hold s_image_cache_mutex
-static void image_cache_remove_from_order_locked(const std::string& url) {
-    auto order_it = std::find(s_image_cache_order.begin(), s_image_cache_order.end(), url);
-    if (order_it != s_image_cache_order.end()) {
-        s_image_cache_order.erase(order_it);
+static size_t image_cache_entry_bytes(const ImageCacheEntry& entry) {
+    return entry.image.pixels ? entry.image.pixels->size() : 0;
+}
+
+static void image_cache_touch_locked(ImageCacheEntry& entry) {
+    if (entry.lru_iterator == s_image_cache_order.end()) return;
+    if (std::next(entry.lru_iterator) == s_image_cache_order.end()) return;
+    s_image_cache_order.splice(s_image_cache_order.end(), s_image_cache_order, entry.lru_iterator);
+}
+
+static std::unordered_map<std::string, ImageCacheEntry>::iterator image_cache_upsert_locked(const std::string& url) {
+    auto [it, inserted] = s_image_cache.try_emplace(url);
+    if (inserted) {
+        s_image_cache_order.push_back(url);
+        it->second.lru_iterator = std::prev(s_image_cache_order.end());
+    } else if (it->second.lru_iterator == s_image_cache_order.end()) {
+        s_image_cache_order.push_back(url);
+        it->second.lru_iterator = std::prev(s_image_cache_order.end());
     }
+    return it;
 }
 
 static void image_cache_evict_locked() {
     while (s_image_cache_bytes > s_image_cache_max_bytes && !s_image_cache_order.empty()) {
-        const auto& oldest_url = s_image_cache_order.front();
+        const std::string oldest_url = s_image_cache_order.front();
+        s_image_cache_order.pop_front();
         auto it = s_image_cache.find(oldest_url);
-        if (it != s_image_cache.end()) {
-            if (it->second.image.pixels) {
-                s_image_cache_bytes -= it->second.image.pixels->size();
-            }
-            s_image_cache.erase(it);
-        }
-        s_image_cache_order.erase(s_image_cache_order.begin());
+        if (it == s_image_cache.end()) continue;
+        s_image_cache_bytes -= image_cache_entry_bytes(it->second);
+        s_image_cache.erase(it);
     }
 }
 
 // Thread-safe public cache operations
-static void image_cache_touch(const std::string& url) {
-    // Note: caller must hold s_image_cache_mutex, OR this is called within
-    // fetch_and_decode_image which already holds the lock.
-    image_cache_remove_from_order_locked(url);
-    s_image_cache_order.push_back(url);
+static void image_cache_store_locked(const std::string& url, const DecodedImage& image, bool is_negative) {
+    auto it = image_cache_upsert_locked(url);
+    s_image_cache_bytes -= image_cache_entry_bytes(it->second);
+    it->second.image = image;
+    it->second.is_negative = is_negative;
+    s_image_cache_bytes += image_cache_entry_bytes(it->second);
+    image_cache_touch_locked(it->second);
+    image_cache_evict_locked();
 }
 
 static void image_cache_store(const std::string& url, const DecodedImage& image) {
     std::lock_guard<std::mutex> lock(s_image_cache_mutex);
-    auto existing = s_image_cache.find(url);
-    if (existing != s_image_cache.end()) {
-        if (existing->second.image.pixels) {
-            s_image_cache_bytes -= existing->second.image.pixels->size();
-        }
-        s_image_cache.erase(existing);
-        image_cache_remove_from_order_locked(url);
-    }
-
-    s_image_cache[url] = ImageCacheEntry { image, false };
-    if (image.pixels) {
-        s_image_cache_bytes += image.pixels->size();
-    }
-    s_image_cache_order.push_back(url);
-    image_cache_evict_locked();
+    image_cache_store_locked(url, image, false);
 }
 
 static void image_cache_store_negative(const std::string& url) {
     std::lock_guard<std::mutex> lock(s_image_cache_mutex);
-    auto existing = s_image_cache.find(url);
-    if (existing != s_image_cache.end()) {
-        if (existing->second.image.pixels) {
-            s_image_cache_bytes -= existing->second.image.pixels->size();
-        }
-        s_image_cache.erase(existing);
-        image_cache_remove_from_order_locked(url);
-    }
-
-    s_image_cache[url] = ImageCacheEntry {};
-    auto it = s_image_cache.find(url);
-    if (it != s_image_cache.end()) {
-        it->second.is_negative = true;
-    }
-    s_image_cache_order.push_back(url);
-    image_cache_evict_locked();
+    image_cache_store_locked(url, {}, true);
 }
 
 // Helper: add SVG style attributes (fill, stroke, opacity) to SVG string
@@ -7953,7 +7946,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
         auto cache_it = s_image_cache.find(cache_url);
         if (cache_it != s_image_cache.end()) {
             ++s_image_cache_hits;
-            image_cache_touch(cache_url);
+            image_cache_touch_locked(cache_it->second);
             return cache_it->second.image;
         }
         ++s_image_cache_misses;
@@ -18571,6 +18564,11 @@ uint64_t image_cache_hit_count_for_testing() {
 uint64_t image_cache_miss_count_for_testing() {
     std::lock_guard<std::mutex> lock(s_image_cache_mutex);
     return s_image_cache_misses;
+}
+
+std::vector<std::string> image_cache_lru_order_for_testing() {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+    return std::vector<std::string>(s_image_cache_order.begin(), s_image_cache_order.end());
 }
 
 } // namespace clever::paint

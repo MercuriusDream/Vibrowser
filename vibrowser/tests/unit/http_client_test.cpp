@@ -134,7 +134,144 @@ private:
     std::thread thread_;
 };
 
+struct ScriptedResponseSegment {
+    std::string bytes;
+    std::chrono::milliseconds pause_after{0};
+};
+
+struct ScriptedResponse {
+    std::vector<ScriptedResponseSegment> segments;
+    std::chrono::milliseconds close_delay{0};
+};
+
+class ScriptedResponseServer {
+public:
+    ScriptedResponseServer() {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        const int opt = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+    }
+
+    ~ScriptedResponseServer() {
+        if (listen_fd_ >= 0) {
+            ::close(listen_fd_);
+        }
+        wait();
+    }
+
+    uint16_t port() const { return port_; }
+
+    void start(std::vector<ScriptedResponse> responses) {
+        responses_ = std::move(responses);
+        if (listen_fd_ < 0 || responses_.empty()) {
+            return;
+        }
+
+        if (::listen(listen_fd_, static_cast<int>(responses_.size())) != 0) {
+            return;
+        }
+
+        thread_ = std::thread([this]() {
+            for (const auto& response : responses_) {
+                const int client_fd = ::accept(listen_fd_, nullptr, nullptr);
+                if (client_fd < 0) {
+                    return;
+                }
+
+                std::string request;
+                char buffer[1024];
+                while (request.find("\r\n\r\n") == std::string::npos) {
+                    const ssize_t received = ::recv(client_fd, buffer, sizeof(buffer), 0);
+                    if (received <= 0) {
+                        break;
+                    }
+                    request.append(buffer, static_cast<size_t>(received));
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    requests_.push_back(std::move(request));
+                }
+
+                for (const auto& segment : response.segments) {
+                    size_t sent = 0;
+                    while (sent < segment.bytes.size()) {
+                        const ssize_t wrote = ::send(client_fd, segment.bytes.data() + sent,
+                                                     segment.bytes.size() - sent, 0);
+                        if (wrote <= 0) {
+                            break;
+                        }
+                        sent += static_cast<size_t>(wrote);
+                    }
+                    if (segment.pause_after.count() > 0) {
+                        std::this_thread::sleep_for(segment.pause_after);
+                    }
+                }
+
+                if (response.close_delay.count() > 0) {
+                    std::this_thread::sleep_for(response.close_delay);
+                }
+
+                ::shutdown(client_fd, SHUT_RDWR);
+                ::close(client_fd);
+            }
+        });
+    }
+
+    void wait() {
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+    std::vector<std::string> requests() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return requests_;
+    }
+
+private:
+    int listen_fd_ = -1;
+    uint16_t port_ = 0;
+    std::vector<ScriptedResponse> responses_;
+    mutable std::mutex mutex_;
+    std::vector<std::string> requests_;
+    std::thread thread_;
+};
+
 }  // namespace
+
+namespace clever::net {
+
+class HttpClientTestAccessor {
+public:
+    static bool has_complete_response(const std::vector<uint8_t>& buffer) {
+        return HttpClient::has_complete_response(buffer);
+    }
+};
+
+}  // namespace clever::net
 
 // ===========================================================================
 // HeaderMap Tests
@@ -736,6 +873,58 @@ TEST(ConnectionPoolTest, ClearRemovesAllConnections) {
     EXPECT_EQ(pool.acquire("other.com", 80), -1);
 }
 
+TEST(ConnectionPoolTest, ReusedSocketTelemetryIncrementsOnReuse) {
+    ConnectionPool pool;
+
+    pool.release("example.com", 80, 10);
+    pool.release("example.com", 80, 20);
+
+    EXPECT_EQ(pool.reused_socket_count(), 0u);
+
+    int fd1 = pool.acquire("example.com", 80);
+    EXPECT_EQ(fd1, 20);
+    EXPECT_EQ(pool.reused_socket_count(), 1u);
+
+    int fd2 = pool.acquire("example.com", 80);
+    EXPECT_EQ(fd2, 10);
+    EXPECT_EQ(pool.reused_socket_count(), 2u);
+
+    EXPECT_EQ(pool.acquire("example.com", 80), -1);
+}
+
+TEST(ConnectionPoolTest, EvictionTelemetrySeparatesIdleAndCapacityReasons) {
+    ConnectionPool pool(2, 2, std::chrono::seconds(1));
+
+    pool.release("example.com", 80, 100);
+    pool.release("example.com", 80, 101);
+    pool.release("example.com", 80, 102);  // per-host eviction
+
+    EXPECT_EQ(pool.count("example.com", 80), 2u);
+    auto capacity_stats = pool.eviction_stats();
+    EXPECT_EQ(capacity_stats.per_host_capacity_evictions, 1u);
+    EXPECT_EQ(capacity_stats.total_capacity_evictions, 0u);
+    EXPECT_EQ(capacity_stats.idle_evictions, 0u);
+
+    ConnectionPool tight_pool(1, 2, std::chrono::seconds(5));
+    tight_pool.release("a.example.com", 80, 200);
+    tight_pool.release("b.example.com", 80, 201);  // max_total eviction
+    tight_pool.release("c.example.com", 80, 202);  // max_total eviction should remove oldest
+    EXPECT_EQ(tight_pool.count("a.example.com", 80), 0u);
+    EXPECT_EQ(tight_pool.count("b.example.com", 80), 1u);
+    EXPECT_EQ(tight_pool.count("c.example.com", 80), 1u);
+    auto tight_stats = tight_pool.eviction_stats();
+    EXPECT_EQ(tight_stats.total_capacity_evictions, 1u);
+    EXPECT_EQ(tight_stats.per_host_capacity_evictions, 0u);
+
+    ConnectionPool idle_pool(2, 10, std::chrono::seconds(0));
+    idle_pool.release("idle.example.com", 80, 300);
+    idle_pool.release("idle.example.com", 80, 301);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    EXPECT_EQ(idle_pool.acquire("idle.example.com", 80), -1);
+    auto idle_stats = idle_pool.eviction_stats();
+    EXPECT_EQ(idle_stats.idle_evictions, 2u);
+}
+
 // ===========================================================================
 // HttpClient Tests (unit-level, no real network)
 // ===========================================================================
@@ -795,17 +984,76 @@ TEST(HttpClientTest, ResponseRoundTrip) {
     EXPECT_TRUE(resp->body.empty());
 }
 
+TEST(HttpClientTest, ChunkedCompletionRequiresFullTrailerBoundary) {
+    std::string incomplete =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "5\r\n"
+        "Hello\r\n"
+        "0\r\n"
+        "X-Trailer: done\r\n";
+    std::vector<uint8_t> incomplete_bytes(incomplete.begin(), incomplete.end());
+    EXPECT_FALSE(HttpClientTestAccessor::has_complete_response(incomplete_bytes));
+
+    incomplete += "\r\n";
+    std::vector<uint8_t> complete_bytes(incomplete.begin(), incomplete.end());
+    EXPECT_TRUE(HttpClientTestAccessor::has_complete_response(complete_bytes));
+}
+
+TEST(HttpClientTest, ChunkedFetchIgnoresEmbeddedTerminalMarkerInPayload) {
+    ScriptedResponseServer server;
+    ASSERT_NE(server.port(), 0);
+
+    server.start({
+        ScriptedResponse{
+            {
+                {
+                    "HTTP/1.1 200 OK\r\n"
+                    "Transfer-Encoding: chunked\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                    "D\r\n"
+                    "abc\r\n0\r\n\r\ndef\r\n",
+                    std::chrono::milliseconds(40)
+                },
+                {
+                    "3\r\n"
+                    "XYZ\r\n"
+                    "0\r\n"
+                    "\r\n",
+                    std::chrono::milliseconds(0)
+                }
+            },
+            std::chrono::milliseconds(0)
+        }
+    });
+
+    HttpClient client;
+    client.set_timeout(std::chrono::seconds(2));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/chunked";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "abc\r\n0\r\n\r\ndefXYZ");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 1u);
+    EXPECT_NE(requests[0].find("GET /chunked HTTP/1.1\r\n"), std::string::npos);
+}
+
 TEST(HttpClient, RelativeRedirectResolvesAgainstBasePath) {
     RedirectTestServer server;
     ASSERT_NE(server.port(), 0);
     server.start({
         "HTTP/1.1 302 Found\r\n"
         "Location: sibling?step=2\r\n"
-        "Connection: close\r\n"
-        "Content-Length: 0\r\n"
-        "\r\n",
-        "HTTP/1.1 302 Found\r\n"
-        "Location: //127.0.0.1:" + std::to_string(server.port()) + "/final?from=protocol\r\n"
         "Connection: close\r\n"
         "Content-Length: 0\r\n"
         "\r\n",
@@ -831,14 +1079,55 @@ TEST(HttpClient, RelativeRedirectResolvesAgainstBasePath) {
     EXPECT_EQ(resp->body_as_string(), "OK");
     EXPECT_TRUE(resp->was_redirected);
     EXPECT_EQ(resp->url,
-              "http://127.0.0.1:" + std::to_string(server.port()) + "/final?from=protocol");
+              "http://127.0.0.1:" + std::to_string(server.port()) + "/dir/sibling?step=2");
 
     server.wait();
     const auto requests = server.requests();
-    ASSERT_EQ(requests.size(), 3u);
+    ASSERT_EQ(requests.size(), 2u);
     EXPECT_NE(requests[0].find("GET /dir/page?start=1 HTTP/1.1\r\n"), std::string::npos);
     EXPECT_NE(requests[1].find("GET /dir/sibling?step=2 HTTP/1.1\r\n"), std::string::npos);
-    EXPECT_NE(requests[2].find("GET /final?from=protocol HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(HttpClient, ProtocolRelativeRedirectReusesCurrentSchemeAndReplacesAuthority) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 302 Found\r\n"
+        "Location: //localhost:" + std::to_string(server.port()) + "/final?from=protocol\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port()) + "/dir/page?start=1";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://localhost:" + std::to_string(server.port()) + "/final?from=protocol");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("GET /dir/page?start=1 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /final?from=protocol HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("Host: localhost:" + std::to_string(server.port()) + "\r\n"),
+              std::string::npos);
 }
 
 TEST(HttpClient, QueryOnlyRedirectPreservesBasePath) {
@@ -881,6 +1170,47 @@ TEST(HttpClient, QueryOnlyRedirectPreservesBasePath) {
     EXPECT_NE(requests[0].find("POST /submit?step=1 HTTP/1.1\r\n"), std::string::npos);
     EXPECT_NE(requests[1].find("GET /submit?step=2 HTTP/1.1\r\n"), std::string::npos);
     EXPECT_EQ(requests[1].find("POST /submit?step=2 HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(HttpClient, QueryOnlyRedirectFromOriginOnlyRequestKeepsBrowserShapedRootPath) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 303 See Other\r\n"
+        "Location: ?step=2\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url = "http://127.0.0.1:" + std::to_string(server.port());
+    req.method = Method::POST;
+    req.body = {'o', 'k'};
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://127.0.0.1:" + std::to_string(server.port()) + "/?step=2");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 2u);
+    EXPECT_NE(requests[0].find("POST / HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /?step=2 HTTP/1.1\r\n"), std::string::npos);
 }
 
 TEST(HttpClient, RelativeRedirectTraversesParentDirectories) {
@@ -1005,6 +1335,104 @@ TEST(HttpClient, FragmentOnlyRedirectPreservesPathAndQuery) {
     ASSERT_EQ(requests.size(), 2u);
     EXPECT_NE(requests[0].find("GET /docs/page.html?view=full HTTP/1.1\r\n"), std::string::npos);
     EXPECT_NE(requests[1].find("GET /docs/page.html?view=full HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(HttpClientTest, RedirectNestedRelativeChainQueryOnlyUsesLatestResponseUrl) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 302 Found\r\n"
+        "Location: ../next/step.html?step=2\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 302 Found\r\n"
+        "Location: ?step=3&mode=preview\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/app/start/page.html?step=1";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://127.0.0.1:" + std::to_string(server.port()) +
+                  "/app/next/step.html?step=3&mode=preview");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 3u);
+    EXPECT_NE(requests[0].find("GET /app/start/page.html?step=1 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /app/next/step.html?step=2 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[2].find("GET /app/next/step.html?step=3&mode=preview HTTP/1.1\r\n"),
+              std::string::npos);
+}
+
+TEST(HttpClientTest, RedirectNestedRelativeChainFragmentOnlyKeepsLatestQueryAndPath) {
+    RedirectTestServer server;
+    ASSERT_NE(server.port(), 0);
+    server.start({
+        "HTTP/1.1 302 Found\r\n"
+        "Location: sibling/final.html?step=2\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 302 Found\r\n"
+        "Location: #done\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n",
+        "HTTP/1.1 200 OK\r\n"
+        "Connection: close\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK"
+    });
+
+    HttpClient client;
+    client.set_max_redirects(5);
+    client.set_timeout(std::chrono::seconds(5));
+
+    Request req;
+    req.url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/docs/page.html?step=1#intro";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto resp = client.fetch(req);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+    EXPECT_TRUE(resp->was_redirected);
+    EXPECT_EQ(resp->url,
+              "http://127.0.0.1:" + std::to_string(server.port()) +
+                  "/docs/sibling/final.html?step=2#done");
+
+    server.wait();
+    const auto requests = server.requests();
+    ASSERT_EQ(requests.size(), 3u);
+    EXPECT_NE(requests[0].find("GET /docs/page.html?step=1 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[1].find("GET /docs/sibling/final.html?step=2 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(requests[2].find("GET /docs/sibling/final.html?step=2 HTTP/1.1\r\n"),
+              std::string::npos);
 }
 
 TEST(HttpClient, AbsoluteRedirectLocationStillWinsOverBaseUrl) {
@@ -21946,6 +22374,19 @@ TEST(HttpCacheTest, DefaultPortAndCaseNormalizeCacheKeyV2064) {
     EXPECT_NE(canonical, custom_port);
 }
 
+TEST(HttpCacheTest, RootPathVariantsShareCanonicalCacheKeyV2088) {
+    const std::string origin_only =
+        HttpCache::make_cache_key("HTTPS://Example.COM:443#intro");
+    const std::string explicit_root =
+        HttpCache::make_cache_key("https://example.com/#details");
+    const std::string query_only =
+        HttpCache::make_cache_key("https://example.com?tab=1#top");
+
+    EXPECT_EQ(origin_only, "https://example.com/");
+    EXPECT_EQ(origin_only, explicit_root);
+    EXPECT_EQ(query_only, "https://example.com/?tab=1");
+}
+
 TEST(HttpCacheTest, DefaultPortAliasesShareOneStoredEntryV2073) {
     auto& cache = HttpCache::instance();
     cache.clear();
@@ -21970,6 +22411,47 @@ TEST(HttpCacheTest, DefaultPortAliasesShareOneStoredEntryV2073) {
     EXPECT_EQ(cache.entry_count(), 1u);
 
     cache.clear();
+}
+
+TEST(HttpCacheTest, DefaultPortAliasesShareLruStateV2088) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry canonical_root;
+    canonical_root.url = "https://cache.v2088.test:443#bootstrap";
+    canonical_root.body = std::string(180, 'a');
+    canonical_root.status = 200;
+    canonical_root.max_age_seconds = 3600;
+    canonical_root.stored_at = std::chrono::steady_clock::now();
+
+    CacheEntry older_entry;
+    older_entry.url = "https://cache.v2088.test/older";
+    older_entry.body = std::string(180, 'b');
+    older_entry.status = 200;
+    older_entry.max_age_seconds = 3600;
+    older_entry.stored_at = std::chrono::steady_clock::now();
+
+    CacheEntry newer_entry;
+    newer_entry.url = "https://cache.v2088.test/newer";
+    newer_entry.body = std::string(180, 'c');
+    newer_entry.status = 200;
+    newer_entry.max_age_seconds = 3600;
+    newer_entry.stored_at = std::chrono::steady_clock::now();
+
+    cache.set_max_bytes(canonical_root.approx_size() + older_entry.approx_size() + 32u);
+    cache.store(canonical_root);
+    cache.store(older_entry);
+
+    ASSERT_TRUE(cache.lookup("https://cache.v2088.test/#tab-2").has_value());
+
+    cache.store(newer_entry);
+
+    EXPECT_TRUE(cache.lookup("https://cache.v2088.test:443#footer").has_value());
+    EXPECT_FALSE(cache.lookup("https://cache.v2088.test/older").has_value());
+    EXPECT_TRUE(cache.lookup("https://cache.v2088.test/newer").has_value());
+
+    cache.clear();
+    cache.set_max_bytes(HttpCache::kDefaultMaxBytes);
 }
 
 TEST(HttpCacheTest, CacheKeyDefaultPortAliasesStripFragmentsV2079) {
@@ -32670,6 +33152,111 @@ TEST(CookieJarTest, MixedScopeDuplicateNamesKeepPathSpecificOrderingV2071) {
         << header;
     EXPECT_EQ(repeated, header)
         << "Repeated serialization should keep mixed-scope ordering stable, got: " << repeated;
+}
+
+TEST(CookieJarTest, DefaultPathDerivationIgnoresQueryAndFragmentV2090) {
+    CookieJar jar;
+    jar.set_from_header("nav2090=alpha", "example.com",
+                        "/docs/guides/index.html?next=/admin/panel#section-2");
+
+    std::string nested =
+        jar.get_cookie_header("example.com", "/docs/guides/chapter-1.html?tab=overview#toc", false);
+    EXPECT_NE(nested.find("nav2090=alpha"), std::string::npos)
+        << "Default-path derivation should ignore query and fragment data, got: " << nested;
+
+    std::string sibling =
+        jar.get_cookie_header("example.com", "/docs/other/page.html?next=/docs/guides#toc", false);
+    EXPECT_EQ(sibling.find("nav2090=alpha"), std::string::npos)
+        << "Derived directory scoping should still reject sibling paths even when the request "
+           "path carries query and fragment data, got: "
+        << sibling;
+}
+
+TEST(CookieJarTest, HostOnlyAndDomainCookieWithSameCanonicalDomainStayIsolatedV2090) {
+    CookieJar jar;
+    jar.set_from_header("tenant2090=host; Path=/app", "api.example.com");
+    jar.set_from_header("tenant2090=domain; Domain=api.example.com; Path=/app", "api.example.com");
+
+    std::string exact = jar.get_cookie_header("api.example.com", "/app/dashboard", false);
+    EXPECT_EQ(exact, "tenant2090=host; tenant2090=domain")
+        << "Host-only and domain-scoped cookies on the same canonical domain should coexist in "
+           "creation order, got: "
+        << exact;
+
+    std::string child = jar.get_cookie_header("deep.api.example.com", "/app/dashboard", false);
+    EXPECT_EQ(child, "tenant2090=domain")
+        << "Only the domain-scoped cookie should reach deeper subdomains, got: " << child;
+
+    jar.set_from_header("tenant2090=domain-next; Domain=api.example.com; Path=/app",
+                        "api.example.com");
+    std::string rewritten = jar.get_cookie_header("api.example.com", "/app/dashboard", false);
+    EXPECT_EQ(rewritten, "tenant2090=host; tenant2090=domain-next")
+        << "Replacing the domain scope should not disturb the host-only cookie stored in the "
+           "same domain bucket, got: "
+        << rewritten;
+}
+
+TEST(CookieJarTest, PathMatchingIgnoresQueryAndFragmentForOrderingV2090) {
+    CookieJar jar;
+    jar.set_from_header("dup2090=root; Path=/", "example.com");
+    jar.set_from_header("dup2090=docs; Path=/docs", "example.com");
+    jar.set_from_header("dup2090=guides; Path=/docs/guides", "example.com");
+
+    std::string header = jar.get_cookie_header(
+        "example.com", "/docs/guides/index.html?topic=/docs/reference#intro", false);
+    EXPECT_EQ(header, "dup2090=guides; dup2090=docs; dup2090=root")
+        << "Cookie serialization should order duplicates by path precedence even when the request "
+           "path includes query or fragment data, got: "
+        << header;
+}
+
+TEST(CookieJarTest, DefaultPathDerivationUsesOnlyAbsoluteUrlPathComponentV2091) {
+    CookieJar jar;
+    jar.set_from_header("nav2091=alpha", "example.com",
+                        "https://example.com/docs/guides/index.html?next=/admin#section-2");
+
+    std::string nested = jar.get_cookie_header(
+        "example.com",
+        "https://example.com/docs/guides/chapter-1.html?tab=overview#toc",
+        false);
+    EXPECT_NE(nested.find("nav2091=alpha"), std::string::npos)
+        << "Default-path derivation should use only the absolute URL path component, got: "
+        << nested;
+
+    std::string sibling = jar.get_cookie_header(
+        "example.com",
+        "https://example.com/docs/other/page.html?next=/docs/guides#toc",
+        false);
+    EXPECT_EQ(sibling.find("nav2091=alpha"), std::string::npos)
+        << "Cookies derived from an absolute request URL should still stay scoped to the "
+           "canonical directory path, got: "
+        << sibling;
+}
+
+TEST(CookieJarTest, MixedScopeDuplicateNamesUseCanonicalAbsoluteRequestPathV2091) {
+    CookieJar jar;
+    jar.set_from_header("tenant2091=domain-root; Domain=example.com; Path=/", "example.com");
+    jar.set_from_header("tenant2091=domain-app; Domain=example.com; Path=/app",
+                        "api.example.com");
+    jar.set_from_header("tenant2091=host-admin; Path=/app/admin", "api.example.com");
+
+    std::string exact = jar.get_cookie_header(
+        "api.example.com",
+        "https://api.example.com/app/admin/dashboard?mode=debug#hash",
+        false);
+    EXPECT_EQ(exact, "tenant2091=host-admin; tenant2091=domain-app; tenant2091=domain-root")
+        << "Absolute request URLs should keep path precedence and mixed-scope creation ordering "
+           "for duplicate-name cookies, got: "
+        << exact;
+
+    std::string child = jar.get_cookie_header(
+        "deep.api.example.com",
+        "https://deep.api.example.com/app/admin/dashboard?mode=debug#hash",
+        false);
+    EXPECT_EQ(child, "tenant2091=domain-app; tenant2091=domain-root")
+        << "Host-only cookies must stay isolated even when absolute request URLs carry query or "
+           "fragment noise, got: "
+        << child;
 }
 
 TEST(HttpClient, CookieDefaultPathMatchesNestedRequests) {

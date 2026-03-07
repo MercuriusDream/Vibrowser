@@ -105,6 +105,155 @@ static bool is_all_whitespace(const std::string& s) {
 
 namespace {
 
+thread_local int g_foster_parenting_depth = 0;
+
+struct FosterParentingScope {
+    FosterParentingScope() { ++g_foster_parenting_depth; }
+    ~FosterParentingScope() { --g_foster_parenting_depth; }
+};
+
+struct InsertionLocation {
+    SimpleNode* parent = nullptr;
+    SimpleNode* before = nullptr;
+};
+
+static bool is_table_foster_parenting_target(const SimpleNode* node) {
+    if (!node) {
+        return false;
+    }
+
+    const auto& tag = node->tag_name;
+    return tag == "table" || tag == "tbody" || tag == "tfoot"
+        || tag == "thead" || tag == "tr";
+}
+
+static SimpleNode* current_open_template_content_fragment(
+    const std::vector<SimpleNode*>& open_elements) {
+    for (auto it = open_elements.rbegin(); it != open_elements.rend(); ++it) {
+        auto* node = *it;
+        if (node->type == SimpleNode::DocumentFragment && node->parent
+            && node->parent->tag_name == "template") {
+            return node;
+        }
+    }
+
+    return nullptr;
+}
+
+static bool is_node_within_subtree(const SimpleNode* node, const SimpleNode* root) {
+    for (auto* current = node; current; current = current->parent) {
+        if (current == root) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static InsertionLocation appropriate_insertion_location(
+    SimpleNode* current_node,
+    const std::vector<SimpleNode*>& open_elements) {
+    if (!current_node) {
+        return {};
+    }
+
+    InsertionLocation location {current_node, nullptr};
+
+    if (g_foster_parenting_depth != 0 && is_table_foster_parenting_target(current_node)) {
+        for (auto it = open_elements.rbegin(); it != open_elements.rend(); ++it) {
+            auto* node = *it;
+            if (node->tag_name == "template" && node->template_content) {
+                location = {node->template_content.get(), nullptr};
+                break;
+            }
+            if (node->tag_name == "table") {
+                if (node->parent) {
+                    location = {node->parent, node};
+                }
+                break;
+            }
+        }
+    }
+
+    auto* fragment = current_open_template_content_fragment(open_elements);
+    if (fragment && location.parent && !is_node_within_subtree(location.parent, fragment)) {
+        return {fragment, nullptr};
+    }
+    if (fragment && location.before && !is_node_within_subtree(location.before, fragment)) {
+        return {fragment, nullptr};
+    }
+    if (location.before && location.before->parent != location.parent) {
+        return {location.parent, nullptr};
+    }
+
+    return location;
+}
+
+static SimpleNode* insert_node_at_location(
+    const InsertionLocation& location,
+    std::unique_ptr<SimpleNode> node) {
+    if (!location.parent) {
+        return nullptr;
+    }
+
+    if (location.before) {
+        return location.parent->insert_before(std::move(node), location.before);
+    }
+
+    return location.parent->append_child(std::move(node));
+}
+
+static void insert_text_at_location(const InsertionLocation& location, const std::string& data) {
+    if (!location.parent) {
+        return;
+    }
+
+    auto& children = location.parent->children;
+    if (location.before) {
+        auto it = std::find_if(children.begin(), children.end(),
+            [before = location.before](const std::unique_ptr<SimpleNode>& child) {
+                return child.get() == before;
+            });
+        if (it != children.begin() && it != children.end()) {
+            auto prev = std::prev(it);
+            if ((*prev)->type == SimpleNode::Text) {
+                (*prev)->data += data;
+                return;
+            }
+        }
+    } else if (!children.empty() && children.back()->type == SimpleNode::Text) {
+        children.back()->data += data;
+        return;
+    }
+
+    auto node = std::make_unique<SimpleNode>();
+    node->type = SimpleNode::Text;
+    node->data = data;
+    insert_node_at_location(location, std::move(node));
+}
+
+InsertionMode reset_insertion_mode_for_context(const std::vector<SimpleNode*>& open_elements) {
+    for (auto it = open_elements.rbegin(); it != open_elements.rend(); ++it) {
+        auto* node = *it;
+        if (node->type == SimpleNode::DocumentFragment) {
+            continue;
+        }
+
+        const auto& tag = node->tag_name;
+        if (tag == "template") return InsertionMode::InTemplate;
+        if (tag == "select") return InsertionMode::InSelect;
+        if (tag == "td" || tag == "th") return InsertionMode::InCell;
+        if (tag == "tr") return InsertionMode::InRow;
+        if (tag == "tbody" || tag == "thead" || tag == "tfoot") return InsertionMode::InTableBody;
+        if (tag == "table") return InsertionMode::InTable;
+        if (tag == "head") return InsertionMode::InHead;
+        if (tag == "body") return InsertionMode::InBody;
+        if (tag == "html") return InsertionMode::AfterHead;
+    }
+
+    return InsertionMode::InBody;
+}
+
 std::unique_ptr<clever::dom::Node> convert_simple_to_dom_node(
     const SimpleNode& node,
     clever::dom::Document& document) {
@@ -222,50 +371,43 @@ SimpleNode* TreeBuilder::current_node() {
 }
 
 SimpleNode* TreeBuilder::insert_element(const Token& token) {
+    auto location = appropriate_insertion_location(current_node(), open_elements_);
     auto node = std::make_unique<SimpleNode>();
     node->type = SimpleNode::Element;
     node->tag_name = token.name;
     node->attributes = token.attributes;
-    auto* raw = current_node()->append_child(std::move(node));
+    auto* raw = insert_node_at_location(location, std::move(node));
     const bool treat_self_closing_as_closed =
         token.self_closing && is_in_svg_context(open_elements_);
     // In HTML parsing, self-closing syntax on non-void elements is ignored,
     // but inline SVG self-closing tags must not remain on the open-elements stack.
-    if (!is_void_element(token.name) && !treat_self_closing_as_closed) {
+    if (raw && !is_void_element(token.name) && !treat_self_closing_as_closed) {
         open_elements_.push_back(raw);
     }
     return raw;
 }
 
 SimpleNode* TreeBuilder::insert_element(const std::string& tag) {
+    auto location = appropriate_insertion_location(current_node(), open_elements_);
     auto node = std::make_unique<SimpleNode>();
     node->type = SimpleNode::Element;
     node->tag_name = tag;
-    auto* raw = current_node()->append_child(std::move(node));
-    if (!is_void_element(tag)) {
+    auto* raw = insert_node_at_location(location, std::move(node));
+    if (raw && !is_void_element(tag)) {
         open_elements_.push_back(raw);
     }
     return raw;
 }
 
 void TreeBuilder::insert_text(const std::string& data) {
-    auto* cur = current_node();
-    // Merge with previous text node if possible
-    if (!cur->children.empty() && cur->children.back()->type == SimpleNode::Text) {
-        cur->children.back()->data += data;
-        return;
-    }
-    auto node = std::make_unique<SimpleNode>();
-    node->type = SimpleNode::Text;
-    node->data = data;
-    cur->append_child(std::move(node));
+    insert_text_at_location(appropriate_insertion_location(current_node(), open_elements_), data);
 }
 
 void TreeBuilder::insert_comment(const std::string& data) {
     auto node = std::make_unique<SimpleNode>();
     node->type = SimpleNode::Comment;
     node->data = data;
-    current_node()->append_child(std::move(node));
+    insert_node_at_location(appropriate_insertion_location(current_node(), open_elements_), std::move(node));
 }
 
 void TreeBuilder::generate_implied_end_tags(const std::string& except) {
@@ -438,7 +580,12 @@ void TreeBuilder::reconstruct_active_formatting_elements() {
         node->type = SimpleNode::Element;
         node->tag_name = entry->tag_name;
         node->attributes = entry->attributes;
-        auto* raw = current_node()->append_child(std::move(node));
+        auto* raw = insert_node_at_location(
+            appropriate_insertion_location(current_node(), open_elements_),
+            std::move(node));
+        if (!raw) {
+            continue;
+        }
         open_elements_.push_back(raw);
 
         // Replace the active formatting element entry with the new element
@@ -620,7 +767,9 @@ void TreeBuilder::run_adoption_agency(const std::string& tag) {
         if (last_node->parent) {
             auto taken = last_node->parent->take_child(last_node);
             if (taken) {
-                common_ancestor->append_child(std::move(taken));
+                insert_node_at_location(
+                    appropriate_insertion_location(common_ancestor, open_elements_),
+                    std::move(taken));
             }
         }
 
@@ -864,15 +1013,13 @@ void TreeBuilder::handle_in_head(const Token& token) {
         }
         if (token.name == "template") {
             insert_element(token);
-            // Create template_content as DocumentFragment
             SimpleNode* template_elem = current_node();
             if (template_elem) {
                 template_elem->template_content = std::make_unique<SimpleNode>();
                 template_elem->template_content->type = SimpleNode::DocumentFragment;
-                // Push the template_content fragment onto open_elements to capture content
+                template_elem->template_content->parent = template_elem;
                 open_elements_.push_back(template_elem->template_content.get());
-                // Save current mode and switch to InTemplate
-                original_mode_ = mode_;
+                active_formatting_elements_.push_back(nullptr);
                 mode_ = InsertionMode::InTemplate;
             }
             return;
@@ -1195,6 +1342,23 @@ void TreeBuilder::handle_in_body(const Token& token) {
             return;
         }
 
+        if (tag == "template") {
+            reconstruct_active_formatting_elements();
+            insert_element(token);
+            SimpleNode* template_elem = current_node();
+            if (!template_elem) {
+                return;
+            }
+
+            template_elem->template_content = std::make_unique<SimpleNode>();
+            template_elem->template_content->type = SimpleNode::DocumentFragment;
+            template_elem->template_content->parent = template_elem;
+            open_elements_.push_back(template_elem->template_content.get());
+            active_formatting_elements_.push_back(nullptr);
+            mode_ = InsertionMode::InTemplate;
+            return;
+        }
+
         // Default: insert the element
         reconstruct_active_formatting_elements();
         insert_element(token);
@@ -1229,6 +1393,38 @@ void TreeBuilder::handle_in_body(const Token& token) {
             mode_ = InsertionMode::AfterBody;
             // Reprocess in AfterBody
             handle_after_body(token);
+            return;
+        }
+
+        if (tag == "template") {
+            SimpleNode* template_node = nullptr;
+            for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
+                if ((*it)->tag_name == "template") {
+                    template_node = *it;
+                    break;
+                }
+            }
+            if (!template_node) {
+                return;
+            }
+
+            while (!open_elements_.empty()) {
+                auto* node = open_elements_.back();
+                open_elements_.pop_back();
+                if (node == template_node) {
+                    break;
+                }
+            }
+
+            while (!active_formatting_elements_.empty()) {
+                auto* entry = active_formatting_elements_.back();
+                active_formatting_elements_.pop_back();
+                if (entry == nullptr) {
+                    break;
+                }
+            }
+
+            mode_ = reset_insertion_mode_for_context(open_elements_);
             return;
         }
 
@@ -1419,7 +1615,9 @@ void TreeBuilder::handle_in_table(const Token& token) {
         return;
     }
 
-    // Fallback to InBody for table-misnested content.
+    // Process table-misnested content through the body rules with foster parenting
+    // enabled so nodes land before the open table (or in template content).
+    FosterParentingScope foster_parenting_scope;
     handle_in_body(token);
 }
 
@@ -1674,11 +1872,8 @@ void TreeBuilder::handle_after_after_body(const Token& token) {
 }
 
 void TreeBuilder::handle_in_template(const Token& token) {
-    // Handle tokens while inside a <template> element.
-    // For now, we treat templates the same as InBody mode - children are parsed
-    // normally into the template element's children[] array.
-    // The template_content DocumentFragment is created but children parse normally;
-    // the render pipeline skips templates automatically.
+    // Template contents use body-like token handling, but descendants are routed
+    // through the open template fragment on the stack instead of the live tree.
     handle_in_body(token);
 }
 

@@ -17,31 +17,87 @@ std::string ascii_lower(std::string value) {
     return value;
 }
 
-const SelectorList* cached_function_selector_list(const SimpleSelector& selector) {
-    if (selector.parsed_selector_list) {
-        return selector.parsed_selector_list.get();
-    }
-    return nullptr;
-}
-
 bool should_cache_function_selector_list(std::string_view pseudo_name) {
     const std::string pseudo = ascii_lower(std::string(pseudo_name));
     return pseudo == "is" || pseudo == "where" || pseudo == "not" || pseudo == "has" ||
            pseudo == "matches" || pseudo == "-webkit-any";
 }
 
+std::string normalized_function_selector_cache_argument(std::string_view argument) {
+    const auto tokens = CSSTokenizer::tokenize_all(argument);
+    std::string normalized;
+    normalized.reserve(argument.size());
+
+    bool previous_was_colon = false;
+    for (const auto& token : tokens) {
+        if (token.type == CSSToken::EndOfFile) {
+            break;
+        }
+
+        switch (token.type) {
+            case CSSToken::Colon:
+                normalized += ':';
+                previous_was_colon = true;
+                break;
+            case CSSToken::Function:
+                if (previous_was_colon && should_cache_function_selector_list(token.value)) {
+                    normalized += ascii_lower(token.value);
+                } else {
+                    normalized += token.value;
+                }
+                normalized += '(';
+                previous_was_colon = false;
+                break;
+            case CSSToken::Hash:
+                normalized += '#';
+                normalized += token.value;
+                previous_was_colon = false;
+                break;
+            case CSSToken::Whitespace:
+                normalized += ' ';
+                previous_was_colon = false;
+                break;
+            default:
+                normalized += token.value;
+                previous_was_colon = false;
+                break;
+        }
+    }
+
+    return normalized;
+}
+
 struct FunctionSelectorListCacheEntry {
     std::shared_ptr<const SelectorList> list;
 };
 
-FunctionSelectorListCacheEntry& function_selector_list_cache_entry(std::string_view pseudo_name,
-                                                                   std::string_view argument) {
+RightmostSelectorKey compute_rightmost_match_key(const ComplexSelector& selector);
+std::optional<std::string> safe_unambiguous_required_class_key(const ComplexSelector& selector);
+std::optional<std::string> safe_terminal_function_selector_class_key(const SimpleSelector& simple);
+
+std::unordered_map<std::string, FunctionSelectorListCacheEntry>& function_selector_list_cache() {
     static std::unordered_map<std::string, FunctionSelectorListCacheEntry> cache;
+    return cache;
+}
+
+std::string build_compiled_function_selector_list_cache_key(std::string_view pseudo_name,
+                                                            std::string_view argument) {
+    if (!should_cache_function_selector_list(pseudo_name)) {
+        return {};
+    }
 
     std::string cache_key = ascii_lower(std::string(pseudo_name));
     cache_key += '\n';
-    cache_key.append(argument.data(), argument.size());
+    cache_key += normalized_function_selector_cache_argument(argument);
+    return cache_key;
+}
 
+FunctionSelectorListCacheEntry& function_selector_list_cache_entry(std::string_view pseudo_name,
+                                                                   std::string_view argument) {
+    const std::string cache_key =
+        build_compiled_function_selector_list_cache_key(pseudo_name, argument);
+
+    auto& cache = function_selector_list_cache();
     auto it = cache.find(cache_key);
     if (it != cache.end() && it->second.list) {
         return it->second;
@@ -68,6 +124,134 @@ Specificity max_specificity_in_list(const SelectorList& list) {
     return max_spec;
 }
 
+bool can_bucket_attribute_selector_by_name(const SimpleSelector& simple) {
+    if (simple.type != SimpleSelectorType::Attribute || simple.attr_name.empty()) {
+        return false;
+    }
+
+    // Name-only bucketing is safe only when the attribute must still exist
+    // before any operator or case-flag-specific value match can succeed.
+    switch (simple.attr_match) {
+        case AttributeMatch::Exists:
+        case AttributeMatch::Exact:
+        case AttributeMatch::Includes:
+        case AttributeMatch::DashMatch:
+        case AttributeMatch::Prefix:
+        case AttributeMatch::Suffix:
+        case AttributeMatch::Substring:
+            return true;
+    }
+
+    return false;
+}
+
+RightmostSelectorKey safe_terminal_function_selector_key(const SimpleSelector& simple) {
+    if (simple.type != SimpleSelectorType::PseudoClass) {
+        return {};
+    }
+
+    const std::string pseudo = ascii_lower(simple.value);
+    if (pseudo != "is" && pseudo != "where") {
+        return {};
+    }
+
+    const SelectorList* inner_list = function_selector_list_program(simple);
+    if (!inner_list || inner_list->selectors.empty()) {
+        return {};
+    }
+
+    RightmostSelectorKey shared_key;
+    bool has_shared_key = false;
+    for (const auto& branch : inner_list->selectors) {
+        const RightmostSelectorKey branch_key = compute_rightmost_match_key(branch);
+        if (branch_key.type == RightmostSelectorKeyType::None || branch_key.value.empty()) {
+            return {};
+        }
+        if (!has_shared_key) {
+            shared_key = branch_key;
+            has_shared_key = true;
+            continue;
+        }
+        if (branch_key.type != shared_key.type || branch_key.value != shared_key.value) {
+            return {};
+        }
+    }
+
+    return shared_key;
+}
+
+bool merge_unambiguous_class_key(std::optional<std::string>& class_key,
+                                 std::string_view candidate) {
+    if (candidate.empty()) {
+        return true;
+    }
+    if (!class_key.has_value()) {
+        class_key = std::string(candidate);
+        return true;
+    }
+    return *class_key == candidate;
+}
+
+bool can_infer_required_class_from_function_selector(std::string_view pseudo_name) {
+    const std::string pseudo = ascii_lower(std::string(pseudo_name));
+    return pseudo == "is" || pseudo == "where" || pseudo == "matches" ||
+           pseudo == "-webkit-any";
+}
+
+std::optional<std::string> safe_unambiguous_required_class_key(const ComplexSelector& selector) {
+    if (selector.parts.empty()) {
+        return std::nullopt;
+    }
+
+    std::optional<std::string> class_key;
+    const auto& simple_selectors = selector.parts.back().compound.simple_selectors;
+    for (const auto& simple : simple_selectors) {
+        if (simple.type != SimpleSelectorType::Class) {
+            continue;
+        }
+        if (!merge_unambiguous_class_key(class_key, simple.value)) {
+            return std::nullopt;
+        }
+    }
+
+    for (const auto& simple : simple_selectors) {
+        const auto nested_class_key = safe_terminal_function_selector_class_key(simple);
+        if (!nested_class_key.has_value()) {
+            continue;
+        }
+        if (!merge_unambiguous_class_key(class_key, *nested_class_key)) {
+            return std::nullopt;
+        }
+    }
+
+    return class_key;
+}
+
+std::optional<std::string> safe_terminal_function_selector_class_key(const SimpleSelector& simple) {
+    if (simple.type != SimpleSelectorType::PseudoClass ||
+        !can_infer_required_class_from_function_selector(simple.value)) {
+        return std::nullopt;
+    }
+
+    const SelectorList* inner_list = function_selector_list_program(simple);
+    if (!inner_list || inner_list->selectors.empty()) {
+        return std::nullopt;
+    }
+
+    std::optional<std::string> shared_class_key;
+    for (const auto& branch : inner_list->selectors) {
+        const auto branch_class_key = safe_unambiguous_required_class_key(branch);
+        if (!branch_class_key.has_value()) {
+            return std::nullopt;
+        }
+        if (!merge_unambiguous_class_key(shared_class_key, *branch_class_key)) {
+            return std::nullopt;
+        }
+    }
+
+    return shared_class_key;
+}
+
 RightmostSelectorKey compute_rightmost_match_key(const ComplexSelector& selector) {
     if (selector.parts.empty()) {
         return {};
@@ -90,17 +274,104 @@ RightmostSelectorKey compute_rightmost_match_key(const ComplexSelector& selector
         }
     }
 
+    for (const auto& simple : simple_selectors) {
+        if (can_bucket_attribute_selector_by_name(simple)) {
+            return {RightmostSelectorKeyType::Attribute,
+                    ascii_lower(simple.attr_name)};
+        }
+    }
+
+    for (const auto& simple : simple_selectors) {
+        const RightmostSelectorKey function_key = safe_terminal_function_selector_key(simple);
+        if (function_key.type != RightmostSelectorKeyType::None &&
+            !function_key.value.empty()) {
+            return function_key;
+        }
+    }
+
+    for (const auto& simple : simple_selectors) {
+        const auto class_key = safe_terminal_function_selector_class_key(simple);
+        if (class_key.has_value() && !class_key->empty()) {
+            return {RightmostSelectorKeyType::Class, *class_key};
+        }
+    }
+
     return {};
 }
 
 } // namespace
 
+std::string compiled_function_selector_list_cache_key(std::string_view pseudo_name,
+                                                      std::string_view argument) {
+    return build_compiled_function_selector_list_cache_key(pseudo_name, argument);
+}
+
+std::shared_ptr<const SelectorList> compiled_function_selector_list_for_key(std::string_view cache_key) {
+    if (cache_key.empty()) {
+        return {};
+    }
+
+    auto& cache = function_selector_list_cache();
+    auto it = cache.find(std::string(cache_key));
+    if (it == cache.end()) {
+        return {};
+    }
+    return it->second.list;
+}
+
 std::shared_ptr<const SelectorList> compile_function_selector_list(std::string_view pseudo_name,
                                                                    std::string_view argument) {
-    if (!should_cache_function_selector_list(pseudo_name)) {
+    if (compiled_function_selector_list_cache_key(pseudo_name, argument).empty()) {
         return {};
     }
     return function_selector_list_cache_entry(pseudo_name, argument).list;
+}
+
+std::shared_ptr<const SelectorList> attach_compiled_function_selector_list(SimpleSelector& selector) {
+    if (selector.parsed_selector_list) {
+        return selector.parsed_selector_list;
+    }
+
+    if (selector.compiled_selector_list_cache_key.empty()) {
+        selector.compiled_selector_list_cache_key =
+            compiled_function_selector_list_cache_key(selector.value, selector.argument);
+    }
+    if (selector.compiled_selector_list_cache_key.empty()) {
+        return {};
+    }
+
+    selector.parsed_selector_list =
+        compiled_function_selector_list_for_key(selector.compiled_selector_list_cache_key);
+    if (!selector.parsed_selector_list) {
+        selector.parsed_selector_list =
+            compile_function_selector_list(selector.value, selector.argument);
+    }
+    return selector.parsed_selector_list;
+}
+
+const SelectorList* function_selector_list_program(const SimpleSelector& selector) {
+    if (selector.parsed_selector_list) {
+        return selector.parsed_selector_list.get();
+    }
+
+    const std::string cache_key = selector.compiled_selector_list_cache_key.empty()
+                                      ? compiled_function_selector_list_cache_key(
+                                            selector.value,
+                                            selector.argument)
+                                      : selector.compiled_selector_list_cache_key;
+    if (cache_key.empty()) {
+        return nullptr;
+    }
+
+    if (auto compiled_list = compiled_function_selector_list_for_key(cache_key)) {
+        return compiled_list.get();
+    }
+
+    if (auto compiled_list = compile_function_selector_list(selector.value, selector.argument)) {
+        return compiled_list.get();
+    }
+
+    return nullptr;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,11 +414,9 @@ Specificity compute_specificity(const ComplexSelector& selector) {
                         }
                         if (pseudo == "is" || pseudo == "not" || pseudo == "has" ||
                             pseudo == "matches" || pseudo == "-webkit-any") {
-                            const SelectorList* inner_list = cached_function_selector_list(ss);
-                            std::shared_ptr<const SelectorList> compiled_list;
+                            const SelectorList* inner_list = function_selector_list_program(ss);
                             if (!inner_list) {
-                                compiled_list = compile_function_selector_list(ss.value, ss.argument);
-                                inner_list = compiled_list.get();
+                                break;
                             }
                             Specificity inner = max_specificity_in_list(*inner_list);
                             spec.a += inner.a;
@@ -465,8 +734,7 @@ CompoundSelector SelectorParser::parse_compound_selector() {
                         advance();
                     }
                     ss.argument = args;
-                    ss.parsed_selector_list =
-                        compile_function_selector_list(ss.value, ss.argument);
+                    attach_compiled_function_selector_list(ss);
                     compound.simple_selectors.push_back(std::move(ss));
                 } else {
                     SimpleSelector ss;

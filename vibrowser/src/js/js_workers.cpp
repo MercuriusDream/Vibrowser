@@ -24,6 +24,7 @@ struct WorkerStateEntry {
     std::shared_ptr<WorkerThread> thread;
     JSValue js_object;  // Keep reference to the JS object for message delivery
     std::vector<WorkerMessage> checkpoint_pending_messages;
+    bool delivery_in_progress = false;
 };
 
 struct WorkerState {
@@ -35,6 +36,16 @@ struct WorkerState {
 // Static map of context → WorkerState (avoids overwriting JS_SetContextOpaque)
 static std::unordered_map<JSContext*, std::unique_ptr<WorkerState>> g_worker_states;
 static std::mutex g_worker_states_mutex;
+
+static bool worker_is_retired(const WorkerStateEntry& entry) {
+    return entry.thread && (entry.thread->is_terminated() || entry.thread->is_finished());
+}
+
+static bool worker_registry_entry_can_unregister(const WorkerStateEntry& entry) {
+    return worker_is_retired(entry) &&
+           !entry.delivery_in_progress &&
+           entry.checkpoint_pending_messages.empty();
+}
 
 static std::shared_ptr<WorkerThread>* get_worker_handle(JSValueConst value) {
     return static_cast<std::shared_ptr<WorkerThread>*>(JS_GetOpaque(value, worker_class_id));
@@ -66,8 +77,22 @@ static void unregister_worker(JSContext* ctx, WorkerThread* worker) {
         return;
     }
 
+    worker_it->second.thread->retire_main_delivery();
     JS_FreeValue(ctx, worker_it->second.js_object);
     it->second->workers.erase(worker_it);
+}
+
+static std::vector<WorkerMessage> drain_worker_messages(WorkerThread* worker) {
+    std::vector<WorkerMessage> drained_messages;
+    if (!worker) {
+        return drained_messages;
+    }
+
+    WorkerMessage message;
+    while (worker->try_recv_message_from_worker(message)) {
+        drained_messages.push_back(std::move(message));
+    }
+    return drained_messages;
 }
 
 static bool parse_json_payload(JSContext* ctx, JSValueConst value, std::string& out) {
@@ -378,6 +403,7 @@ static void worker_finalizer(JSRuntime* /*rt*/, JSValue val) {
     auto* worker_handle = get_worker_handle(val);
     if (worker_handle) {
         if (*worker_handle) {
+            (*worker_handle)->retire_main_delivery();
             (*worker_handle)->terminate();
         }
         // Remove from global state map to release JS references
@@ -385,6 +411,7 @@ static void worker_finalizer(JSRuntime* /*rt*/, JSValue val) {
         for (auto& [ctx, state] : g_worker_states) {
             auto it = state->workers.find(worker_handle->get());
             if (it != state->workers.end()) {
+                it->second.thread->retire_main_delivery();
                 JS_FreeValue(ctx, it->second.js_object);
                 state->workers.erase(it);
                 break;
@@ -443,7 +470,27 @@ static JSValue worker_terminate(JSContext* ctx, JSValueConst this_val, int /*arg
     }
 
     worker->terminate();
-    unregister_worker(ctx, worker);
+
+    std::vector<WorkerMessage> drained_messages = drain_worker_messages(worker);
+    bool unregister_now = false;
+    {
+        std::lock_guard<std::mutex> lock(g_worker_states_mutex);
+        auto state_it = g_worker_states.find(ctx);
+        if (state_it != g_worker_states.end()) {
+            auto worker_it = state_it->second->workers.find(worker);
+            if (worker_it != state_it->second->workers.end()) {
+                auto& checkpoint_messages = worker_it->second.checkpoint_pending_messages;
+                checkpoint_messages.insert(checkpoint_messages.end(),
+                                           std::make_move_iterator(drained_messages.begin()),
+                                           std::make_move_iterator(drained_messages.end()));
+                unregister_now = worker_registry_entry_can_unregister(worker_it->second);
+            }
+        }
+    }
+
+    if (unregister_now) {
+        unregister_worker(ctx, worker);
+    }
     return JS_UNDEFINED;
 }
 
@@ -580,10 +627,6 @@ void WorkerThread::start(std::function<std::string(const std::string&)> module_f
 }
 
 void WorkerThread::post_message_to_worker(const std::string& json_data, const std::string& ports_json) {
-    if (should_terminate_) {
-        return;
-    }
-
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         if (should_terminate_) {
@@ -595,13 +638,9 @@ void WorkerThread::post_message_to_worker(const std::string& json_data, const st
 }
 
 void WorkerThread::post_message_to_main(const std::string& json_data, const std::string& ports_json) {
-    if (should_terminate_) {
-        return;
-    }
-
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
-        if (should_terminate_) {
+        if (should_terminate_ || main_delivery_retired_) {
             return;
         }
         worker_to_main_.push(WorkerMessage{json_data, ports_json, "", "", 0, WorkerMessageKind::kMessage});
@@ -611,7 +650,7 @@ void WorkerThread::post_message_to_main(const std::string& json_data, const std:
 
 bool WorkerThread::try_recv_message_from_worker(WorkerMessage& message) {
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    if (should_terminate_ || finished_) {
+    if (main_delivery_retired_) {
         while (!worker_to_main_.empty()) {
             worker_to_main_.pop();
         }
@@ -625,15 +664,23 @@ bool WorkerThread::try_recv_message_from_worker(WorkerMessage& message) {
     return true;
 }
 
+void WorkerThread::retire_main_delivery() {
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        main_delivery_retired_ = true;
+        while (!worker_to_main_.empty()) {
+            worker_to_main_.pop();
+        }
+    }
+    queue_cv_.notify_all();
+}
+
 void WorkerThread::terminate() {
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         should_terminate_ = true;
         while (!main_to_worker_.empty()) {
             main_to_worker_.pop();
-        }
-        while (!worker_to_main_.empty()) {
-            worker_to_main_.pop();
         }
     }
     queue_cv_.notify_one();
@@ -663,7 +710,7 @@ void WorkerThread::post_error_to_main(const std::string& message,
                                      const std::string& name) {
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
-        if (should_terminate_) {
+        if (should_terminate_ || main_delivery_retired_) {
             return;
         }
         WorkerMessage error_message;
@@ -799,9 +846,6 @@ void WorkerThread::worker_main() {
     while (!main_to_worker_.empty()) {
         main_to_worker_.pop();
     }
-    while (!worker_to_main_.empty()) {
-        worker_to_main_.pop();
-    }
 
     JS_FreeValue(worker_ctx_, self_obj);
     JS_FreeContext(worker_ctx_);
@@ -852,110 +896,161 @@ void install_worker_bindings(JSContext* ctx) {
 
 void process_worker_messages(JSContext* ctx) {
     WorkerState* state = get_worker_state(ctx);
-    std::vector<std::pair<std::shared_ptr<WorkerThread>, JSValue>> active_workers;
+    struct QueuedWorkerDelivery {
+        std::shared_ptr<WorkerThread> thread;
+        JSValue worker_object = JS_UNDEFINED;
+        std::vector<WorkerMessage> checkpoint_messages;
+    };
+
+    std::vector<QueuedWorkerDelivery> queued_workers;
+    std::vector<WorkerThread*> workers_to_unregister_before_delivery;
     std::vector<WorkerThread*> stale_workers;
-    std::unordered_map<WorkerThread*, std::vector<WorkerMessage>> pending_messages;
     {
         std::lock_guard<std::mutex> lock(g_worker_states_mutex);
         if (!state || state->workers.empty()) {
             return;
         }
 
-        active_workers.reserve(state->workers.size());
+        queued_workers.reserve(state->workers.size());
+        workers_to_unregister_before_delivery.reserve(state->workers.size());
         stale_workers.reserve(state->workers.size());
         for (auto& state_entry : state->workers) {
             auto& entry = state_entry.second;
-            if (entry.thread->is_terminated() || entry.thread->is_finished()) {
-                stale_workers.push_back(state_entry.first);
+            if (JS_IsUndefined(entry.js_object)) {
+                if (worker_is_retired(entry)) {
+                    stale_workers.push_back(state_entry.first);
+                }
                 continue;
             }
-            if (!JS_IsUndefined(entry.js_object)) {
-                active_workers.emplace_back(entry.thread, JS_DupValue(ctx, entry.js_object));
+
+            std::vector<WorkerMessage> checkpoint_ready_messages =
+                drain_worker_messages(entry.thread.get());
+            if (!checkpoint_ready_messages.empty()) {
+                auto& checkpoint_messages = entry.checkpoint_pending_messages;
+                checkpoint_messages.insert(checkpoint_messages.end(),
+                                           std::make_move_iterator(checkpoint_ready_messages.begin()),
+                                           std::make_move_iterator(checkpoint_ready_messages.end()));
             }
-            pending_messages.emplace(state_entry.first, std::move(entry.checkpoint_pending_messages));
+
+            if (worker_registry_entry_can_unregister(entry)) {
+                workers_to_unregister_before_delivery.push_back(state_entry.first);
+                continue;
+            }
+
+            queued_workers.push_back(QueuedWorkerDelivery {
+                entry.thread,
+                JS_DupValue(ctx, entry.js_object),
+                std::move(entry.checkpoint_pending_messages),
+            });
             entry.checkpoint_pending_messages.clear();
+            entry.delivery_in_progress = true;
+
+            if (worker_is_retired(entry)) {
+                workers_to_unregister_before_delivery.push_back(state_entry.first);
+            }
         }
     }
 
-    for (WorkerThread* worker : stale_workers) {
+    for (WorkerThread* worker : workers_to_unregister_before_delivery) {
         unregister_worker(ctx, worker);
     }
 
-    for (auto& pair : active_workers) {
-        auto worker = pair.first;
-        JSValue worker_obj = pair.second;
-        auto pending_it = pending_messages.find(worker.get());
+    for (auto& queued_worker : queued_workers) {
+        auto worker = queued_worker.thread;
+        JSValue worker_obj = queued_worker.worker_object;
 
-        if (worker->is_terminated() || worker->is_finished()) {
-            unregister_worker(ctx, worker.get());
-            JS_FreeValue(ctx, worker_obj);
-            continue;
-        }
-
-        if (pending_it != pending_messages.end()) {
-            for (const WorkerMessage& msg : pending_it->second) {
-                if (worker->is_terminated() || worker->is_finished()) {
-                    break;
-                }
-                if (msg.kind == WorkerMessageKind::kError) {
-                    JSValue onerror = JS_GetPropertyStr(ctx, worker_obj, "onerror");
-                    if (JS_IsFunction(ctx, onerror)) {
-                        JSValue event_obj = make_error_event(ctx, msg);
-                        JSValue call_result = JS_Call(ctx, onerror, worker_obj, 1, &event_obj);
-                        if (JS_IsException(call_result)) {
-                            JS_FreeValue(ctx, JS_GetException(ctx));
-                        }
-                        JS_FreeValue(ctx, call_result);
-                        JS_FreeValue(ctx, event_obj);
-                    }
-                    JS_FreeValue(ctx, onerror);
-                    continue;
-                }
-
-                JSValue data = parse_message_data(ctx, msg.data);
-                JSValue event_obj = make_message_event(ctx, "message", data, msg.filename, worker_obj,
-                                                      msg.ports, false, false);
-                JSValue onmessage = JS_GetPropertyStr(ctx, worker_obj, "onmessage");
-                if (JS_IsFunction(ctx, onmessage)) {
-                    JSValue call_result = JS_Call(ctx, onmessage, worker_obj, 1, &event_obj);
+        for (const WorkerMessage& msg : queued_worker.checkpoint_messages) {
+            if (msg.kind == WorkerMessageKind::kError) {
+                JSValue onerror = JS_GetPropertyStr(ctx, worker_obj, "onerror");
+                if (JS_IsFunction(ctx, onerror)) {
+                    JSValue event_obj = make_error_event(ctx, msg);
+                    JSValue call_result = JS_Call(ctx, onerror, worker_obj, 1, &event_obj);
                     if (JS_IsException(call_result)) {
                         JS_FreeValue(ctx, JS_GetException(ctx));
                     }
                     JS_FreeValue(ctx, call_result);
+                    JS_FreeValue(ctx, event_obj);
                 }
-                JS_FreeValue(ctx, onmessage);
-                JS_FreeValue(ctx, event_obj);
-            }
-        }
-
-        std::vector<WorkerMessage> newly_queued_messages;
-        WorkerMessage msg;
-        while (worker->try_recv_message_from_worker(msg)) {
-            if (msg.kind == WorkerMessageKind::kError) {
-                newly_queued_messages.push_back(msg);
+                JS_FreeValue(ctx, onerror);
                 continue;
             }
-            newly_queued_messages.push_back(msg);
+
+            JSValue data = parse_message_data(ctx, msg.data);
+            JSValue event_obj = make_message_event(ctx, "message", data, msg.filename, worker_obj,
+                                                  msg.ports, false, false);
+            JSValue onmessage = JS_GetPropertyStr(ctx, worker_obj, "onmessage");
+            if (JS_IsFunction(ctx, onmessage)) {
+                JSValue call_result = JS_Call(ctx, onmessage, worker_obj, 1, &event_obj);
+                if (JS_IsException(call_result)) {
+                    JS_FreeValue(ctx, JS_GetException(ctx));
+                }
+                JS_FreeValue(ctx, call_result);
+            }
+            JS_FreeValue(ctx, onmessage);
+            JS_FreeValue(ctx, event_obj);
         }
 
-        if (!newly_queued_messages.empty()) {
+        std::vector<WorkerMessage> newly_queued_messages = drain_worker_messages(worker.get());
+        bool unregister_now = false;
+        {
             std::lock_guard<std::mutex> lock(g_worker_states_mutex);
             auto state_it = state->workers.find(worker.get());
-            if (state_it != state->workers.end() &&
-                !worker->is_terminated() && !worker->is_finished()) {
-                auto& checkpoint_messages = state_it->second.checkpoint_pending_messages;
-                checkpoint_messages.insert(checkpoint_messages.end(),
-                                           std::make_move_iterator(newly_queued_messages.begin()),
-                                           std::make_move_iterator(newly_queued_messages.end()));
+            if (state_it != state->workers.end()) {
+                if (!newly_queued_messages.empty()) {
+                    auto& checkpoint_messages = state_it->second.checkpoint_pending_messages;
+                    checkpoint_messages.insert(checkpoint_messages.end(),
+                                               std::make_move_iterator(newly_queued_messages.begin()),
+                                               std::make_move_iterator(newly_queued_messages.end()));
+                }
+
+                state_it->second.delivery_in_progress = false;
+                unregister_now = worker_registry_entry_can_unregister(state_it->second);
             }
         }
 
-        // Clean up finished workers
-        if (worker->is_finished()) {
+        if (unregister_now) {
             unregister_worker(ctx, worker.get());
         }
         JS_FreeValue(ctx, worker_obj);
     }
+
+    for (WorkerThread* worker : stale_workers) {
+        bool unregister_now = false;
+        {
+            std::lock_guard<std::mutex> lock(g_worker_states_mutex);
+            auto state_it = state->workers.find(worker);
+            if (state_it == state->workers.end()) {
+                continue;
+            }
+            unregister_now = worker_registry_entry_can_unregister(state_it->second);
+        }
+        if (unregister_now) {
+            unregister_worker(ctx, worker);
+        }
+    }
+}
+
+size_t debug_worker_registry_size(JSContext* ctx) {
+    std::lock_guard<std::mutex> lock(g_worker_states_mutex);
+    auto it = g_worker_states.find(ctx);
+    if (it == g_worker_states.end()) {
+        return 0;
+    }
+    return it->second->workers.size();
+}
+
+bool debug_worker_is_registered(JSContext* ctx, JSValueConst worker_value) {
+    auto* worker_handle = get_worker_handle(worker_value);
+    if (!worker_handle || !*worker_handle) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(g_worker_states_mutex);
+    auto it = g_worker_states.find(ctx);
+    if (it == g_worker_states.end()) {
+        return false;
+    }
+    return it->second->workers.find(worker_handle->get()) != it->second->workers.end();
 }
 
 }  // namespace clever::js

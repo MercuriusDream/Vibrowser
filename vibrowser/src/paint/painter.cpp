@@ -1647,6 +1647,33 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
 
 void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayList& list,
                                 float abs_x, float abs_y) {
+    const auto intersect_rects = [](const Rect& a, const Rect& b) {
+        const float left = std::max(a.x, b.x);
+        const float top = std::max(a.y, b.y);
+        const float right = std::min(a.x + a.width, b.x + b.width);
+        const float bottom = std::min(a.y + a.height, b.y + b.height);
+        return Rect {
+            left,
+            top,
+            std::max(0.0f, right - left),
+            std::max(0.0f, bottom - top)
+        };
+    };
+    const auto is_empty_rect = [](const Rect& rect_to_check) {
+        return rect_to_check.width <= 0 || rect_to_check.height <= 0;
+    };
+    const auto compute_tile_index_range = [](float anchor, float tile_size,
+                                             float min_edge, float max_edge) {
+        if (tile_size <= 0 || max_edge <= min_edge) {
+            return std::pair<int, int> {1, 0};
+        }
+        const int first =
+            static_cast<int>(std::floor((min_edge - anchor) / tile_size));
+        const int last =
+            static_cast<int>(std::ceil((max_edge - anchor) / tile_size)) - 1;
+        return std::pair<int, int> {first, last};
+    };
+
     const auto& geom = node.geometry;
     float w = geom.border_box_width();
     float h = geom.border_box_height();
@@ -1840,6 +1867,7 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
 
         const float bg_anchor_with_pos_x = bg_anchor_x + pos_x + fixed_viewport_scroll_x;
         const float bg_anchor_with_pos_y = bg_anchor_y + pos_y + fixed_viewport_scroll_y;
+        const Rect tile_bounds = rect;
 
         // Apply clip to ensure all background image modes respect the background-clip boundary.
         list.push_clip(rect);
@@ -1850,66 +1878,96 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
             list.draw_image({bg_anchor_with_pos_x, bg_anchor_with_pos_y, draw_w, draw_h}, img);
         } else if (node.background_repeat == 1) {
             // repeat-x: tile horizontally only
-            if (draw_w > 0) {
-                float start_x = bg_anchor_with_pos_x;
-                if (start_x > rect.x)
-                    start_x -= std::ceil((start_x - rect.x) / draw_w) * draw_w;
-                else
-                    start_x -= std::floor((rect.x - start_x) / draw_w) * draw_w;
-                for (float tx = start_x; tx < rect.x + rect.width; tx += draw_w)
-                    list.draw_image({tx, bg_anchor_with_pos_y, draw_w, draw_h}, img);
+            if (draw_w > 0 && draw_h > 0) {
+                const Rect row_bounds = intersect_rects(
+                    tile_bounds, {tile_bounds.x, bg_anchor_with_pos_y, tile_bounds.width, draw_h});
+                if (!is_empty_rect(row_bounds)) {
+                    auto [first_ix, last_ix] = compute_tile_index_range(
+                        bg_anchor_with_pos_x, draw_w, row_bounds.x, row_bounds.x + row_bounds.width);
+                    for (int ix = first_ix; ix <= last_ix; ++ix) {
+                        list.draw_image(
+                            {bg_anchor_with_pos_x + ix * draw_w, bg_anchor_with_pos_y, draw_w, draw_h},
+                            img);
+                    }
+                }
             }
         } else if (node.background_repeat == 2) {
             // repeat-y: tile vertically only
-            if (draw_h > 0) {
-                float start_y = bg_anchor_with_pos_y;
-                if (start_y > rect.y)
-                    start_y -= std::ceil((start_y - rect.y) / draw_h) * draw_h;
-                else
-                    start_y -= std::floor((rect.y - start_y) / draw_h) * draw_h;
-                for (float ty = start_y; ty < rect.y + rect.height; ty += draw_h)
-                    list.draw_image({bg_anchor_with_pos_x, ty, draw_w, draw_h}, img);
+            if (draw_w > 0 && draw_h > 0) {
+                const Rect column_bounds = intersect_rects(
+                    tile_bounds, {bg_anchor_with_pos_x, tile_bounds.y, draw_w, tile_bounds.height});
+                if (!is_empty_rect(column_bounds)) {
+                    auto [first_iy, last_iy] = compute_tile_index_range(
+                        bg_anchor_with_pos_y, draw_h, column_bounds.y, column_bounds.y + column_bounds.height);
+                    for (int iy = first_iy; iy <= last_iy; ++iy) {
+                        list.draw_image(
+                            {bg_anchor_with_pos_x, bg_anchor_with_pos_y + iy * draw_h, draw_w, draw_h},
+                            img);
+                    }
+                }
             }
         } else if (node.background_repeat == 4 && draw_w > 0 && draw_h > 0) {
-            // space: distribute tiles evenly with equal spacing, no clipping
+            // space: preserve the existing spacing math, but skip tiles fully outside the clip box.
             int n_x = std::max(1, static_cast<int>(std::floor(origin_elem_w / draw_w)));
             int n_y = std::max(1, static_cast<int>(std::floor(origin_elem_h / draw_h)));
             float gap_x = (n_x > 1) ? (origin_elem_w - n_x * draw_w) / (n_x - 1) : 0.0f;
             float gap_y = (n_y > 1) ? (origin_elem_h - n_y * draw_h) / (n_y - 1) : 0.0f;
             float off_x = (n_x == 1) ? (origin_elem_w - draw_w) / 2.0f : 0.0f;
             float off_y = (n_y == 1) ? (origin_elem_h - draw_h) / 2.0f : 0.0f;
-            for (int iy = 0; iy < n_y; ++iy) {
-                float ty = bg_anchor_with_pos_y + off_y + iy * (draw_h + gap_y);
-                for (int ix = 0; ix < n_x; ++ix) {
-                    float tx = bg_anchor_with_pos_x + off_x + ix * (draw_w + gap_x);
+            const float start_x = bg_anchor_with_pos_x + off_x;
+            const float start_y = bg_anchor_with_pos_y + off_y;
+            const float step_x = draw_w + gap_x;
+            const float step_y = draw_h + gap_y;
+            auto [first_ix, last_ix] = compute_tile_index_range(
+                start_x, step_x, tile_bounds.x, tile_bounds.x + tile_bounds.width);
+            auto [first_iy, last_iy] = compute_tile_index_range(
+                start_y, step_y, tile_bounds.y, tile_bounds.y + tile_bounds.height);
+            first_ix = std::clamp(first_ix, 0, n_x - 1);
+            last_ix = std::clamp(last_ix, 0, n_x - 1);
+            first_iy = std::clamp(first_iy, 0, n_y - 1);
+            last_iy = std::clamp(last_iy, 0, n_y - 1);
+            for (int iy = first_iy; iy <= last_iy; ++iy) {
+                float ty = start_y + iy * step_y;
+                for (int ix = first_ix; ix <= last_ix; ++ix) {
+                    float tx = start_x + ix * step_x;
                     list.draw_image({tx, ty, draw_w, draw_h}, img);
                 }
             }
         } else if (node.background_repeat == 5 && draw_w > 0 && draw_h > 0) {
-            // round: scale image so it tiles a whole number of times
+            // round: preserve scaled tile sizing, but avoid issuing fully clipped tiles.
             int n_x = std::max(1, static_cast<int>(std::round(origin_elem_w / draw_w)));
             int n_y = std::max(1, static_cast<int>(std::round(origin_elem_h / draw_h)));
             float tile_w = origin_elem_w / n_x;
             float tile_h = origin_elem_h / n_y;
-            for (int iy = 0; iy < n_y; ++iy)
-                for (int ix = 0; ix < n_x; ++ix)
-                    list.draw_image({bg_anchor_with_pos_x + ix * tile_w, bg_anchor_with_pos_y + iy * tile_h, tile_w, tile_h}, img);
+            auto [first_ix, last_ix] = compute_tile_index_range(
+                bg_anchor_with_pos_x, tile_w, tile_bounds.x, tile_bounds.x + tile_bounds.width);
+            auto [first_iy, last_iy] = compute_tile_index_range(
+                bg_anchor_with_pos_y, tile_h, tile_bounds.y, tile_bounds.y + tile_bounds.height);
+            first_ix = std::clamp(first_ix, 0, n_x - 1);
+            last_ix = std::clamp(last_ix, 0, n_x - 1);
+            first_iy = std::clamp(first_iy, 0, n_y - 1);
+            last_iy = std::clamp(last_iy, 0, n_y - 1);
+            for (int iy = first_iy; iy <= last_iy; ++iy) {
+                for (int ix = first_ix; ix <= last_ix; ++ix) {
+                    list.draw_image(
+                        {bg_anchor_with_pos_x + ix * tile_w, bg_anchor_with_pos_y + iy * tile_h,
+                         tile_w, tile_h},
+                        img);
+                }
+            }
         } else {
             // repeat (default, 0): tile in both directions within clipping box
             if (draw_w > 0 && draw_h > 0) {
-                float start_x = bg_anchor_with_pos_x;
-                float start_y = bg_anchor_with_pos_y;
-                if (start_x > rect.x)
-                    start_x -= std::ceil((start_x - rect.x) / draw_w) * draw_w;
-                else
-                    start_x -= std::floor((rect.x - start_x) / draw_w) * draw_w;
-                if (start_y > rect.y)
-                    start_y -= std::ceil((start_y - rect.y) / draw_h) * draw_h;
-                else
-                    start_y -= std::floor((rect.y - start_y) / draw_h) * draw_h;
-                for (float ty = start_y; ty < rect.y + rect.height; ty += draw_h) {
-                    for (float tx = start_x; tx < rect.x + rect.width; tx += draw_w) {
-                        list.draw_image({tx, ty, draw_w, draw_h}, img);
+                auto [first_ix, last_ix] = compute_tile_index_range(
+                    bg_anchor_with_pos_x, draw_w, tile_bounds.x, tile_bounds.x + tile_bounds.width);
+                auto [first_iy, last_iy] = compute_tile_index_range(
+                    bg_anchor_with_pos_y, draw_h, tile_bounds.y, tile_bounds.y + tile_bounds.height);
+                for (int iy = first_iy; iy <= last_iy; ++iy) {
+                    for (int ix = first_ix; ix <= last_ix; ++ix) {
+                        list.draw_image(
+                            {bg_anchor_with_pos_x + ix * draw_w, bg_anchor_with_pos_y + iy * draw_h,
+                             draw_w, draw_h},
+                            img);
                     }
                 }
             }

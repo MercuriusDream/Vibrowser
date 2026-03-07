@@ -132,8 +132,12 @@ public:
     static ConnectionPool& connection_pool();
 
 private:
+    friend class HttpClientTestAccessor;
+
     std::chrono::milliseconds timeout_{std::chrono::seconds(30)};
     int max_redirects_ = 20;
+
+    static bool has_complete_response(const std::vector<uint8_t>& buffer);
 
     // Low-level: connect, send request, read response
     std::optional<Response> do_request(const Request& request);

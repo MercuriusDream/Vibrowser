@@ -23,10 +23,11 @@ void cleanup_animation_frames(JSContext* ctx);
 // Call before JS runtime teardown to avoid leaking rooted callback values.
 void cleanup_match_media_listeners(JSContext* ctx);
 
-// Deliver same-thread worker messages that were deferred to the main runtime's
-// next JS checkpoint. Pending delivery is snapshotted, so callbacks that post
-// back into a worker are deferred to a later checkpoint instead of reentering
-// page JS in the same one.
+// Deliver deferred window-scoped host callbacks at the main runtime's next JS
+// checkpoint. Same-thread worker messages are snapshotted so callbacks that
+// post back into a worker are deferred to a later checkpoint instead of
+// reentering page JS in the same one. WebSocket callbacks share this checkpoint
+// so they cannot run inline or from the receive thread.
 void process_window_worker_messages(JSContext* ctx);
 
 // Look up a blob: URL in the blob registry.

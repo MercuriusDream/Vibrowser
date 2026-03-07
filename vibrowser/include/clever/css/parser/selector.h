@@ -2,6 +2,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -50,6 +51,7 @@ struct SimpleSelector {
 
     // Pseudo-class specifics (e.g., nth-child argument)
     std::string argument;
+    std::string compiled_selector_list_cache_key;
     std::shared_ptr<const SelectorList> parsed_selector_list;
 };
 
@@ -69,6 +71,7 @@ enum class RightmostSelectorKeyType {
     Type,
     Class,
     Id,
+    Attribute,
 };
 
 struct RightmostSelectorKey {
@@ -91,6 +94,13 @@ struct SelectorList {
 };
 
 Specificity compute_specificity(const ComplexSelector& selector);
+std::string compiled_function_selector_list_cache_key(std::string_view pseudo_name,
+                                                      std::string_view argument);
+std::shared_ptr<const SelectorList> compile_function_selector_list(std::string_view pseudo_name,
+                                                                   std::string_view argument);
+std::shared_ptr<const SelectorList> compiled_function_selector_list_for_key(std::string_view cache_key);
+std::shared_ptr<const SelectorList> attach_compiled_function_selector_list(SimpleSelector& selector);
+const SelectorList* function_selector_list_program(const SimpleSelector& selector);
 SelectorList parse_selector_list(std::string_view input);
 
 } // namespace clever::css

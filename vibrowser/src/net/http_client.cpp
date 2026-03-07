@@ -13,13 +13,15 @@
 
 #include <algorithm>
 #include <cctype>
-#include <memory>
+#include <charconv>
 #include <chrono>
 #include <deque>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
-#include <map>
-#include <mutex>
+#include <string_view>
 
 namespace clever::net {
 
@@ -51,6 +53,98 @@ void clear_request_active_fd(const Request& request, int fd) {
     if (request.cancellation_state) {
         request.cancellation_state->clear_active_fd(fd);
     }
+}
+
+std::optional<size_t> find_crlf(const std::vector<uint8_t>& buffer, size_t start) {
+    if (start >= buffer.size()) {
+        return std::nullopt;
+    }
+
+    for (size_t i = start; i + 1 < buffer.size(); ++i) {
+        if (buffer[i] == '\r' && buffer[i + 1] == '\n') {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string_view trim_ascii_whitespace(std::string_view value) {
+    while (!value.empty() &&
+           (value.front() == ' ' || value.front() == '\t')) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() &&
+           (value.back() == ' ' || value.back() == '\t')) {
+        value.remove_suffix(1);
+    }
+    return value;
+}
+
+bool is_complete_chunked_body(const std::vector<uint8_t>& buffer, size_t body_start) {
+    size_t pos = body_start;
+    while (true) {
+        const auto line_end = find_crlf(buffer, pos);
+        if (!line_end.has_value()) {
+            return false;
+        }
+
+        std::string_view size_line(reinterpret_cast<const char*>(buffer.data() + pos),
+                                   *line_end - pos);
+        size_line = trim_ascii_whitespace(size_line);
+        const auto extension = size_line.find(';');
+        const std::string_view size_text = trim_ascii_whitespace(
+            extension == std::string_view::npos ? size_line : size_line.substr(0, extension));
+        if (size_text.empty()) {
+            return false;
+        }
+
+        size_t chunk_size = 0;
+        const auto [ptr, ec] = std::from_chars(size_text.data(),
+                                               size_text.data() + size_text.size(),
+                                               chunk_size, 16);
+        if (ec != std::errc{} || ptr != size_text.data() + size_text.size()) {
+            return false;
+        }
+
+        pos = *line_end + 2;
+        if (chunk_size == 0) {
+            while (true) {
+                const auto trailer_end = find_crlf(buffer, pos);
+                if (!trailer_end.has_value()) {
+                    return false;
+                }
+                if (*trailer_end == pos) {
+                    return true;
+                }
+                pos = *trailer_end + 2;
+            }
+        }
+
+        if (pos + chunk_size + 2 > buffer.size()) {
+            return false;
+        }
+        if (buffer[pos + chunk_size] != '\r' || buffer[pos + chunk_size + 1] != '\n') {
+            return false;
+        }
+        pos += chunk_size + 2;
+    }
+}
+
+bool has_explicit_response_framing(const std::vector<uint8_t>& buffer) {
+    const char* sep = "\r\n\r\n";
+    const auto header_it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
+    if (header_it == buffer.end()) {
+        return false;
+    }
+
+    std::string header_str(buffer.begin(),
+                           buffer.begin() + static_cast<std::ptrdiff_t>(
+                               (header_it - buffer.begin()) + 4));
+    std::transform(header_str.begin(), header_str.end(), header_str.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return header_str.find("content-length:") != std::string::npos ||
+           header_str.find("transfer-encoding: chunked") != std::string::npos ||
+           header_str.find("transfer-encoding:chunked") != std::string::npos;
 }
 
 std::string strip_fragment_from_url(const std::string& url) {
@@ -164,18 +258,24 @@ std::string make_cache_key_fallback(std::string_view raw_url) {
     return scheme + "://" + normalized_authority + suffix;
 }
 
-std::string request_url_for_redirect_resolution(const Request& request) {
+std::optional<clever::url::URL> request_url_for_redirect_resolution(const Request& request) {
     if (!request.url.empty()) {
         if (auto parsed = clever::url::parse(request.url)) {
             parsed->fragment.clear();
-            return parsed->serialize();
+            if (parsed->is_special() && !parsed->host.empty() && parsed->path.empty()) {
+                parsed->path = "/";
+            }
+            return parsed;
         }
-        return strip_fragment_from_url(request.url);
+        return std::nullopt;
     }
 
     clever::url::URL url;
     url.scheme = (request.use_tls || request.port == 443) ? "https" : "http";
     url.host = request.host;
+    if (url.host.empty()) {
+        return std::nullopt;
+    }
     if ((url.scheme == "http" && request.port != 80) ||
         (url.scheme == "https" && request.port != 443)) {
         url.port = request.port;
@@ -183,12 +283,12 @@ std::string request_url_for_redirect_resolution(const Request& request) {
     url.path = request.path.empty() ? "/" : request.path;
     url.query = request.query;
     url.fragment.clear();
-    return url.serialize();
+    return url;
 }
 
 std::optional<std::string> resolve_redirect_url(const Request& request,
                                                 const std::string& location) {
-    const auto base = clever::url::parse(request_url_for_redirect_resolution(request));
+    const auto base = request_url_for_redirect_resolution(request);
     if (!base.has_value()) {
         return std::nullopt;
     }
@@ -369,7 +469,14 @@ std::string HttpCache::make_cache_key(const std::string& url) {
     }
 
     clever::url::URL normalized = *parsed;
+    std::transform(normalized.scheme.begin(), normalized.scheme.end(), normalized.scheme.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    std::transform(normalized.host.begin(), normalized.host.end(), normalized.host.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
     normalized.fragment.clear();
+    if ((normalized.scheme == "http" || normalized.scheme == "https") && normalized.path.empty()) {
+        normalized.path = "/";
+    }
     if ((normalized.scheme == "http" && normalized.port == 80) ||
         (normalized.scheme == "https" && normalized.port == 443)) {
         normalized.port.reset();
@@ -594,6 +701,47 @@ bool HttpClient::send_all(int fd, const uint8_t* data, size_t len, const Request
     return true;
 }
 
+bool HttpClient::has_complete_response(const std::vector<uint8_t>& buffer) {
+    const char* sep = "\r\n\r\n";
+    const auto header_it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
+    if (header_it == buffer.end()) {
+        return false;
+    }
+
+    const size_t header_end = static_cast<size_t>(header_it - buffer.begin()) + 4;
+    std::string header_str(buffer.begin(),
+                           buffer.begin() + static_cast<std::ptrdiff_t>(header_end));
+    std::string lower_header = header_str;
+    std::transform(lower_header.begin(), lower_header.end(), lower_header.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    const std::string cl_header = "content-length:";
+    const auto cl_pos = lower_header.find(cl_header);
+    if (cl_pos != std::string::npos) {
+        const auto val_start = cl_pos + cl_header.size();
+        const auto val_end = lower_header.find("\r\n", val_start);
+        if (val_end != std::string::npos) {
+            std::string_view value(header_str.data() + static_cast<std::ptrdiff_t>(val_start),
+                                   val_end - val_start);
+            value = trim_ascii_whitespace(value);
+            try {
+                const size_t content_length = std::stoull(std::string(value));
+                return buffer.size() >= header_end + content_length;
+            } catch (...) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    if (lower_header.find("transfer-encoding: chunked") != std::string::npos ||
+        lower_header.find("transfer-encoding:chunked") != std::string::npos) {
+        return is_complete_chunked_body(buffer, header_end);
+    }
+
+    return false;
+}
+
 std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd, const Request& request) {
     std::vector<uint8_t> buffer;
     constexpr size_t kChunkSize = 8192;
@@ -637,68 +785,9 @@ std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd, const Requ
 
         buffer.insert(buffer.end(), chunk, chunk + n);
 
-        // Check if we have a complete response
-        // First, find end of headers
-        const char* sep = "\r\n\r\n";
-        auto it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
-        if (it == buffer.end()) {
-            continue;  // Headers not yet complete
+        if (has_complete_response(buffer)) {
+            return buffer;
         }
-
-        size_t header_end = static_cast<size_t>(it - buffer.begin()) + 4;
-
-        // Check for Content-Length
-        std::string header_str(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(header_end));
-
-        // Case-insensitive search for Content-Length
-        std::string lower_header = header_str;
-        std::transform(lower_header.begin(), lower_header.end(), lower_header.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-
-        std::string cl_header = "content-length:";
-        auto cl_pos = lower_header.find(cl_header);
-        if (cl_pos != std::string::npos) {
-            auto val_start = cl_pos + cl_header.size();
-            auto val_end = lower_header.find("\r\n", val_start);
-            if (val_end != std::string::npos) {
-                std::string val = header_str.substr(val_start, val_end - val_start);
-                // Trim whitespace
-                while (!val.empty() && val.front() == ' ') val.erase(val.begin());
-                try {
-                    size_t content_length = std::stoull(val);
-                    if (buffer.size() >= header_end + content_length) {
-                        return buffer;  // Complete response
-                    }
-                } catch (...) {
-                    // Fall through
-                }
-            }
-            continue;  // Need more data
-        }
-
-        // Check for Transfer-Encoding: chunked
-        if (lower_header.find("transfer-encoding: chunked") != std::string::npos ||
-            lower_header.find("transfer-encoding:chunked") != std::string::npos) {
-            // Look for the final chunk marker: "\r\n0\r\n\r\n"
-            // (the last chunk "0\r\n" followed by empty trailer "\r\n")
-            const char* end7 = "\r\n0\r\n\r\n";
-            auto end_it = std::search(buffer.begin() + static_cast<std::ptrdiff_t>(header_end),
-                                       buffer.end(),
-                                       end7, end7 + 7);
-            if (end_it != buffer.end()) {
-                return buffer;
-            }
-            // Also check "0\r\n\r\n" at the very start of body (first chunk is empty/zero)
-            const char* end5 = "0\r\n\r\n";
-            auto body_start = buffer.begin() + static_cast<std::ptrdiff_t>(header_end);
-            if (std::distance(body_start, buffer.end()) >= 5 &&
-                std::equal(end5, end5 + 5, body_start)) {
-                return buffer;
-            }
-            continue;
-        }
-
-        // No Content-Length and not chunked: keep reading until connection closes
     }
 
     if (buffer.empty()) {
@@ -824,15 +913,21 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
                     if (poll_rv == 0) {
                         // poll timed out and no TLS data — check if we already
                         // have enough data to parse (Connection: close case)
-                        if (!buffer.empty()) break;
+                        if (has_complete_response(buffer)) break;
+                        if (!buffer.empty() && !has_explicit_response_framing(buffer)) break;
                         continue;  // Keep waiting
                     }
                     // errSSLWouldBlock or graceful close — if we have a
                     // complete response in the buffer, return it
+                    if (has_complete_response(buffer)) {
+                        break;
+                    }
                     if (!buffer.empty()) {
                         const char* sep = "\r\n\r\n";
                         auto it2 = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
-                        if (it2 != buffer.end()) break;  // Have headers, done
+                        if (it2 != buffer.end() && !has_explicit_response_framing(buffer)) {
+                            break;  // Connection-close response
+                        }
                     }
                     // No data yet, connection may have closed
                     break;
@@ -840,66 +935,9 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
 
                 buffer.insert(buffer.end(), chunk->begin(), chunk->end());
 
-                // Check if we have a complete response
-                const char* sep = "\r\n\r\n";
-                auto it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
-                if (it == buffer.end()) {
-                    continue;  // Headers not yet complete
+                if (has_complete_response(buffer)) {
+                    break;
                 }
-
-                size_t header_end = static_cast<size_t>(it - buffer.begin()) + 4;
-
-                // Check for Content-Length
-                std::string header_str(buffer.begin(),
-                                       buffer.begin() + static_cast<std::ptrdiff_t>(header_end));
-                std::string lower_header = header_str;
-                std::transform(lower_header.begin(), lower_header.end(),
-                               lower_header.begin(),
-                               [](unsigned char c) { return std::tolower(c); });
-
-                std::string cl_header = "content-length:";
-                auto cl_pos = lower_header.find(cl_header);
-                if (cl_pos != std::string::npos) {
-                    auto val_start = cl_pos + cl_header.size();
-                    auto val_end = lower_header.find("\r\n", val_start);
-                    if (val_end != std::string::npos) {
-                        std::string val = header_str.substr(val_start, val_end - val_start);
-                        while (!val.empty() && val.front() == ' ') val.erase(val.begin());
-                        try {
-                            size_t content_length = std::stoull(val);
-                            if (buffer.size() >= header_end + content_length) {
-                                break;
-                            }
-                        } catch (...) {
-                            // Fall through
-                        }
-                    }
-                    continue;
-                }
-
-                // Check for Transfer-Encoding: chunked
-                if (lower_header.find("transfer-encoding: chunked") != std::string::npos ||
-                    lower_header.find("transfer-encoding:chunked") != std::string::npos) {
-                    const char* end7 = "\r\n0\r\n\r\n";
-                    auto end_it = std::search(
-                        buffer.begin() + static_cast<std::ptrdiff_t>(header_end),
-                        buffer.end(),
-                        end7,
-                        end7 + 7);
-                    if (end_it != buffer.end()) {
-                        break;
-                    }
-                    // Also check "0\r\n\r\n" at very start of body
-                    const char* end5 = "0\r\n\r\n";
-                    auto body_start = buffer.begin() + static_cast<std::ptrdiff_t>(header_end);
-                    if (std::distance(body_start, buffer.end()) >= 5 &&
-                        std::equal(end5, end5 + 5, body_start)) {
-                        break;
-                    }
-                    continue;
-                }
-
-                // No Content-Length and not chunked — keep reading until connection close
             }
 
             if (buffer.empty()) {

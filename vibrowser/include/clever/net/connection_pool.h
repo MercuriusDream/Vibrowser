@@ -10,6 +10,12 @@ namespace clever::net {
 
 class ConnectionPool {
 public:
+    struct EvictionStats {
+        size_t idle_evictions = 0;
+        size_t per_host_capacity_evictions = 0;
+        size_t total_capacity_evictions = 0;
+    };
+
     explicit ConnectionPool(size_t max_per_host = 6,
                             size_t max_total = 30,
                             std::chrono::seconds idle_timeout = std::chrono::seconds(60));
@@ -26,6 +32,8 @@ public:
 
     // Get count of pooled connections for a host
     size_t count(const std::string& host, uint16_t port) const;
+    size_t reused_socket_count() const;
+    EvictionStats eviction_stats() const;
 
 private:
     struct PooledConnection {
@@ -40,6 +48,10 @@ private:
     size_t max_per_host_;
     size_t max_total_;
     std::chrono::seconds idle_timeout_;
+    size_t reused_socket_count_ = 0;
+    size_t idle_evictions_count_ = 0;
+    size_t per_host_capacity_evictions_count_ = 0;
+    size_t total_capacity_evictions_count_ = 0;
     std::unordered_map<std::string, std::deque<PooledConnection>> pools_;
     mutable std::mutex mutex_;
 };

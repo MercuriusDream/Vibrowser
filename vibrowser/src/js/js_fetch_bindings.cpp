@@ -15,6 +15,7 @@ extern "C" {
 #include <arpa/inet.h>
 #include <atomic>
 #include <chrono>
+#include <algorithm>
 #include <condition_variable>
 #include <cstddef>
 #include <cstring>
@@ -40,6 +41,7 @@ namespace {
 
 constexpr auto kFetchFlushWaitBudget = std::chrono::milliseconds(50);
 constexpr auto kFetchFlushPollInterval = std::chrono::milliseconds(1);
+constexpr size_t kResponseBodyChunkSize = 4;
 
 // Forward declarations (defined later in this file)
 static std::string url_decode_value(const std::string& s);
@@ -51,6 +53,11 @@ static void parse_headers_to_map(JSContext* ctx, JSValueConst headers_val,
 // =========================================================================
 
 static JSClassID xhr_class_id = 0;
+
+enum class PendingFetchTaskKind {
+    Fetch,
+    Xhr,
+};
 
 // =========================================================================
 // Per-instance XHR state
@@ -73,6 +80,7 @@ struct XHRState {
 
     // Event handlers are stored as JS properties on the object itself,
     // not in C++ state, to avoid GC reference counting issues.
+    std::atomic<int64_t> pending_task_id {0};
 };
 
 // =========================================================================
@@ -86,6 +94,7 @@ static XHRState* get_xhr_state(JSValueConst this_val) {
 struct PendingFetchTask {
     int64_t id = 0;
     JSContext* ctx = nullptr;
+    PendingFetchTaskKind kind = PendingFetchTaskKind::Fetch;
     std::shared_ptr<clever::net::RequestCancellationState> cancellation_state;
     std::optional<clever::net::Response> response;
     std::string url;
@@ -97,10 +106,66 @@ struct PendingFetchTask {
     std::atomic<bool> settled {false};
 };
 
+enum class PendingResponseBodyDeliveryKind {
+    Read = 0,
+    Cancel = 1,
+};
+
+struct PendingResponseBodyDelivery {
+    int64_t id = 0;
+    JSContext* ctx = nullptr;
+};
+
 std::mutex g_pending_fetch_mutex;
 std::map<int64_t, std::shared_ptr<PendingFetchTask>> g_pending_fetch_tasks;
 std::deque<std::shared_ptr<PendingFetchTask>> g_completed_fetch_tasks;
 std::atomic<int64_t> g_next_fetch_task_id {1};
+std::mutex g_pending_response_body_deliveries_mutex;
+std::deque<PendingResponseBodyDelivery> g_pending_response_body_deliveries;
+std::atomic<int64_t> g_next_response_body_delivery_id {1};
+
+static void flush_promise_jobs(JSContext* ctx, bool wait_for_completion);
+
+static JSValue fetch_checkpoint_delivery_job(JSContext* ctx, int /*argc*/, JSValueConst* /*argv*/) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(ctx, global, "__vibrowserFetchCheckpointScheduled", JS_FALSE);
+    JS_FreeValue(ctx, global);
+    flush_promise_jobs(ctx, false);
+    return JS_UNDEFINED;
+}
+
+static JSValue fetch_checkpoint_bridge_job(JSContext* ctx, int /*argc*/, JSValueConst* /*argv*/) {
+    if (JS_EnqueueJob(ctx, fetch_checkpoint_delivery_job, 0, nullptr) < 0) {
+        JSValue global = JS_GetGlobalObject(ctx);
+        JS_SetPropertyStr(ctx, global, "__vibrowserFetchCheckpointScheduled", JS_FALSE);
+        JS_FreeValue(ctx, global);
+    }
+    return JS_UNDEFINED;
+}
+
+static void schedule_fetch_checkpoint_delivery(JSContext* ctx) {
+    if (!ctx) {
+        return;
+    }
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue scheduled_val = JS_GetPropertyStr(ctx, global, "__vibrowserFetchCheckpointScheduled");
+    const bool scheduled = JS_ToBool(ctx, scheduled_val) > 0;
+    JS_FreeValue(ctx, scheduled_val);
+    if (scheduled) {
+        JS_FreeValue(ctx, global);
+        return;
+    }
+
+    JS_SetPropertyStr(ctx, global, "__vibrowserFetchCheckpointScheduled", JS_TRUE);
+    JS_FreeValue(ctx, global);
+
+    if (JS_EnqueueJob(ctx, fetch_checkpoint_bridge_job, 0, nullptr) < 0) {
+        JSValue reset_global = JS_GetGlobalObject(ctx);
+        JS_SetPropertyStr(ctx, reset_global, "__vibrowserFetchCheckpointScheduled", JS_FALSE);
+        JS_FreeValue(ctx, reset_global);
+    }
+}
 
 static void queue_fetch_task_completion(const std::shared_ptr<PendingFetchTask>& task) {
     if (!task || task->completion_queued.exchange(true)) {
@@ -154,6 +219,7 @@ static JSValue js_native_fetch_abort(JSContext* ctx, JSValueConst /*this_val*/,
         task->cancellation_state->cancel();
     }
     queue_fetch_task_completion(task);
+    schedule_fetch_checkpoint_delivery(ctx);
     return JS_UNDEFINED;
 }
 
@@ -342,15 +408,6 @@ static JSValue js_xhr_send(JSContext* ctx, JSValueConst this_val,
     const bool enforce_cors_request_policy =
         cors::has_enforceable_document_origin(document_origin) || document_origin == "null";
     const bool request_url_eligible = cors::is_cors_eligible_request_url(state->url);
-    if (enforce_cors_request_policy && !request_url_eligible) {
-        state->status = 0;
-        state->status_text = "";
-        state->response_text = "";
-        state->response_headers.clear();
-        state->ready_state = 4; // DONE
-        return JS_UNDEFINED;
-    }
-
     const bool cross_origin = cors::is_cross_origin(document_origin, state->url);
     const bool should_send_cookies =
         request_url_eligible && (!cross_origin || state->with_credentials);
@@ -366,48 +423,71 @@ static JSValue js_xhr_send(JSContext* ctx, JSValueConst this_val,
         }
     }
 
-    // Perform the synchronous fetch
-    clever::net::HttpClient client;
-    client.set_timeout(std::chrono::seconds(30));
-    auto resp = client.fetch(req);
+    auto task = std::make_shared<PendingFetchTask>();
+    task->id = g_next_fetch_task_id.fetch_add(1, std::memory_order_relaxed);
+    task->ctx = ctx;
+    task->kind = PendingFetchTaskKind::Xhr;
+    task->url = state->url;
+    task->cancellation_state = std::make_shared<clever::net::RequestCancellationState>();
+    req.cancellation_state = task->cancellation_state;
 
-    if (resp.has_value()) {
-        const bool cors_allowed = cors::cors_allows_response(
-            document_origin, state->url, resp->headers, state->with_credentials);
-
-        if (!cors_allowed) {
-            state->status = 0;
-            state->status_text = "";
-            state->response_text = "";
-            state->response_headers.clear();
-            state->ready_state = 4; // DONE
-            return JS_UNDEFINED;
-        }
-
-        state->status = resp->status;
-        state->status_text = resp->status_text;
-        state->response_text = resp->body_as_string();
-
-        // Store Set-Cookie from response
-        auto set_cookie = resp->headers.get("set-cookie");
-        if (should_send_cookies && set_cookie.has_value()) {
-            jar.set_from_header(*set_cookie, req.host, req.path);
-        }
-
-        // Copy response headers
-        state->response_headers.clear();
-        for (const auto& [name, value] : resp->headers) {
-            state->response_headers[name] = value;
-        }
-    } else {
-        // Network error: status stays 0
-        state->status = 0;
-        state->status_text = "";
-        state->response_text = "";
-        state->response_headers.clear();
+    {
+        std::lock_guard<std::mutex> lock(g_pending_fetch_mutex);
+        g_pending_fetch_tasks[task->id] = task;
     }
 
-    state->ready_state = 4; // DONE
+    state->pending_task_id.store(task->id, std::memory_order_relaxed);
+    JS_SetPropertyStr(ctx, this_val, "__vibrowserPendingTaskId", JS_NewInt64(ctx, task->id));
+    {
+        JSValue global = JS_GetGlobalObject(ctx);
+        JSValue xhr_map = JS_GetPropertyStr(ctx, global, "__vibrowserPendingXhrs");
+        std::string task_id = std::to_string(task->id);
+        JS_SetPropertyStr(ctx, xhr_map, task_id.c_str(), JS_DupValue(ctx, this_val));
+        JS_FreeValue(ctx, xhr_map);
+        JS_FreeValue(ctx, global);
+    }
+
+    schedule_fetch_checkpoint_delivery(ctx);
+
+    if (enforce_cors_request_policy && !request_url_eligible) {
+        task->cors_blocked = true;
+        queue_fetch_task_completion(task);
+        return JS_UNDEFINED;
+    }
+
+    std::thread([task,
+                 req,
+                 document_origin,
+                 request_url_eligible,
+                 should_send_cookies,
+                 with_credentials = state->with_credentials]() mutable {
+        if (!task->aborted.load(std::memory_order_relaxed)) {
+            clever::net::HttpClient client;
+            client.set_timeout(std::chrono::seconds(30));
+            task->response = client.fetch(req);
+        }
+
+        if (task->response.has_value() && request_url_eligible &&
+            !task->aborted.load(std::memory_order_relaxed)) {
+            const bool cors_allowed = cors::cors_allows_response(
+                document_origin, task->url, task->response->headers, with_credentials);
+            if (!cors_allowed) {
+                task->cors_blocked = true;
+                task->response.reset();
+            }
+        }
+
+        if (task->response.has_value() && should_send_cookies &&
+            !task->aborted.load(std::memory_order_relaxed)) {
+            auto set_cookie = task->response->headers.get("set-cookie");
+            if (set_cookie.has_value()) {
+                auto& shared_jar = clever::net::CookieJar::shared();
+                shared_jar.set_from_header(*set_cookie, req.host, req.path);
+            }
+        }
+
+        queue_fetch_task_completion(task);
+    }).detach();
 
     return JS_UNDEFINED;
 }
@@ -565,10 +645,21 @@ static JSValue js_xhr_get_response(JSContext* ctx, JSValueConst this_val) {
 // abort() method — resets readyState to 0, clears response data
 // =========================================================================
 
-static JSValue js_xhr_abort(JSContext* /*ctx*/, JSValueConst this_val,
+static JSValue js_xhr_abort(JSContext* ctx, JSValueConst this_val,
                              int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_xhr_state(this_val);
     if (!state) return JS_UNDEFINED;
+
+    const int64_t task_id = state->pending_task_id.load(std::memory_order_relaxed);
+    auto task = task_id > 0 ? find_fetch_task(task_id) : nullptr;
+    if (task && !task->settled.load(std::memory_order_relaxed)) {
+        task->aborted.store(true, std::memory_order_relaxed);
+        if (task->cancellation_state) {
+            task->cancellation_state->cancel();
+        }
+        queue_fetch_task_completion(task);
+        schedule_fetch_checkpoint_delivery(ctx);
+    }
 
     state->ready_state = 0; // UNSENT
     state->status = 0;
@@ -967,6 +1058,11 @@ struct ResponseState {
     bool body_used = false;
     bool body_locked = false;
     bool stream_drained = false;
+    bool body_stream_interrupted = false;
+    std::shared_ptr<clever::net::RequestCancellationState> cancellation_state;
+    std::deque<std::vector<uint8_t>> body_stream_chunks;
+    bool body_stream_chunks_initialized = false;
+    JSValue abort_signal = JS_UNDEFINED;
 };
 
 struct ResponseBodyStreamState {
@@ -982,15 +1078,29 @@ static ResponseState* get_response_state(JSContext* /*ctx*/, JSValueConst this_v
     return static_cast<ResponseState*>(JS_GetOpaque(this_val, response_class_id));
 }
 
-static void js_response_finalizer(JSRuntime* /*rt*/, JSValue val) {
+static void js_response_gc_mark(JSRuntime* rt, JSValueConst val,
+                                JS_MarkFunc* mark_func) {
     auto* state = static_cast<ResponseState*>(JS_GetOpaque(val, response_class_id));
+    if (!state) {
+        return;
+    }
+    JS_MarkValue(rt, state->abort_signal, mark_func);
+}
+
+static void js_response_finalizer(JSRuntime* rt, JSValue val) {
+    auto* state = static_cast<ResponseState*>(JS_GetOpaque(val, response_class_id));
+    if (!state) {
+        return;
+    }
+    JS_FreeValueRT(rt, state->abort_signal);
     delete state;
 }
 
 static JSClassDef response_class_def = {
     "Response",
     js_response_finalizer,
-    nullptr, nullptr, nullptr
+    js_response_gc_mark,
+    nullptr, nullptr
 };
 
 static void js_response_body_stream_gc_mark(JSRuntime* rt, JSValueConst val,
@@ -1055,6 +1165,22 @@ static JSValue js_resolve_promise_with_value(JSContext* ctx, JSValue value) {
     return promise;
 }
 
+static JSValue js_reject_promise_with_value(JSContext* ctx, JSValue value) {
+    JSValue resolving_funcs[2];
+    JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
+    if (JS_IsException(promise)) {
+        JS_FreeValue(ctx, value);
+        return promise;
+    }
+
+    JSValue ret = JS_Call(ctx, resolving_funcs[1], JS_UNDEFINED, 1, &value);
+    JS_FreeValue(ctx, ret);
+    JS_FreeValue(ctx, value);
+    JS_FreeValue(ctx, resolving_funcs[0]);
+    JS_FreeValue(ctx, resolving_funcs[1]);
+    return promise;
+}
+
 static JSValue js_reject_promise_with_message(JSContext* ctx, const char* message) {
     JSValue resolving_funcs[2];
     JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
@@ -1074,13 +1200,336 @@ static bool response_body_is_unusable(ResponseState* state) {
     return state->body_locked || state->body_used || state->stream_drained;
 }
 
+static bool response_body_abort_signal_is_triggered(JSContext* ctx,
+                                                    JSValueConst response_val,
+                                                    JSValue* reason_out = nullptr) {
+    if (reason_out) {
+        *reason_out = JS_UNDEFINED;
+    }
+    if (!JS_IsObject(response_val)) {
+        return false;
+    }
+
+    JSValue signal_val = JS_GetPropertyStr(ctx, response_val, "__vibrowserAbortSignal");
+    if (!JS_IsObject(signal_val)) {
+        JS_FreeValue(ctx, signal_val);
+        return false;
+    }
+
+    JSValue aborted_val = JS_GetPropertyStr(ctx, signal_val, "aborted");
+    const bool aborted = JS_ToBool(ctx, aborted_val) > 0;
+    JS_FreeValue(ctx, aborted_val);
+    if (!aborted) {
+        JS_FreeValue(ctx, signal_val);
+        return false;
+    }
+
+    if (reason_out) {
+        *reason_out = JS_GetPropertyStr(ctx, signal_val, "reason");
+    }
+    JS_FreeValue(ctx, signal_val);
+    return true;
+}
+
+static void rebuild_response_body_stream_chunks(ResponseState* state) {
+    if (!state) {
+        return;
+    }
+
+    state->body_stream_chunks.clear();
+    state->body_stream_chunks_initialized = true;
+    for (size_t offset = 0; offset < state->body_bytes.size();
+         offset += kResponseBodyChunkSize) {
+        const size_t end = std::min(offset + kResponseBodyChunkSize,
+            state->body_bytes.size());
+        state->body_stream_chunks.emplace_back(
+            state->body_bytes.begin() + static_cast<long>(offset),
+            state->body_bytes.begin() + static_cast<long>(end));
+    }
+}
+
 static bool mark_response_body_consumed(ResponseState* state) {
     if (!state || response_body_is_unusable(state)) {
         return false;
     }
     state->body_used = true;
     state->stream_drained = true;
+    state->body_stream_chunks.clear();
+    state->body_stream_chunks_initialized = true;
     return true;
+}
+
+static void interrupt_response_body_stream(JSContext* ctx,
+                                           JSValueConst response_val,
+                                           ResponseState* state,
+                                           bool release_lock = false) {
+    if (!state) {
+        return;
+    }
+
+    state->body_stream_interrupted = true;
+    state->stream_drained = true;
+    state->body_used = true;
+    if (release_lock) {
+        state->body_locked = false;
+    }
+    state->body_stream_chunks.clear();
+    state->body_stream_chunks_initialized = true;
+    if (JS_IsObject(response_val)) {
+        JS_SetPropertyStr(ctx, response_val, "__vibrowserBodyInterrupted", JS_TRUE);
+    }
+
+    if (state->cancellation_state) {
+        state->cancellation_state->cancel();
+    }
+}
+
+static bool response_body_stream_is_interrupted(JSContext* ctx,
+                                                JSValueConst response_val,
+                                                ResponseState* state) {
+    if (!state) {
+        return false;
+    }
+    if (JS_IsObject(response_val)) {
+        JSValue interrupted_val = JS_GetPropertyStr(ctx, response_val, "__vibrowserBodyInterrupted");
+        const bool interrupted = JS_ToBool(ctx, interrupted_val) > 0;
+        JS_FreeValue(ctx, interrupted_val);
+        if (interrupted) {
+            interrupt_response_body_stream(ctx, response_val, state);
+            return true;
+        }
+    }
+    if (state->body_stream_interrupted) {
+        return true;
+    }
+    if (!response_body_abort_signal_is_triggered(ctx, response_val)) {
+        return false;
+    }
+    interrupt_response_body_stream(ctx, response_val, state);
+    return true;
+}
+
+static JSValue reject_response_body_stream_read(JSContext* ctx,
+                                                JSValueConst response_val,
+                                                ResponseState* state) {
+    (void)state;
+    JSValue reason = JS_UNDEFINED;
+    const bool aborted = response_body_abort_signal_is_triggered(ctx, response_val, &reason);
+    if (!aborted) {
+        JS_FreeValue(ctx, reason);
+    }
+    return js_reject_promise_with_value(ctx, create_abort_error(ctx, reason));
+}
+
+static JSValue enqueue_response_body_delivery(JSContext* ctx,
+                                              JSValueConst response_val,
+                                              PendingResponseBodyDeliveryKind kind) {
+    JSValue resolving_funcs[2];
+    JSValue promise = JS_NewPromiseCapability(ctx, resolving_funcs);
+    if (JS_IsException(promise)) {
+        return promise;
+    }
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue pending_deliveries = JS_GetPropertyStr(ctx, global, "__vibrowserPendingBodyStreamReads");
+    JS_FreeValue(ctx, global);
+    if (!JS_IsObject(pending_deliveries)) {
+        JS_FreeValue(ctx, pending_deliveries);
+        JS_FreeValue(ctx, resolving_funcs[0]);
+        JS_FreeValue(ctx, resolving_funcs[1]);
+        JS_FreeValue(ctx, promise);
+        return JS_ThrowInternalError(ctx, "Missing pending body stream delivery map");
+    }
+
+    const int64_t delivery_id =
+        g_next_response_body_delivery_id.fetch_add(1, std::memory_order_relaxed);
+    const std::string delivery_id_str = std::to_string(delivery_id);
+    JSValue entry = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, entry, "kind", JS_NewInt32(ctx, static_cast<int>(kind)));
+    JS_SetPropertyStr(ctx, entry, "resolve", resolving_funcs[0]);
+    JS_SetPropertyStr(ctx, entry, "reject", resolving_funcs[1]);
+    JS_SetPropertyStr(ctx, entry, "response", JS_DupValue(ctx, response_val));
+    JS_SetPropertyStr(ctx, pending_deliveries, delivery_id_str.c_str(), entry);
+    JS_FreeValue(ctx, pending_deliveries);
+
+    {
+        std::lock_guard<std::mutex> lock(g_pending_response_body_deliveries_mutex);
+        g_pending_response_body_deliveries.push_back({delivery_id, ctx});
+    }
+
+    schedule_fetch_checkpoint_delivery(ctx);
+    return promise;
+}
+
+static void flush_pending_response_body_reads(JSContext* ctx) {
+    std::deque<PendingResponseBodyDelivery> deferred_reads;
+    while (true) {
+        PendingResponseBodyDelivery pending_read;
+        bool has_pending_read = false;
+        {
+            std::lock_guard<std::mutex> lock(g_pending_response_body_deliveries_mutex);
+            if (!g_pending_response_body_deliveries.empty()) {
+                pending_read = g_pending_response_body_deliveries.front();
+                g_pending_response_body_deliveries.pop_front();
+                has_pending_read = true;
+            }
+        }
+
+        if (!has_pending_read) {
+            break;
+        }
+
+        if (pending_read.ctx != ctx) {
+            deferred_reads.push_back(pending_read);
+            continue;
+        }
+
+        JSValue global = JS_GetGlobalObject(ctx);
+        JSValue pending_reads = JS_GetPropertyStr(ctx, global, "__vibrowserPendingBodyStreamReads");
+        JS_FreeValue(ctx, global);
+        if (!JS_IsObject(pending_reads)) {
+            JS_FreeValue(ctx, pending_reads);
+            continue;
+        }
+
+        const std::string read_id = std::to_string(pending_read.id);
+        JSValue entry = JS_GetPropertyStr(ctx, pending_reads, read_id.c_str());
+        JS_SetPropertyStr(ctx, pending_reads, read_id.c_str(), JS_UNDEFINED);
+        JS_FreeValue(ctx, pending_reads);
+        if (!JS_IsObject(entry)) {
+            JS_FreeValue(ctx, entry);
+            continue;
+        }
+
+        JSValue resolve_fn = JS_GetPropertyStr(ctx, entry, "resolve");
+        JSValue reject_fn = JS_GetPropertyStr(ctx, entry, "reject");
+        JSValue response_val = JS_GetPropertyStr(ctx, entry, "response");
+        JSValue kind_val = JS_GetPropertyStr(ctx, entry, "kind");
+        JS_FreeValue(ctx, entry);
+
+        int32_t kind_raw = static_cast<int32_t>(PendingResponseBodyDeliveryKind::Read);
+        JS_ToInt32(ctx, &kind_raw, kind_val);
+        JS_FreeValue(ctx, kind_val);
+        const auto kind = static_cast<PendingResponseBodyDeliveryKind>(kind_raw);
+
+        if (!JS_IsFunction(ctx, resolve_fn) || !JS_IsFunction(ctx, reject_fn)) {
+            JS_FreeValue(ctx, resolve_fn);
+            JS_FreeValue(ctx, reject_fn);
+            JS_FreeValue(ctx, response_val);
+            continue;
+        }
+
+        if (kind == PendingResponseBodyDeliveryKind::Cancel) {
+            JSValue resolved = JS_UNDEFINED;
+            JSValue ret = JS_Call(ctx, resolve_fn, JS_UNDEFINED, 1, &resolved);
+            JS_FreeValue(ctx, ret);
+            JS_FreeValue(ctx, resolve_fn);
+            JS_FreeValue(ctx, reject_fn);
+            JS_FreeValue(ctx, response_val);
+            continue;
+        }
+
+        auto* response_state = get_response_state(ctx, response_val);
+        if (!response_state) {
+            JSValue result = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, result, "done", JS_TRUE);
+            JS_SetPropertyStr(ctx, result, "value", JS_UNDEFINED);
+            JSValue ret = JS_Call(ctx, resolve_fn, JS_UNDEFINED, 1, &result);
+            JS_FreeValue(ctx, ret);
+            JS_FreeValue(ctx, result);
+            JS_FreeValue(ctx, resolve_fn);
+            JS_FreeValue(ctx, reject_fn);
+            JS_FreeValue(ctx, response_val);
+            continue;
+        }
+
+        if (response_body_stream_is_interrupted(ctx, response_val, response_state)) {
+            JSValue reason = JS_UNDEFINED;
+            const bool aborted = response_body_abort_signal_is_triggered(ctx, response_val, &reason);
+            if (!aborted) {
+                JS_FreeValue(ctx, reason);
+            }
+            JSValue err = create_abort_error(ctx, reason);
+            JSValue ret = JS_Call(ctx, reject_fn, JS_UNDEFINED, 1, &err);
+            JS_FreeValue(ctx, ret);
+            JS_FreeValue(ctx, err);
+            JS_FreeValue(ctx, resolve_fn);
+            JS_FreeValue(ctx, reject_fn);
+            JS_FreeValue(ctx, response_val);
+            continue;
+        }
+
+        if (!response_state->body_stream_chunks_initialized) {
+            rebuild_response_body_stream_chunks(response_state);
+        }
+
+        JSValue result = JS_NewObject(ctx);
+        if (response_state->stream_drained || response_state->body_stream_chunks.empty()) {
+            response_state->stream_drained = true;
+            JS_SetPropertyStr(ctx, result, "done", JS_TRUE);
+            JS_SetPropertyStr(ctx, result, "value", JS_UNDEFINED);
+        } else {
+            auto chunk = std::move(response_state->body_stream_chunks.front());
+            response_state->body_stream_chunks.pop_front();
+            response_state->stream_drained = response_state->body_stream_chunks.empty();
+
+            JSValue array_buf = JS_NewArrayBufferCopy(ctx, chunk.data(), chunk.size());
+            if (JS_IsException(array_buf)) {
+                JSValue err = JS_GetException(ctx);
+                JSValue ret = JS_Call(ctx, reject_fn, JS_UNDEFINED, 1, &err);
+                JS_FreeValue(ctx, ret);
+                JS_FreeValue(ctx, err);
+                JS_FreeValue(ctx, result);
+                JS_FreeValue(ctx, resolve_fn);
+                JS_FreeValue(ctx, reject_fn);
+                JS_FreeValue(ctx, response_val);
+                continue;
+            }
+
+            JSValue global_obj = JS_GetGlobalObject(ctx);
+            JSValue uint8_ctor = JS_GetPropertyStr(ctx, global_obj, "Uint8Array");
+            JS_FreeValue(ctx, global_obj);
+
+            JSValue chunk_value = JS_UNDEFINED;
+            if (JS_IsFunction(ctx, uint8_ctor)) {
+                JSValue ctor_args[1] = { array_buf };
+                chunk_value = JS_CallConstructor(ctx, uint8_ctor, 1, ctor_args);
+                JS_FreeValue(ctx, uint8_ctor);
+                JS_FreeValue(ctx, array_buf);
+                if (JS_IsException(chunk_value)) {
+                    JSValue err = JS_GetException(ctx);
+                    JSValue ret = JS_Call(ctx, reject_fn, JS_UNDEFINED, 1, &err);
+                    JS_FreeValue(ctx, ret);
+                    JS_FreeValue(ctx, err);
+                    JS_FreeValue(ctx, result);
+                    JS_FreeValue(ctx, resolve_fn);
+                    JS_FreeValue(ctx, reject_fn);
+                    JS_FreeValue(ctx, response_val);
+                    continue;
+                }
+            } else {
+                JS_FreeValue(ctx, uint8_ctor);
+                chunk_value = array_buf;
+            }
+
+            JS_SetPropertyStr(ctx, result, "done", JS_FALSE);
+            JS_SetPropertyStr(ctx, result, "value", chunk_value);
+        }
+
+        JSValue ret = JS_Call(ctx, resolve_fn, JS_UNDEFINED, 1, &result);
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, result);
+        JS_FreeValue(ctx, resolve_fn);
+        JS_FreeValue(ctx, reject_fn);
+        JS_FreeValue(ctx, response_val);
+    }
+
+    if (!deferred_reads.empty()) {
+        std::lock_guard<std::mutex> lock(g_pending_response_body_deliveries_mutex);
+        for (auto& pending_read : deferred_reads) {
+            g_pending_response_body_deliveries.push_back(pending_read);
+        }
+    }
 }
 
 // ---- Response property getters ----
@@ -1121,10 +1570,25 @@ static JSValue js_response_get_redirected(JSContext* ctx, JSValueConst this_val)
     return state->redirected ? JS_TRUE : JS_FALSE;
 }
 
-static JSValue js_response_get_body_used(JSContext* /*ctx*/, JSValueConst this_val) {
+static JSValue js_response_get_body_used(JSContext* ctx, JSValueConst this_val) {
     auto* state = static_cast<ResponseState*>(JS_GetOpaque(this_val, response_class_id));
     if (!state) return JS_FALSE;
+    response_body_stream_is_interrupted(ctx, this_val, state);
     return state->body_used ? JS_TRUE : JS_FALSE;
+}
+
+static JSValue js_response_body_stream_get_locked(JSContext* ctx, JSValueConst this_val) {
+    auto* stream_state = static_cast<ResponseBodyStreamState*>(
+        JS_GetOpaque(this_val, response_body_stream_class_id));
+    if (!stream_state) {
+        return JS_FALSE;
+    }
+
+    auto* response_state = get_response_state(ctx, stream_state->response);
+    if (!response_state) {
+        return JS_FALSE;
+    }
+    return response_state->body_locked ? JS_TRUE : JS_FALSE;
 }
 
 static JSValue js_response_get_headers(JSContext* ctx, JSValueConst this_val) {
@@ -1140,6 +1604,9 @@ static JSValue js_response_text(JSContext* ctx, JSValueConst this_val,
                                  int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+    if (response_body_stream_is_interrupted(ctx, this_val, state)) {
+        return reject_response_body_stream_read(ctx, this_val, state);
+    }
     if (!mark_response_body_consumed(state)) {
         return js_reject_promise_with_message(ctx, "Response body is already used");
     }
@@ -1153,6 +1620,9 @@ static JSValue js_response_json(JSContext* ctx, JSValueConst this_val,
                                  int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+    if (response_body_stream_is_interrupted(ctx, this_val, state)) {
+        return reject_response_body_stream_read(ctx, this_val, state);
+    }
     if (!mark_response_body_consumed(state)) {
         return js_reject_promise_with_message(ctx, "Response body is already used");
     }
@@ -1206,7 +1676,18 @@ static JSValue js_response_clone(JSContext* ctx, JSValueConst this_val,
     new_state->body_used = state->body_used;
     new_state->body_locked = state->body_locked;
     new_state->stream_drained = state->stream_drained;
+    new_state->body_stream_interrupted = state->body_stream_interrupted;
+    new_state->cancellation_state = state->cancellation_state;
+    new_state->body_stream_chunks = state->body_stream_chunks;
+    new_state->body_stream_chunks_initialized = state->body_stream_chunks_initialized;
+    new_state->abort_signal = JS_DupValue(ctx, state->abort_signal);
     JS_SetOpaque(obj, new_state);
+    if (JS_IsObject(state->abort_signal)) {
+        JS_SetPropertyStr(ctx, obj, "__vibrowserAbortSignal",
+                          JS_DupValue(ctx, state->abort_signal));
+    }
+    JS_SetPropertyStr(ctx, obj, "__vibrowserBodyInterrupted",
+                      state->body_stream_interrupted ? JS_TRUE : JS_FALSE);
 
     return obj;
 }
@@ -1216,6 +1697,9 @@ static JSValue js_response_array_buffer(JSContext* ctx, JSValueConst this_val,
                                          int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+    if (response_body_stream_is_interrupted(ctx, this_val, state)) {
+        return reject_response_body_stream_read(ctx, this_val, state);
+    }
     if (!mark_response_body_consumed(state)) {
         return js_reject_promise_with_message(ctx, "Response body is already used");
     }
@@ -1232,6 +1716,9 @@ static JSValue js_response_blob(JSContext* ctx, JSValueConst this_val,
                                  int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+    if (response_body_stream_is_interrupted(ctx, this_val, state)) {
+        return reject_response_body_stream_read(ctx, this_val, state);
+    }
     if (!mark_response_body_consumed(state)) {
         return js_reject_promise_with_message(ctx, "Response body is already used");
     }
@@ -1297,6 +1784,9 @@ static JSValue js_response_form_data(JSContext* ctx, JSValueConst this_val,
                                       int /*argc*/, JSValueConst* /*argv*/) {
     auto* state = get_response_state(ctx, this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid Response object");
+    if (response_body_stream_is_interrupted(ctx, this_val, state)) {
+        return reject_response_body_stream_read(ctx, this_val, state);
+    }
     if (!mark_response_body_consumed(state)) {
         return js_reject_promise_with_message(ctx, "Response body is already used");
     }
@@ -1486,7 +1976,7 @@ static JSValue js_response_form_data(JSContext* ctx, JSValueConst this_val,
 }
 
 static JSValue js_response_body_reader_read(JSContext* ctx, JSValueConst this_val,
-                                             int /*argc*/, JSValueConst* /*argv*/) {
+                                           int /*argc*/, JSValueConst* /*argv*/) {
     auto* reader_state = static_cast<ResponseBodyReaderState*>(
         JS_GetOpaque(this_val, response_body_reader_class_id));
     if (!reader_state) return JS_ThrowTypeError(ctx, "Invalid Response body reader");
@@ -1502,46 +1992,10 @@ static JSValue js_response_body_reader_read(JSContext* ctx, JSValueConst this_va
         return js_resolve_promise_with_value(ctx, result);
     }
 
-    JSValue result = JS_NewObject(ctx);
-    if (response_state->stream_drained) {
-        JS_SetPropertyStr(ctx, result, "done", JS_TRUE);
-        JS_SetPropertyStr(ctx, result, "value", JS_UNDEFINED);
-        return js_resolve_promise_with_value(ctx, result);
-    }
-    response_state->body_locked = true;
     response_state->body_used = true;
-    response_state->stream_drained = true;
-
-    JSValue array_buf = JS_NewArrayBufferCopy(ctx,
-        response_state->body_bytes.data(),
-        response_state->body_bytes.size());
-    if (JS_IsException(array_buf)) {
-        JS_FreeValue(ctx, result);
-        return array_buf;
-    }
-
-    JSValue global_obj = JS_GetGlobalObject(ctx);
-    JSValue uint8_ctor = JS_GetPropertyStr(ctx, global_obj, "Uint8Array");
-    JS_FreeValue(ctx, global_obj);
-
-    JSValue chunk = JS_UNDEFINED;
-    if (JS_IsFunction(ctx, uint8_ctor)) {
-        JSValue ctor_args[1] = { array_buf };
-        chunk = JS_CallConstructor(ctx, uint8_ctor, 1, ctor_args);
-        JS_FreeValue(ctx, uint8_ctor);
-        JS_FreeValue(ctx, array_buf);
-        if (JS_IsException(chunk)) {
-            JS_FreeValue(ctx, result);
-            return chunk;
-        }
-    } else {
-        JS_FreeValue(ctx, uint8_ctor);
-        chunk = array_buf;
-    }
-
-    JS_SetPropertyStr(ctx, result, "done", JS_FALSE);
-    JS_SetPropertyStr(ctx, result, "value", chunk);
-    return js_resolve_promise_with_value(ctx, result);
+    response_state->body_locked = true;
+    return enqueue_response_body_delivery(
+        ctx, reader_state->response, PendingResponseBodyDeliveryKind::Read);
 }
 
 static JSValue js_response_body_reader_cancel(JSContext* ctx, JSValueConst this_val,
@@ -1550,10 +2004,9 @@ static JSValue js_response_body_reader_cancel(JSContext* ctx, JSValueConst this_
         JS_GetOpaque(this_val, response_body_reader_class_id));
     if (reader_state && !reader_state->released) {
         auto* response_state = get_response_state(ctx, reader_state->response);
-        if (response_state && !response_state->body_used) {
-            response_state->body_locked = false;
-        }
-        reader_state->released = true;
+        interrupt_response_body_stream(ctx, reader_state->response, response_state);
+        return enqueue_response_body_delivery(
+            ctx, reader_state->response, PendingResponseBodyDeliveryKind::Cancel);
     }
     return js_resolve_promise_with_value(ctx, JS_UNDEFINED);
 }
@@ -1564,7 +2017,7 @@ static JSValue js_response_body_reader_release_lock(JSContext* ctx, JSValueConst
         JS_GetOpaque(this_val, response_body_reader_class_id));
     if (reader_state && !reader_state->released) {
         auto* response_state = get_response_state(ctx, reader_state->response);
-        if (response_state && !response_state->body_used) {
+        if (response_state) {
             response_state->body_locked = false;
         }
         reader_state->released = true;
@@ -1603,9 +2056,18 @@ static JSValue js_response_body_stream_get_reader(JSContext* ctx, JSValueConst t
     return reader;
 }
 
-static JSValue js_response_body_stream_cancel(JSContext* ctx, JSValueConst /*this_val*/,
+static JSValue js_response_body_stream_cancel(JSContext* ctx, JSValueConst this_val,
                                                int /*argc*/, JSValueConst* /*argv*/) {
-    return js_resolve_promise_with_value(ctx, JS_UNDEFINED);
+    auto* stream_state = static_cast<ResponseBodyStreamState*>(
+        JS_GetOpaque(this_val, response_body_stream_class_id));
+    if (!stream_state) {
+        return js_resolve_promise_with_value(ctx, JS_UNDEFINED);
+    }
+
+    auto* response_state = get_response_state(ctx, stream_state->response);
+    interrupt_response_body_stream(ctx, stream_state->response, response_state);
+    return enqueue_response_body_delivery(
+        ctx, stream_state->response, PendingResponseBodyDeliveryKind::Cancel);
 }
 
 static JSValue js_response_body_stream_pipe_through(JSContext* ctx, JSValueConst /*this_val*/,
@@ -1628,6 +2090,7 @@ static JSValue js_response_body_stream_tee(JSContext* ctx, JSValueConst this_val
 }
 
 static const JSCFunctionListEntry response_body_stream_proto_funcs[] = {
+    JS_CGETSET_DEF("locked", js_response_body_stream_get_locked, nullptr),
     JS_CFUNC_DEF("getReader", 0, js_response_body_stream_get_reader),
     JS_CFUNC_DEF("cancel", 0, js_response_body_stream_cancel),
     JS_CFUNC_DEF("pipeThrough", 1, js_response_body_stream_pipe_through),
@@ -1646,7 +2109,6 @@ static JSValue js_response_get_body(JSContext* ctx, JSValueConst this_val) {
     auto* stream_state = new ResponseBodyStreamState();
     stream_state->response = JS_DupValue(ctx, this_val);
     JS_SetOpaque(stream, stream_state);
-    JS_SetPropertyStr(ctx, stream, "locked", JS_NewBool(ctx, state->body_locked));
     return stream;
 }
 
@@ -1735,6 +2197,7 @@ static JSValue js_response_constructor(JSContext* ctx, JSValueConst new_target,
             }
         }
     }
+    rebuild_response_body_stream_chunks(state);
 
     // init (optional object with status, statusText, headers)
     state->status = 200;
@@ -1778,7 +2241,9 @@ static JSValue create_response_object(JSContext* ctx,
                                        const clever::net::Response& resp,
                                        const std::string& request_url,
                                        const std::string& response_type = "basic",
-                                       bool cors_filtered = false) {
+                                       bool cors_filtered = false,
+                                       std::shared_ptr<clever::net::RequestCancellationState> cancellation_state = nullptr,
+                                       JSValue abort_signal = JS_UNDEFINED) {
     JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(response_class_id));
     if (JS_IsException(obj)) return obj;
 
@@ -1789,6 +2254,12 @@ static JSValue create_response_object(JSContext* ctx,
     state->ok = (resp.status >= 200 && resp.status <= 299);
     state->redirected = resp.was_redirected;
     state->type = response_type;
+    state->cancellation_state = std::move(cancellation_state);
+    state->abort_signal = JS_DupValue(ctx, abort_signal);
+    if (JS_IsObject(abort_signal)) {
+        JS_SetPropertyStr(ctx, obj, "__vibrowserAbortSignal", JS_DupValue(ctx, abort_signal));
+    }
+    JS_SetPropertyStr(ctx, obj, "__vibrowserBodyInterrupted", JS_FALSE);
 
     if (response_type == "opaque") {
         // Opaque responses expose no status, headers, or body
@@ -1853,6 +2324,8 @@ static JSValue create_response_object(JSContext* ctx,
             }
         }
     }
+
+    rebuild_response_body_stream_chunks(state);
 
     JS_SetOpaque(obj, state);
     return obj;
@@ -2697,6 +3170,7 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
     }
 
     JS_FreeValue(ctx, signal_val);
+    schedule_fetch_checkpoint_delivery(ctx);
 
     std::thread([task,
                  req,
@@ -2737,36 +3211,44 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
 // Helper: Execute all pending Promise microtasks
 // =========================================================================
 
-static void flush_promise_jobs(JSContext* ctx) {
-    const auto wait_deadline = std::chrono::steady_clock::now() + kFetchFlushWaitBudget;
-    while (true) {
-        bool pending_for_ctx = false;
-        bool completed_for_ctx = false;
-        {
-            std::lock_guard<std::mutex> lock(g_pending_fetch_mutex);
-            for (const auto& task : g_completed_fetch_tasks) {
-                if (task && task->ctx == ctx) {
-                    completed_for_ctx = true;
-                    break;
-                }
-            }
-            if (!completed_for_ctx) {
-                for (const auto& [id, task] : g_pending_fetch_tasks) {
-                    (void)id;
-                    if (task && task->ctx == ctx && !task->settled.load(std::memory_order_relaxed)) {
-                        pending_for_ctx = true;
+static void flush_promise_jobs(JSContext* ctx, bool wait_for_completion) {
+    JSContext* ctx1 = nullptr;
+    while (JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx1) > 0) {
+        // Run any already-queued microtasks/checkpoint jobs before host delivery.
+    }
+
+    if (wait_for_completion) {
+        const auto wait_deadline = std::chrono::steady_clock::now() + kFetchFlushWaitBudget;
+        while (true) {
+            bool pending_for_ctx = false;
+            bool completed_for_ctx = false;
+            {
+                std::lock_guard<std::mutex> lock(g_pending_fetch_mutex);
+                for (const auto& task : g_completed_fetch_tasks) {
+                    if (task && task->ctx == ctx) {
+                        completed_for_ctx = true;
                         break;
                     }
                 }
+                if (!completed_for_ctx) {
+                    for (const auto& [id, task] : g_pending_fetch_tasks) {
+                        (void)id;
+                        if (task && task->ctx == ctx &&
+                            !task->settled.load(std::memory_order_relaxed)) {
+                            pending_for_ctx = true;
+                            break;
+                        }
+                    }
+                }
             }
-        }
 
-        if (completed_for_ctx || !pending_for_ctx ||
-            std::chrono::steady_clock::now() >= wait_deadline) {
-            break;
-        }
+            if (completed_for_ctx || !pending_for_ctx ||
+                std::chrono::steady_clock::now() >= wait_deadline) {
+                break;
+            }
 
-        std::this_thread::sleep_for(kFetchFlushPollInterval);
+            std::this_thread::sleep_for(kFetchFlushPollInterval);
+        }
     }
 
     std::vector<std::shared_ptr<PendingFetchTask>> pending_tasks;
@@ -2835,65 +3317,144 @@ static void flush_promise_jobs(JSContext* ctx) {
         erase_fetch_task(task->id);
         {
             JSValue global = JS_GetGlobalObject(ctx);
-            JSValue signal_map = JS_GetPropertyStr(ctx, global, "__vibrowserPendingFetchSignals");
-            JSValue resolver_map = JS_GetPropertyStr(ctx, global, "__vibrowserPendingFetchResolvers");
             std::string task_id = std::to_string(task->id);
-            JS_SetPropertyStr(ctx, signal_map, task_id.c_str(), JS_UNDEFINED);
-            JSValue resolver_entry = JS_GetPropertyStr(ctx, resolver_map, task_id.c_str());
-            JS_SetPropertyStr(ctx, resolver_map, task_id.c_str(), JS_UNDEFINED);
-            JS_FreeValue(ctx, signal_map);
-            JS_FreeValue(ctx, resolver_map);
-            JS_FreeValue(ctx, global);
-            JSValue resolve_fn = JS_IsObject(resolver_entry)
-                ? JS_GetPropertyStr(ctx, resolver_entry, "resolve")
-                : JS_UNDEFINED;
-            JSValue reject_fn = JS_IsObject(resolver_entry)
-                ? JS_GetPropertyStr(ctx, resolver_entry, "reject")
-                : JS_UNDEFINED;
+            if (task->kind == PendingFetchTaskKind::Fetch) {
+                JSValue signal_map = JS_GetPropertyStr(ctx, global, "__vibrowserPendingFetchSignals");
+                JSValue resolver_map = JS_GetPropertyStr(ctx, global, "__vibrowserPendingFetchResolvers");
+                JSValue signal_val = JS_GetPropertyStr(ctx, signal_map, task_id.c_str());
+                JS_SetPropertyStr(ctx, signal_map, task_id.c_str(), JS_UNDEFINED);
+                JSValue resolver_entry = JS_GetPropertyStr(ctx, resolver_map, task_id.c_str());
+                JS_SetPropertyStr(ctx, resolver_map, task_id.c_str(), JS_UNDEFINED);
+                JS_FreeValue(ctx, signal_map);
+                JS_FreeValue(ctx, resolver_map);
+                JS_FreeValue(ctx, global);
+                JSValue resolve_fn = JS_IsObject(resolver_entry)
+                    ? JS_GetPropertyStr(ctx, resolver_entry, "resolve")
+                    : JS_UNDEFINED;
+                JSValue reject_fn = JS_IsObject(resolver_entry)
+                    ? JS_GetPropertyStr(ctx, resolver_entry, "reject")
+                    : JS_UNDEFINED;
 
-            if (task->aborted.load(std::memory_order_relaxed)) {
-                JSValue err = JS_NewError(ctx);
-                JS_SetPropertyStr(ctx, err, "message",
-                                  JS_NewString(ctx, "The operation was aborted."));
-                JS_SetPropertyStr(ctx, err, "name",
-                                  JS_NewString(ctx, "AbortError"));
-                JSValue ret = JS_Call(ctx, reject_fn, JS_UNDEFINED, 1, &err);
-                JS_FreeValue(ctx, ret);
-                JS_FreeValue(ctx, err);
-            } else if (task->response.has_value()) {
-                JSValue response_obj = create_response_object(
-                    ctx,
-                    *task->response,
-                    task->url,
-                    task->response_type,
-                    task->cors_filter_headers);
-                if (JS_IsException(response_obj)) {
-                    JSValue err = JS_GetException(ctx);
+                if (task->aborted.load(std::memory_order_relaxed)) {
+                    JSValue reason_val = JS_UNDEFINED;
+                    if (JS_IsObject(signal_val)) {
+                        reason_val = JS_GetPropertyStr(ctx, signal_val, "reason");
+                    }
+                    JSValue err = create_abort_error(ctx, JS_DupValue(ctx, reason_val));
                     JSValue ret = JS_Call(ctx, reject_fn, JS_UNDEFINED, 1, &err);
                     JS_FreeValue(ctx, ret);
                     JS_FreeValue(ctx, err);
+                    JS_FreeValue(ctx, reason_val);
+                } else if (task->response.has_value()) {
+                    JSValue response_obj = create_response_object(
+                        ctx,
+                        *task->response,
+                        task->url,
+                        task->response_type,
+                        task->cors_filter_headers,
+                        task->cancellation_state,
+                        signal_val);
+                    if (JS_IsException(response_obj)) {
+                        JSValue err = JS_GetException(ctx);
+                        JSValue ret = JS_Call(ctx, reject_fn, JS_UNDEFINED, 1, &err);
+                        JS_FreeValue(ctx, ret);
+                        JS_FreeValue(ctx, err);
+                    } else {
+                        JSValue ret = JS_Call(ctx, resolve_fn, JS_UNDEFINED, 1, &response_obj);
+                        JS_FreeValue(ctx, ret);
+                    }
+                    JS_FreeValue(ctx, response_obj);
                 } else {
-                    JSValue ret = JS_Call(ctx, resolve_fn, JS_UNDEFINED, 1, &response_obj);
+                    JSValue err = JS_NewError(ctx);
+                    if (task->cors_blocked) {
+                        JS_SetPropertyStr(ctx, err, "message",
+                                          JS_NewString(ctx, "TypeError: Failed to fetch (CORS blocked)"));
+                    } else {
+                        JS_SetPropertyStr(ctx, err, "message",
+                                          JS_NewString(ctx, "NetworkError: fetch failed"));
+                    }
+                    JSValue ret = JS_Call(ctx, reject_fn, JS_UNDEFINED, 1, &err);
                     JS_FreeValue(ctx, ret);
+                    JS_FreeValue(ctx, err);
                 }
-                JS_FreeValue(ctx, response_obj);
-            } else {
-                JSValue err = JS_NewError(ctx);
-                if (task->cors_blocked) {
-                    JS_SetPropertyStr(ctx, err, "message",
-                                      JS_NewString(ctx, "TypeError: Failed to fetch (CORS blocked)"));
-                } else {
-                    JS_SetPropertyStr(ctx, err, "message",
-                                      JS_NewString(ctx, "NetworkError: fetch failed"));
-                }
-                JSValue ret = JS_Call(ctx, reject_fn, JS_UNDEFINED, 1, &err);
-                JS_FreeValue(ctx, ret);
-                JS_FreeValue(ctx, err);
-            }
 
-            JS_FreeValue(ctx, resolve_fn);
-            JS_FreeValue(ctx, reject_fn);
-            JS_FreeValue(ctx, resolver_entry);
+                JS_FreeValue(ctx, signal_val);
+                JS_FreeValue(ctx, resolve_fn);
+                JS_FreeValue(ctx, reject_fn);
+                JS_FreeValue(ctx, resolver_entry);
+            } else {
+                JSValue xhr_map = JS_GetPropertyStr(ctx, global, "__vibrowserPendingXhrs");
+                JSValue xhr_obj = JS_GetPropertyStr(ctx, xhr_map, task_id.c_str());
+                JS_SetPropertyStr(ctx, xhr_map, task_id.c_str(), JS_UNDEFINED);
+                JS_FreeValue(ctx, xhr_map);
+                JS_FreeValue(ctx, global);
+
+                if (JS_IsObject(xhr_obj)) {
+                    auto* xhr_state = get_xhr_state(xhr_obj);
+                    if (xhr_state) {
+                        xhr_state->pending_task_id.store(0, std::memory_order_relaxed);
+                        JS_SetPropertyStr(ctx, xhr_obj, "__vibrowserPendingTaskId", JS_UNDEFINED);
+
+                        const bool aborted = task->aborted.load(std::memory_order_relaxed);
+                        if (aborted) {
+                            xhr_state->ready_state = 0;
+                            xhr_state->status = 0;
+                            xhr_state->status_text.clear();
+                            xhr_state->response_text.clear();
+                            xhr_state->response_headers.clear();
+                        } else if (task->response.has_value()) {
+                            xhr_state->status = task->response->status;
+                            xhr_state->status_text = task->response->status_text;
+                            xhr_state->response_text = task->response->body_as_string();
+                            xhr_state->response_headers.clear();
+                            for (const auto& [name, value] : task->response->headers) {
+                                xhr_state->response_headers[name] = value;
+                            }
+                            xhr_state->ready_state = 4;
+                        } else {
+                            xhr_state->status = 0;
+                            xhr_state->status_text.clear();
+                            xhr_state->response_text.clear();
+                            xhr_state->response_headers.clear();
+                            xhr_state->ready_state = 4;
+                        }
+
+                        JSValue event_obj = JS_NewObject(ctx);
+                        JS_SetPropertyStr(ctx, event_obj, "target", JS_DupValue(ctx, xhr_obj));
+                        JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_DupValue(ctx, xhr_obj));
+
+                        JSValue ready_state_handler = JS_GetPropertyStr(ctx, xhr_obj, "_onreadystatechange");
+                        if (JS_IsFunction(ctx, ready_state_handler)) {
+                            JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "readystatechange"));
+                            JSValue ret = JS_Call(ctx, ready_state_handler, xhr_obj, 1, &event_obj);
+                            if (JS_IsException(ret)) {
+                                JS_FreeValue(ctx, JS_GetException(ctx));
+                            }
+                            JS_FreeValue(ctx, ret);
+                        }
+                        JS_FreeValue(ctx, ready_state_handler);
+
+                        if (!aborted) {
+                            const char* event_type = task->response.has_value() ? "load" : "error";
+                            const char* handler_name = task->response.has_value() ? "_onload" : "_onerror";
+                            JSValue handler = JS_GetPropertyStr(ctx, xhr_obj, handler_name);
+                            if (JS_IsFunction(ctx, handler)) {
+                                JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, event_type));
+                                JSValue ret = JS_Call(ctx, handler, xhr_obj, 1, &event_obj);
+                                if (JS_IsException(ret)) {
+                                    JS_FreeValue(ctx, JS_GetException(ctx));
+                                }
+                                JS_FreeValue(ctx, ret);
+                            }
+                            JS_FreeValue(ctx, handler);
+                        }
+
+                        JS_FreeValue(ctx, event_obj);
+                    }
+                }
+
+                JS_FreeValue(ctx, xhr_obj);
+            }
         }
     }
 
@@ -2904,7 +3465,8 @@ static void flush_promise_jobs(JSContext* ctx) {
         }
     }
 
-    JSContext* ctx1 = nullptr;
+    flush_pending_response_body_reads(ctx);
+
     while (JS_ExecutePendingJob(JS_GetRuntime(ctx), &ctx1) > 0) {
         // Keep executing until no more pending jobs
     }
@@ -2919,6 +3481,23 @@ static void flush_promise_jobs(JSContext* ctx) {
 // =========================================================================
 
 static JSClassID ws_class_id = 0;
+
+struct WebSocketState;
+
+enum class WsEventType {
+    Open,
+    Message,
+    Error,
+    Close,
+};
+
+struct WsQueuedEvent {
+    WebSocketState* state = nullptr;
+    WsEventType type = WsEventType::Open;
+    std::string message;
+    uint16_t code = 0;
+    bool was_clean = false;
+};
 
 struct WebSocketState {
     std::string url;
@@ -2940,14 +3519,40 @@ struct WebSocketState {
     std::condition_variable receive_thread_cv_;
     std::atomic<bool> should_close_thread_ {false};
     std::atomic<bool> receive_thread_running_ {false};
+    std::atomic<bool> main_delivery_retired_ {false};
+    std::atomic<size_t> ref_count {1};
     // TLS socket (heap-allocated so we can null-check)
     clever::net::TlsSocket* tls = nullptr;
 };
 
 constexpr int k_ws_recv_timeout_ms = 1000;
 constexpr int k_ws_thread_join_timeout_ms = 2000;
+std::mutex g_ws_events_mutex;
+std::map<JSContext*, std::vector<WsQueuedEvent>> g_ws_events;
 
 // ---- Helpers ----
+
+static void ws_retain_state(WebSocketState* state) {
+    if (!state) {
+        return;
+    }
+    state->ref_count.fetch_add(1, std::memory_order_relaxed);
+}
+
+static void ws_release_state(JSRuntime* rt, WebSocketState* state) {
+    if (!rt || !state) {
+        return;
+    }
+    if (state->ref_count.fetch_sub(1, std::memory_order_acq_rel) != 1) {
+        return;
+    }
+
+    JS_FreeValueRT(rt, state->onopen);
+    JS_FreeValueRT(rt, state->onmessage);
+    JS_FreeValueRT(rt, state->onclose);
+    JS_FreeValueRT(rt, state->onerror);
+    delete state;
+}
 
 static WebSocketState* get_ws_state(JSValueConst this_val) {
     return static_cast<WebSocketState*>(JS_GetOpaque(this_val, ws_class_id));
@@ -2960,85 +3565,64 @@ static JSContext* ws_get_callback_context(WebSocketState* state) {
     return engine->context();
 }
 
-static void ws_fire_error_event(WebSocketState* state, const std::string& message) {
+static void ws_retire_main_delivery(WebSocketState* state) {
+    if (!state) {
+        return;
+    }
+    state->main_delivery_retired_.store(true, std::memory_order_release);
+}
+
+static void ws_queue_ws_event(WebSocketState* state, WsEventType type,
+                             const std::string& message = {},
+                             uint16_t code = 0,
+                             bool was_clean = false,
+                             bool allow_after_retirement = false) {
+    if (!state) {
+        return;
+    }
+    if (!allow_after_retirement &&
+        state->main_delivery_retired_.load(std::memory_order_acquire)) {
+        return;
+    }
+
     JSContext* ctx = ws_get_callback_context(state);
     if (!ctx) return;
 
-    JSValue handler = JS_UNDEFINED;
+    WsQueuedEvent event;
+    event.state = state;
+    event.type = type;
+    event.message = message;
+    event.code = code;
+    event.was_clean = was_clean;
+
+    ws_retain_state(state);
+    bool queued = false;
     {
-        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
-        handler = JS_DupValue(ctx, state->onerror);
-    }
-
-    if (JS_IsFunction(ctx, handler)) {
-        JSValue event = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "error"));
-        JS_SetPropertyStr(ctx, event, "message", JS_NewString(ctx, message.c_str()));
-        JSValue ret = JS_Call(ctx, handler, JS_UNDEFINED, 1, &event);
-        if (JS_IsException(ret)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
+        std::lock_guard<std::mutex> lock(g_ws_events_mutex);
+        if (allow_after_retirement ||
+            !state->main_delivery_retired_.load(std::memory_order_acquire)) {
+            g_ws_events[ctx].push_back(std::move(event));
+            queued = true;
         }
-        JS_FreeValue(ctx, ret);
-        JS_FreeValue(ctx, event);
     }
+    if (!queued) {
+        ws_release_state(JS_GetRuntime(ctx), state);
+    }
+}
 
-    JS_FreeValue(ctx, handler);
+static void ws_fire_error_event(WebSocketState* state, const std::string& message) {
+    ws_queue_ws_event(state, WsEventType::Error, message);
 }
 
 static void ws_fire_message_event(WebSocketState* state, const std::string& data) {
-    JSContext* ctx = ws_get_callback_context(state);
-    if (!ctx) return;
-
-    JSValue handler = JS_UNDEFINED;
-    {
-        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
-        handler = JS_DupValue(ctx, state->onmessage);
-    }
-
-    if (JS_IsFunction(ctx, handler)) {
-        JSValue event = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "message"));
-        JS_SetPropertyStr(ctx, event, "data", JS_NewString(ctx, data.c_str()));
-        JSValue ret = JS_Call(ctx, handler, JS_UNDEFINED, 1, &event);
-        if (JS_IsException(ret)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        }
-        JS_FreeValue(ctx, ret);
-        JS_FreeValue(ctx, event);
-    }
-
-    JS_FreeValue(ctx, handler);
+    ws_queue_ws_event(state, WsEventType::Message, data);
 }
 
 static void ws_fire_close_event(WebSocketState* state, uint16_t code,
-                                 const std::string& reason, bool was_clean) {
-    JSContext* ctx = ws_get_callback_context(state);
-    if (!ctx) return;
-
-    JSValue handler = JS_UNDEFINED;
-    {
-        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
-        handler = JS_DupValue(ctx, state->onclose);
-    }
-
-    if (JS_IsFunction(ctx, handler)) {
-        JSValue event = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "close"));
-        JS_SetPropertyStr(ctx, event, "code", JS_NewInt32(ctx, code));
-        JS_SetPropertyStr(ctx, event, "reason", JS_NewString(ctx, reason.c_str()));
-        JS_SetPropertyStr(ctx, event, "wasClean", was_clean ? JS_TRUE : JS_FALSE);
-        JSValue ret = JS_Call(ctx, handler, JS_UNDEFINED, 1, &event);
-        if (JS_IsException(ret)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        }
-        JS_FreeValue(ctx, ret);
-        JS_FreeValue(ctx, event);
-    }
-
-    JS_FreeValue(ctx, handler);
+                                 const std::string& reason, bool was_clean,
+                                 bool allow_after_retirement = false) {
+    ws_queue_ws_event(state, WsEventType::Close, reason, code, was_clean,
+                      allow_after_retirement);
 }
 
 static void ws_close_tls(WebSocketState* state) {
@@ -3726,6 +4310,7 @@ static JSValue js_ws_close(JSContext* ctx, JSValueConst this_val,
     }
 
     state->readyState.store(2); // CLOSING
+    ws_retire_main_delivery(state);
 
     // Send close frame (best effort)
     if (state->socket_fd.load() >= 0) {
@@ -3740,7 +4325,7 @@ static JSValue js_ws_close(JSContext* ctx, JSValueConst this_val,
     int previous_state = state->readyState.exchange(3); // CLOSED
 
     if (previous_state != 3) {
-        ws_fire_close_event(state, code, reason, true);
+        ws_fire_close_event(state, code, reason, true, true);
     }
 
     return JS_UNDEFINED;
@@ -3858,17 +4443,11 @@ static void js_ws_finalizer(JSRuntime* rt, JSValue val) {
     auto* state = static_cast<WebSocketState*>(JS_GetOpaque(val, ws_class_id));
     if (!state) return;
 
+    ws_retire_main_delivery(state);
     ws_stop_receive_thread(state, k_ws_thread_join_timeout_ms);
     ws_close_tls(state);
     ws_close_socket_fd(state);
-
-    // Free event handler JSValues
-    JS_FreeValueRT(rt, state->onopen);
-    JS_FreeValueRT(rt, state->onmessage);
-    JS_FreeValueRT(rt, state->onclose);
-    JS_FreeValueRT(rt, state->onerror);
-
-    delete state;
+    ws_release_state(rt, state);
 }
 
 // GC mark callback — tell QuickJS about our stored JSValue event handlers
@@ -4024,24 +4603,7 @@ static JSValue js_ws_constructor(JSContext* ctx, JSValueConst new_target,
         ws_receive_loop(state);
     });
 
-    // Fire onopen event immediately (synchronous engine)
-    JSValue onopen_handler = JS_UNDEFINED;
-    {
-        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
-        onopen_handler = JS_DupValue(ctx, state->onopen);
-    }
-    if (JS_IsFunction(ctx, onopen_handler)) {
-        JSValue event = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "open"));
-        JSValue ret = JS_Call(ctx, onopen_handler, JS_UNDEFINED, 1, &event);
-        if (JS_IsException(ret)) {
-            JSValue exc = JS_GetException(ctx);
-            JS_FreeValue(ctx, exc);
-        }
-        JS_FreeValue(ctx, ret);
-        JS_FreeValue(ctx, event);
-    }
-    JS_FreeValue(ctx, onopen_handler);
+    ws_queue_ws_event(state, WsEventType::Open);
 
     return obj;
 }
@@ -4707,6 +5269,9 @@ void install_fetch_bindings(JSContext* ctx) {
         JS_NewCFunction(ctx, js_native_fetch_abort, "__nativeFetchAbort", 1));
     JS_SetPropertyStr(ctx, global, "__vibrowserPendingFetchSignals", JS_NewObject(ctx));
     JS_SetPropertyStr(ctx, global, "__vibrowserPendingFetchResolvers", JS_NewObject(ctx));
+    JS_SetPropertyStr(ctx, global, "__vibrowserPendingBodyStreamReads", JS_NewObject(ctx));
+    JS_SetPropertyStr(ctx, global, "__vibrowserPendingXhrs", JS_NewObject(ctx));
+    JS_SetPropertyStr(ctx, global, "__vibrowserFetchCheckpointScheduled", JS_FALSE);
     JS_FreeValue(ctx, global);
 
     // ------------------------------------------------------------------
@@ -4829,8 +5394,83 @@ void install_fetch_bindings(JSContext* ctx) {
     }
 }
 
+void process_window_websocket_events(JSContext* ctx) {
+    if (!ctx) return;
+
+    std::vector<WsQueuedEvent> events_to_run;
+    {
+        std::lock_guard<std::mutex> lock(g_ws_events_mutex);
+        auto it = g_ws_events.find(ctx);
+        if (it == g_ws_events.end()) {
+            return;
+        }
+        events_to_run = std::move(it->second);
+        g_ws_events.erase(it);
+    }
+
+    for (const auto& event : events_to_run) {
+        if (!event.state) {
+            continue;
+        }
+        JSRuntime* event_runtime = event.state->runtime;
+
+        JSValue handler = JS_UNDEFINED;
+        JSValue event_obj = JS_UNDEFINED;
+
+        if (event.type == WsEventType::Open || event.type == WsEventType::Message) {
+            std::lock_guard<std::mutex> lock(event.state->message_queue_mutex_);
+            if (event.type == WsEventType::Open) {
+                handler = JS_DupValue(ctx, event.state->onopen);
+            } else {
+                handler = JS_DupValue(ctx, event.state->onmessage);
+            }
+        } else if (event.type == WsEventType::Error) {
+            std::lock_guard<std::mutex> lock(event.state->message_queue_mutex_);
+            handler = JS_DupValue(ctx, event.state->onerror);
+        } else {
+            std::lock_guard<std::mutex> lock(event.state->message_queue_mutex_);
+            handler = JS_DupValue(ctx, event.state->onclose);
+        }
+
+        if (!JS_IsFunction(ctx, handler)) {
+            JS_FreeValue(ctx, handler);
+            ws_release_state(event_runtime, event.state);
+            continue;
+        }
+
+        if (event.type == WsEventType::Open) {
+            event_obj = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "open"));
+        } else if (event.type == WsEventType::Message) {
+            event_obj = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "message"));
+            JS_SetPropertyStr(ctx, event_obj, "data", JS_NewString(ctx, event.message.c_str()));
+        } else if (event.type == WsEventType::Error) {
+            event_obj = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "error"));
+            JS_SetPropertyStr(ctx, event_obj, "message", JS_NewString(ctx, event.message.c_str()));
+        } else {
+            event_obj = JS_NewObject(ctx);
+            JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "close"));
+            JS_SetPropertyStr(ctx, event_obj, "code", JS_NewInt32(ctx, event.code));
+            JS_SetPropertyStr(ctx, event_obj, "reason", JS_NewString(ctx, event.message.c_str()));
+            JS_SetPropertyStr(ctx, event_obj, "wasClean", event.was_clean ? JS_TRUE : JS_FALSE);
+        }
+
+        JSValue ret = JS_Call(ctx, handler, JS_UNDEFINED, 1, &event_obj);
+        if (JS_IsException(ret)) {
+            JS_FreeValue(ctx, JS_GetException(ctx));
+        }
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, event_obj);
+        JS_FreeValue(ctx, handler);
+        ws_release_state(event_runtime, event.state);
+    }
+}
+
 void flush_fetch_promise_jobs(JSContext* ctx) {
-    flush_promise_jobs(ctx);
+    flush_promise_jobs(ctx, true);
+    process_window_websocket_events(ctx);
 }
 
 } // namespace clever::js

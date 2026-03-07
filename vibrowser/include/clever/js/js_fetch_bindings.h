@@ -19,8 +19,9 @@ namespace clever::js {
 //              CONNECTING/OPEN/CLOSING/CLOSED static constants
 void install_fetch_bindings(JSContext* ctx);
 
-// Execute all pending QuickJS Promise microtask jobs.
-// Call this after script evaluation to ensure .then() callbacks run.
+// Execute all pending QuickJS Promise microtask jobs and then deliver any
+// deferred fetch/XHR/WebSocket host callbacks that are waiting on the main JS
+// checkpoint.
 void flush_fetch_promise_jobs(JSContext* ctx);
 
 } // namespace clever::js

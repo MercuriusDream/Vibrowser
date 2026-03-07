@@ -23,6 +23,7 @@
 #include <string>
 #include <thread>
 #include <unordered_set>
+#include <vector>
 
 // =========================================================================
 // Clipboard API Helpers — System Clipboard via NSPasteboard
@@ -69,6 +70,7 @@ static const CGFloat kAddressBarHeight = 30.0;
 static const CGFloat kToolbarActionButtonWidth = 34.0;
 static const CGFloat kToolbarActionButtonGap = 6.0;
 static const CGFloat kTrafficLightClearance = 12.0;
+static const CGFloat kProgrammaticScrollEpsilon = 0.01;
 
 static NSString* const kBrowserAppName = @"Vibrowser";
 static NSString* const kBrowserFocusAttr = @"data-vibrowser-focus";
@@ -108,6 +110,7 @@ static NSImage* browser_symbol_image(NSString* system_name) {
 @end
 
 @interface BrowserTab ()
+- (std::unique_ptr<clever::js::JSEngine>&)jsEngine;
 - (std::unique_ptr<clever::layout::LayoutNode>&)layoutRoot;
 @end
 
@@ -356,19 +359,27 @@ static std::string resolve_url_reference(const std::string& href, const std::str
     // Legacy fallback for non-standard/synthetic base URLs.
     if (base_url.empty()) return href;
 
+    auto strip_fragment = [](const std::string& value) {
+        std::string out = value;
+        auto hash_pos = out.find('#');
+        if (hash_pos != std::string::npos) out.erase(hash_pos);
+        return out;
+    };
+
+    auto strip_query = [](const std::string& value) {
+        std::string out = value;
+        auto query_pos = out.find('?');
+        if (query_pos != std::string::npos) out.erase(query_pos);
+        return out;
+    };
+
     if (href[0] == '?') {
-        std::string base = base_url;
-        auto hash_pos = base.find('#');
-        if (hash_pos != std::string::npos) base.erase(hash_pos);
-        auto query_pos = base.find('?');
-        if (query_pos != std::string::npos) base.erase(query_pos);
+        std::string base = strip_query(strip_fragment(base_url));
         return base + href;
     }
 
     if (href[0] == '#') {
-        std::string base = base_url;
-        auto hash_pos = base.find('#');
-        if (hash_pos != std::string::npos) base.erase(hash_pos);
+        std::string base = strip_fragment(base_url);
         return base + href;
     }
 
@@ -380,23 +391,102 @@ static std::string resolve_url_reference(const std::string& href, const std::str
         return "http:" + href;
     }
 
-    if (href[0] == '/') {
-        auto scheme_end = base_url.find("://");
-        if (scheme_end == std::string::npos) return href;
-        auto host_end = base_url.find('/', scheme_end + 3);
-        if (host_end == std::string::npos) return base_url + href;
-        return base_url.substr(0, host_end) + href;
+    auto normalize_path = [](const std::string& raw_path) {
+        if (raw_path.empty()) return std::string();
+
+        const bool absolute = raw_path[0] == '/';
+        std::vector<std::string> segments;
+        size_t pos = 0;
+        while (pos <= raw_path.size()) {
+            size_t next = raw_path.find('/', pos);
+            if (next == std::string::npos) next = raw_path.size();
+            std::string segment = raw_path.substr(pos, next - pos);
+
+            if (segment.empty() || segment == ".") {
+                // Skip.
+            } else if (segment == "..") {
+                if (!segments.empty() && segments.back() != "..") {
+                    segments.pop_back();
+                } else if (!absolute) {
+                    segments.push_back("..");
+                }
+            } else {
+                segments.push_back(std::move(segment));
+            }
+
+            if (next == raw_path.size()) break;
+            pos = next + 1;
+        }
+
+        std::string normalized;
+        if (absolute) normalized.push_back('/');
+        for (size_t i = 0; i < segments.size(); ++i) {
+            if (i > 0) normalized.push_back('/');
+            normalized += segments[i];
+        }
+
+        if (raw_path.size() > 1 && raw_path.back() == '/' &&
+            (normalized.empty() || normalized.back() != '/')) {
+            normalized.push_back('/');
+        } else if (normalized.empty() && absolute) {
+            normalized = "/";
+        }
+        return normalized;
+    };
+
+    const std::string base_no_query = strip_query(strip_fragment(base_url));
+    auto scheme_end = base_no_query.find("://");
+
+    std::string prefix;
+    std::string base_path;
+    if (scheme_end != std::string::npos) {
+        const size_t authority_start = scheme_end + 3;
+        const size_t path_start = base_no_query.find('/', authority_start);
+        if (path_start == std::string::npos) {
+            prefix = base_no_query;
+            base_path = "/";
+        } else {
+            prefix = base_no_query.substr(0, path_start);
+            base_path = base_no_query.substr(path_start);
+        }
+    } else {
+        base_path = base_no_query;
     }
 
-    auto last_slash = base_url.rfind('/');
-    auto scheme_end = base_url.find("://");
-    if (scheme_end != std::string::npos && last_slash <= scheme_end + 2) {
-        return base_url + "/" + href;
+    std::string merged_path;
+    if (href[0] == '/') {
+        merged_path = href;
+    } else {
+        std::string base_dir = base_path;
+        if (base_dir.empty()) {
+            base_dir = "/";
+        } else {
+            auto last_slash = base_dir.rfind('/');
+            if (last_slash == std::string::npos) {
+                base_dir.clear();
+            } else {
+                base_dir.erase(last_slash + 1);
+            }
+        }
+        if (!base_dir.empty() && base_dir.back() != '/') {
+            base_dir.push_back('/');
+        }
+        merged_path = base_dir + href;
     }
-    if (last_slash != std::string::npos) {
-        return base_url.substr(0, last_slash + 1) + href;
+
+    std::string normalized_path = normalize_path(merged_path);
+    if (normalized_path.empty()) {
+        normalized_path = (merged_path.size() > 0 && merged_path[0] == '/') ? "/" : href;
     }
-    return href;
+
+    if (!prefix.empty()) {
+        return prefix + normalized_path;
+    }
+    if (!base_path.empty() && base_path[0] == '/' &&
+        (normalized_path.empty() || normalized_path[0] != '/')) {
+        return "/" + normalized_path;
+    }
+    return normalized_path.empty() ? href : normalized_path;
 }
 
 static void paint_tab_horizontal_viewport_slice(BrowserTab* tab, CGFloat documentScrollX) {
@@ -446,6 +536,93 @@ static void paint_tab_horizontal_viewport_slice(BrowserTab* tab, CGFloat documen
     renderer.render(displayList);
     [tab.renderView updateWithRenderer:&renderer];
     [tab.renderView setRenderedDocumentOriginX:std::max(0.0, documentScrollX)];
+}
+
+static CGFloat browser_window_renderer_scale_for_tab(BrowserTab* tab) {
+    if (!tab || !tab.renderView) {
+        return 1.0;
+    }
+    CGFloat rendererScale = [tab.renderView rendererScale];
+    return render_view_normalized_renderer_scale(rendererScale);
+}
+
+static BrowserWindowLogicalPoint browser_window_scroll_point_for_tab(BrowserTab* tab,
+                                                                     CGFloat documentX,
+                                                                     CGFloat documentY) {
+    return browser_window_normalize_document_scroll_point(documentX,
+                                                          documentY,
+                                                          browser_window_renderer_scale_for_tab(tab));
+}
+
+static BrowserWindowLogicalPoint browser_window_hit_test_point_for_tab(BrowserTab* tab,
+                                                                       CGFloat documentX,
+                                                                       CGFloat documentY) {
+    CGFloat renderedOriginX = 0.0;
+    if (tab && tab.renderView) {
+        renderedOriginX = [tab.renderView renderedDocumentOriginX];
+        if (!std::isfinite(renderedOriginX) || renderedOriginX < 0.0) {
+            renderedOriginX = [tab.renderView documentXForViewOffset:tab.renderView.scrollOffsetX];
+        }
+    }
+    return browser_window_normalize_document_hit_test_point(documentX,
+                                                            documentY,
+                                                            renderedOriginX,
+                                                            browser_window_renderer_scale_for_tab(tab));
+}
+
+static void dispatch_tab_scroll_state(BrowserTab* tab,
+                                      CGFloat documentScrollX,
+                                      CGFloat documentScrollY) {
+    if (!tab || !tab.renderView) {
+        return;
+    }
+    auto& jsEngine = [tab jsEngine];
+    if (!jsEngine || !jsEngine->context()) {
+        return;
+    }
+
+    JSContext* ctx = jsEngine->context();
+    int viewportWidth = static_cast<int>(std::round(tab.renderView.bounds.size.width));
+    int viewportHeight = static_cast<int>(std::round(tab.renderView.bounds.size.height));
+    clever::js::dispatch_scroll_event(ctx,
+                                      std::max(1, viewportWidth),
+                                      std::max(1, viewportHeight),
+                                      static_cast<float>(documentScrollX),
+                                      static_cast<float>(documentScrollY));
+}
+
+static void scroll_tab_to_document_position(BrowserTab* tab,
+                                            CGFloat documentScrollX,
+                                            CGFloat documentScrollY,
+                                            bool repaintHorizontalSlice = true,
+                                            bool dispatchScrollEvent = false) {
+    if (!tab || !tab.renderView) {
+        return;
+    }
+
+    const CGFloat previousDocumentX =
+        [tab.renderView documentXForViewOffset:tab.renderView.scrollOffsetX];
+    const CGFloat previousDocumentY =
+        [tab.renderView documentYForViewOffset:tab.renderView.scrollOffset];
+    const BrowserWindowLogicalPoint previousPoint =
+        browser_window_scroll_point_for_tab(tab, previousDocumentX, previousDocumentY);
+    const BrowserWindowLogicalPoint nextPoint =
+        browser_window_scroll_point_for_tab(tab, documentScrollX, documentScrollY);
+    const CGFloat clampedDocumentX = nextPoint.x;
+    const CGFloat clampedDocumentY = nextPoint.y;
+
+    tab.renderView.scrollOffsetX = [tab.renderView viewOffsetForDocumentX:clampedDocumentX];
+    tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:clampedDocumentY];
+    if (repaintHorizontalSlice) {
+        paint_tab_horizontal_viewport_slice(tab, clampedDocumentX);
+    }
+    [tab.renderView setNeedsDisplay:YES];
+
+    if (dispatchScrollEvent &&
+        (std::abs(clampedDocumentX - previousPoint.x) > kProgrammaticScrollEpsilon ||
+         std::abs(clampedDocumentY - previousPoint.y) > kProgrammaticScrollEpsilon)) {
+        dispatch_tab_scroll_state(tab, clampedDocumentX, clampedDocumentY);
+    }
 }
 
 static void apply_browser_request_headers(clever::net::Request& req,
@@ -1693,7 +1870,9 @@ static std::string build_shell_message_html(const std::string& page_title,
             response->status == 308) {
             auto location = response->headers.get("location");
             if (!location || location->empty()) break;
-            currentUrl = resolve_url_reference(*location, responseUrl);
+            std::string nextUrl = resolve_url_reference(*location, responseUrl);
+            if (nextUrl.empty()) break;
+            currentUrl = std::move(nextUrl);
             redirects++;
             continue;
         }
@@ -1785,12 +1964,11 @@ static std::string build_shell_message_html(const std::string& page_title,
     if (!jsEngine || !jsEngine->context()) return;
     double scroll_x = 0.0, scroll_y = 0.0;
     if (clever::js::get_pending_scroll(jsEngine->context(), &scroll_x, &scroll_y)) {
-        CGFloat viewX = [tab.renderView viewOffsetForDocumentX:static_cast<CGFloat>(scroll_x)];
-        CGFloat viewY = [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(scroll_y)];
-        tab.renderView.scrollOffsetX = viewX;
-        tab.renderView.scrollOffset = viewY;
-        paint_tab_horizontal_viewport_slice(tab, static_cast<CGFloat>(scroll_x));
-        [tab.renderView setNeedsDisplay:YES];
+        scroll_tab_to_document_position(tab,
+                                        static_cast<CGFloat>(scroll_x),
+                                        static_cast<CGFloat>(scroll_y),
+                                        true,
+                                        true);
         clever::js::clear_pending_scroll(jsEngine->context());
     }
 }
@@ -1813,13 +1991,7 @@ static std::string build_shell_message_html(const std::string& page_title,
 - (void)restoreDocumentScrollForTab:(BrowserTab*)tab
                          documentX:(CGFloat)documentX
                          documentY:(CGFloat)documentY {
-    if (!tab || !tab.renderView) {
-        return;
-    }
-    tab.renderView.scrollOffsetX = [tab.renderView viewOffsetForDocumentX:documentX];
-    tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:documentY];
-    paint_tab_horizontal_viewport_slice(tab, documentX);
-    [tab.renderView setNeedsDisplay:YES];
+    scroll_tab_to_document_position(tab, documentX, documentY);
 }
 
 - (void)rerenderTabPreservingDocumentScroll:(BrowserTab*)tab {
@@ -1904,7 +2076,11 @@ static std::string build_shell_message_html(const std::string& page_title,
         [tab.renderView updateFormData:result.forms];
         [tab idPositions] = std::move(result.id_positions);
 
-        // Scroll to URL fragment (#section) on initial page load
+        bool shouldScrollToInitialFragment = false;
+        CGFloat initialFragmentScrollY = 0.0;
+
+        // Capture the URL fragment (#section) target and apply it after the new
+        // JS engine is installed so window scroll state stays aligned with the shell.
         if (_toggledDetails.empty()) {
             NSString* urlStr = tab.currentURL;
             NSRange hashRange = [urlStr rangeOfString:@"#" options:NSBackwardsSearch];
@@ -1914,7 +2090,8 @@ static std::string build_shell_message_html(const std::string& page_title,
                 auto& positions = [tab idPositions];
                 auto it = positions.find(fragStr);
                 if (it != positions.end()) {
-                    tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:it->second];
+                    shouldScrollToInitialFragment = true;
+                    initialFragmentScrollY = it->second;
                 }
             }
         }
@@ -1938,16 +2115,26 @@ static std::string build_shell_message_html(const std::string& page_title,
                 "globalThis.outerHeight=" + logicalHeight + ";";
             jsEngine->evaluate(syncWindowMetrics, "<vibrowser-window-metrics>");
 
+            if (shouldScrollToInitialFragment) {
+                CGFloat documentScrollX =
+                    [tab.renderView documentXForViewOffset:tab.renderView.scrollOffsetX];
+                scroll_tab_to_document_position(tab,
+                                                documentScrollX,
+                                                initialFragmentScrollY,
+                                                true,
+                                                true);
+            }
+
             // Apply any pending programmatic scroll from page scripts (scrollIntoView,
             // window.scrollTo called in DOMContentLoaded or inline scripts).
             // This runs AFTER fragment scroll so scrollIntoView can override it.
             double pendScrollX = 0.0, pendScrollY = 0.0;
             if (clever::js::get_pending_scroll(jsEngine->context(), &pendScrollX, &pendScrollY)) {
-                tab.renderView.scrollOffsetX =
-                    [tab.renderView viewOffsetForDocumentX:static_cast<CGFloat>(pendScrollX)];
-                tab.renderView.scrollOffset =
-                    [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(pendScrollY)];
-                paint_tab_horizontal_viewport_slice(tab, static_cast<CGFloat>(pendScrollX));
+                scroll_tab_to_document_position(tab,
+                                                static_cast<CGFloat>(pendScrollX),
+                                                static_cast<CGFloat>(pendScrollY),
+                                                true,
+                                                true);
                 clever::js::clear_pending_scroll(jsEngine->context());
             }
         }
@@ -2058,12 +2245,19 @@ static std::string build_shell_message_html(const std::string& page_title,
                     info.logical_height = border_box_h;
 
                     // Compute pixel rect in the rendered buffer
-                    int px_x = std::max(0, static_cast<int>(std::round(abs_x * pixel_scale)));
-                    int px_y = std::max(0, static_cast<int>(std::round(abs_y * pixel_scale)));
-                    int px_w = std::min(static_cast<int>(std::round(border_box_w * pixel_scale)), rw - px_x);
-                    int px_h = std::min(static_cast<int>(std::round(border_box_h * pixel_scale)), rh - px_y);
-
-                    if (px_w > 0 && px_h > 0) {
+                    clever::paint::Rect cssBounds{abs_x, abs_y, border_box_w, border_box_h};
+                    int px_x = 0;
+                    int px_y = 0;
+                    int px_w = 0;
+                    int px_h = 0;
+                    if (render_view_extract_buffer_rect(cssBounds,
+                                                        pixel_scale,
+                                                        rw,
+                                                        rh,
+                                                        &px_x,
+                                                        &px_y,
+                                                        &px_w,
+                                                        &px_h)) {
                         info.pixel_x = px_x;
                         info.pixel_width = px_w;
                         info.pixel_height = px_h;
@@ -2142,12 +2336,19 @@ static std::string build_shell_message_html(const std::string& page_title,
                     info.logical_width = border_box_w;
                     info.logical_height = border_box_h;
 
-                    int px_x = std::max(0, static_cast<int>(std::round(vp_x * pixel_scale)));
-                    int px_y = std::max(0, static_cast<int>(std::round(vp_y * pixel_scale)));
-                    int px_w = std::min(static_cast<int>(std::round(border_box_w * pixel_scale)), rw - px_x);
-                    int px_h = std::min(static_cast<int>(std::round(border_box_h * pixel_scale)), rh_px - px_y);
-
-                    if (px_w > 0 && px_h > 0) {
+                    clever::paint::Rect cssBounds{vp_x, vp_y, border_box_w, border_box_h};
+                    int px_x = 0;
+                    int px_y = 0;
+                    int px_w = 0;
+                    int px_h = 0;
+                    if (render_view_extract_buffer_rect(cssBounds,
+                                                        pixel_scale,
+                                                        rw,
+                                                        rh_px,
+                                                        &px_x,
+                                                        &px_y,
+                                                        &px_w,
+                                                        &px_h)) {
                         info.pixel_width = px_w;
                         info.pixel_height = px_h;
                         info.pixels.resize(static_cast<size_t>(px_w) * px_h * 4);
@@ -2517,8 +2718,8 @@ static std::string build_shell_message_html(const std::string& page_title,
     (void)notification;
     [self layoutChromeViews];
     BrowserTab* tab = [self activeTab];
-    if (tab && ![tab currentHTML].empty()) {
-        [self rerenderTabPreservingDocumentScroll:tab];
+    if (tab && tab.renderView) {
+        [tab.renderView syncGeometryToCurrentRendererBuffer];
     }
 }
 
@@ -2680,8 +2881,9 @@ static std::string build_shell_message_html(const std::string& page_title,
                     auto& positions = [tab idPositions];
                     auto it = positions.find(frag);
                     if (it != positions.end()) {
-                        tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:it->second];
-                        [tab.renderView setNeedsDisplay:YES];
+                        CGFloat documentScrollX =
+                            [tab.renderView documentXForViewOffset:tab.renderView.scrollOffsetX];
+                        scroll_tab_to_document_position(tab, documentScrollX, it->second, true, true);
                     }
                 }
             }
@@ -2706,8 +2908,9 @@ static std::string build_shell_message_html(const std::string& page_title,
                         auto& positions = [tab idPositions];
                         auto it = positions.find(frag);
                         if (it != positions.end()) {
-                            tab.renderView.scrollOffset = [tab.renderView viewOffsetForDocumentY:it->second];
-                            [tab.renderView setNeedsDisplay:YES];
+                            CGFloat documentScrollX =
+                                [tab.renderView documentXForViewOffset:tab.renderView.scrollOffsetX];
+                            scroll_tab_to_document_position(tab, documentScrollX, it->second, true, true);
                             // Update URL bar to show fragment
                             tab.currentURL = href;
                             [_addressBar setStringValue:href];
@@ -2899,7 +3102,9 @@ static std::string build_shell_message_html(const std::string& page_title,
             response->status == 308) {
             auto location = response->headers.get("location");
             if (!location || location->empty()) break;
-            currentUrl = resolve_url_reference(*location, responseUrl);
+            std::string nextUrl = resolve_url_reference(*location, responseUrl);
+            if (nextUrl.empty()) break;
+            currentUrl = std::move(nextUrl);
             redirects++;
             // For 307/308, preserve POST method; for 301/302/303, switch to GET
             if (response->status == 307 || response->status == 308) {
@@ -3128,6 +3333,10 @@ static std::string build_shell_message_html(const std::string& page_title,
     auto& domTree = [tab domTree];
     auto& elementRegions = [tab elementRegions];
     if (!jsEngine || elementRegions.empty()) return NO;
+    const BrowserWindowLogicalPoint hitTestPoint =
+        browser_window_hit_test_point_for_tab(tab, static_cast<CGFloat>(x), static_cast<CGFloat>(y));
+    x = static_cast<float>(hitTestPoint.x);
+    y = static_cast<float>(hitTestPoint.y);
 
     // Hit-test against element regions in reverse order (last = topmost / highest z-order).
     // Find the smallest (most specific) element that contains the click point.
@@ -3457,6 +3666,7 @@ static std::string build_shell_message_html(const std::string& page_title,
 
         if (isTextInput) {
             // Find the element's bounding rect from element regions
+            // These element regions are in renderer document (CSS pixel) coordinates.
             clever::paint::Rect inputBounds = {0, 0, 0, 0};
             for (auto& region : elementRegions) {
                 if (region.dom_node == inputTarget) {
@@ -3510,10 +3720,11 @@ static std::string build_shell_message_html(const std::string& page_title,
     // Apply any pending programmatic scroll (scrollIntoView / window.scrollTo).
     // Captured before doRender because doRender replaces the JS engine.
     if (hasPendingScroll) {
-        CGFloat viewX = [tab.renderView viewOffsetForDocumentX:static_cast<CGFloat>(pendingScrollX)];
-        CGFloat viewY = [tab.renderView viewOffsetForDocumentY:static_cast<CGFloat>(pendingScrollY)];
-        tab.renderView.scrollOffsetX = viewX;
-        tab.renderView.scrollOffset = viewY;
+        scroll_tab_to_document_position(tab,
+                                        static_cast<CGFloat>(pendingScrollX),
+                                        static_cast<CGFloat>(pendingScrollY),
+                                        true,
+                                        true);
         // Clear from current engine too (in case doRender was skipped and engine is same)
         auto& curEngine = [tab jsEngine];
         if (curEngine && curEngine->context()) {
@@ -3689,6 +3900,10 @@ static std::string build_shell_message_html(const std::string& page_title,
     auto& elementRegions = [tab elementRegions];
     auto& domTree = [tab domTree];
     if (elementRegions.empty() || !domTree) return;
+    const BrowserWindowLogicalPoint hitTestPoint =
+        browser_window_hit_test_point_for_tab(tab, static_cast<CGFloat>(x), static_cast<CGFloat>(y));
+    x = static_cast<float>(hitTestPoint.x);
+    y = static_cast<float>(hitTestPoint.y);
     if (_hoveredNode && !is_node_attached(domTree.get(), _hoveredNode)) {
         _hoveredNode = nullptr;
     }
@@ -3843,18 +4058,29 @@ static std::string build_shell_message_html(const std::string& page_title,
             if (snapshots.count(eid)) continue;
 
             // Extract pixel region from current buffer
-            int x0 = static_cast<int>(region.bounds.x);
-            int y0 = static_cast<int>(region.bounds.y);
-            int w = static_cast<int>(region.bounds.width);
-            int h = static_cast<int>(region.bounds.height);
-            if (w <= 0 || h <= 0 || x0 < 0 || y0 < 0) continue;
-            if (x0 + w > baseBw) w = baseBw - x0;
-            if (y0 + h > baseBh) h = baseBh - y0;
-            if (w <= 0 || h <= 0) continue;
+            int x0 = 0;
+            int y0 = 0;
+            int w = 0;
+            int h = 0;
+            if (!render_view_extract_buffer_rect(region.bounds,
+                                                 [rv rendererScale],
+                                                 baseBw,
+                                                 baseBh,
+                                                 &x0,
+                                                 &y0,
+                                                 &w,
+                                                 &h)) {
+                continue;
+            }
 
             PixelTransition pt;
             pt.element_id = eid;
-            pt.bounds = region.bounds;
+            pt.bounds = {
+                static_cast<float>(x0),
+                static_cast<float>(y0),
+                static_cast<float>(w),
+                static_cast<float>(h)
+            };
             pt.width = w;
             pt.height = h;
             pt.from_pixels.resize(static_cast<size_t>(w) * h * 4);
@@ -3938,6 +4164,10 @@ do_render:
     auto& jsEngine = [tab jsEngine];
     auto& elementRegions = [tab elementRegions];
     if (!jsEngine || elementRegions.empty()) return NO;
+    const BrowserWindowLogicalPoint hitTestPoint =
+        browser_window_hit_test_point_for_tab(tab, static_cast<CGFloat>(x), static_cast<CGFloat>(y));
+    x = static_cast<float>(hitTestPoint.x);
+    y = static_cast<float>(hitTestPoint.y);
 
     // Hit-test to find the target element. Skip pointer-events: none elements.
     clever::html::SimpleNode* target = nullptr;
@@ -3970,6 +4200,10 @@ do_render:
     auto& jsEngine = [tab jsEngine];
     auto& elementRegions = [tab elementRegions];
     if (!jsEngine || elementRegions.empty()) return NO;
+    const BrowserWindowLogicalPoint hitTestPoint =
+        browser_window_hit_test_point_for_tab(tab, static_cast<CGFloat>(x), static_cast<CGFloat>(y));
+    x = static_cast<float>(hitTestPoint.x);
+    y = static_cast<float>(hitTestPoint.y);
 
     // Hit-test to find the target element. Skip pointer-events: none elements.
     clever::html::SimpleNode* target = nullptr;

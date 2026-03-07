@@ -5,9 +5,6 @@
 
 namespace clever::css {
 
-std::shared_ptr<const SelectorList> compile_function_selector_list(std::string_view pseudo_name,
-                                                                   std::string_view argument);
-
 namespace {
 
 std::string ascii_lower(std::string value) {
@@ -17,26 +14,6 @@ std::string ascii_lower(std::string value) {
         value.begin(),
         [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return value;
-}
-
-const SelectorList* cached_function_selector_list(const SimpleSelector& selector) {
-    if (selector.parsed_selector_list) {
-        return selector.parsed_selector_list.get();
-    }
-    return nullptr;
-}
-
-const SelectorList& selector_list_for_function(const SimpleSelector& selector,
-                                               std::shared_ptr<const SelectorList>& compiled_list) {
-    if (const SelectorList* cached = cached_function_selector_list(selector)) {
-        return *cached;
-    }
-    compiled_list = compile_function_selector_list(selector.value, selector.argument);
-    if (compiled_list) {
-        return *compiled_list;
-    }
-    static const SelectorList empty_list;
-    return empty_list;
 }
 
 bool attribute_value_equals(std::string_view lhs, std::string_view rhs, bool case_insensitive) {
@@ -91,6 +68,62 @@ bool attribute_value_contains(std::string_view haystack,
     return folded_haystack.find(folded_needle) != std::string::npos;
 }
 
+bool name_matches_ascii_case_insensitive(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(lhs[i])) !=
+            std::tolower(static_cast<unsigned char>(rhs[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool matches_rightmost_selector_key(const ElementView& element, const RightmostSelectorKey& key) {
+    switch (key.type) {
+        case RightmostSelectorKeyType::None:
+            return true;
+        case RightmostSelectorKeyType::Type:
+            return element.tag_name == key.value;
+        case RightmostSelectorKeyType::Class:
+            return std::find(element.classes.begin(), element.classes.end(), key.value) !=
+                   element.classes.end();
+        case RightmostSelectorKeyType::Id:
+            return element.id == key.value;
+        case RightmostSelectorKeyType::Attribute:
+            if (key.value.empty()) {
+                return true;
+            }
+            for (const auto& [name, _] : element.attributes) {
+                if (name_matches_ascii_case_insensitive(name, key.value)) {
+                    return true;
+                }
+            }
+            return false;
+    }
+
+    return true;
+}
+
+}
+
+const SelectorList& SelectorMatcher::selector_list_for_function(const SimpleSelector& selector) const {
+    static const SelectorList empty_list;
+    if (const SelectorList* cached = function_selector_list_program(selector)) {
+        if (selector.parsed_selector_list) {
+            return *selector.parsed_selector_list;
+        }
+
+        auto& mutable_selector = const_cast<SimpleSelector&>(selector);
+        if (auto attached = attach_compiled_function_selector_list(mutable_selector)) {
+            return *attached;
+        }
+        return *cached;
+    }
+
+    return empty_list;
 }
 
 // Parse an+b expression from :nth-child() argument
@@ -220,6 +253,9 @@ static bool compute_same_type_position(const ElementView& element, int& position
 
 bool SelectorMatcher::matches(const ElementView& element, const ComplexSelector& selector) const {
     if (selector.parts.empty()) {
+        return false;
+    }
+    if (!matches_rightmost_selector_key(element, selector.rightmost_match_key)) {
         return false;
     }
 
@@ -543,7 +579,7 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
         }
 
         case SimpleSelectorType::PseudoClass: {
-            const auto& name = simple.value;
+            const std::string name = ascii_lower(simple.value);
             if (name == "first-child") {
                 if (element.sibling_count > 0 && element.child_index < element.sibling_count) {
                     return element.child_index == 0;
@@ -661,8 +697,7 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "not") {
                 // :not() receives a comma-separated selector list. It matches only
                 // when every selector in that list does NOT match this element.
-                std::shared_ptr<const SelectorList> compiled_list;
-                const SelectorList& inner_list = selector_list_for_function(simple, compiled_list);
+                const SelectorList& inner_list = selector_list_for_function(simple);
                 for (const auto& sel : inner_list.selectors) {
                     if (matches(element, sel)) return false;
                 }
@@ -671,8 +706,7 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 // :is() / :where() / :matches() / -webkit-any() accept a comma-separated
                 // selector list and match when any listed selector matches.
                 // :where() is identical here; specificity is handled elsewhere.
-                std::shared_ptr<const SelectorList> compiled_list;
-                const SelectorList& inner_list = selector_list_for_function(simple, compiled_list);
+                const SelectorList& inner_list = selector_list_for_function(simple);
                 for (const auto& sel : inner_list.selectors) {
                     if (matches(element, sel)) return true;
                 }
@@ -712,8 +746,7 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "has") {
                 // :has() takes a comma-separated selector list. It matches when any
                 // selector in that list matches via the relative matching path.
-                std::shared_ptr<const SelectorList> compiled_list;
-                const SelectorList& inner_list = selector_list_for_function(simple, compiled_list);
+                const SelectorList& inner_list = selector_list_for_function(simple);
                 for (const auto& sel : inner_list.selectors) {
                     if (has_selector_matches(element, sel)) return true;
                 }

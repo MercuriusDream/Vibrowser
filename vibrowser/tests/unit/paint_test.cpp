@@ -31,23 +31,53 @@ using namespace clever::layout;
 
 namespace clever::paint {
 void reset_text_width_cache_stats_for_testing();
+void set_text_width_cache_max_entries_for_testing(size_t max_entries);
 size_t text_width_cache_size_for_testing();
 uint64_t text_width_cache_hit_count_for_testing();
 uint64_t text_width_cache_miss_count_for_testing();
+std::vector<std::string> text_width_cache_lru_order_for_testing();
 void reset_text_line_layout_cache_for_testing();
+void set_text_line_layout_cache_max_entries_for_testing(size_t max_entries);
 size_t text_line_layout_cache_size_for_testing();
 uint64_t text_line_layout_cache_hit_count_for_testing();
 uint64_t text_line_layout_cache_miss_count_for_testing();
 uint64_t text_line_layout_creation_count_for_testing();
+std::vector<std::string> text_line_layout_cache_lru_order_for_testing();
+std::vector<float> text_line_layout_wrapped_widths_for_testing(const std::string& text,
+                                                               float wrap_width,
+                                                               float font_size,
+                                                               const std::string& font_family,
+                                                               int font_weight,
+                                                               bool font_italic,
+                                                               float letter_spacing = 0.0f);
+void reset_text_run_raster_cache_for_testing();
+void set_text_run_raster_cache_max_entries_for_testing(size_t max_entries);
+size_t text_run_raster_cache_size_for_testing();
+uint64_t text_run_raster_cache_hit_count_for_testing();
+uint64_t text_run_raster_cache_miss_count_for_testing();
+uint64_t text_run_raster_cache_creation_count_for_testing();
+uint64_t text_run_raster_scratch_allocation_count_for_testing();
+uint64_t text_run_raster_scratch_context_creation_count_for_testing();
+int text_run_raster_last_full_width_for_testing();
+int text_run_raster_last_full_height_for_testing();
+int text_run_raster_last_clipped_x_for_testing();
+int text_run_raster_last_clipped_y_for_testing();
+int text_run_raster_last_clipped_width_for_testing();
+int text_run_raster_last_clipped_height_for_testing();
+bool text_run_raster_last_request_used_clipped_raster_for_testing();
+std::vector<std::string> text_run_raster_cache_lru_order_for_testing();
 void reset_image_cache_for_testing();
 void set_image_cache_max_bytes_for_testing(size_t max_bytes);
 size_t image_cache_size_for_testing();
 size_t image_cache_bytes_for_testing();
 uint64_t image_cache_hit_count_for_testing();
 uint64_t image_cache_miss_count_for_testing();
+std::vector<std::string> image_cache_lru_order_for_testing();
 }
 
 namespace {
+
+constexpr size_t kDefaultTextWidthCacheMaxEntriesForTesting = 512;
 
 #ifndef _WIN32
 class ScopedImageResponseServer {
@@ -4310,6 +4340,22 @@ TEST(RenderPipeline, BackgroundImageURLParsing) {
 // ============================================================================
 // Background-size: contain — image scaled to fit within element
 // ============================================================================
+static std::vector<Rect> collect_draw_image_bounds(const DisplayList& list) {
+    std::vector<Rect> bounds;
+    bounds.reserve(list.size());
+    for (const auto& cmd : list.commands()) {
+        if (cmd.type == PaintCommand::DrawImage && cmd.image) {
+            bounds.push_back(cmd.bounds);
+        }
+    }
+    return bounds;
+}
+
+static bool test_rects_overlap(const Rect& a, const Rect& b) {
+    return a.x < b.x + b.width && a.x + a.width > b.x &&
+           a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
 TEST(PainterTest, BackgroundSizeContain) {
     // Create a layout node with a 20x10 background image inside a 100x100 element
     LayoutNode node;
@@ -4415,6 +4461,138 @@ TEST(PainterTest, BackgroundRepeatTile) {
         if (cmd.type == PaintCommand::DrawImage) image_count++;
     }
     EXPECT_GE(image_count, 9) << "repeat should tile at least 9 times for 30x30 / 10x10";
+}
+
+TEST(PainterTest, BackgroundRepeatTileClipsNegativeAnchors) {
+    LayoutNode node;
+    node.geometry.width = 30;
+    node.geometry.height = 30;
+    node.display = DisplayType::Block;
+
+    auto pixels = std::make_shared<std::vector<uint8_t>>(10 * 10 * 4, 255);
+    node.bg_image_pixels = pixels;
+    node.bg_image_width = 10;
+    node.bg_image_height = 10;
+    node.background_repeat = 0; // repeat
+    node.bg_position_x = -25.0f;
+    node.bg_position_y = -15.0f;
+
+    Painter painter;
+    const auto list = painter.paint(node);
+    const auto image_bounds = collect_draw_image_bounds(list);
+    const Rect clip_bounds {0, 0, 30, 30};
+
+    ASSERT_EQ(image_bounds.size(), 16u);
+    for (const auto& bounds : image_bounds) {
+        EXPECT_TRUE(test_rects_overlap(bounds, clip_bounds))
+            << "repeat should not emit fully clipped tiles";
+    }
+}
+
+TEST(PainterTest, BackgroundRepeatXClipsNegativeAnchors) {
+    LayoutNode node;
+    node.geometry.width = 30;
+    node.geometry.height = 20;
+    node.display = DisplayType::Block;
+
+    auto pixels = std::make_shared<std::vector<uint8_t>>(10 * 10 * 4, 255);
+    node.bg_image_pixels = pixels;
+    node.bg_image_width = 10;
+    node.bg_image_height = 10;
+    node.background_repeat = 1; // repeat-x
+    node.bg_position_x = -25.0f;
+    node.bg_position_y = 5.0f;
+
+    Painter painter;
+    const auto list = painter.paint(node);
+    const auto image_bounds = collect_draw_image_bounds(list);
+    const Rect clip_bounds {0, 0, 30, 20};
+
+    ASSERT_EQ(image_bounds.size(), 4u);
+    for (const auto& bounds : image_bounds) {
+        EXPECT_TRUE(test_rects_overlap(bounds, clip_bounds))
+            << "repeat-x should not emit fully clipped tiles";
+    }
+}
+
+TEST(PainterTest, BackgroundRepeatYClipsNegativeAnchors) {
+    LayoutNode node;
+    node.geometry.width = 20;
+    node.geometry.height = 30;
+    node.display = DisplayType::Block;
+
+    auto pixels = std::make_shared<std::vector<uint8_t>>(10 * 10 * 4, 255);
+    node.bg_image_pixels = pixels;
+    node.bg_image_width = 10;
+    node.bg_image_height = 10;
+    node.background_repeat = 2; // repeat-y
+    node.bg_position_x = 5.0f;
+    node.bg_position_y = -25.0f;
+
+    Painter painter;
+    const auto list = painter.paint(node);
+    const auto image_bounds = collect_draw_image_bounds(list);
+    const Rect clip_bounds {0, 0, 20, 30};
+
+    ASSERT_EQ(image_bounds.size(), 4u);
+    for (const auto& bounds : image_bounds) {
+        EXPECT_TRUE(test_rects_overlap(bounds, clip_bounds))
+            << "repeat-y should not emit fully clipped tiles";
+    }
+}
+
+TEST(PainterTest, BackgroundRepeatSpaceClipsToContentBox) {
+    LayoutNode node;
+    node.geometry.width = 20;
+    node.geometry.height = 20;
+    node.geometry.border = {5, 5, 5, 5};
+    node.geometry.padding = {10, 10, 10, 10};
+    node.display = DisplayType::Block;
+
+    auto pixels = std::make_shared<std::vector<uint8_t>>(9 * 9 * 4, 255);
+    node.bg_image_pixels = pixels;
+    node.bg_image_width = 9;
+    node.bg_image_height = 9;
+    node.background_repeat = 4; // space
+    node.background_clip = 2;   // content-box
+
+    Painter painter;
+    const auto list = painter.paint(node);
+    const auto image_bounds = collect_draw_image_bounds(list);
+    const Rect clip_bounds {15, 15, 20, 20};
+
+    ASSERT_EQ(image_bounds.size(), 4u);
+    for (const auto& bounds : image_bounds) {
+        EXPECT_TRUE(test_rects_overlap(bounds, clip_bounds))
+            << "space should only emit tiles overlapping the content-box clip";
+    }
+}
+
+TEST(PainterTest, BackgroundRepeatRoundClipsToContentBox) {
+    LayoutNode node;
+    node.geometry.width = 20;
+    node.geometry.height = 20;
+    node.geometry.border = {5, 5, 5, 5};
+    node.geometry.padding = {10, 10, 10, 10};
+    node.display = DisplayType::Block;
+
+    auto pixels = std::make_shared<std::vector<uint8_t>>(15 * 15 * 4, 255);
+    node.bg_image_pixels = pixels;
+    node.bg_image_width = 15;
+    node.bg_image_height = 15;
+    node.background_repeat = 5; // round
+    node.background_clip = 2;   // content-box
+
+    Painter painter;
+    const auto list = painter.paint(node);
+    const auto image_bounds = collect_draw_image_bounds(list);
+    const Rect clip_bounds {15, 15, 20, 20};
+
+    ASSERT_EQ(image_bounds.size(), 4u);
+    for (const auto& bounds : image_bounds) {
+        EXPECT_TRUE(test_rects_overlap(bounds, clip_bounds))
+            << "round should only emit tiles overlapping the content-box clip";
+    }
 }
 
 // ============================================================================
@@ -6244,6 +6422,798 @@ static const LayoutNode* find_node_by_id(const LayoutNode& node, const std::stri
         if (const auto* match = find_node_by_id(*child, id)) return match;
     }
     return nullptr;
+}
+
+static std::shared_ptr<ImageData> make_test_image(int width, int height,
+                                                  uint8_t r_bias, uint8_t g_bias, uint8_t b_bias) {
+    auto image = std::make_shared<ImageData>();
+    image->width = width;
+    image->height = height;
+    image->pixels.reserve(static_cast<size_t>(width * height * 4));
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            image->pixels.push_back(static_cast<uint8_t>((r_bias + x * 19 + y * 7) % 256));
+            image->pixels.push_back(static_cast<uint8_t>((g_bias + x * 11 + y * 23) % 256));
+            image->pixels.push_back(static_cast<uint8_t>((b_bias + x * 5 + y * 13) % 256));
+            image->pixels.push_back(255);
+        }
+    }
+    return image;
+}
+
+static Color color_from_pixel_buffer(const std::vector<uint8_t>& pixels, int width, int x, int y) {
+    const size_t index =
+        (static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x)) * 4;
+    return Color { pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3] };
+}
+
+static Rect intersect_test_rects(const Rect& a, const Rect& b) {
+    Rect result {
+        std::max(a.x, b.x),
+        std::max(a.y, b.y),
+        0.0f,
+        0.0f
+    };
+    result.width = std::max(
+        0.0f,
+        std::min(a.x + a.width, b.x + b.width) - result.x
+    );
+    result.height = std::max(
+        0.0f,
+        std::min(a.y + a.height, b.y + b.height) - result.y
+    );
+    return result;
+}
+
+static Rect scale_test_rect(const Rect& rect, float scale) {
+    const auto scale_value = [scale](float value) {
+        return std::round(value * scale);
+    };
+    return Rect {
+        scale_value(rect.x),
+        scale_value(rect.y),
+        scale_value(rect.width),
+        scale_value(rect.height)
+    };
+}
+
+static Rect scale_test_dirty_rect(const Rect& rect, float scale) {
+    const float left = std::floor(rect.x * scale);
+    const float top = std::floor(rect.y * scale);
+    const float right = std::ceil((rect.x + rect.width) * scale);
+    const float bottom = std::ceil((rect.y + rect.height) * scale);
+    return Rect {
+        left,
+        top,
+        std::max(0.0f, right - left),
+        std::max(0.0f, bottom - top)
+    };
+}
+
+static Rect expand_test_rect(const Rect& rect, float amount) {
+    return Rect {
+        rect.x - amount,
+        rect.y - amount,
+        rect.width + amount * 2.0f,
+        rect.height + amount * 2.0f
+    };
+}
+
+static void expect_dirty_effect_region_matches_full_render(
+    const SoftwareRenderer& actual_renderer,
+    const std::vector<uint8_t>& baseline_pixels,
+    const SoftwareRenderer& expected_renderer,
+    const Rect& changed_region,
+    bool& saw_changed_pixel
+) {
+    for (int y = 0; y < actual_renderer.pixels_height(); ++y) {
+        for (int x = 0; x < actual_renderer.pixels_width(); ++x) {
+            const auto actual = actual_renderer.get_pixel(x, y);
+            const auto baseline = color_from_pixel_buffer(
+                baseline_pixels, actual_renderer.pixels_width(), x, y
+            );
+            const auto expected = expected_renderer.get_pixel(x, y);
+
+            if (changed_region.contains(static_cast<float>(x), static_cast<float>(y))) {
+                EXPECT_EQ(actual.to_argb(), expected.to_argb()) << "at (" << x << "," << y << ")";
+                if (actual.to_argb() != baseline.to_argb()) {
+                    saw_changed_pixel = true;
+                }
+            } else {
+                EXPECT_EQ(actual.to_argb(), baseline.to_argb()) << "at (" << x << "," << y << ")";
+            }
+        }
+    }
+}
+
+static void run_dirty_text_clip_regression(float dpr) {
+    SCOPED_TRACE(::testing::Message() << "dpr=" << dpr);
+
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    const Rect clip_rect {11.0f, 5.0f, 12.0f, 12.0f};
+    const Rect dirty_rect {8.0f, 6.0f, 9.0f, 10.0f};
+    const Rect changed_region = intersect_test_rects(
+        scale_test_rect(clip_rect, dpr),
+        scale_test_dirty_rect(dirty_rect, dpr)
+    );
+
+    DisplayList base_list;
+    base_list.draw_text("MMMMMMMM", 2.0f, 2.0f, 16.0f, {20, 20, 20, 255});
+
+    DisplayList update_list;
+    update_list.push_clip(clip_rect);
+    update_list.draw_text("MMMMMMMM", 2.0f, 2.0f, 16.0f, {220, 40, 40, 255});
+    update_list.pop_clip();
+
+    SoftwareRenderer renderer(36, 24, dpr);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    renderer.render(update_list, dirty_rect);
+
+    ASSERT_TRUE(text_run_raster_last_request_used_clipped_raster_for_testing());
+    EXPECT_GT(text_run_raster_last_full_width_for_testing(), text_run_raster_last_clipped_width_for_testing());
+    EXPECT_GT(text_run_raster_last_full_height_for_testing(), text_run_raster_last_clipped_height_for_testing());
+    EXPECT_EQ(text_run_raster_last_clipped_x_for_testing(),
+              static_cast<int>(std::round(changed_region.x - std::round(2.0f * dpr))));
+    EXPECT_EQ(text_run_raster_last_clipped_y_for_testing(),
+              static_cast<int>(std::round(changed_region.y - std::round(2.0f * dpr))));
+    EXPECT_EQ(text_run_raster_last_clipped_width_for_testing(),
+              static_cast<int>(std::round(changed_region.width)));
+    EXPECT_EQ(text_run_raster_last_clipped_height_for_testing(),
+              static_cast<int>(std::round(changed_region.height)));
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 0u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+
+    SoftwareRenderer repeated_renderer(36, 24, dpr);
+    repeated_renderer.clear({255, 255, 255, 255});
+    repeated_renderer.render(base_list);
+    repeated_renderer.render(update_list, dirty_rect);
+
+    EXPECT_TRUE(text_run_raster_last_request_used_clipped_raster_for_testing());
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "MMMMMMMM|scale=1.000000",
+                  "MMMMMMMM|scale=1.000000|clip=" +
+                      std::to_string(static_cast<int>(std::round(changed_region.x - std::round(2.0f * dpr)))) +
+                      "," +
+                      std::to_string(static_cast<int>(std::round(changed_region.y - std::round(2.0f * dpr)))) +
+                      "," +
+                      std::to_string(static_cast<int>(std::round(changed_region.width))) +
+                      "x" +
+                      std::to_string(static_cast<int>(std::round(changed_region.height))),
+              }));
+
+    SoftwareRenderer expected_renderer(36, 24, dpr);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+
+    bool saw_repeat_change = false;
+    expect_dirty_effect_region_matches_full_render(
+        repeated_renderer, baseline_pixels, expected_renderer, changed_region, saw_repeat_change
+    );
+    EXPECT_TRUE(saw_repeat_change);
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+static void run_dirty_filter_bounds_regression(bool backdrop, float dpr, const Rect& dirty_rect) {
+    SCOPED_TRACE(::testing::Message()
+                 << "backdrop=" << backdrop << " dpr=" << dpr);
+
+    const Rect effect_bounds {3.0f, 2.0f, 8.0f, 10.0f};
+    const Rect scaled_effect_bounds = scale_test_rect(effect_bounds, dpr);
+    const Rect scaled_dirty_rect = scale_test_dirty_rect(dirty_rect, dpr);
+    const Rect changed_region = intersect_test_rects(
+        scaled_effect_bounds,
+        scaled_dirty_rect
+    );
+
+    DisplayList base_list;
+    base_list.fill_rect({0, 0, 7, 14}, {240, 40, 40, 255});
+    base_list.fill_rect({7, 0, 7, 14}, {40, 40, 240, 255});
+
+    DisplayList update_list;
+    if (backdrop) {
+        update_list.apply_backdrop_filter(effect_bounds, 9, 3.0f);
+    } else {
+        update_list.apply_filter(effect_bounds, 9, 3.0f);
+    }
+
+    SoftwareRenderer renderer(14, 14, dpr);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(14, 14, dpr);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    EXPECT_EQ(renderer.filter_last_write_x_for_testing(),
+              static_cast<int>(std::round(changed_region.x)));
+    EXPECT_EQ(renderer.filter_last_write_y_for_testing(),
+              static_cast<int>(std::round(changed_region.y)));
+    EXPECT_EQ(renderer.filter_last_write_width_for_testing(),
+              static_cast<int>(std::round(changed_region.width)));
+    EXPECT_EQ(renderer.filter_last_write_height_for_testing(),
+              static_cast<int>(std::round(changed_region.height)));
+    const int scaled_blur_radius = static_cast<int>(std::round(3.0f * dpr));
+    const int expected_temp_y0 = std::max(
+        static_cast<int>(std::round(scaled_effect_bounds.y)),
+        static_cast<int>(std::round(changed_region.y)) - scaled_blur_radius
+    );
+    const int expected_temp_y1 = std::min(
+        static_cast<int>(std::round(scaled_effect_bounds.y + scaled_effect_bounds.height)),
+        static_cast<int>(std::round(changed_region.y + changed_region.height)) + scaled_blur_radius
+    );
+    EXPECT_EQ(renderer.filter_blur_scratch_last_requested_width_for_testing(),
+              static_cast<int>(std::round(changed_region.width)));
+    EXPECT_EQ(renderer.filter_blur_scratch_last_requested_height_for_testing(),
+              expected_temp_y1 - expected_temp_y0);
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+}
+
+static void run_dirty_clip_path_interaction_regression(bool use_text, float dpr, const Rect& dirty_rect) {
+    SCOPED_TRACE(::testing::Message()
+                 << "use_text=" << use_text << " dpr=" << dpr);
+
+    const Rect clip_bounds {4.0f, 3.0f, 12.0f, 10.0f};
+    const Rect changed_region = intersect_test_rects(
+        scale_test_rect(clip_bounds, dpr),
+        scale_test_dirty_rect(dirty_rect, dpr)
+    );
+
+    DisplayList base_list;
+    DisplayList update_list;
+    if (use_text) {
+        base_list.draw_text("MMMMMM", 4.0f, 3.0f, 12.0f, {30, 30, 30, 255});
+        update_list.draw_text("MMMMMM", 4.0f, 3.0f, 12.0f, {220, 40, 40, 255});
+    } else {
+        base_list.draw_image(clip_bounds, make_test_image(12, 10, 20, 40, 60));
+        update_list.draw_image(clip_bounds, make_test_image(12, 10, 180, 90, 30));
+    }
+    update_list.apply_clip_path(clip_bounds, 1, {40.0f, 50.0f, 50.0f});
+
+    SoftwareRenderer renderer(24, 18, dpr);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(24, 18, dpr);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    EXPECT_EQ(renderer.clip_path_last_mask_x_for_testing(),
+              static_cast<int>(std::round(changed_region.x)));
+    EXPECT_EQ(renderer.clip_path_last_mask_y_for_testing(),
+              static_cast<int>(std::round(changed_region.y)));
+    EXPECT_EQ(renderer.clip_path_last_mask_width_for_testing(),
+              static_cast<int>(std::round(changed_region.width)));
+    EXPECT_EQ(renderer.clip_path_last_mask_height_for_testing(),
+              static_cast<int>(std::round(changed_region.height)));
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+}
+
+static void run_dirty_blend_regression(float dpr, const Rect& dirty_rect) {
+    SCOPED_TRACE(::testing::Message() << "dpr=" << dpr);
+
+    const Rect blend_bounds {2.0f, 2.0f, 10.0f, 10.0f};
+    const Rect changed_region = intersect_test_rects(
+        scale_test_rect(blend_bounds, dpr),
+        scale_test_dirty_rect(dirty_rect, dpr)
+    );
+
+    DisplayList base_list;
+    base_list.fill_rect({0, 0, 14, 14}, {120, 180, 80, 255});
+
+    DisplayList update_list;
+    update_list.save_backdrop(blend_bounds);
+    update_list.fill_rect(blend_bounds, {200, 60, 220, 255});
+    update_list.apply_blend_mode(blend_bounds, 1);
+
+    SoftwareRenderer renderer(14, 14, dpr);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(14, 14, dpr);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    EXPECT_EQ(renderer.blend_last_backdrop_x_for_testing(),
+              static_cast<int>(std::round(changed_region.x)));
+    EXPECT_EQ(renderer.blend_last_backdrop_y_for_testing(),
+              static_cast<int>(std::round(changed_region.y)));
+    EXPECT_EQ(renderer.blend_last_backdrop_width_for_testing(),
+              static_cast<int>(std::round(changed_region.width)));
+    EXPECT_EQ(renderer.blend_last_backdrop_height_for_testing(),
+              static_cast<int>(std::round(changed_region.height)));
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+}
+
+static void run_dirty_drop_shadow_regression(float dpr, const Rect& dirty_rect) {
+    SCOPED_TRACE(::testing::Message() << "dpr=" << dpr);
+
+    const Rect element_bounds {4.0f, 4.0f, 4.0f, 4.0f};
+    const Rect scaled_element_bounds = scale_test_rect(element_bounds, dpr);
+    const float scaled_blur_radius = std::round(2.0f * dpr);
+    const float scaled_offset_x = std::round(2.0f * dpr);
+    const float scaled_offset_y = std::round(1.0f * dpr);
+    const float shadow_expand = std::ceil(scaled_blur_radius) + 2.0f;
+    const Rect full_shadow_bounds {
+        scaled_element_bounds.x + scaled_offset_x - shadow_expand,
+        scaled_element_bounds.y + scaled_offset_y - shadow_expand,
+        scaled_element_bounds.width + shadow_expand * 2.0f,
+        scaled_element_bounds.height + shadow_expand * 2.0f
+    };
+    const Rect changed_region = intersect_test_rects(
+        full_shadow_bounds,
+        scale_test_dirty_rect(dirty_rect, dpr)
+    );
+
+    DisplayList base_list;
+    base_list.fill_rect(element_bounds, {40, 120, 220, 255});
+
+    DisplayList update_list;
+    update_list.apply_drop_shadow(element_bounds, 2.0f, 2.0f, 1.0f, 0xCC000000);
+
+    SoftwareRenderer renderer(16, 16, dpr);
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(16, 16, dpr);
+    expected_renderer.clear({0, 0, 0, 0});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    const Rect work_bounds = intersect_test_rects(
+        full_shadow_bounds,
+        Rect{
+            changed_region.x - std::ceil(scaled_blur_radius),
+            changed_region.y - std::ceil(scaled_blur_radius),
+            changed_region.width + std::ceil(scaled_blur_radius) * 2.0f,
+            changed_region.height + std::ceil(scaled_blur_radius) * 2.0f
+        }
+    );
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_last_requested_width_for_testing(),
+              static_cast<int>(std::round(work_bounds.width)));
+    EXPECT_EQ(renderer.drop_shadow_alpha_scratch_last_requested_height_for_testing(),
+              static_cast<int>(std::round(work_bounds.height)));
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_last_requested_width_for_testing(),
+              static_cast<int>(std::round(changed_region.width)));
+    EXPECT_EQ(renderer.drop_shadow_blur_scratch_last_requested_height_for_testing(),
+              static_cast<int>(std::round(work_bounds.height)));
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+}
+
+static void run_dirty_shadow_clip_regression(bool inset, float dpr, const Rect& dirty_rect) {
+    SCOPED_TRACE(::testing::Message()
+                 << "inset=" << inset << " dpr=" << dpr);
+
+    const Rect element_bounds {5.0f, 5.0f, 6.0f, 6.0f};
+    const Rect effect_bounds = inset ? element_bounds : Rect{2.0f, 2.0f, 12.0f, 12.0f};
+    const Rect changed_region = intersect_test_rects(
+        scale_test_rect(effect_bounds, dpr),
+        scale_test_dirty_rect(dirty_rect, dpr)
+    );
+
+    DisplayList base_list;
+    base_list.fill_rect(element_bounds, {40, 120, 220, 255});
+
+    DisplayList update_list;
+    if (inset) {
+        update_list.fill_inset_shadow(element_bounds, {0, 0, 0, 180},
+                                      2.0f, 0.0f, 0.0f, 1.0f);
+    } else {
+        update_list.fill_box_shadow({2.0f, 2.0f, 12.0f, 12.0f}, element_bounds,
+                                    {0, 0, 0, 180}, 2.0f, 0.0f);
+    }
+
+    SoftwareRenderer renderer(18, 18, dpr);
+    renderer.clear({0, 0, 0, 0});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(18, 18, dpr);
+    expected_renderer.clear({0, 0, 0, 0});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+}
+
+static void run_dirty_text_shadow_regression(float dpr, const Rect& dirty_rect) {
+    SCOPED_TRACE(::testing::Message() << "dpr=" << dpr);
+
+    const Rect text_bounds = scale_test_rect({3.0f, 4.0f, 6.0f * (11.0f * 0.6f), 11.0f}, dpr);
+    const float scaled_blur = std::round(3.0f * dpr);
+    const float scaled_sigma = scaled_blur / 2.0f;
+    const float capture_radius = (scaled_sigma > 0.01f)
+        ? static_cast<float>(std::clamp(static_cast<int>(std::ceil(scaled_sigma * 3.0f)), 1, 128))
+        : 0.0f;
+    const Rect capture_bounds = intersect_test_rects(
+        text_bounds,
+        expand_test_rect(scale_test_dirty_rect(dirty_rect, dpr), capture_radius)
+    );
+    const Rect changed_region = scale_test_dirty_rect(dirty_rect, dpr);
+
+    DisplayList base_list;
+
+    DisplayList update_list;
+    update_list.draw_text("shadow", 3.0f, 4.0f, 11.0f, {220, 40, 40, 255},
+                          "", 400, false, 0.0f, 0.0f, 4, 3.0f);
+
+    SoftwareRenderer renderer(18, 18, dpr);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(18, 18, dpr);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    EXPECT_EQ(renderer.text_shadow_layer_last_requested_x_for_testing(),
+              static_cast<int>(std::round(capture_bounds.x)));
+    EXPECT_EQ(renderer.text_shadow_layer_last_requested_y_for_testing(),
+              static_cast<int>(std::round(capture_bounds.y)));
+    EXPECT_EQ(renderer.text_shadow_layer_last_requested_width_for_testing(),
+              static_cast<int>(std::round(capture_bounds.width)));
+    EXPECT_EQ(renderer.text_shadow_layer_last_requested_height_for_testing(),
+              static_cast<int>(std::round(capture_bounds.height)));
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererImageDamageLeavesOutOfRectPixelsUntouched) {
+    const Rect image_bounds {2, 2, 8, 8};
+    const Rect dirty_rect {4, 4, 3, 2};
+
+    DisplayList base_list;
+    base_list.draw_image(image_bounds, make_test_image(8, 8, 10, 40, 70));
+
+    DisplayList update_list;
+    update_list.draw_image(image_bounds, make_test_image(8, 8, 180, 120, 30));
+
+    SoftwareRenderer renderer(14, 14);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(14, 14);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    bool saw_damaged_pixel_change = false;
+    for (int y = 0; y < renderer.pixels_height(); ++y) {
+        for (int x = 0; x < renderer.pixels_width(); ++x) {
+            const auto actual = renderer.get_pixel(x, y);
+            const auto baseline = Color {
+                baseline_pixels[(static_cast<size_t>(y) * renderer.pixels_width() + static_cast<size_t>(x)) * 4],
+                baseline_pixels[(static_cast<size_t>(y) * renderer.pixels_width() + static_cast<size_t>(x)) * 4 + 1],
+                baseline_pixels[(static_cast<size_t>(y) * renderer.pixels_width() + static_cast<size_t>(x)) * 4 + 2],
+                baseline_pixels[(static_cast<size_t>(y) * renderer.pixels_width() + static_cast<size_t>(x)) * 4 + 3]
+            };
+            const auto expected_full = expected_renderer.get_pixel(x, y);
+
+            if (dirty_rect.contains(static_cast<float>(x), static_cast<float>(y))) {
+                EXPECT_EQ(actual.to_argb(), expected_full.to_argb()) << "at (" << x << "," << y << ")";
+                if (actual.to_argb() != baseline.to_argb()) {
+                    saw_damaged_pixel_change = true;
+                }
+            } else {
+                EXPECT_EQ(actual.to_argb(), baseline.to_argb()) << "at (" << x << "," << y << ")";
+            }
+        }
+    }
+
+    EXPECT_TRUE(saw_damaged_pixel_change);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererImageDamageRespectsClipIntersection) {
+    const Rect image_bounds {1, 1, 10, 10};
+    const Rect dirty_rect {3, 2, 6, 5};
+    const Rect clip_rect {5, 4, 3, 4};
+    const Rect damaged_clip_rect {
+        std::max(dirty_rect.x, clip_rect.x),
+        std::max(dirty_rect.y, clip_rect.y),
+        std::max(0.0f, std::min(dirty_rect.x + dirty_rect.width, clip_rect.x + clip_rect.width) -
+                       std::max(dirty_rect.x, clip_rect.x)),
+        std::max(0.0f, std::min(dirty_rect.y + dirty_rect.height, clip_rect.y + clip_rect.height) -
+                       std::max(dirty_rect.y, clip_rect.y))
+    };
+
+    DisplayList base_list;
+    base_list.draw_image(image_bounds, make_test_image(10, 10, 25, 60, 90));
+
+    DisplayList update_list;
+    update_list.push_clip(clip_rect);
+    update_list.draw_image(image_bounds, make_test_image(10, 10, 170, 20, 140));
+    update_list.pop_clip();
+
+    SoftwareRenderer renderer(16, 16);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(16, 16);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    bool saw_intersection_change = false;
+    for (int y = 0; y < renderer.pixels_height(); ++y) {
+        for (int x = 0; x < renderer.pixels_width(); ++x) {
+            const auto actual = renderer.get_pixel(x, y);
+            const auto baseline = Color {
+                baseline_pixels[(static_cast<size_t>(y) * renderer.pixels_width() + static_cast<size_t>(x)) * 4],
+                baseline_pixels[(static_cast<size_t>(y) * renderer.pixels_width() + static_cast<size_t>(x)) * 4 + 1],
+                baseline_pixels[(static_cast<size_t>(y) * renderer.pixels_width() + static_cast<size_t>(x)) * 4 + 2],
+                baseline_pixels[(static_cast<size_t>(y) * renderer.pixels_width() + static_cast<size_t>(x)) * 4 + 3]
+            };
+            const auto expected_full = expected_renderer.get_pixel(x, y);
+
+            if (damaged_clip_rect.contains(static_cast<float>(x), static_cast<float>(y))) {
+                EXPECT_EQ(actual.to_argb(), expected_full.to_argb()) << "at (" << x << "," << y << ")";
+                if (actual.to_argb() != baseline.to_argb()) {
+                    saw_intersection_change = true;
+                }
+            } else {
+                EXPECT_EQ(actual.to_argb(), baseline.to_argb()) << "at (" << x << "," << y << ")";
+            }
+        }
+    }
+
+    EXPECT_TRUE(saw_intersection_change);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererTextDamageRespectsClipIntersectionAt1xV2097) {
+    run_dirty_text_clip_regression(1.0f);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererTextDamageRespectsClipIntersectionAt2xV2097) {
+    run_dirty_text_clip_regression(2.0f);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererFilterOnlyMutatesDirtyIntersection) {
+    const Rect filter_bounds {2, 2, 10, 10};
+    const Rect dirty_rect {5, 4, 3, 4};
+    const Rect changed_region = intersect_test_rects(filter_bounds, dirty_rect);
+
+    DisplayList base_list;
+    base_list.fill_rect({2, 2, 5, 10}, {255, 20, 20, 255});
+    base_list.fill_rect({7, 2, 5, 10}, {20, 20, 255, 255});
+
+    DisplayList update_list;
+    update_list.apply_filter(filter_bounds, 9, 3.0f);
+
+    SoftwareRenderer renderer(16, 16);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(16, 16);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    EXPECT_EQ(renderer.filter_blur_scratch_last_requested_width_for_testing(), 3);
+    EXPECT_EQ(renderer.filter_blur_scratch_last_requested_height_for_testing(), 9);
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererBackdropFilterOnlyMutatesDirtyIntersection) {
+    const Rect backdrop_bounds {3, 2, 8, 10};
+    const Rect dirty_rect {6, 5, 3, 3};
+    const Rect changed_region = intersect_test_rects(backdrop_bounds, dirty_rect);
+
+    DisplayList base_list;
+    base_list.fill_rect({0, 0, 7, 14}, {240, 40, 40, 255});
+    base_list.fill_rect({7, 0, 7, 14}, {40, 40, 240, 255});
+
+    DisplayList update_list;
+    update_list.apply_backdrop_filter(backdrop_bounds, 9, 3.0f);
+
+    SoftwareRenderer renderer(14, 14);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(14, 14);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    EXPECT_EQ(renderer.filter_blur_scratch_last_requested_width_for_testing(), 3);
+    EXPECT_EQ(renderer.filter_blur_scratch_last_requested_height_for_testing(), 9);
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererClipPathOnlyMutatesDirtyIntersection) {
+    const Rect clip_bounds {2, 2, 10, 10};
+    const Rect dirty_rect {4, 5, 4, 3};
+    const Rect changed_region = intersect_test_rects(clip_bounds, dirty_rect);
+
+    DisplayList base_list;
+    base_list.fill_rect({2, 2, 10, 10}, {20, 60, 220, 255});
+
+    DisplayList update_list;
+    update_list.fill_rect(clip_bounds, {220, 40, 40, 255});
+    update_list.apply_clip_path(clip_bounds, 1, {40.0f, 50.0f, 50.0f});
+
+    SoftwareRenderer renderer(16, 16);
+    renderer.clear({255, 255, 255, 255});
+    renderer.render(base_list);
+    const auto baseline_pixels = renderer.pixels();
+
+    SoftwareRenderer expected_renderer(16, 16);
+    expected_renderer.clear({255, 255, 255, 255});
+    expected_renderer.render(base_list);
+    expected_renderer.render(update_list);
+
+    renderer.render(update_list, dirty_rect);
+
+    bool saw_changed_pixel = false;
+    expect_dirty_effect_region_matches_full_render(
+        renderer, baseline_pixels, expected_renderer, changed_region, saw_changed_pixel
+    );
+    EXPECT_TRUE(saw_changed_pixel);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererBlendOnlyMutatesDirtyIntersection) {
+    const Rect dirty_rect {5, 4, 3, 4};
+    run_dirty_blend_regression(1.0f, dirty_rect);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererDropShadowOnlyMutatesDirtyIntersection) {
+    const Rect dirty_rect {8, 7, 3, 3};
+    run_dirty_drop_shadow_regression(1.0f, dirty_rect);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererFilterTracksDirtyWriteBoundsAt2xV2101) {
+    run_dirty_filter_bounds_regression(false, 2.0f, {6.0f, 5.0f, 3.0f, 3.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererBackdropFilterTracksDirtyWriteBoundsAt2xV2101) {
+    run_dirty_filter_bounds_regression(true, 2.0f, {6.0f, 5.0f, 3.0f, 3.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererClipPathOnTextTracksDirtyMaskAt2xV2101) {
+    run_dirty_clip_path_interaction_regression(true, 2.0f, {7.0f, 5.0f, 4.0f, 3.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererClipPathOnImageTracksDirtyMaskAt2xV2101) {
+    run_dirty_clip_path_interaction_regression(false, 2.0f, {7.0f, 5.0f, 4.0f, 3.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererBoxShadowOnlyMutatesDirtyIntersectionAt2xV2102) {
+    run_dirty_shadow_clip_regression(false, 2.0f, {9.0f, 6.0f, 3.0f, 4.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererInsetShadowOnlyMutatesDirtyIntersectionAt2xV2102) {
+    run_dirty_shadow_clip_regression(true, 2.0f, {5.0f, 5.0f, 3.0f, 3.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererFilterTracksFractionalDirtyWriteBoundsAt15xV2103) {
+    const Rect dirty_rect {5.25f, 4.25f, 2.0f, 2.0f};
+    run_dirty_filter_bounds_regression(false, 1.5f, dirty_rect);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererBackdropFilterTracksFractionalDirtyWriteBoundsAt15xV2103) {
+    const Rect dirty_rect {5.25f, 4.25f, 2.0f, 2.0f};
+    run_dirty_filter_bounds_regression(true, 1.5f, dirty_rect);
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererBlendOnlyMutatesFractionalDirtyIntersectionAt15xV2103) {
+    run_dirty_blend_regression(1.5f, {4.2f, 3.7f, 2.1f, 2.2f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererTextShadowTracksDirtyCaptureBoundsAt2xV2104) {
+    run_dirty_text_shadow_regression(2.0f, {5.0f, 5.0f, 4.0f, 3.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererTextShadowTracksFractionalDirtyCaptureBoundsAt15xV2104) {
+    run_dirty_text_shadow_regression(1.5f, {5.25f, 4.5f, 2.25f, 2.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererDropShadowOnlyMutatesFractionalDirtyIntersectionAt15xV2103) {
+    run_dirty_drop_shadow_regression(1.5f, {6.25f, 5.4f, 2.0f, 2.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererClipPathOnTextTracksFractionalDirtyMaskAt15xV2103) {
+    run_dirty_clip_path_interaction_regression(true, 1.5f, {7.25f, 5.1f, 2.2f, 2.3f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererClipPathOnImageTracksFractionalDirtyMaskAt15xV2103) {
+    run_dirty_clip_path_interaction_regression(false, 1.5f, {7.25f, 5.1f, 2.2f, 2.3f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererBoxShadowOnlyMutatesFractionalDirtyIntersectionAt15xV2103) {
+    run_dirty_shadow_clip_regression(false, 1.5f, {6.25f, 5.4f, 2.0f, 2.0f});
+}
+
+TEST_F(PaintTest, DirtyRectSoftwareRendererInsetShadowOnlyMutatesFractionalDirtyIntersectionAt15xV2103) {
+    run_dirty_shadow_clip_regression(true, 1.5f, {5.4f, 5.2f, 1.8f, 1.9f});
 }
 
 // ============================================================================
@@ -40058,6 +41028,93 @@ TEST_F(PaintTest, TextWidthCacheClearsOnRegisteredFontReset) {
     TextRenderer::clear_registered_fonts();
 }
 
+TEST_F(PaintTest, TextWidthCacheTouchMovesHitToMostRecent) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+    set_text_width_cache_max_entries_for_testing(3);
+
+    TextRenderer renderer;
+    EXPECT_GT(renderer.measure_text_width("first", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+    EXPECT_GT(renderer.measure_text_width("second", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+    EXPECT_GT(renderer.measure_text_width("third", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+    EXPECT_GT(renderer.measure_text_width("first", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+
+    const auto order = text_width_cache_lru_order_for_testing();
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_TRUE(order[0].rfind("second|family=helvetica", 0) == 0);
+    EXPECT_TRUE(order[1].rfind("third|family=helvetica", 0) == 0);
+    EXPECT_TRUE(order[2].rfind("first|family=helvetica", 0) == 0);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 3u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 1u);
+
+    set_text_width_cache_max_entries_for_testing(kDefaultTextWidthCacheMaxEntriesForTesting);
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextWidthCacheEvictsLeastRecentlyUsedEntryAfterTouch) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+    set_text_width_cache_max_entries_for_testing(3);
+
+    TextRenderer renderer;
+    EXPECT_GT(renderer.measure_text_width("first", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+    EXPECT_GT(renderer.measure_text_width("second", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+    EXPECT_GT(renderer.measure_text_width("third", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+    EXPECT_GT(renderer.measure_text_width("first", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+    EXPECT_GT(renderer.measure_text_width("fourth", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+
+    auto order = text_width_cache_lru_order_for_testing();
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_TRUE(order[0].rfind("third|family=helvetica", 0) == 0);
+    EXPECT_TRUE(order[1].rfind("first|family=helvetica", 0) == 0);
+    EXPECT_TRUE(order[2].rfind("fourth|family=helvetica", 0) == 0);
+    EXPECT_EQ(text_width_cache_size_for_testing(), 3u);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 4u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 1u);
+
+    EXPECT_GT(renderer.measure_text_width("second", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+    order = text_width_cache_lru_order_for_testing();
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_TRUE(order[0].rfind("first|family=helvetica", 0) == 0);
+    EXPECT_TRUE(order[1].rfind("fourth|family=helvetica", 0) == 0);
+    EXPECT_TRUE(order[2].rfind("second|family=helvetica", 0) == 0);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 5u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 1u);
+
+    set_text_width_cache_max_entries_for_testing(kDefaultTextWidthCacheMaxEntriesForTesting);
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextWidthCacheKeepsRepeatedMeasurementsHotAcrossChurn) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+    set_text_width_cache_max_entries_for_testing(3);
+
+    TextRenderer renderer;
+    float hot_first = renderer.measure_text_width("hot", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    EXPECT_GT(hot_first, 0.0f);
+    EXPECT_GT(renderer.measure_text_width("cold-a", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+    EXPECT_GT(renderer.measure_text_width("cold-b", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+
+    float hot_second = renderer.measure_text_width("hot", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    EXPECT_FLOAT_EQ(hot_first, hot_second);
+    EXPECT_GT(renderer.measure_text_width("cold-c", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f), 0.0f);
+
+    const uint64_t hits_before_final = text_width_cache_hit_count_for_testing();
+    const uint64_t misses_before_final = text_width_cache_miss_count_for_testing();
+    float hot_third = renderer.measure_text_width("hot", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    EXPECT_FLOAT_EQ(hot_first, hot_third);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), misses_before_final);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), hits_before_final + 1);
+
+    const auto order = text_width_cache_lru_order_for_testing();
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_TRUE(order[2].rfind("hot|family=helvetica", 0) == 0);
+
+    set_text_width_cache_max_entries_for_testing(kDefaultTextWidthCacheMaxEntriesForTesting);
+    TextRenderer::clear_registered_fonts();
+}
+
 TEST_F(PaintTest, PaintTextOverflowCachingPreservesRenderedMetrics) {
     TextRenderer::clear_registered_fonts();
     reset_text_width_cache_stats_for_testing();
@@ -40167,6 +41224,786 @@ TEST_F(PaintTest, TextRendererCacheInvalidatesAfterFontRegistryChangeV2068) {
     EXPECT_EQ(text_line_layout_creation_count_for_testing(), 2u);
 
     reset_text_line_layout_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextLineLayoutCacheKeepsWrappedWidthsHotAcrossChurnV2092) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_line_layout_cache_for_testing();
+
+    const std::string hot_text =
+        "Repeated wrap width requests should keep the same CoreText breaks hot";
+    auto hot_widths = text_line_layout_wrapped_widths_for_testing(
+        hot_text, 120.0f, 16.0f, "Helvetica", 400, false
+    );
+
+    ASSERT_GT(hot_widths.size(), 1u);
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 0u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 1u);
+
+    auto hot_widths_reused = text_line_layout_wrapped_widths_for_testing(
+        hot_text, 120.0f, 16.0f, "Helvetica", 400, false
+    );
+
+    ASSERT_EQ(hot_widths_reused.size(), hot_widths.size());
+    for (size_t i = 0; i < hot_widths.size(); ++i) {
+        EXPECT_FLOAT_EQ(hot_widths_reused[i], hot_widths[i]);
+    }
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 1u);
+
+    for (int i = 0; i < 6; ++i) {
+        auto cold_widths = text_line_layout_wrapped_widths_for_testing(
+            "cold wrap request " + std::to_string(i),
+            96.0f + static_cast<float>(i) * 4.0f,
+            15.0f,
+            "Helvetica",
+            400,
+            false
+        );
+        EXPECT_FALSE(cold_widths.empty());
+    }
+
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 7u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 7u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 7u);
+
+    const uint64_t hits_before_hot_reuse = text_line_layout_cache_hit_count_for_testing();
+    const uint64_t misses_before_hot_reuse = text_line_layout_cache_miss_count_for_testing();
+    auto hot_widths_after_churn = text_line_layout_wrapped_widths_for_testing(
+        hot_text, 120.0f, 16.0f, "Helvetica", 400, false
+    );
+
+    ASSERT_EQ(hot_widths_after_churn.size(), hot_widths.size());
+    for (size_t i = 0; i < hot_widths.size(); ++i) {
+        EXPECT_FLOAT_EQ(hot_widths_after_churn[i], hot_widths[i]);
+    }
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), misses_before_hot_reuse);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), hits_before_hot_reuse + 1u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 7u);
+
+    reset_text_line_layout_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextLineLayoutCacheSeparatesWrapWidthAndFontInputsV2092) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_line_layout_cache_for_testing();
+
+    const std::string text =
+        "Changing wrap width or font inputs should produce distinct cached layouts";
+    auto narrow_widths = text_line_layout_wrapped_widths_for_testing(
+        text, 105.0f, 16.0f, "Helvetica", 400, false
+    );
+
+    ASSERT_GT(narrow_widths.size(), 1u);
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 0u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 1u);
+
+    auto wider_widths = text_line_layout_wrapped_widths_for_testing(
+        text, 170.0f, 16.0f, "Helvetica", 400, false
+    );
+
+    ASSERT_FALSE(wider_widths.empty());
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 0u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 2u);
+
+    auto bold_widths = text_line_layout_wrapped_widths_for_testing(
+        text, 105.0f, 19.0f, "Helvetica", 700, false
+    );
+
+    ASSERT_FALSE(bold_widths.empty());
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 3u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 3u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 0u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 3u);
+
+    const uint64_t hits_before_narrow_reuse = text_line_layout_cache_hit_count_for_testing();
+    const uint64_t misses_before_narrow_reuse = text_line_layout_cache_miss_count_for_testing();
+    auto narrow_widths_reused = text_line_layout_wrapped_widths_for_testing(
+        text, 105.0f, 16.0f, "Helvetica", 400, false
+    );
+
+    ASSERT_EQ(narrow_widths_reused.size(), narrow_widths.size());
+    for (size_t i = 0; i < narrow_widths.size(); ++i) {
+        EXPECT_FLOAT_EQ(narrow_widths_reused[i], narrow_widths[i]);
+    }
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), misses_before_narrow_reuse);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), hits_before_narrow_reuse + 1u);
+    EXPECT_EQ(text_line_layout_creation_count_for_testing(), 3u);
+
+    reset_text_line_layout_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextLineLayoutCacheTouchesWrappedEntryBeforeColdChurnV2099) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_line_layout_cache_for_testing();
+    set_text_line_layout_cache_max_entries_for_testing(3);
+
+    const float wrap_width = 120.0f;
+    auto hot_widths = text_line_layout_wrapped_widths_for_testing(
+        "hot wrapped text",
+        wrap_width,
+        16.0f,
+        "Helvetica",
+        400,
+        false
+    );
+    auto cold_zero_widths = text_line_layout_wrapped_widths_for_testing(
+        "cold wrapped text 0",
+        wrap_width,
+        16.0f,
+        "Helvetica",
+        400,
+        false
+    );
+    auto cold_one_widths = text_line_layout_wrapped_widths_for_testing(
+        "cold wrapped text 1",
+        wrap_width,
+        16.0f,
+        "Helvetica",
+        400,
+        false
+    );
+
+    ASSERT_FALSE(hot_widths.empty());
+    ASSERT_FALSE(cold_zero_widths.empty());
+    ASSERT_FALSE(cold_one_widths.empty());
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 3u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), 3u);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), 0u);
+
+    const auto hits_before_touch = text_line_layout_cache_hit_count_for_testing();
+    const auto misses_before_touch = text_line_layout_cache_miss_count_for_testing();
+    auto hot_widths_reused = text_line_layout_wrapped_widths_for_testing(
+        "hot wrapped text",
+        wrap_width,
+        16.0f,
+        "Helvetica",
+        400,
+        false
+    );
+
+    EXPECT_EQ(hot_widths_reused, hot_widths);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), misses_before_touch);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), hits_before_touch + 1u);
+
+    const auto order = text_line_layout_cache_lru_order_for_testing();
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_TRUE(order[0].rfind("cold wrapped text 0|wrap=", 0) == 0);
+    EXPECT_TRUE(order[1].rfind("cold wrapped text 1|wrap=", 0) == 0);
+    EXPECT_TRUE(order[2].rfind("hot wrapped text|wrap=", 0) == 0);
+
+    reset_text_line_layout_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextLineLayoutCacheEvictsLeastRecentlyUsedWrappedEntryV2099) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_line_layout_cache_for_testing();
+    set_text_line_layout_cache_max_entries_for_testing(3);
+
+    const float wrap_width = 120.0f;
+    auto hot_widths = text_line_layout_wrapped_widths_for_testing(
+        "hot wrapped text",
+        wrap_width,
+        16.0f,
+        "Helvetica",
+        400,
+        false
+    );
+    EXPECT_FALSE(hot_widths.empty());
+    EXPECT_FALSE(text_line_layout_wrapped_widths_for_testing(
+        "cold wrapped text 0", wrap_width, 16.0f, "Helvetica", 400, false
+    ).empty());
+    EXPECT_FALSE(text_line_layout_wrapped_widths_for_testing(
+        "cold wrapped text 1", wrap_width, 16.0f, "Helvetica", 400, false
+    ).empty());
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 3u);
+
+    auto hot_widths_reused = text_line_layout_wrapped_widths_for_testing(
+        "hot wrapped text",
+        wrap_width,
+        16.0f,
+        "Helvetica",
+        400,
+        false
+    );
+    EXPECT_EQ(hot_widths_reused, hot_widths);
+
+    const auto misses_before_eviction = text_line_layout_cache_miss_count_for_testing();
+    EXPECT_FALSE(text_line_layout_wrapped_widths_for_testing(
+        "cold wrapped text 2", wrap_width, 16.0f, "Helvetica", 400, false
+    ).empty());
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 3u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), misses_before_eviction + 1u);
+    auto order = text_line_layout_cache_lru_order_for_testing();
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_TRUE(order[0].rfind("cold wrapped text 1|wrap=", 0) == 0);
+    EXPECT_TRUE(order[1].rfind("hot wrapped text|wrap=", 0) == 0);
+    EXPECT_TRUE(order[2].rfind("cold wrapped text 2|wrap=", 0) == 0);
+
+    const auto misses_before_cold_reload = text_line_layout_cache_miss_count_for_testing();
+    auto cold_zero_widths = text_line_layout_wrapped_widths_for_testing(
+        "cold wrapped text 0",
+        wrap_width,
+        16.0f,
+        "Helvetica",
+        400,
+        false
+    );
+    EXPECT_FALSE(cold_zero_widths.empty());
+    EXPECT_EQ(text_line_layout_cache_size_for_testing(), 3u);
+    EXPECT_EQ(text_line_layout_cache_miss_count_for_testing(), misses_before_cold_reload + 1u);
+    order = text_line_layout_cache_lru_order_for_testing();
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_TRUE(order[0].rfind("hot wrapped text|wrap=", 0) == 0);
+    EXPECT_TRUE(order[1].rfind("cold wrapped text 2|wrap=", 0) == 0);
+    EXPECT_TRUE(order[2].rfind("cold wrapped text 0|wrap=", 0) == 0);
+
+    const auto hits_before_hot_reuse = text_line_layout_cache_hit_count_for_testing();
+    auto hot_widths_after_eviction = text_line_layout_wrapped_widths_for_testing(
+        "hot wrapped text",
+        wrap_width,
+        16.0f,
+        "Helvetica",
+        400,
+        false
+    );
+    EXPECT_EQ(hot_widths_after_eviction, hot_widths);
+    EXPECT_EQ(text_line_layout_cache_hit_count_for_testing(), hits_before_hot_reuse + 1u);
+
+    reset_text_line_layout_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererReusesRunRasterCacheV2070) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    std::vector<uint8_t> buffer(256 * 64 * 4, 0);
+
+    renderer.render_text("Run cache line", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+    renderer.render_text("Run cache line", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 0u);
+
+    renderer.render_text("Run cache line", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterCacheTouchesHotEntryBeforeColdChurnV2085) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    constexpr size_t kRasterCacheCapacity = 3;
+    set_text_run_raster_cache_max_entries_for_testing(kRasterCacheCapacity);
+
+    TextRenderer renderer;
+    std::vector<uint8_t> buffer(512 * 64 * 4, 0);
+
+    renderer.render_text("hot run", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 512, 64, "Helvetica", 400, false);
+    renderer.render_text("cold run 0", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 512, 64, "Helvetica", 400, false);
+    renderer.render_text("cold run 1", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 512, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), kRasterCacheCapacity);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 3u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 0u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 3u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "hot run|scale=1.000000",
+                  "cold run 0|scale=1.000000",
+                  "cold run 1|scale=1.000000",
+              }));
+
+    const uint64_t hits_before_hot_reuse = text_run_raster_cache_hit_count_for_testing();
+    const uint64_t misses_before_hot_reuse = text_run_raster_cache_miss_count_for_testing();
+    renderer.render_text("hot run", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 512, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), misses_before_hot_reuse);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), hits_before_hot_reuse + 1u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "cold run 0|scale=1.000000",
+                  "cold run 1|scale=1.000000",
+                  "hot run|scale=1.000000",
+              }));
+
+    renderer.render_text("cold run 2", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 512, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), kRasterCacheCapacity);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), misses_before_hot_reuse + 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 4u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "cold run 1|scale=1.000000",
+                  "hot run|scale=1.000000",
+                  "cold run 2|scale=1.000000",
+              }));
+
+    const uint64_t misses_before_cold_reload = text_run_raster_cache_miss_count_for_testing();
+    const uint64_t creations_before_cold_reload = text_run_raster_cache_creation_count_for_testing();
+    renderer.render_text("hot run", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 512, 64, "Helvetica", 400, false);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "cold run 1|scale=1.000000",
+                  "cold run 2|scale=1.000000",
+                  "hot run|scale=1.000000",
+              }));
+
+    renderer.render_text("cold run 0", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 512, 64, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), kRasterCacheCapacity);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), misses_before_cold_reload + 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), creations_before_cold_reload + 1u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "cold run 2|scale=1.000000",
+                  "hot run|scale=1.000000",
+                  "cold run 0|scale=1.000000",
+              }));
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterCacheSeparatesRenderScaleBucketsV2086) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    std::vector<uint8_t> buffer(256 * 64 * 4, 0);
+
+    renderer.render_text("scaled run", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false,
+                         0, "", "", 0, 0, 0, 0,
+                         -1, -1, -1, -1, 1.0f);
+    renderer.render_text("scaled run", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false,
+                         0, "", "", 0, 0, 0, 0,
+                         -1, -1, -1, -1, 1.0f);
+    renderer.render_text("scaled run", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false,
+                         0, "", "", 0, 0, 0, 0,
+                         -1, -1, -1, -1, 2.0f);
+    renderer.render_text("scaled run", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false,
+                         0, "", "", 0, 0, 0, 0,
+                         -1, -1, -1, -1, 2.0f);
+
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "scaled run|scale=1.000000",
+                  "scaled run|scale=2.000000",
+              }));
+
+    renderer.render_text("scaled run", 8.0f, 12.0f, 16.0f, {12, 34, 56, 255},
+                         buffer.data(), 256, 64, "Helvetica", 400, false,
+                         0, "", "", 0, 0, 0, 0,
+                         -1, -1, -1, -1, 1.0f);
+
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 3u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "scaled run|scale=2.000000",
+                  "scaled run|scale=1.000000",
+              }));
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterCachePreservesHotDrawOutputAt1xAnd2xV2098) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    auto render_once = [&](float render_scale) {
+        std::vector<uint8_t> buffer(512 * 96 * 4, 0);
+        renderer.render_text("Cycle 2098 hot raster", 10.0f, 18.0f, 24.0f, {24, 68, 112, 255},
+                             buffer.data(), 512, 96, "Helvetica", 400, false,
+                             0, "", "", 0, 0, 0, 0,
+                             -1, -1, -1, -1, render_scale);
+
+        bool has_ink = false;
+        for (size_t i = 3; i < buffer.size(); i += 4) {
+            if (buffer[i] != 0) {
+                has_ink = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(has_ink);
+        return buffer;
+    };
+
+    const auto first_1x = render_once(1.0f);
+    const auto second_1x = render_once(1.0f);
+    EXPECT_EQ(first_1x, second_1x);
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 1u);
+
+    const auto first_2x = render_once(2.0f);
+    const auto second_2x = render_once(2.0f);
+    EXPECT_EQ(first_2x, second_2x);
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterCacheInvalidatesAcrossFontAndStyleChangesV2098) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    auto render_once = [&](const std::string& font_family, const Color& color) {
+        std::vector<uint8_t> buffer(512 * 96 * 4, 0);
+        renderer.render_text("Style split", 12.0f, 18.0f, 24.0f, color,
+                             buffer.data(), 512, 96, font_family, 400, false);
+        return buffer;
+    };
+
+    const auto regular = render_once("Helvetica", {24, 68, 112, 255});
+    const auto regular_hot = render_once("Helvetica", {24, 68, 112, 255});
+    EXPECT_EQ(regular, regular_hot);
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 1u);
+
+    const auto alternate_font = render_once("Times New Roman", {24, 68, 112, 255});
+    const auto alternate_font_hot = render_once("Times New Roman", {24, 68, 112, 255});
+    EXPECT_EQ(alternate_font, alternate_font_hot);
+    EXPECT_NE(regular, alternate_font);
+
+    const auto alternate_style = render_once("Helvetica", {200, 32, 48, 255});
+    const auto alternate_style_hot = render_once("Helvetica", {200, 32, 48, 255});
+    EXPECT_EQ(alternate_style, alternate_style_hot);
+    EXPECT_NE(regular, alternate_style);
+
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 3u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 3u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 3u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 3u);
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterClipCacheReusesMatchingSubrectV2105) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    auto render_clipped = [&]() {
+        std::vector<uint8_t> buffer(256 * 80 * 4, 0);
+        renderer.render_text("Clip-sensitive glyphs", 8.0f, 16.0f, 24.0f, {24, 68, 112, 255},
+                             buffer.data(), 256, 80, "Helvetica", 400, false,
+                             0, "", "", 0, 0, 0, 0,
+                             18.0f, 14.0f, 54.0f, 20.0f, 2.0f);
+        return buffer;
+    };
+
+    const auto first = render_clipped();
+    const std::string first_clip_key =
+        "Clip-sensitive glyphs|scale=2.000000|clip=" +
+        std::to_string(text_run_raster_last_clipped_x_for_testing()) + "," +
+        std::to_string(text_run_raster_last_clipped_y_for_testing()) + "," +
+        std::to_string(text_run_raster_last_clipped_width_for_testing()) + "x" +
+        std::to_string(text_run_raster_last_clipped_height_for_testing());
+    EXPECT_TRUE(text_run_raster_last_request_used_clipped_raster_for_testing());
+    EXPECT_GT(text_run_raster_last_full_width_for_testing(),
+              text_run_raster_last_clipped_width_for_testing());
+    EXPECT_GT(text_run_raster_last_full_height_for_testing(),
+              text_run_raster_last_clipped_height_for_testing());
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 0u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  first_clip_key,
+              }));
+
+    const auto second = render_clipped();
+    EXPECT_EQ(first, second);
+    EXPECT_TRUE(text_run_raster_last_request_used_clipped_raster_for_testing());
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 1u);
+
+    std::vector<uint8_t> alternate_clip(256 * 80 * 4, 0);
+    renderer.render_text("Clip-sensitive glyphs", 8.0f, 16.0f, 24.0f, {24, 68, 112, 255},
+                         alternate_clip.data(), 256, 80, "Helvetica", 400, false,
+                         0, "", "", 0, 0, 0, 0,
+                         26.0f, 14.0f, 30.0f, 20.0f, 2.0f);
+    const std::string second_clip_key =
+        "Clip-sensitive glyphs|scale=2.000000|clip=" +
+        std::to_string(text_run_raster_last_clipped_x_for_testing()) + "," +
+        std::to_string(text_run_raster_last_clipped_y_for_testing()) + "," +
+        std::to_string(text_run_raster_last_clipped_width_for_testing()) + "x" +
+        std::to_string(text_run_raster_last_clipped_height_for_testing());
+
+    EXPECT_TRUE(text_run_raster_last_request_used_clipped_raster_for_testing());
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  first_clip_key,
+                  second_clip_key,
+              }));
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterClipRequestReusesMatchingFullRasterWithoutChurnV2106) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    std::vector<uint8_t> unclipped_seed(256 * 80 * 4, 0);
+    renderer.render_text("Clip-sensitive glyphs", 8.0f, 16.0f, 24.0f, {24, 68, 112, 255},
+                         unclipped_seed.data(), 256, 80, "Helvetica", 400, false,
+                         0, "", "", 0, 0, 0, 0,
+                         -1, -1, -1, -1, 2.0f);
+
+    std::vector<uint8_t> cached_clip(256 * 80 * 4, 0);
+    renderer.render_text("Clip-sensitive glyphs", 8.0f, 16.0f, 24.0f, {24, 68, 112, 255},
+                         cached_clip.data(), 256, 80, "Helvetica", 400, false,
+                         0, "", "", 0, 0, 0, 0,
+                         18.0f, 14.0f, 54.0f, 20.0f, 2.0f);
+
+    EXPECT_FALSE(text_run_raster_last_request_used_clipped_raster_for_testing());
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "Clip-sensitive glyphs|scale=2.000000",
+              }));
+
+    reset_text_run_raster_cache_for_testing();
+
+    std::vector<uint8_t> fresh_clipped(256 * 80 * 4, 0);
+    renderer.render_text("Clip-sensitive glyphs", 8.0f, 16.0f, 24.0f, {24, 68, 112, 255},
+                         fresh_clipped.data(), 256, 80, "Helvetica", 400, false,
+                         0, "", "", 0, 0, 0, 0,
+                         18.0f, 14.0f, 54.0f, 20.0f, 2.0f);
+
+    EXPECT_EQ(cached_clip, fresh_clipped);
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterCacheSeparatesExplicitKerningModeAtZeroKernValueV2106) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    auto render_once = [&](int font_kerning) {
+        std::vector<uint8_t> buffer(384 * 96 * 4, 0);
+        renderer.render_text("AVAVAV", 10.0f, 18.0f, 32.0f, {24, 68, 112, 255},
+                             buffer.data(), 384, 96, "Times New Roman", 400, false,
+                             0, "", "", 0, font_kerning, 0, 0,
+                             -1, -1, -1, -1, 1.0f);
+        return buffer;
+    };
+
+    const auto automatic_first = render_once(0);
+    const auto automatic_second = render_once(0);
+    const auto disabled_first = render_once(2);
+    const auto disabled_second = render_once(2);
+
+    EXPECT_EQ(automatic_first, automatic_second);
+    EXPECT_EQ(disabled_first, disabled_second);
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  "AVAVAV|scale=1.000000",
+                  "AVAVAV|scale=1.000000|explicit-kern=1",
+              }));
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterCacheSeparatesFeatureDescriptorChangesV2106) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    auto render_once = [&](const std::string& font_feature_settings) {
+        std::vector<uint8_t> buffer(384 * 96 * 4, 0);
+        renderer.render_text("office affine", 10.0f, 18.0f, 28.0f, {24, 68, 112, 255},
+                             buffer.data(), 384, 96, "Times New Roman", 400, false,
+                             0, font_feature_settings, "", 0, 0, 0, 0,
+                             -1, -1, -1, -1, 1.0f);
+        return buffer;
+    };
+
+    const auto default_first = render_once("");
+    const auto default_second = render_once("");
+    const auto no_ligature_first = render_once("\"liga\" 0");
+    const auto no_ligature_second = render_once("\"liga\" 0");
+
+    EXPECT_EQ(default_first, default_second);
+    EXPECT_EQ(no_ligature_first, no_ligature_second);
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterClipCacheClearsOnFontRegistryResetV2106) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    auto render_clipped = [&]() {
+        std::vector<uint8_t> buffer(256 * 80 * 4, 0);
+        renderer.render_text("Clip-sensitive glyphs", 8.0f, 16.0f, 24.0f, {24, 68, 112, 255},
+                             buffer.data(), 256, 80, "Helvetica", 400, false,
+                             0, "", "", 0, 0, 0, 0,
+                             18.0f, 14.0f, 54.0f, 20.0f, 2.0f);
+        return buffer;
+    };
+
+    const auto first = render_clipped();
+    const auto second = render_clipped();
+    EXPECT_EQ(first, second);
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 0u);
+
+    const auto after_reset = render_clipped();
+    EXPECT_EQ(first, after_reset);
+    EXPECT_EQ(text_run_raster_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_cache_hit_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterScratchReusesCapacityAcrossMissesV2094) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    std::vector<uint8_t> buffer(768 * 96 * 4, 0);
+
+    renderer.render_text("Scratch capacity line 0000", 8.0f, 16.0f, 22.0f, {12, 34, 56, 255},
+                         buffer.data(), 768, 96, "Helvetica", 400, false);
+    ASSERT_EQ(text_run_raster_scratch_allocation_count_for_testing(), 1u);
+    ASSERT_EQ(text_run_raster_scratch_context_creation_count_for_testing(), 1u);
+
+    renderer.render_text("Scratch capacity line 0001", 8.0f, 16.0f, 22.0f, {12, 34, 56, 255},
+                         buffer.data(), 768, 96, "Helvetica", 400, false);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 2u);
+    EXPECT_EQ(text_run_raster_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_scratch_context_creation_count_for_testing(), 1u);
+
+    renderer.render_text("Scratch tiny", 8.0f, 16.0f, 22.0f, {12, 34, 56, 255},
+                         buffer.data(), 768, 96, "Helvetica", 400, false);
+    EXPECT_EQ(text_run_raster_cache_creation_count_for_testing(), 3u);
+    EXPECT_EQ(text_run_raster_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_scratch_context_creation_count_for_testing(), 1u);
+
+    reset_text_run_raster_cache_for_testing();
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextRendererRunRasterScratchLargeThenSmallerMatchesFreshOutputV2094) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_run_raster_cache_for_testing();
+
+    TextRenderer renderer;
+    std::vector<uint8_t> reuse_buffer(768 * 96 * 4, 0);
+    std::vector<uint8_t> fresh_buffer(768 * 96 * 4, 0);
+
+    renderer.render_text("Scratch warmup line with wider raster footprint", 8.0f, 16.0f, 22.0f,
+                         {12, 34, 56, 255}, reuse_buffer.data(), 768, 96,
+                         "Helvetica", 400, false);
+    ASSERT_EQ(text_run_raster_scratch_allocation_count_for_testing(), 1u);
+    ASSERT_EQ(text_run_raster_scratch_context_creation_count_for_testing(), 1u);
+
+    std::fill(reuse_buffer.begin(), reuse_buffer.end(), 0);
+    renderer.render_text("small pass", 8.0f, 16.0f, 22.0f, {12, 34, 56, 255},
+                         reuse_buffer.data(), 768, 96, "Helvetica", 400, false);
+
+    EXPECT_EQ(text_run_raster_scratch_allocation_count_for_testing(), 1u);
+    EXPECT_EQ(text_run_raster_scratch_context_creation_count_for_testing(), 1u);
+
+    reset_text_run_raster_cache_for_testing();
+
+    renderer.render_text("small pass", 8.0f, 16.0f, 22.0f, {12, 34, 56, 255},
+                         fresh_buffer.data(), 768, 96, "Helvetica", 400, false);
+
+    EXPECT_EQ(reuse_buffer, fresh_buffer);
+
+    reset_text_run_raster_cache_for_testing();
     TextRenderer::clear_registered_fonts();
 }
 
@@ -40281,43 +42118,132 @@ TEST_F(PaintTest, ImageCacheTouchKeepsHotEntryReusableV2065) {
     reset_image_cache_for_testing();
     set_image_cache_max_bytes_for_testing(8);
 
-    const std::string red_html =
-        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+    const std::string red_src =
+        "data:image/svg+xml;base64,"
         "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
-        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J3JlZCcvPjwvc3ZnPg=='></body></html>";
-    const std::string green_html =
-        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J3JlZCcvPjwvc3ZnPg==";
+    const std::string green_src =
+        "data:image/svg+xml;base64,"
         "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
-        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J2dyZWVuJy8+PC9zdmc+'></body></html>";
-    const std::string blue_html =
-        "<html><body><img width='24' height='24' src='data:image/svg+xml;base64,"
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J2dyZWVuJy8+PC9zdmc+";
+    const std::string blue_src =
+        "data:image/svg+xml;base64,"
         "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxJyBoZWlnaHQ9JzEnPjxy"
-        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J2JsdWUnLz48L3N2Zz4='></body></html>";
+        "ZWN0IHdpZHRoPScxJyBoZWlnaHQ9JzEnIGZpbGw9J2JsdWUnLz48L3N2Zz4=";
+    auto html_for = [](const std::string& src) {
+        return "<html><body><img width='24' height='24' src='" + src + "'></body></html>";
+    };
 
-    ASSERT_TRUE(render_html(red_html, 64, 64).success);
-    ASSERT_TRUE(render_html(green_html, 64, 64).success);
+    ASSERT_TRUE(render_html(html_for(red_src), 64, 64).success);
+    ASSERT_TRUE(render_html(html_for(green_src), 64, 64).success);
     EXPECT_EQ(image_cache_size_for_testing(), 2u);
     EXPECT_EQ(image_cache_bytes_for_testing(), 8u);
+    EXPECT_EQ(image_cache_lru_order_for_testing(), (std::vector<std::string> { red_src, green_src }));
 
     const auto hits_before_touch = image_cache_hit_count_for_testing();
-    ASSERT_TRUE(render_html(red_html, 64, 64).success);
+    ASSERT_TRUE(render_html(html_for(red_src), 64, 64).success);
     EXPECT_GT(image_cache_hit_count_for_testing(), hits_before_touch);
+    EXPECT_EQ(image_cache_lru_order_for_testing(), (std::vector<std::string> { green_src, red_src }));
 
-    ASSERT_TRUE(render_html(blue_html, 64, 64).success);
+    ASSERT_TRUE(render_html(html_for(blue_src), 64, 64).success);
     EXPECT_EQ(image_cache_size_for_testing(), 2u);
     EXPECT_EQ(image_cache_bytes_for_testing(), 8u);
+    EXPECT_EQ(image_cache_lru_order_for_testing(), (std::vector<std::string> { red_src, blue_src }));
 
     const auto misses_before_hot_reuse = image_cache_miss_count_for_testing();
     const auto hits_before_hot_reuse = image_cache_hit_count_for_testing();
-    ASSERT_TRUE(render_html(red_html, 64, 64).success);
+    ASSERT_TRUE(render_html(html_for(red_src), 64, 64).success);
     EXPECT_EQ(image_cache_miss_count_for_testing(), misses_before_hot_reuse);
     EXPECT_GT(image_cache_hit_count_for_testing(), hits_before_hot_reuse);
+    EXPECT_EQ(image_cache_lru_order_for_testing(), (std::vector<std::string> { blue_src, red_src }));
 
     const auto misses_before_cold_reload = image_cache_miss_count_for_testing();
-    ASSERT_TRUE(render_html(green_html, 64, 64).success);
+    ASSERT_TRUE(render_html(html_for(green_src), 64, 64).success);
     EXPECT_GT(image_cache_miss_count_for_testing(), misses_before_cold_reload);
+    EXPECT_EQ(image_cache_lru_order_for_testing(), (std::vector<std::string> { red_src, green_src }));
 
     reset_image_cache_for_testing();
+}
+
+TEST_F(PaintTest, ImageCacheRepeatedTouchKeepsHotEntryEvictionOrderV2072) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Local POSIX socket fixture is not available on Windows.";
+#else
+    reset_image_cache_for_testing();
+    set_image_cache_max_bytes_for_testing(12);
+
+    const std::string svg =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'>"
+        "<rect width='1' height='1' fill='red'/></svg>";
+    ScopedImageResponseServer server(svg);
+    ASSERT_TRUE(server.is_valid());
+
+    const std::string base_url =
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/image";
+    auto html_for = [&](const std::string& key) {
+        return "<html><body><img width='24' height='24' src='" + base_url + "/" + key + "'></body></html>";
+    };
+
+    ASSERT_TRUE(render_html(html_for("a"), 64, 64).success);
+    ASSERT_TRUE(render_html(html_for("b"), 64, 64).success);
+    ASSERT_TRUE(render_html(html_for("c"), 64, 64).success);
+    EXPECT_EQ(server.request_count(), 3);
+    EXPECT_EQ(image_cache_size_for_testing(), 3u);
+    EXPECT_EQ(image_cache_bytes_for_testing(), 12u);
+    EXPECT_EQ(image_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  base_url + "/a",
+                  base_url + "/b",
+                  base_url + "/c",
+              }));
+
+    const auto hits_before_repeated = image_cache_hit_count_for_testing();
+    for (int i = 0; i < 8; ++i) {
+        ASSERT_TRUE(render_html(html_for("a"), 64, 64).success);
+    }
+    EXPECT_GT(image_cache_hit_count_for_testing(), hits_before_repeated);
+    EXPECT_EQ(image_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  base_url + "/b",
+                  base_url + "/c",
+                  base_url + "/a",
+              }));
+
+    const auto misses_before_cold = image_cache_miss_count_for_testing();
+    ASSERT_TRUE(render_html(html_for("d"), 64, 64).success);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_before_cold + 1);
+    EXPECT_EQ(server.request_count(), 4);
+    EXPECT_EQ(image_cache_size_for_testing(), 3u);
+    EXPECT_EQ(image_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  base_url + "/c",
+                  base_url + "/a",
+                  base_url + "/d",
+              }));
+
+    const auto misses_before_hot_reuse = image_cache_miss_count_for_testing();
+    ASSERT_TRUE(render_html(html_for("a"), 64, 64).success);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_before_hot_reuse);
+    EXPECT_EQ(image_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  base_url + "/c",
+                  base_url + "/d",
+                  base_url + "/a",
+              }));
+
+    const auto misses_before_cold_reuse = image_cache_miss_count_for_testing();
+    ASSERT_TRUE(render_html(html_for("b"), 64, 64).success);
+    EXPECT_EQ(image_cache_miss_count_for_testing(), misses_before_cold_reuse + 1);
+    EXPECT_EQ(server.request_count(), 5);
+    EXPECT_EQ(image_cache_lru_order_for_testing(),
+              (std::vector<std::string> {
+                  base_url + "/d",
+                  base_url + "/a",
+                  base_url + "/b",
+              }));
+
+    reset_image_cache_for_testing();
+#endif
 }
 
 TEST_F(PaintTest, ImageCacheTreatsFragmentVariantsAsSameResourceV2069) {
@@ -40765,10 +42691,9 @@ TEST(RenderPipeline, IntersectionObserverDisconnect) {
         800, 600
     );
     ASSERT_TRUE(result.success) << "Error: " << result.error;
-    // observe() fires initial callback immediately (spec behavior),
-    // so fired=true even though disconnect() is called right after.
-    // disconnect() clears observed elements preventing future callbacks.
-    EXPECT_EQ(result.page_title, "fired");
+    // Initial delivery is queued to the JS checkpoint, so disconnect() can
+    // clear the observation before the callback runs.
+    EXPECT_EQ(result.page_title, "not_fired");
 }
 
 TEST(RenderPipeline, IntersectionObserverUnobserve) {
@@ -40962,15 +42887,27 @@ TEST(RenderPipeline, ResizeObserverTarget) {
 }
 
 TEST(RenderPipeline, ResizeObserverBorderBoxSize) {
-    // Verify borderBoxSize inlineSize/blockSize include border+padding
+    // Verify borderBoxSize is stable within the callback and matches layout border-box metrics.
     auto result = render_html(
         "<html><body style='margin:0;'>"
         "<div id='target' style='width:100px;height:50px;"
-        "border:5px solid black;padding:10px;'>Box</div>"
+        "border-left:5px solid black;border-right:7px solid black;"
+        "border-top:11px solid black;border-bottom:13px solid black;"
+        "padding:17px 19px 23px 29px;'>Box</div>"
         "<script>"
         "var ro = new ResizeObserver(function(entries) {"
-        "  var bbs = entries[0].borderBoxSize[0];"
-        "  document.title = Math.round(bbs.inlineSize) + ',' + Math.round(bbs.blockSize);"
+        "  var entry = entries[0];"
+        "  var first = entry.borderBoxSize[0];"
+        "  var second = entry.borderBoxSize[0];"
+        "  var rect = entry.target.getBoundingClientRect();"
+        "  document.title = ["
+        "    Math.round(first.inlineSize),"
+        "    Math.round(first.blockSize),"
+        "    Math.round(second.inlineSize),"
+        "    Math.round(second.blockSize),"
+        "    Math.round(rect.width),"
+        "    Math.round(rect.height)"
+        "  ].join(',');"
         "});"
         "ro.observe(document.getElementById('target'));"
         "</script>"
@@ -40978,8 +42915,7 @@ TEST(RenderPipeline, ResizeObserverBorderBoxSize) {
         800, 600
     );
     ASSERT_TRUE(result.success) << "Error: " << result.error;
-    // border-box: 5+10+100+10+5 = 130 wide, 5+10+50+10+5 = 80 tall
-    EXPECT_EQ(result.page_title, "130,80");
+    EXPECT_EQ(result.page_title, "160,114,160,114,160,114");
 }
 
 // ============================================================================

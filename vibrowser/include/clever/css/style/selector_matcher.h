@@ -1,6 +1,5 @@
 #pragma once
 #include <clever/css/parser/selector.h>
-#include <string>
 #include <vector>
 
 namespace clever::css {
@@ -28,6 +27,9 @@ public:
     bool matches_compound(const ElementView& element, const CompoundSelector& compound) const;
     bool has_selector_matches(const ElementView& element, const ComplexSelector& selector) const;
     bool matches_simple(const ElementView& element, const SimpleSelector& simple) const;
+
+private:
+    const SelectorList& selector_list_for_function(const SimpleSelector& selector) const;
 };
 
 } // namespace clever::css

@@ -74,13 +74,14 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr);
 void dispatch_scroll_event(JSContext* ctx, int viewport_w, int viewport_h,
                            float scroll_x, float scroll_y);
 
-// Fire IntersectionObserver callbacks using cached layout geometry.
-// Call after populate_layout_geometry(). Computes intersection against viewport.
+// Queue IntersectionObserver delivery using cached layout geometry.
+// Call after populate_layout_geometry(). Delivery runs at the next main-JS
+// checkpoint after already-queued Promise microtasks settle.
 void fire_intersection_observers(JSContext* ctx, int viewport_w, int viewport_h);
 
-// Fire ResizeObserver callbacks using cached layout geometry.
-// Call after populate_layout_geometry(). Creates ResizeObserverEntry objects
-// with contentRect, contentBoxSize, borderBoxSize, and target.
+// Queue ResizeObserver delivery using cached layout geometry.
+// Call after populate_layout_geometry(). Delivery runs at the next main-JS
+// checkpoint after already-queued Promise microtasks settle.
 void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h);
 
 // Set document.currentScript to the given element (or null if nullptr).

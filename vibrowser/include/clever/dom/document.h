@@ -2,9 +2,28 @@
 #include <clever/dom/element.h>
 #include <clever/dom/text.h>
 #include <clever/dom/comment.h>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace clever::dom {
+
+class DocumentVisibilityLifecycle {
+public:
+    DocumentVisibilityLifecycle();
+
+    const std::string& visibility_state() const;
+    bool hidden() const;
+
+    void synchronize(std::string_view visibility_state, bool hidden);
+    void arm_dispatch();
+    bool update_and_should_dispatch(std::string_view visibility_state, bool hidden);
+
+private:
+    std::string visibility_state_;
+    bool hidden_ = false;
+    bool dispatch_armed_ = false;
+};
 
 class Document : public Node {
 public:

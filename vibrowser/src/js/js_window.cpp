@@ -34,6 +34,7 @@ namespace clever::js {
 // It iterates the window sentinel listeners (stored under nullptr key in DOMState::listeners)
 // and calls each registered handler with the given event object.
 void dispatch_window_listeners(JSContext* ctx, const std::string& event_type, JSValue event_obj);
+void process_window_websocket_events(JSContext* ctx);
 
 // =========================================================================
 // Blob URL registry — maps "blob:<uuid>" -> (mime_type, raw_data)
@@ -2484,26 +2485,28 @@ static void dispatch_from_worker(WorkerState* state, JSContext* main_ctx,
 
 static void process_window_worker_messages_impl(JSContext* ctx) {
     auto* checkpoint_state = get_window_worker_checkpoint_state(ctx, false);
-    if (!checkpoint_state || checkpoint_state->queued_workers.empty()) {
-        return;
-    }
+    if (checkpoint_state && !checkpoint_state->queued_workers.empty()) {
+        std::vector<JSValue> queued_workers = std::move(checkpoint_state->queued_workers);
+        checkpoint_state->queued_workers.clear();
 
-    std::vector<JSValue> queued_workers = std::move(checkpoint_state->queued_workers);
-    checkpoint_state->queued_workers.clear();
-
-    for (JSValue worker_obj : queued_workers) {
-        auto* state = get_worker_state(worker_obj);
-        if (state) {
-            state->delivery_queued = false;
-            if (state->terminated) {
-                std::lock_guard<std::mutex> lock(state->mtx);
-                state->from_worker.clear();
-            } else {
-                dispatch_from_worker(state, ctx, worker_obj);
+        for (JSValue worker_obj : queued_workers) {
+            auto* state = get_worker_state(worker_obj);
+            if (state) {
+                state->delivery_queued = false;
+                if (state->terminated) {
+                    std::lock_guard<std::mutex> lock(state->mtx);
+                    state->from_worker.clear();
+                } else {
+                    dispatch_from_worker(state, ctx, worker_obj);
+                }
             }
+            JS_FreeValue(ctx, worker_obj);
         }
-        JS_FreeValue(ctx, worker_obj);
     }
+
+    // WebSocket callbacks follow the same main-runtime checkpoint so they
+    // cannot run inline or from the receive thread.
+    process_window_websocket_events(ctx);
 }
 
 // ---- Worker finalizer ----

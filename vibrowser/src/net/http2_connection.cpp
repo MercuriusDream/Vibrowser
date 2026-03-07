@@ -156,6 +156,13 @@ bool Http2Connection::send_headers(uint32_t stream_id, const HeaderMap& headers,
                                    bool end_stream) {
     std::lock_guard<std::mutex> lock(stream_mutex_);
 
+    auto stream_it = streams_.find(stream_id);
+    if (closed_stream_ids_.find(stream_id) != closed_stream_ids_.end() ||
+        (stream_it != streams_.end() &&
+         stream_it->second.state == StreamState::Closed)) {
+        return false;
+    }
+
     auto encoded = encoder_.encode_header_list(headers);
 
     Frame frame;
@@ -172,6 +179,13 @@ bool Http2Connection::send_data(uint32_t stream_id, const std::vector<uint8_t>& 
                                 bool end_stream) {
     std::lock_guard<std::mutex> lock(stream_mutex_);
 
+    auto stream_it = streams_.find(stream_id);
+    if (closed_stream_ids_.find(stream_id) != closed_stream_ids_.end() ||
+        (stream_it != streams_.end() &&
+         stream_it->second.state == StreamState::Closed)) {
+        return false;
+    }
+
     Frame frame;
     frame.type = FRAME_TYPE_DATA;
     frame.flags = end_stream ? FLAG_END_STREAM : 0;
@@ -184,7 +198,10 @@ bool Http2Connection::send_data(uint32_t stream_id, const std::vector<uint8_t>& 
 
 bool Http2Connection::send_settings(
     const std::unordered_map<uint16_t, uint32_t>& settings) {
+    std::lock_guard<std::mutex> lock(stream_mutex_);
+
     std::vector<uint8_t> payload;
+    PendingLocalSettings pending_settings;
 
     std::unordered_map<uint16_t, uint32_t> default_settings;
     default_settings[SETTINGS_HEADER_TABLE_SIZE] = 4096;
@@ -192,7 +209,19 @@ bool Http2Connection::send_settings(
     default_settings[SETTINGS_MAX_CONCURRENT_STREAMS] = 100;
     default_settings[SETTINGS_INITIAL_WINDOW_SIZE] = kInitialWindowSize;
 
-    for (const auto& [key, value] : settings.empty() ? default_settings : settings) {
+    const auto& effective_settings = settings.empty() ? default_settings : settings;
+    for (const auto& [key, value] : effective_settings) {
+        if (key == SETTINGS_INITIAL_WINDOW_SIZE &&
+            value > static_cast<uint32_t>(kMaxFlowControlWindowSize)) {
+            return false;
+        }
+
+        if (key == SETTINGS_HEADER_TABLE_SIZE) {
+            pending_settings.header_table_size = value;
+        } else if (key == SETTINGS_INITIAL_WINDOW_SIZE) {
+            pending_settings.initial_window_size = value;
+        }
+
         uint8_t buf[6];
         buf[0] = (key >> 8) & 0xFF;
         buf[1] = key & 0xFF;
@@ -209,10 +238,20 @@ bool Http2Connection::send_settings(
     frame.stream_id = 0;
     frame.payload = payload;
 
-    return send_frame(frame);
+    if (!send_frame(frame)) {
+        return false;
+    }
+
+    pending_local_settings_.push_back(pending_settings);
+    return true;
 }
 
 bool Http2Connection::send_window_update(uint32_t stream_id, uint32_t increment) {
+    if (increment == 0 ||
+        increment > static_cast<uint32_t>(kMaxFlowControlWindowSize)) {
+        return false;
+    }
+
     uint8_t payload[4];
     payload[0] = (increment >> 24) & 0x7F;
     payload[1] = (increment >> 16) & 0xFF;
@@ -229,6 +268,19 @@ bool Http2Connection::send_window_update(uint32_t stream_id, uint32_t increment)
 }
 
 bool Http2Connection::send_rst_stream(uint32_t stream_id, uint32_t error_code) {
+    std::lock_guard<std::mutex> lock(stream_mutex_);
+
+    if (stream_id == 0 || closed_stream_ids_.find(stream_id) != closed_stream_ids_.end()) {
+        return false;
+    }
+
+    auto stream_it = streams_.find(stream_id);
+    if (stream_it != streams_.end() && stream_it->second.state == StreamState::Closed) {
+        retire_stream_flow_control_locked(stream_id);
+        streams_.erase(stream_it);
+        return false;
+    }
+
     uint8_t payload[4];
     payload[0] = (error_code >> 24) & 0xFF;
     payload[1] = (error_code >> 16) & 0xFF;
@@ -241,7 +293,13 @@ bool Http2Connection::send_rst_stream(uint32_t stream_id, uint32_t error_code) {
     frame.stream_id = stream_id;
     frame.payload.insert(frame.payload.end(), payload, payload + 4);
 
-    return send_frame(frame);
+    if (!send_frame(frame)) {
+        return false;
+    }
+
+    retire_stream_flow_control_locked(stream_id);
+    streams_.erase(stream_id);
+    return true;
 }
 
 uint32_t Http2Connection::allocate_stream_id() {
@@ -251,35 +309,116 @@ uint32_t Http2Connection::allocate_stream_id() {
 }
 
 void Http2Connection::update_stream_state_after_send(uint32_t stream_id, bool end_stream) {
+    if (closed_stream_ids_.find(stream_id) != closed_stream_ids_.end()) {
+        return;
+    }
+
     auto it = streams_.find(stream_id);
     if (it == streams_.end()) {
-        streams_[stream_id].state = StreamState::Open;
-        it = streams_.find(stream_id);
+        StreamContext stream;
+        stream.state = StreamState::Open;
+        stream.send_window = remote_initial_window_size_;
+        stream.recv_window = local_initial_window_size_;
+        auto insert_result = streams_.emplace(stream_id, std::move(stream));
+        it = insert_result.first;
+    } else if (it->second.state == StreamState::Closed) {
+        return;
     }
 
     if (end_stream) {
         if (it->second.state == StreamState::Open) {
             it->second.state = StreamState::HalfClosedLocal;
         } else if (it->second.state == StreamState::HalfClosedRemote) {
-            it->second.state = StreamState::Closed;
+            retire_stream_flow_control_locked(stream_id);
         }
     }
 }
 
 void Http2Connection::update_stream_state_after_recv(uint32_t stream_id, bool end_stream) {
+    if (closed_stream_ids_.find(stream_id) != closed_stream_ids_.end()) {
+        return;
+    }
+
     auto it = streams_.find(stream_id);
     if (it == streams_.end()) {
-        streams_[stream_id].state = StreamState::Open;
-        it = streams_.find(stream_id);
+        StreamContext stream;
+        stream.state = StreamState::Open;
+        stream.send_window = remote_initial_window_size_;
+        stream.recv_window = local_initial_window_size_;
+        auto insert_result = streams_.emplace(stream_id, std::move(stream));
+        it = insert_result.first;
+    } else if (it->second.state == StreamState::Closed) {
+        return;
     }
 
     if (end_stream) {
         if (it->second.state == StreamState::Open) {
             it->second.state = StreamState::HalfClosedRemote;
         } else if (it->second.state == StreamState::HalfClosedLocal) {
-            it->second.state = StreamState::Closed;
+            retire_stream_flow_control_locked(stream_id);
         }
     }
+}
+
+bool Http2Connection::violates_continuation_sequence_locked(const Frame& frame) const {
+    return continuation_expected_ &&
+           (frame.type != FRAME_TYPE_CONTINUATION ||
+            frame.stream_id != continuation_stream_id_);
+}
+
+void Http2Connection::clear_continuation_state_locked() {
+    continuation_expected_ = false;
+    continuation_stream_id_ = 0;
+    continuation_end_stream_ = false;
+    continuation_header_block_.clear();
+}
+
+void Http2Connection::retire_stream_flow_control_locked(uint32_t stream_id) {
+    auto it = streams_.find(stream_id);
+    if (it != streams_.end()) {
+        it->second.state = StreamState::Closed;
+        it->second.send_window = 0;
+        it->second.recv_window = 0;
+    }
+
+    if (continuation_expected_ && continuation_stream_id_ == stream_id) {
+        clear_continuation_state_locked();
+    }
+
+    closed_stream_ids_.insert(stream_id);
+}
+
+bool Http2Connection::reject_goaway_stream_frame_locked(uint32_t stream_id) {
+    if (!goaway_received_ || stream_id <= goaway_last_stream_id_) {
+        return false;
+    }
+
+    if (continuation_expected_ && continuation_stream_id_ == stream_id) {
+        clear_continuation_state_locked();
+    }
+
+    streams_.erase(stream_id);
+    closed_stream_ids_.insert(stream_id);
+    return true;
+}
+
+bool Http2Connection::reject_closed_stream_frame_locked(uint32_t stream_id) {
+    auto it = streams_.find(stream_id);
+    if (it != streams_.end() && it->second.state == StreamState::Closed) {
+        retire_stream_flow_control_locked(stream_id);
+        streams_.erase(it);
+        return true;
+    }
+
+    if (closed_stream_ids_.find(stream_id) != closed_stream_ids_.end()) {
+        if (continuation_expected_ && continuation_stream_id_ == stream_id) {
+            clear_continuation_state_locked();
+        }
+        streams_.erase(stream_id);
+        return true;
+    }
+
+    return false;
 }
 
 bool Http2Connection::stream_can_send_data(StreamState state) const {
@@ -291,8 +430,57 @@ bool Http2Connection::handle_settings(const Frame& frame) {
         return false;
     }
 
-    if (frame.flags & FLAG_ACK) {
-        return frame.payload.empty();
+    if (frame.flags == FLAG_ACK) {
+        if (!frame.payload.empty()) {
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(stream_mutex_);
+        if (pending_local_settings_.empty()) {
+            return false;
+        }
+
+        const PendingLocalSettings pending_settings = pending_local_settings_.front();
+
+        if (pending_settings.initial_window_size.has_value()) {
+            int64_t delta =
+                static_cast<int64_t>(*pending_settings.initial_window_size) -
+                static_cast<int64_t>(local_initial_window_size_);
+            for (auto& [stream_id, stream] : streams_) {
+                (void)stream_id;
+                if (stream.state == StreamState::Closed) {
+                    continue;
+                }
+
+                int64_t updated_window = stream.recv_window + delta;
+                if (updated_window > kMaxFlowControlWindowSize) {
+                    return false;
+                }
+            }
+
+            for (auto& [stream_id, stream] : streams_) {
+                (void)stream_id;
+                if (stream.state == StreamState::Closed) {
+                    continue;
+                }
+
+                stream.recv_window += delta;
+            }
+
+            local_initial_window_size_ = *pending_settings.initial_window_size;
+        }
+
+        if (pending_settings.header_table_size.has_value()) {
+            decoder_.set_max_dynamic_table_size(
+                *pending_settings.header_table_size);
+        }
+
+        pending_local_settings_.erase(pending_local_settings_.begin());
+        return true;
+    }
+
+    if (frame.flags != 0) {
+        return false;
     }
 
     if ((frame.payload.size() % 6) != 0) {
@@ -366,8 +554,40 @@ bool Http2Connection::handle_settings(const Frame& frame) {
     return send_frame(ack);
 }
 
+bool Http2Connection::handle_goaway(const Frame& frame) {
+    if (frame.stream_id != 0 || frame.payload.size() < 8) {
+        return false;
+    }
+
+    const uint32_t last_stream_id =
+        ((static_cast<uint32_t>(frame.payload[0]) << 24) |
+         (static_cast<uint32_t>(frame.payload[1]) << 16) |
+         (static_cast<uint32_t>(frame.payload[2]) << 8) |
+         static_cast<uint32_t>(frame.payload[3])) &
+        0x7FFFFFFF;
+
+    std::lock_guard<std::mutex> lock(stream_mutex_);
+    const bool already_received_goaway = goaway_received_;
+    goaway_received_ = true;
+    if (!already_received_goaway) {
+        goaway_last_stream_id_ = last_stream_id;
+    } else {
+        goaway_last_stream_id_ = std::min(goaway_last_stream_id_, last_stream_id);
+    }
+
+    if (continuation_expected_ && continuation_stream_id_ > goaway_last_stream_id_) {
+        clear_continuation_state_locked();
+    }
+
+    return true;
+}
+
 bool Http2Connection::handle_window_update(const Frame& frame) {
     if (frame.payload.size() != 4) {
+        return false;
+    }
+
+    if (frame.payload[0] & 0x80) {
         return false;
     }
 
@@ -389,12 +609,16 @@ bool Http2Connection::handle_window_update(const Frame& frame) {
         int64_t updated_connection_window = connection_send_window_ + increment;
         connection_send_window_ = updated_connection_window;
     } else {
+        if (reject_closed_stream_frame_locked(frame.stream_id)) {
+            return false;
+        }
+
         auto it = streams_.find(frame.stream_id);
         if (it == streams_.end()) {
             return true;
         }
 
-        if (it->second.state == StreamState::Closed) {
+        if (!stream_can_send_data(it->second.state)) {
             return false;
         }
 
@@ -410,10 +634,16 @@ bool Http2Connection::handle_window_update(const Frame& frame) {
 }
 
 bool Http2Connection::handle_rst_stream(const Frame& frame) {
-    auto it = streams_.find(frame.stream_id);
-    if (it != streams_.end()) {
-        it->second.state = StreamState::Closed;
+    if (frame.stream_id == 0 || frame.payload.size() != 4) {
+        return false;
     }
+
+    if (reject_closed_stream_frame_locked(frame.stream_id)) {
+        return false;
+    }
+
+    retire_stream_flow_control_locked(frame.stream_id);
+    streams_.erase(frame.stream_id);
     return true;
 }
 
@@ -424,19 +654,37 @@ bool Http2Connection::handle_headers_or_continuation(const Frame& frame,
         return false;
     }
 
-    if (continuation_expected_) {
-        if (frame.type != FRAME_TYPE_CONTINUATION ||
-            frame.stream_id != continuation_stream_id_) {
-            return false;
-        }
-    } else if (frame.type == FRAME_TYPE_CONTINUATION) {
+    if (reject_closed_stream_frame_locked(frame.stream_id) ||
+        reject_goaway_stream_frame_locked(frame.stream_id)) {
+        return false;
+    }
+
+    if (violates_continuation_sequence_locked(frame)) {
+        clear_continuation_state_locked();
+        return false;
+    }
+
+    if (!continuation_expected_ && frame.type == FRAME_TYPE_CONTINUATION) {
         return false;
     }
 
     if (frame.type == FRAME_TYPE_HEADERS) {
+        auto stream_it = streams_.find(frame.stream_id);
+        if (stream_it != streams_.end()) {
+            if (stream_it->second.state == StreamState::Closed) {
+                retire_stream_flow_control_locked(frame.stream_id);
+                streams_.erase(stream_it);
+                return false;
+            }
+            if (stream_it->second.state == StreamState::HalfClosedRemote) {
+                return false;
+            }
+        }
+
         continuation_header_block_ = frame.payload;
         continuation_expected_ = !(frame.flags & FLAG_END_HEADERS);
         continuation_stream_id_ = frame.stream_id;
+        continuation_end_stream_ = (frame.flags & FLAG_END_STREAM) != 0;
     } else if (frame.type == FRAME_TYPE_CONTINUATION) {
         continuation_header_block_.insert(continuation_header_block_.end(),
                                          frame.payload.begin(), frame.payload.end());
@@ -455,13 +703,12 @@ bool Http2Connection::handle_headers_or_continuation(const Frame& frame,
         it->second.response_headers = headers;
         it->second.headers_received = true;
 
-        if (frame.flags & FLAG_END_STREAM) {
+        if (continuation_end_stream_) {
             it->second.end_stream_received = true;
             update_stream_state_after_recv(frame.stream_id, true);
         }
 
-        continuation_header_block_.clear();
-        continuation_stream_id_ = 0;
+        clear_continuation_state_locked();
 
         if (frame.stream_id == target_stream_id) {
             out = maybe_finalize_response_locked(frame.stream_id);
@@ -478,11 +725,45 @@ bool Http2Connection::handle_data(const Frame& frame, std::optional<Response>& o
     }
 
     auto it = streams_.find(frame.stream_id);
+    bool late_closed_stream = false;
+    if (it != streams_.end() && it->second.state == StreamState::Closed) {
+        retire_stream_flow_control_locked(frame.stream_id);
+        streams_.erase(it);
+        late_closed_stream = true;
+    } else if (closed_stream_ids_.find(frame.stream_id) != closed_stream_ids_.end() ||
+               reject_goaway_stream_frame_locked(frame.stream_id)) {
+        late_closed_stream = true;
+    }
+
+    const int64_t received_bytes = static_cast<int64_t>(frame.payload.size());
+    if (late_closed_stream) {
+        if (received_bytes > connection_recv_window_) {
+            return false;
+        }
+
+        connection_recv_window_ -= received_bytes;
+
+        if (connection_recv_window_ < kWindowUpdateThreshold) {
+            uint32_t increment =
+                static_cast<uint32_t>(kInitialWindowSize - connection_recv_window_);
+            connection_recv_window_ += increment;
+            if (!send_window_update(0, increment)) {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     if (it == streams_.end()) {
         return false;
     }
 
-    const int64_t received_bytes = static_cast<int64_t>(frame.payload.size());
+    if (it->second.state != StreamState::Open &&
+        it->second.state != StreamState::HalfClosedLocal) {
+        return false;
+    }
+
     if (received_bytes > it->second.recv_window ||
         received_bytes > connection_recv_window_) {
         return false;
@@ -510,9 +791,13 @@ bool Http2Connection::handle_data(const Frame& frame, std::optional<Response>& o
         }
     }
 
-    if (it->second.recv_window < kWindowUpdateThreshold) {
-        uint32_t increment = static_cast<uint32_t>(kInitialWindowSize - it->second.recv_window);
-        it->second.recv_window += increment;
+    auto updated_stream = streams_.find(frame.stream_id);
+    if (updated_stream != streams_.end() &&
+        updated_stream->second.state != StreamState::Closed &&
+        updated_stream->second.recv_window < kWindowUpdateThreshold) {
+        uint32_t increment =
+            static_cast<uint32_t>(kInitialWindowSize - updated_stream->second.recv_window);
+        updated_stream->second.recv_window += increment;
         if (!send_window_update(frame.stream_id, increment)) {
             return false;
         }
@@ -542,6 +827,8 @@ std::optional<Response> Http2Connection::maybe_finalize_response_locked(
         }
     }
 
+    closed_stream_ids_.insert(stream_id);
+    streams_.erase(it);
     return response;
 }
 
@@ -583,10 +870,6 @@ std::optional<Response> Http2Connection::make_http2_request(const Request& reque
             return std::nullopt;
         }
 
-        if (continuation_expected_ && frame->type != FRAME_TYPE_CONTINUATION) {
-            return std::nullopt;
-        }
-
         std::optional<Response> response;
 
         if (frame->type == FRAME_TYPE_HEADERS || frame->type == FRAME_TYPE_CONTINUATION) {
@@ -599,6 +882,13 @@ std::optional<Response> Http2Connection::make_http2_request(const Request& reque
             }
         } else if (frame->type == FRAME_TYPE_SETTINGS) {
             if (!handle_settings(*frame)) {
+                return std::nullopt;
+            }
+        } else if (frame->type == FRAME_TYPE_GOAWAY) {
+            if (!handle_goaway(*frame)) {
+                return std::nullopt;
+            }
+            if (goaway_received_ && stream_id > goaway_last_stream_id_) {
                 return std::nullopt;
             }
         } else if (frame->type == FRAME_TYPE_WINDOW_UPDATE) {

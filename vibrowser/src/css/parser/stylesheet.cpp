@@ -39,9 +39,31 @@ private:
     void parse_keyframes_rule(StyleSheet& sheet);
     void parse_font_face_rule(StyleSheet& sheet);
     void parse_supports_rule(StyleSheet& sheet);
-    void parse_layer_rule(StyleSheet& sheet, const std::string& parent_layer = "");
-    void parse_container_rule(StyleSheet& sheet);
-    void parse_scope_rule(StyleSheet& sheet);
+    void parse_layer_rule(StyleSheet& sheet,
+                          const std::string& parent_layer = "",
+                          const std::vector<std::string>& active_media_conditions = {},
+                          const std::vector<std::string>& active_supports_conditions = {},
+                          const std::vector<ConditionalRuleContext>& active_conditional_contexts = {},
+                          const std::vector<ScopeContext>& active_scope_contexts = {},
+                          const std::string* parent_selector = nullptr);
+    void parse_container_rule(StyleSheet& sheet,
+                              const std::vector<std::string>& active_media_conditions = {},
+                              const std::vector<std::string>& active_supports_conditions = {},
+                              const std::vector<ConditionalRuleContext>& active_conditional_contexts = {},
+                              const std::vector<ScopeContext>& active_scope_contexts = {},
+                              bool in_layer = false,
+                              size_t layer_order = 0,
+                              const std::string& layer_name = "",
+                              const std::string* parent_selector = nullptr);
+    void parse_scope_rule(StyleSheet& sheet,
+                          const std::vector<std::string>& active_media_conditions = {},
+                          const std::vector<std::string>& active_supports_conditions = {},
+                          const std::vector<ConditionalRuleContext>& active_conditional_contexts = {},
+                          const std::vector<ScopeContext>& active_scope_contexts = {},
+                          bool in_layer = false,
+                          size_t layer_order = 0,
+                          const std::string& layer_name = "",
+                          const std::string* parent_selector = nullptr);
     void parse_property_rule(StyleSheet& sheet);
     void parse_counter_style_rule(StyleSheet& sheet);
     void parse_starting_style_rule();
@@ -49,20 +71,35 @@ private:
 
     // Nesting
     bool is_nested_rule_start();
-    void parse_qualified_rule(std::vector<StyleRule>& out_rules,
+    void parse_qualified_rule(StyleSheet& sheet,
+                              std::vector<StyleRule>& out_rules,
                               const std::vector<std::string>& active_media_conditions = {},
                               const std::vector<std::string>& active_supports_conditions = {},
-                              const std::vector<ConditionalRuleContext>& active_conditional_contexts = {});
-    void parse_conditional_rule_list(std::vector<StyleRule>& out_rules,
+                              const std::vector<ConditionalRuleContext>& active_conditional_contexts = {},
+                              const std::vector<ScopeContext>& active_scope_contexts = {},
+                              bool in_layer = false,
+                              size_t layer_order = 0,
+                              const std::string& layer_name = "");
+    void parse_conditional_rule_list(StyleSheet& sheet,
+                                     std::vector<StyleRule>& out_rules,
                                      const std::vector<std::string>& active_media_conditions = {},
                                      const std::vector<std::string>& active_supports_conditions = {},
-                                     const std::vector<ConditionalRuleContext>& active_conditional_contexts = {});
-    void parse_nested_block(const std::string& parent_selector,
+                                     const std::vector<ConditionalRuleContext>& active_conditional_contexts = {},
+                                     const std::vector<ScopeContext>& active_scope_contexts = {},
+                                     bool in_layer = false,
+                                     size_t layer_order = 0,
+                                     const std::string& layer_name = "");
+    void parse_nested_block(StyleSheet& sheet,
+                            const std::string& parent_selector,
                             std::vector<Declaration>& out_declarations,
                             std::vector<StyleRule>& out_nested_rules,
                             const std::vector<std::string>& active_media_conditions = {},
                             const std::vector<std::string>& active_supports_conditions = {},
-                            const std::vector<ConditionalRuleContext>& active_conditional_contexts = {});
+                            const std::vector<ConditionalRuleContext>& active_conditional_contexts = {},
+                            const std::vector<ScopeContext>& active_scope_contexts = {},
+                            bool in_layer = false,
+                            size_t layer_order = 0,
+                            const std::string& layer_name = "");
 
     // Declarations
     Declaration parse_declaration();
@@ -88,6 +125,30 @@ private:
     size_t next_layer_order_ = 0;
     size_t next_anonymous_layer_id_ = 0;
 };
+
+static std::string resolve_nested_selector(const std::string& parent_selector,
+                                           const std::string& nested_sel);
+static std::vector<std::string> split_selector_list_text(std::string_view selector_text);
+static void apply_rule_context(
+        StyleRule& rule,
+        const std::vector<std::string>& active_media_conditions,
+        const std::vector<std::string>& active_supports_conditions,
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        bool in_layer,
+        size_t layer_order,
+        const std::string& layer_name);
+static void append_implicit_parent_rule(
+        std::vector<StyleRule>& out_rules,
+        const std::string& parent_selector,
+        std::vector<Declaration>& declarations,
+        const std::vector<std::string>& active_media_conditions,
+        const std::vector<std::string>& active_supports_conditions,
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        bool in_layer,
+        size_t layer_order,
+        const std::string& layer_name);
 
 const CSSToken& StyleSheetParser::current() const {
     if (pos_ < tokens_.size()) {
@@ -365,6 +426,7 @@ void StyleSheetParser::parse_media_rule(StyleSheet& sheet) {
     }
 
     parse_conditional_rule_list(
+        sheet,
         mq.rules,
         {mq.condition},
         {},
@@ -699,6 +761,7 @@ void StyleSheetParser::parse_supports_rule(StyleSheet& sheet) {
     }
 
     parse_conditional_rule_list(
+        sheet,
         rule.rules,
         {},
         {rule.condition},
@@ -712,7 +775,14 @@ void StyleSheetParser::parse_supports_rule(StyleSheet& sheet) {
     sheet.supports_rules.push_back(std::move(rule));
 }
 
-void StyleSheetParser::parse_layer_rule(StyleSheet& sheet, const std::string& parent_layer) {
+void StyleSheetParser::parse_layer_rule(
+        StyleSheet& sheet,
+        const std::string& parent_layer,
+        const std::vector<std::string>& active_media_conditions,
+        const std::vector<std::string>& active_supports_conditions,
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        const std::string* parent_selector) {
     LayerRule rule;
     skip_whitespace();
 
@@ -774,60 +844,39 @@ void StyleSheetParser::parse_layer_rule(StyleSheet& sheet, const std::string& pa
         advance();
     }
 
-    // Parse style rules inside @layer block (same pattern as @supports/@media)
-    while (!at_end() && current().type != CSSToken::RightBrace) {
-        skip_whitespace();
-        if (at_end() || current().type == CSSToken::RightBrace) break;
-
-        if (current().type == CSSToken::AtKeyword) {
-            std::string nested_keyword = current().value;
-            advance();
-            if (nested_keyword == "layer") {
-                parse_layer_rule(sheet, canonical_name);
-            } else {
-                while (!at_end()) {
-                    if (current().type == CSSToken::Semicolon) { advance(); break; }
-                    if (current().type == CSSToken::LeftBrace) { skip_block(); break; }
-                    advance();
-                }
-            }
-        } else {
-            // Parse as style rule
-            StyleRule style_rule;
-            style_rule.in_layer = true;
-            style_rule.layer_order = rule.order;
-            style_rule.layer_name = rule.name;
-            std::string sel_text;
-            while (!at_end() && current().type != CSSToken::LeftBrace &&
-                   current().type != CSSToken::RightBrace) {
-                if (current().type == CSSToken::Whitespace) {
-                    if (!sel_text.empty() && sel_text.back() != ' ') sel_text += " ";
-                } else if (current().type == CSSToken::Hash) {
-                    sel_text += "#" + current().value;
-                } else if (current().type == CSSToken::Function) {
-                    sel_text += current().value + "(";
-                } else {
-                    sel_text += current().value;
-                }
-                advance();
-            }
-            while (!sel_text.empty() && sel_text.back() == ' ') sel_text.pop_back();
-            style_rule.selector_text = sel_text;
-            style_rule.selectors = parse_selector_list(sel_text);
-
-            if (!at_end() && current().type == CSSToken::LeftBrace) {
-                advance();
-            }
-            while (!at_end() && current().type != CSSToken::RightBrace) {
-                skip_whitespace();
-                if (at_end() || current().type == CSSToken::RightBrace) break;
-                if (current().type == CSSToken::Semicolon) { advance(); continue; }
-                auto decl = parse_declaration();
-                if (!decl.property.empty()) style_rule.declarations.push_back(std::move(decl));
-            }
-            if (!at_end() && current().type == CSSToken::RightBrace) advance();
-            if (!style_rule.selectors.selectors.empty()) rule.rules.push_back(std::move(style_rule));
-        }
+    if (parent_selector != nullptr) {
+        std::vector<Declaration> declarations;
+        parse_nested_block(sheet,
+                           *parent_selector,
+                           declarations,
+                           rule.rules,
+                           active_media_conditions,
+                           active_supports_conditions,
+                           active_conditional_contexts,
+                           active_scope_contexts,
+                           true,
+                           rule.order,
+                           rule.name);
+        append_implicit_parent_rule(rule.rules,
+                                    *parent_selector,
+                                    declarations,
+                                    active_media_conditions,
+                                    active_supports_conditions,
+                                    active_conditional_contexts,
+                                    active_scope_contexts,
+                                    true,
+                                    rule.order,
+                                    rule.name);
+    } else {
+        parse_conditional_rule_list(sheet,
+                                    rule.rules,
+                                    active_media_conditions,
+                                    active_supports_conditions,
+                                    active_conditional_contexts,
+                                    active_scope_contexts,
+                                    true,
+                                    rule.order,
+                                    rule.name);
     }
 
     // Skip closing '}'
@@ -838,7 +887,16 @@ void StyleSheetParser::parse_layer_rule(StyleSheet& sheet, const std::string& pa
     sheet.layer_rules.push_back(std::move(rule));
 }
 
-void StyleSheetParser::parse_container_rule(StyleSheet& sheet) {
+void StyleSheetParser::parse_container_rule(
+        StyleSheet& sheet,
+        const std::vector<std::string>& active_media_conditions,
+        const std::vector<std::string>& active_supports_conditions,
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        bool in_layer,
+        size_t layer_order,
+        const std::string& layer_name,
+        const std::string* parent_selector) {
     ContainerRule rule;
     skip_whitespace();
 
@@ -877,50 +935,39 @@ void StyleSheetParser::parse_container_rule(StyleSheet& sheet) {
         advance();
     }
 
-    // Parse style rules inside @container block
-    while (!at_end() && current().type != CSSToken::RightBrace) {
-        skip_whitespace();
-        if (at_end() || current().type == CSSToken::RightBrace) break;
-
-        if (current().type == CSSToken::AtKeyword) {
-            while (!at_end()) {
-                if (current().type == CSSToken::Semicolon) { advance(); break; }
-                if (current().type == CSSToken::LeftBrace) { skip_block(); break; }
-                advance();
-            }
-        } else {
-            StyleRule style_rule;
-            std::string sel_text;
-            while (!at_end() && current().type != CSSToken::LeftBrace &&
-                   current().type != CSSToken::RightBrace) {
-                if (current().type == CSSToken::Whitespace) {
-                    if (!sel_text.empty() && sel_text.back() != ' ') sel_text += " ";
-                } else if (current().type == CSSToken::Hash) {
-                    sel_text += "#" + current().value;
-                } else if (current().type == CSSToken::Function) {
-                    sel_text += current().value + "(";
-                } else {
-                    sel_text += current().value;
-                }
-                advance();
-            }
-            while (!sel_text.empty() && sel_text.back() == ' ') sel_text.pop_back();
-            style_rule.selector_text = sel_text;
-            style_rule.selectors = parse_selector_list(sel_text);
-
-            if (!at_end() && current().type == CSSToken::LeftBrace) {
-                advance();
-            }
-            while (!at_end() && current().type != CSSToken::RightBrace) {
-                skip_whitespace();
-                if (at_end() || current().type == CSSToken::RightBrace) break;
-                if (current().type == CSSToken::Semicolon) { advance(); continue; }
-                auto decl = parse_declaration();
-                if (!decl.property.empty()) style_rule.declarations.push_back(std::move(decl));
-            }
-            if (!at_end() && current().type == CSSToken::RightBrace) advance();
-            if (!style_rule.selectors.selectors.empty()) rule.rules.push_back(std::move(style_rule));
-        }
+    if (parent_selector != nullptr) {
+        std::vector<Declaration> declarations;
+        parse_nested_block(sheet,
+                           *parent_selector,
+                           declarations,
+                           rule.rules,
+                           active_media_conditions,
+                           active_supports_conditions,
+                           active_conditional_contexts,
+                           active_scope_contexts,
+                           in_layer,
+                           layer_order,
+                           layer_name);
+        append_implicit_parent_rule(rule.rules,
+                                    *parent_selector,
+                                    declarations,
+                                    active_media_conditions,
+                                    active_supports_conditions,
+                                    active_conditional_contexts,
+                                    active_scope_contexts,
+                                    in_layer,
+                                    layer_order,
+                                    layer_name);
+    } else {
+        parse_conditional_rule_list(sheet,
+                                    rule.rules,
+                                    active_media_conditions,
+                                    active_supports_conditions,
+                                    active_conditional_contexts,
+                                    active_scope_contexts,
+                                    in_layer,
+                                    layer_order,
+                                    layer_name);
     }
 
     if (!at_end() && current().type == CSSToken::RightBrace) {
@@ -993,7 +1040,16 @@ void StyleSheetParser::parse_property_rule(StyleSheet& sheet) {
     }
 }
 
-void StyleSheetParser::parse_scope_rule(StyleSheet& sheet) {
+void StyleSheetParser::parse_scope_rule(
+        StyleSheet& sheet,
+        const std::vector<std::string>& active_media_conditions,
+        const std::vector<std::string>& active_supports_conditions,
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        bool in_layer,
+        size_t layer_order,
+        const std::string& layer_name,
+        const std::string* parent_selector) {
     ScopeRule rule;
     skip_whitespace();
 
@@ -1047,56 +1103,57 @@ void StyleSheetParser::parse_scope_rule(StyleSheet& sheet) {
     if (!end_part.empty()) {
         rule.scope_end = extract_selector(end_part);
     }
+    if (parent_selector != nullptr) {
+        if (!rule.scope_start.empty()) {
+            rule.scope_start = resolve_nested_selector(*parent_selector, rule.scope_start);
+        }
+        if (!rule.scope_end.empty()) {
+            rule.scope_end = resolve_nested_selector(*parent_selector, rule.scope_end);
+        }
+    }
+
+    auto nested_scope_contexts = active_scope_contexts;
+    nested_scope_contexts.push_back({rule.scope_start, rule.scope_end});
+    rule.scope_contexts = nested_scope_contexts;
 
     // Skip '{'
     if (!at_end() && current().type == CSSToken::LeftBrace) {
         advance();
     }
 
-    // Parse style rules inside @scope block
-    while (!at_end() && current().type != CSSToken::RightBrace) {
-        skip_whitespace();
-        if (at_end() || current().type == CSSToken::RightBrace) break;
-
-        if (current().type == CSSToken::AtKeyword) {
-            while (!at_end()) {
-                if (current().type == CSSToken::Semicolon) { advance(); break; }
-                if (current().type == CSSToken::LeftBrace) { skip_block(); break; }
-                advance();
-            }
-        } else {
-            StyleRule style_rule;
-            std::string sel_text;
-            while (!at_end() && current().type != CSSToken::LeftBrace &&
-                   current().type != CSSToken::RightBrace) {
-                if (current().type == CSSToken::Whitespace) {
-                    if (!sel_text.empty() && sel_text.back() != ' ') sel_text += " ";
-                } else if (current().type == CSSToken::Hash) {
-                    sel_text += "#" + current().value;
-                } else if (current().type == CSSToken::Function) {
-                    sel_text += current().value + "(";
-                } else {
-                    sel_text += current().value;
-                }
-                advance();
-            }
-            while (!sel_text.empty() && sel_text.back() == ' ') sel_text.pop_back();
-            style_rule.selector_text = sel_text;
-            style_rule.selectors = parse_selector_list(sel_text);
-
-            if (!at_end() && current().type == CSSToken::LeftBrace) {
-                advance();
-            }
-            while (!at_end() && current().type != CSSToken::RightBrace) {
-                skip_whitespace();
-                if (at_end() || current().type == CSSToken::RightBrace) break;
-                if (current().type == CSSToken::Semicolon) { advance(); continue; }
-                auto decl = parse_declaration();
-                if (!decl.property.empty()) style_rule.declarations.push_back(std::move(decl));
-            }
-            if (!at_end() && current().type == CSSToken::RightBrace) advance();
-            if (!style_rule.selectors.selectors.empty()) rule.rules.push_back(std::move(style_rule));
-        }
+    if (parent_selector != nullptr) {
+        std::vector<Declaration> declarations;
+        parse_nested_block(sheet,
+                           *parent_selector,
+                           declarations,
+                           rule.rules,
+                           active_media_conditions,
+                           active_supports_conditions,
+                           active_conditional_contexts,
+                           nested_scope_contexts,
+                           in_layer,
+                           layer_order,
+                           layer_name);
+        append_implicit_parent_rule(rule.rules,
+                                    *parent_selector,
+                                    declarations,
+                                    active_media_conditions,
+                                    active_supports_conditions,
+                                    active_conditional_contexts,
+                                    nested_scope_contexts,
+                                    in_layer,
+                                    layer_order,
+                                    layer_name);
+    } else {
+        parse_conditional_rule_list(sheet,
+                                    rule.rules,
+                                    active_media_conditions,
+                                    active_supports_conditions,
+                                    active_conditional_contexts,
+                                    nested_scope_contexts,
+                                    in_layer,
+                                    layer_order,
+                                    layer_name);
     }
 
     if (!at_end() && current().type == CSSToken::RightBrace) {
@@ -1295,20 +1352,172 @@ bool StyleSheetParser::is_nested_rule_start() {
 // If '&' appears in nested_sel, replace every '&' with parent_selector.
 // Otherwise prepend parent_selector as a descendant combinator.
 // ---------------------------------------------------------------------------
+static std::vector<std::string> split_selector_list_text(std::string_view selector_text) {
+    auto trim_ascii_whitespace = [](std::string_view value) {
+        size_t start = 0;
+        while (start < value.size() &&
+               std::isspace(static_cast<unsigned char>(value[start]))) {
+            ++start;
+        }
+
+        size_t end = value.size();
+        while (end > start &&
+               std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+            --end;
+        }
+        return std::string(value.substr(start, end - start));
+    };
+
+    std::vector<std::string> selectors;
+    size_t segment_start = 0;
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    bool in_string = false;
+    char string_delim = '\0';
+
+    for (size_t i = 0; i < selector_text.size(); ++i) {
+        char ch = selector_text[i];
+        if (in_string) {
+            if (ch == '\\' && i + 1 < selector_text.size()) {
+                ++i;
+                continue;
+            }
+            if (ch == string_delim) {
+                in_string = false;
+                string_delim = '\0';
+            }
+            continue;
+        }
+
+        if (ch == '"' || ch == '\'') {
+            in_string = true;
+            string_delim = ch;
+            continue;
+        }
+        if (ch == '(') {
+            ++paren_depth;
+            continue;
+        }
+        if (ch == ')' && paren_depth > 0) {
+            --paren_depth;
+            continue;
+        }
+        if (ch == '[') {
+            ++bracket_depth;
+            continue;
+        }
+        if (ch == ']' && bracket_depth > 0) {
+            --bracket_depth;
+            continue;
+        }
+        if (ch != ',' || paren_depth != 0 || bracket_depth != 0) {
+            continue;
+        }
+
+        std::string selector = trim_ascii_whitespace(
+            selector_text.substr(segment_start, i - segment_start));
+        if (!selector.empty()) {
+            selectors.push_back(std::move(selector));
+        }
+        segment_start = i + 1;
+    }
+
+    std::string selector = trim_ascii_whitespace(selector_text.substr(segment_start));
+    if (!selector.empty()) {
+        selectors.push_back(std::move(selector));
+    }
+    return selectors;
+}
+
 static std::string resolve_nested_selector(const std::string& parent_selector,
                                            const std::string& nested_sel) {
-    std::string resolved;
-    if (nested_sel.find('&') != std::string::npos) {
-        resolved = nested_sel;
+    auto parent_selectors = split_selector_list_text(parent_selector);
+    if (parent_selectors.empty()) {
+        parent_selectors.push_back(parent_selector);
+    }
+    auto nested_selectors = split_selector_list_text(nested_sel);
+    if (nested_selectors.empty()) {
+        nested_selectors.push_back(nested_sel);
+    }
+
+    auto replace_parent_reference = [](const std::string& selector,
+                                       const std::string& parent) {
+        std::string resolved = selector;
         size_t amp_pos = 0;
         while ((amp_pos = resolved.find('&', amp_pos)) != std::string::npos) {
-            resolved.replace(amp_pos, 1, parent_selector);
-            amp_pos += parent_selector.size();
+            resolved.replace(amp_pos, 1, parent);
+            amp_pos += parent.size();
         }
-    } else {
-        resolved = parent_selector + " " + nested_sel;
+        return resolved;
+    };
+
+    std::string resolved;
+    bool first = true;
+    for (const auto& nested_selector : nested_selectors) {
+        const bool has_parent_reference = nested_selector.find('&') != std::string::npos;
+        for (const auto& parent : parent_selectors) {
+            if (!first) {
+                resolved += ", ";
+            }
+            first = false;
+            if (has_parent_reference) {
+                resolved += replace_parent_reference(nested_selector, parent);
+            } else {
+                resolved += parent + " " + nested_selector;
+            }
+        }
     }
     return resolved;
+}
+
+static void apply_rule_context(
+        StyleRule& rule,
+        const std::vector<std::string>& active_media_conditions,
+        const std::vector<std::string>& active_supports_conditions,
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        bool in_layer,
+        size_t layer_order,
+        const std::string& layer_name) {
+    rule.media_conditions = active_media_conditions;
+    rule.supports_conditions = active_supports_conditions;
+    rule.conditional_rule_contexts = active_conditional_contexts;
+    rule.scope_contexts = active_scope_contexts;
+    rule.in_layer = in_layer;
+    rule.layer_order = layer_order;
+    rule.layer_name = layer_name;
+}
+
+static void append_implicit_parent_rule(
+        std::vector<StyleRule>& out_rules,
+        const std::string& parent_selector,
+        std::vector<Declaration>& declarations,
+        const std::vector<std::string>& active_media_conditions,
+        const std::vector<std::string>& active_supports_conditions,
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        bool in_layer,
+        size_t layer_order,
+        const std::string& layer_name) {
+    if (declarations.empty()) {
+        return;
+    }
+
+    StyleRule rule;
+    rule.selector_text = parent_selector;
+    rule.selectors = parse_selector_list(parent_selector);
+    rule.declarations = std::move(declarations);
+    apply_rule_context(rule,
+                       active_media_conditions,
+                       active_supports_conditions,
+                       active_conditional_contexts,
+                       active_scope_contexts,
+                       in_layer,
+                       layer_order,
+                       layer_name);
+    if (!rule.selectors.selectors.empty()) {
+        out_rules.push_back(std::move(rule));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1320,12 +1529,17 @@ static std::string resolve_nested_selector(const std::string& parent_selector,
 // This method does NOT consume the closing '}'.
 // ---------------------------------------------------------------------------
 void StyleSheetParser::parse_nested_block(
+        StyleSheet& sheet,
         const std::string& parent_selector,
         std::vector<Declaration>& out_declarations,
         std::vector<StyleRule>& out_nested_rules,
         const std::vector<std::string>& active_media_conditions,
         const std::vector<std::string>& active_supports_conditions,
-        const std::vector<ConditionalRuleContext>& active_conditional_contexts) {
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        bool in_layer,
+        size_t layer_order,
+        const std::string& layer_name) {
 
     while (!at_end() && current().type != CSSToken::RightBrace) {
         skip_whitespace();
@@ -1338,6 +1552,43 @@ void StyleSheetParser::parse_nested_block(
         if (current().type == CSSToken::AtKeyword) {
             std::string nested_keyword = current().value;
             advance();
+
+            if (nested_keyword == "layer") {
+                parse_layer_rule(sheet,
+                                 layer_name,
+                                 active_media_conditions,
+                                 active_supports_conditions,
+                                 active_conditional_contexts,
+                                 active_scope_contexts,
+                                 &parent_selector);
+                continue;
+            }
+
+            if (nested_keyword == "container") {
+                parse_container_rule(sheet,
+                                     active_media_conditions,
+                                     active_supports_conditions,
+                                     active_conditional_contexts,
+                                     active_scope_contexts,
+                                     in_layer,
+                                     layer_order,
+                                     layer_name,
+                                     &parent_selector);
+                continue;
+            }
+
+            if (nested_keyword == "scope") {
+                parse_scope_rule(sheet,
+                                 active_media_conditions,
+                                 active_supports_conditions,
+                                 active_conditional_contexts,
+                                 active_scope_contexts,
+                                 in_layer,
+                                 layer_order,
+                                 layer_name,
+                                 &parent_selector);
+                continue;
+            }
 
             if (nested_keyword != "media" && nested_keyword != "supports") {
                 while (!at_end()) {
@@ -1379,29 +1630,32 @@ void StyleSheetParser::parse_nested_block(
 
             std::vector<Declaration> conditional_declarations;
             std::vector<StyleRule> conditional_nested_rules;
-            parse_nested_block(parent_selector,
+            parse_nested_block(sheet,
+                               parent_selector,
                                conditional_declarations,
                                conditional_nested_rules,
                                nested_media_conditions,
                                nested_supports_conditions,
-                               nested_conditional_contexts);
+                               nested_conditional_contexts,
+                               active_scope_contexts,
+                               in_layer,
+                               layer_order,
+                               layer_name);
 
             if (!at_end() && current().type == CSSToken::RightBrace) {
                 advance();
             }
 
-            if (!conditional_declarations.empty()) {
-                StyleRule conditional_rule;
-                conditional_rule.selector_text = parent_selector;
-                conditional_rule.selectors = parse_selector_list(parent_selector);
-                conditional_rule.declarations = std::move(conditional_declarations);
-                conditional_rule.media_conditions = std::move(nested_media_conditions);
-                conditional_rule.supports_conditions = std::move(nested_supports_conditions);
-                conditional_rule.conditional_rule_contexts = std::move(nested_conditional_contexts);
-                if (!conditional_rule.selectors.selectors.empty()) {
-                    out_nested_rules.push_back(std::move(conditional_rule));
-                }
-            }
+            append_implicit_parent_rule(out_nested_rules,
+                                        parent_selector,
+                                        conditional_declarations,
+                                        nested_media_conditions,
+                                        nested_supports_conditions,
+                                        nested_conditional_contexts,
+                                        active_scope_contexts,
+                                        in_layer,
+                                        layer_order,
+                                        layer_name);
 
             for (auto& conditional_nested_rule : conditional_nested_rules) {
                 out_nested_rules.push_back(std::move(conditional_nested_rule));
@@ -1448,12 +1702,17 @@ void StyleSheetParser::parse_nested_block(
             // Recursively parse the nested block (handles deeper nesting)
             StyleRule nested_rule;
             std::vector<StyleRule> deeper_rules;
-            parse_nested_block(resolved,
+            parse_nested_block(sheet,
+                               resolved,
                                nested_rule.declarations,
                                deeper_rules,
                                active_media_conditions,
                                active_supports_conditions,
-                               active_conditional_contexts);
+                               active_conditional_contexts,
+                               active_scope_contexts,
+                               in_layer,
+                               layer_order,
+                               layer_name);
 
             // Skip '}'
             if (!at_end() && current().type == CSSToken::RightBrace) {
@@ -1462,10 +1721,17 @@ void StyleSheetParser::parse_nested_block(
 
             nested_rule.selector_text = resolved;
             nested_rule.selectors = parse_selector_list(resolved);
-            nested_rule.media_conditions = active_media_conditions;
-            nested_rule.supports_conditions = active_supports_conditions;
-            nested_rule.conditional_rule_contexts = active_conditional_contexts;
-            out_nested_rules.push_back(std::move(nested_rule));
+            apply_rule_context(nested_rule,
+                               active_media_conditions,
+                               active_supports_conditions,
+                               active_conditional_contexts,
+                               active_scope_contexts,
+                               in_layer,
+                               layer_order,
+                               layer_name);
+            if (!nested_rule.selectors.selectors.empty()) {
+                out_nested_rules.push_back(std::move(nested_rule));
+            }
 
             // Append any deeper-nested rules (already fully resolved)
             for (auto& dr : deeper_rules) {
@@ -1481,10 +1747,15 @@ void StyleSheetParser::parse_nested_block(
 }
 
 void StyleSheetParser::parse_qualified_rule(
+        StyleSheet& sheet,
         std::vector<StyleRule>& out_rules,
         const std::vector<std::string>& active_media_conditions,
         const std::vector<std::string>& active_supports_conditions,
-        const std::vector<ConditionalRuleContext>& active_conditional_contexts) {
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        bool in_layer,
+        size_t layer_order,
+        const std::string& layer_name) {
     StyleRule rule;
     std::string sel_text;
 
@@ -1520,20 +1791,30 @@ void StyleSheetParser::parse_qualified_rule(
     }
 
     std::vector<StyleRule> nested_rules;
-    parse_nested_block(sel_text,
+    parse_nested_block(sheet,
+                       sel_text,
                        rule.declarations,
                        nested_rules,
                        active_media_conditions,
                        active_supports_conditions,
-                       active_conditional_contexts);
+                       active_conditional_contexts,
+                       active_scope_contexts,
+                       in_layer,
+                       layer_order,
+                       layer_name);
 
     if (!at_end() && current().type == CSSToken::RightBrace) {
         advance();
     }
 
-    rule.media_conditions = active_media_conditions;
-    rule.supports_conditions = active_supports_conditions;
-    rule.conditional_rule_contexts = active_conditional_contexts;
+    apply_rule_context(rule,
+                       active_media_conditions,
+                       active_supports_conditions,
+                       active_conditional_contexts,
+                       active_scope_contexts,
+                       in_layer,
+                       layer_order,
+                       layer_name);
     if (!rule.selectors.selectors.empty()) {
         out_rules.push_back(std::move(rule));
     }
@@ -1544,10 +1825,15 @@ void StyleSheetParser::parse_qualified_rule(
 }
 
 void StyleSheetParser::parse_conditional_rule_list(
+        StyleSheet& sheet,
         std::vector<StyleRule>& out_rules,
         const std::vector<std::string>& active_media_conditions,
         const std::vector<std::string>& active_supports_conditions,
-        const std::vector<ConditionalRuleContext>& active_conditional_contexts) {
+        const std::vector<ConditionalRuleContext>& active_conditional_contexts,
+        const std::vector<ScopeContext>& active_scope_contexts,
+        bool in_layer,
+        size_t layer_order,
+        const std::string& layer_name) {
     while (!at_end() && current().type != CSSToken::RightBrace) {
         skip_whitespace();
         if (at_end() || current().type == CSSToken::RightBrace) {
@@ -1579,16 +1865,55 @@ void StyleSheetParser::parse_conditional_rule_list(
                             {ConditionalRuleContext::Type::Supports, nested_condition});
                     }
                     advance();
-                    parse_conditional_rule_list(out_rules,
+                    parse_conditional_rule_list(sheet,
+                                                out_rules,
                                                 nested_media_conditions,
                                                 nested_supports_conditions,
-                                                nested_conditional_contexts);
+                                                nested_conditional_contexts,
+                                                active_scope_contexts,
+                                                in_layer,
+                                                layer_order,
+                                                layer_name);
                     if (!at_end() && current().type == CSSToken::RightBrace) {
                         advance();
                     }
                 } else if (!at_end() && current().type == CSSToken::Semicolon) {
                     advance();
                 }
+                continue;
+            }
+
+            if (nested_keyword == "layer") {
+                parse_layer_rule(sheet,
+                                 layer_name,
+                                 active_media_conditions,
+                                 active_supports_conditions,
+                                 active_conditional_contexts,
+                                 active_scope_contexts);
+                continue;
+            }
+
+            if (nested_keyword == "container") {
+                parse_container_rule(sheet,
+                                     active_media_conditions,
+                                     active_supports_conditions,
+                                     active_conditional_contexts,
+                                     active_scope_contexts,
+                                     in_layer,
+                                     layer_order,
+                                     layer_name);
+                continue;
+            }
+
+            if (nested_keyword == "scope") {
+                parse_scope_rule(sheet,
+                                 active_media_conditions,
+                                 active_supports_conditions,
+                                 active_conditional_contexts,
+                                 active_scope_contexts,
+                                 in_layer,
+                                 layer_order,
+                                 layer_name);
                 continue;
             }
 
@@ -1606,15 +1931,20 @@ void StyleSheetParser::parse_conditional_rule_list(
             continue;
         }
 
-        parse_qualified_rule(out_rules,
+        parse_qualified_rule(sheet,
+                             out_rules,
                              active_media_conditions,
                              active_supports_conditions,
-                             active_conditional_contexts);
+                             active_conditional_contexts,
+                             active_scope_contexts,
+                             in_layer,
+                             layer_order,
+                             layer_name);
     }
 }
 
 void StyleSheetParser::parse_style_rule(StyleSheet& sheet) {
-    parse_qualified_rule(sheet.rules);
+    parse_qualified_rule(sheet, sheet.rules);
 }
 
 Declaration StyleSheetParser::parse_declaration() {

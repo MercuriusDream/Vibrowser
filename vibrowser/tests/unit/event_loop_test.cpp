@@ -4,11 +4,30 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
 using namespace clever::platform;
 using namespace std::chrono_literals;
+
+namespace {
+
+template <typename Predicate>
+bool wait_until_true(Predicate&& predicate, std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (predicate()) {
+            return true;
+        }
+        std::this_thread::sleep_for(1ms);
+    }
+    return predicate();
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // 1. Post task and run_pending executes it
@@ -128,9 +147,9 @@ TEST(EventLoopTest, PendingCountReportsCorrectly) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Post task from within a task
+// 8. run_pending mirrors run() and drains nested posts immediately
 // ---------------------------------------------------------------------------
-TEST(EventLoopTest, PostTaskFromWithinATask) {
+TEST(EventLoopTest, RunPendingDrainsPostTaskFromWithinATask) {
     EventLoop loop;
     bool inner_executed = false;
 
@@ -140,15 +159,12 @@ TEST(EventLoopTest, PostTaskFromWithinATask) {
         });
     });
 
-    // First run_pending executes the outer task (which posts the inner task)
+    // run_pending keeps draining until the queue is empty, so nested posts run
+    // in the same call just like they do under run().
     loop.run_pending();
 
-    // The inner task should now be pending
-    EXPECT_EQ(loop.pending_count(), 1u);
-
-    // Second run_pending executes the inner task
-    loop.run_pending();
     EXPECT_TRUE(inner_executed);
+    EXPECT_EQ(loop.pending_count(), 0u);
 }
 
 // ---------------------------------------------------------------------------
@@ -185,9 +201,7 @@ TEST(EventLoopTest, PostTaskWakesUpRunFromBlocking) {
         loop.run();
     });
 
-    // Give run() time to start and block
-    std::this_thread::sleep_for(50ms);
-    EXPECT_TRUE(loop.is_running());
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_running(); }, 200ms));
 
     // Post a task that sets the flag and then quits
     loop.post_task([&task_executed, &loop]() {
@@ -203,37 +217,46 @@ TEST(EventLoopTest, PostTaskWakesUpRunFromBlocking) {
 
 TEST(EventLoopTest, EarlierDelayedTaskWakesRun) {
     EventLoop loop;
-    std::atomic<int> execution_order{0};
-    std::atomic<long long> elapsed_ms{-1};
-    constexpr auto kInitialDelay = 700ms;
-    constexpr auto kInsertedDelay = 20ms;
+    std::condition_variable fired_cv;
+    std::mutex fired_mutex;
+    bool fired = false;
+    auto fired_at = EventLoop::Clock::time_point{};
+    constexpr auto kOriginalDelay = 3s;
+    constexpr auto kInsertedDelay = 30ms;
 
-    loop.post_delayed_task([&]() {
-        execution_order.fetch_add(10, std::memory_order_relaxed);
-    }, kInitialDelay);
-
-    auto start = std::chrono::steady_clock::now();
+    loop.post_delayed_task([]() {}, kOriginalDelay);
     std::thread runner([&loop]() {
         loop.run();
     });
 
-    std::this_thread::sleep_for(50ms);
-    ASSERT_TRUE(loop.is_running());
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_running(); }, 200ms));
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_waiting_on_delayed_task(); }, 200ms));
+    const auto wake_count_before = loop.earlier_deadline_wake_count();
 
+    const auto inserted_at = EventLoop::Clock::now();
     loop.post_delayed_task([&]() {
-        elapsed_ms.store(std::chrono::duration_cast<std::chrono::milliseconds>(
-                             std::chrono::steady_clock::now() - start)
-                             .count(),
-            std::memory_order_relaxed);
-        execution_order.fetch_add(1, std::memory_order_relaxed);
+        {
+            std::lock_guard lock(fired_mutex);
+            fired = true;
+            fired_at = EventLoop::Clock::now();
+        }
+        fired_cv.notify_one();
         loop.quit();
     }, kInsertedDelay);
 
+    std::unique_lock lock(fired_mutex);
+    const bool fired_in_time = fired_cv.wait_for(lock, 400ms, [&]() { return fired; });
+    lock.unlock();
+    if (!fired_in_time) {
+        loop.quit();
+    }
     runner.join();
 
-    ASSERT_EQ(execution_order.load(std::memory_order_relaxed), 1);
-    EXPECT_GE(elapsed_ms.load(std::memory_order_relaxed), 60);
-    EXPECT_LT(elapsed_ms.load(std::memory_order_relaxed), 500);
+    ASSERT_TRUE(fired_in_time);
+    EXPECT_EQ(loop.earlier_deadline_wake_count(), wake_count_before + 1);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(fired_at - inserted_at);
+    EXPECT_GE(elapsed, 20ms);
+    EXPECT_LT(elapsed, 400ms);
 }
 
 TEST(EventLoopTest, EarlierDelayedTaskBecomesRunnableWithoutWaitingForOlderDeadline) {
@@ -263,6 +286,150 @@ TEST(EventLoopTest, EarlierDelayedTaskBecomesRunnableWithoutWaitingForOlderDeadl
     EXPECT_EQ(loop.pending_count(), 0u);
 }
 
+TEST(EventLoopTest, EarlierDelayedWakePreservesTaskSourcePriorityAfterResume) {
+    EventLoop loop;
+    std::vector<std::string> order;
+    constexpr auto kOriginalDelay = 3s;
+    constexpr auto kInsertedDelay = 30ms;
+
+    loop.post_delayed_task([]() {}, kOriginalDelay);
+    std::thread runner([&loop]() {
+        loop.run();
+    });
+
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_running(); }, 200ms));
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_waiting_on_delayed_task(); }, 200ms));
+    const auto wake_count_before = loop.earlier_deadline_wake_count();
+
+    loop.post_delayed_task([&]() {
+        order.push_back("timer");
+        loop.post_task([&order]() { order.push_back("network"); }, EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order]() { order.push_back("input"); }, EventLoop::TaskSource::kInput);
+        loop.post_task([&order, &loop]() {
+            order.push_back("idle");
+            loop.quit();
+        }, EventLoop::TaskSource::kIdle);
+    }, kInsertedDelay);
+
+    runner.join();
+
+    EXPECT_EQ(loop.earlier_deadline_wake_count(), wake_count_before + 1);
+    EXPECT_EQ(order, (std::vector<std::string>{
+        "timer",
+        "input",
+        "network",
+        "idle",
+    }));
+}
+
+TEST(EventLoopTest, EarlierDelayedWakePromotesZeroDelayTimerIntoFullSourceOrder) {
+    EventLoop loop;
+    std::vector<std::string> order;
+    constexpr auto kOriginalDelay = 3s;
+
+    loop.post_delayed_task([]() {}, kOriginalDelay);
+    std::thread runner([&loop]() {
+        loop.run();
+    });
+
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_running(); }, 200ms));
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_waiting_on_delayed_task(); }, 200ms));
+    const auto wake_count_before = loop.earlier_deadline_wake_count();
+
+    loop.post_delayed_task([&]() {
+        order.push_back("timer_1");
+        loop.post_task([&order]() { order.push_back("render"); }, EventLoop::TaskSource::kRender);
+        loop.post_task([&order, &loop]() {
+            order.push_back("idle");
+            loop.quit();
+        }, EventLoop::TaskSource::kIdle);
+        loop.post_task([&order]() { order.push_back("network"); }, EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order]() { order.push_back("input"); }, EventLoop::TaskSource::kInput);
+        loop.post_delayed_task([&order]() { order.push_back("timer_2"); }, 0ms);
+    }, 0ms);
+
+    runner.join();
+
+    EXPECT_EQ(loop.earlier_deadline_wake_count(), wake_count_before + 1);
+    EXPECT_EQ(order, (std::vector<std::string>{
+        "timer_1",
+        "input",
+        "network",
+        "timer_2",
+        "render",
+        "idle",
+    }));
+}
+
+TEST(EventLoopTest, EarlierDelayedWakePromotesInsertedDelayedTasksOnceInDeadlineOrder) {
+    EventLoop loop;
+    std::vector<std::string> order;
+    std::atomic<int> first_runs{0};
+    std::atomic<int> second_runs{0};
+    constexpr auto kOriginalDelay = 3s;
+
+    loop.post_delayed_task([]() {}, kOriginalDelay);
+    std::thread runner([&loop]() {
+        loop.run();
+    });
+
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_running(); }, 200ms));
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_waiting_on_delayed_task(); }, 200ms));
+
+    loop.post_delayed_task([&]() {
+        second_runs.fetch_add(1, std::memory_order_relaxed);
+        order.push_back("second");
+        loop.quit();
+    }, 40ms);
+    loop.post_delayed_task([&]() {
+        first_runs.fetch_add(1, std::memory_order_relaxed);
+        order.push_back("first");
+    }, 0ms);
+
+    runner.join();
+
+    EXPECT_EQ(first_runs.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(second_runs.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(order, (std::vector<std::string>{
+        "first",
+        "second",
+    }));
+}
+
+TEST(EventLoopTest, EarlierDeadlineWakeTelemetryRecordsInterruptedWait) {
+    EventLoop loop;
+    std::atomic<bool> fired{false};
+    constexpr auto kOriginalDelay = 3s;
+
+    loop.post_delayed_task([]() {}, kOriginalDelay);
+    std::thread runner([&loop]() {
+        loop.run();
+    });
+
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_running(); }, 200ms));
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_waiting_on_delayed_task(); }, 200ms));
+
+    std::this_thread::sleep_for(15ms);
+    const auto wake_count_before = loop.earlier_deadline_wake_count();
+    loop.post_delayed_task([&]() {
+        fired.store(true, std::memory_order_relaxed);
+        loop.quit();
+    }, 0ms);
+
+    const bool fired_in_time =
+        wait_until_true([&fired]() { return fired.load(std::memory_order_relaxed); }, 200ms);
+    if (!fired_in_time) {
+        loop.quit();
+    }
+    runner.join();
+
+    ASSERT_TRUE(fired_in_time);
+    EXPECT_FALSE(loop.is_waiting_on_delayed_task());
+    EXPECT_EQ(loop.earlier_deadline_wake_count(), wake_count_before + 1);
+    EXPECT_GE(loop.last_delayed_wait_duration(), 10ms);
+    EXPECT_LT(loop.last_delayed_wait_duration(), 500ms);
+}
+
 TEST(EventLoopTest, RecordsLagForLateDelayedTask) {
     EventLoop loop;
     bool executed = false;
@@ -277,6 +444,36 @@ TEST(EventLoopTest, RecordsLagForLateDelayedTask) {
     EXPECT_LT(loop.last_delayed_task_lag(), 500ms);
 }
 
+TEST(EventLoopTest, CountsLateDelayedTaskStarvation) {
+    EventLoop loop;
+    bool executed = false;
+
+    loop.post_delayed_task([&executed]() { executed = true; }, 20ms);
+    EXPECT_EQ(loop.delayed_task_starvation_count(), 0u);
+
+    std::this_thread::sleep_for(80ms);
+    loop.run_pending();
+
+    EXPECT_TRUE(executed);
+    EXPECT_GE(loop.delayed_task_starvation_count(), 1u);
+}
+
+TEST(EventLoopTest, RecordsLastDelayedWaitDuration) {
+    EventLoop loop;
+    std::thread runner([&loop]() {
+        loop.run();
+    });
+
+    loop.post_delayed_task([&]() {
+        loop.quit();
+    }, 40ms);
+
+    runner.join();
+
+    EXPECT_GE(loop.last_delayed_wait_duration(), 30ms);
+    EXPECT_LT(loop.last_delayed_wait_duration(), 500ms);
+}
+
 TEST(EventLoopTest, SameDeadlineDelayedTasksPreserveFIFOOrder) {
     EventLoop loop;
     std::vector<int> order;
@@ -286,6 +483,333 @@ TEST(EventLoopTest, SameDeadlineDelayedTasksPreserveFIFOOrder) {
     loop.post_delayed_task([&order]() { order.push_back(3); }, 30ms);
 
     std::this_thread::sleep_for(80ms);
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_EQ(order[0], 1);
+    EXPECT_EQ(order[1], 2);
+    EXPECT_EQ(order[2], 3);
+}
+
+TEST(EventLoopTest, TaskSourcePriorityOrderIsDeterministic) {
+    EventLoop loop;
+    std::vector<std::string> order;
+
+    loop.post_task([&order]() { order.push_back("idle"); }, EventLoop::TaskSource::kIdle);
+    loop.post_task([&order]() { order.push_back("network"); }, EventLoop::TaskSource::kNetwork);
+    loop.post_task([&order]() { order.push_back("render"); }, EventLoop::TaskSource::kRender);
+    loop.post_task([&order]() { order.push_back("timer"); }, EventLoop::TaskSource::kTimer);
+    loop.post_task([&order]() { order.push_back("input"); }, EventLoop::TaskSource::kInput);
+
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 5u);
+    EXPECT_EQ(order[0], "input");
+    EXPECT_EQ(order[1], "network");
+    EXPECT_EQ(order[2], "timer");
+    EXPECT_EQ(order[3], "render");
+    EXPECT_EQ(order[4], "idle");
+}
+
+TEST(EventLoopTest, RunPendingDrainsNestedPostsInPriorityOrder) {
+    EventLoop loop;
+    std::vector<std::string> order;
+
+    loop.post_task([&order, &loop]() {
+        order.push_back("outer_input");
+        loop.post_task([&order]() { order.push_back("nested_input"); }, EventLoop::TaskSource::kInput);
+        loop.post_task([&order]() { order.push_back("nested_network"); },
+                       EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order]() { order.push_back("nested_idle"); }, EventLoop::TaskSource::kIdle);
+        loop.post_delayed_task([&order]() { order.push_back("nested_timer"); }, 0ms);
+    }, EventLoop::TaskSource::kInput);
+
+    loop.post_task([&order]() { order.push_back("queued_network"); }, EventLoop::TaskSource::kNetwork);
+    loop.post_task([&order]() { order.push_back("queued_render"); }, EventLoop::TaskSource::kRender);
+
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 7u);
+    EXPECT_EQ(order[0], "outer_input");
+    EXPECT_EQ(order[1], "nested_input");
+    EXPECT_EQ(order[2], "queued_network");
+    EXPECT_EQ(order[3], "nested_network");
+    EXPECT_EQ(order[4], "nested_timer");
+    EXPECT_EQ(order[5], "queued_render");
+    EXPECT_EQ(order[6], "nested_idle");
+}
+
+TEST(EventLoopTest, RunDrainsNestedPostsInPriorityOrder) {
+    EventLoop loop;
+    std::vector<std::string> order;
+
+    loop.post_task([&order, &loop]() {
+        order.push_back("outer_input");
+        loop.post_task([&order]() { order.push_back("nested_input"); }, EventLoop::TaskSource::kInput);
+        loop.post_task([&order]() { order.push_back("nested_network"); },
+                       EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order, &loop]() {
+            order.push_back("nested_idle");
+            loop.quit();
+        }, EventLoop::TaskSource::kIdle);
+        loop.post_delayed_task([&order]() { order.push_back("nested_timer"); }, 0ms);
+    }, EventLoop::TaskSource::kInput);
+
+    loop.post_task([&order]() { order.push_back("queued_network"); }, EventLoop::TaskSource::kNetwork);
+    loop.post_task([&order]() { order.push_back("queued_render"); }, EventLoop::TaskSource::kRender);
+
+    std::thread runner([&loop]() {
+        loop.run();
+    });
+
+    runner.join();
+
+    ASSERT_EQ(order.size(), 7u);
+    EXPECT_EQ(order[0], "outer_input");
+    EXPECT_EQ(order[1], "nested_input");
+    EXPECT_EQ(order[2], "queued_network");
+    EXPECT_EQ(order[3], "nested_network");
+    EXPECT_EQ(order[4], "nested_timer");
+    EXPECT_EQ(order[5], "queued_render");
+    EXPECT_EQ(order[6], "nested_idle");
+}
+
+TEST(EventLoopTest, RunAndRunPendingMatchMixedSourcePriorityOrder) {
+    auto exercise = [](bool use_blocking_run) {
+        EventLoop loop;
+        std::vector<std::string> order;
+
+        loop.post_task([&order, &loop, use_blocking_run]() {
+            order.push_back("outer_input");
+            loop.post_task([&order]() { order.push_back("nested_input"); }, EventLoop::TaskSource::kInput);
+            loop.post_task([&order]() { order.push_back("nested_network"); },
+                           EventLoop::TaskSource::kNetwork);
+            loop.post_task([&order]() { order.push_back("nested_render"); },
+                           EventLoop::TaskSource::kRender);
+            loop.post_task([&order, &loop, use_blocking_run]() {
+                order.push_back("nested_idle");
+                if (use_blocking_run) {
+                    loop.quit();
+                }
+            }, EventLoop::TaskSource::kIdle);
+            loop.post_delayed_task([&order]() { order.push_back("nested_timer"); }, 0ms);
+        }, EventLoop::TaskSource::kInput);
+
+        loop.post_task([&order]() { order.push_back("queued_network"); }, EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order]() { order.push_back("queued_render"); }, EventLoop::TaskSource::kRender);
+        loop.post_task([&order]() { order.push_back("queued_idle"); }, EventLoop::TaskSource::kIdle);
+
+        if (use_blocking_run) {
+            std::thread runner([&loop]() {
+                loop.run();
+            });
+            runner.join();
+        } else {
+            loop.run_pending();
+        }
+
+        return order;
+    };
+
+    const auto run_pending_order = exercise(false);
+    const auto run_order = exercise(true);
+    const std::vector<std::string> expected_order = {
+        "outer_input",
+        "nested_input",
+        "queued_network",
+        "nested_network",
+        "nested_timer",
+        "queued_render",
+        "nested_render",
+        "queued_idle",
+        "nested_idle",
+    };
+
+    EXPECT_EQ(run_pending_order, expected_order);
+    EXPECT_EQ(run_order, expected_order);
+}
+
+TEST(EventLoopTest, RunAndRunPendingMatchReadyZeroDelayTimerPriorityOrder) {
+    auto exercise = [](bool use_blocking_run) {
+        EventLoop loop;
+        std::vector<std::string> order;
+
+        loop.post_delayed_task([&order]() { order.push_back("timer"); }, 0ms);
+        std::this_thread::sleep_for(2ms);
+
+        loop.post_task([&order]() { order.push_back("render"); }, EventLoop::TaskSource::kRender);
+        loop.post_task([&order, &loop, use_blocking_run]() {
+            order.push_back("idle");
+            if (use_blocking_run) {
+                loop.quit();
+            }
+        }, EventLoop::TaskSource::kIdle);
+        loop.post_task([&order]() { order.push_back("network"); }, EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order]() {
+            order.push_back("input");
+        }, EventLoop::TaskSource::kInput);
+
+        if (use_blocking_run) {
+            std::thread runner([&loop]() {
+                loop.run();
+            });
+            runner.join();
+        } else {
+            loop.run_pending();
+        }
+
+        return order;
+    };
+
+    const auto run_pending_order = exercise(false);
+    const auto run_order = exercise(true);
+    const std::vector<std::string> expected_order = {
+        "input",
+        "network",
+        "timer",
+        "render",
+        "idle",
+    };
+
+    EXPECT_EQ(run_pending_order, expected_order);
+    EXPECT_EQ(run_order, expected_order);
+}
+
+TEST(EventLoopTest, PromotedZeroDelayTimerKeepsTimerSourceFIFO) {
+    EventLoop loop;
+    std::vector<std::string> order;
+
+    loop.post_task([&order, &loop]() {
+        order.push_back("outer_input");
+        loop.post_delayed_task([&order]() { order.push_back("promoted_timer"); }, 0ms);
+    }, EventLoop::TaskSource::kInput);
+    loop.post_task([&order]() { order.push_back("queued_timer"); }, EventLoop::TaskSource::kTimer);
+    loop.post_task([&order]() { order.push_back("queued_render"); }, EventLoop::TaskSource::kRender);
+
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 4u);
+    EXPECT_EQ(order[0], "outer_input");
+    EXPECT_EQ(order[1], "queued_timer");
+    EXPECT_EQ(order[2], "promoted_timer");
+    EXPECT_EQ(order[3], "queued_render");
+}
+
+TEST(EventLoopTest, ResumedDelayedTaskNestedPostsReenterBySourcePriority) {
+    EventLoop loop;
+    std::vector<std::string> order;
+    constexpr auto kOriginalDelay = 3s;
+
+    loop.post_delayed_task([]() {}, kOriginalDelay);
+    std::thread runner([&loop]() {
+        loop.run();
+    });
+
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_running(); }, 200ms));
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_waiting_on_delayed_task(); }, 200ms));
+
+    loop.post_delayed_task([&]() {
+        order.push_back("timer_1");
+        loop.post_task([&order]() { order.push_back("input_1"); }, EventLoop::TaskSource::kInput);
+        loop.post_task([&order]() { order.push_back("input_2"); }, EventLoop::TaskSource::kInput);
+        loop.post_task([&order]() { order.push_back("network_1"); }, EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order]() { order.push_back("network_2"); }, EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order]() { order.push_back("render_1"); }, EventLoop::TaskSource::kRender);
+        loop.post_task([&order]() { order.push_back("render_2"); }, EventLoop::TaskSource::kRender);
+        loop.post_task([&order]() { order.push_back("idle_1"); }, EventLoop::TaskSource::kIdle);
+        loop.post_task([&order, &loop]() {
+            order.push_back("idle_2");
+            loop.quit();
+        }, EventLoop::TaskSource::kIdle);
+        loop.post_delayed_task([&order]() { order.push_back("timer_2"); }, 0ms);
+    }, 0ms);
+
+    runner.join();
+
+    EXPECT_EQ(order, (std::vector<std::string>{
+        "timer_1",
+        "input_1",
+        "input_2",
+        "network_1",
+        "network_2",
+        "timer_2",
+        "render_1",
+        "render_2",
+        "idle_1",
+        "idle_2",
+    }));
+}
+
+TEST(EventLoopTest, ResumedDelayedTaskReentrantSameSourcePostsStayFIFO) {
+    EventLoop loop;
+    std::vector<std::string> order;
+    constexpr auto kOriginalDelay = 3s;
+
+    loop.post_delayed_task([]() {}, kOriginalDelay);
+    std::thread runner([&loop]() {
+        loop.run();
+    });
+
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_running(); }, 200ms));
+    ASSERT_TRUE(wait_until_true([&loop]() { return loop.is_waiting_on_delayed_task(); }, 200ms));
+
+    loop.post_delayed_task([&]() {
+        order.push_back("timer");
+        loop.post_task([&order]() { order.push_back("input"); }, EventLoop::TaskSource::kInput);
+        loop.post_task([&order, &loop]() {
+            order.push_back("network_1");
+            loop.post_task([&order]() { order.push_back("network_3"); },
+                           EventLoop::TaskSource::kNetwork);
+        }, EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order]() { order.push_back("network_2"); }, EventLoop::TaskSource::kNetwork);
+        loop.post_task([&order]() { order.push_back("render"); }, EventLoop::TaskSource::kRender);
+        loop.post_task([&order, &loop]() {
+            order.push_back("idle");
+            loop.quit();
+        }, EventLoop::TaskSource::kIdle);
+    }, 0ms);
+
+    runner.join();
+
+    EXPECT_EQ(order, (std::vector<std::string>{
+        "timer",
+        "input",
+        "network_1",
+        "network_2",
+        "network_3",
+        "render",
+        "idle",
+    }));
+}
+
+TEST(EventLoopTest, TaskSourceFIFOWithinSameSourceAndLowerPriorityDefers) {
+    EventLoop loop;
+    std::vector<int> order;
+
+    loop.post_task([&order]() { order.push_back(1); }, EventLoop::TaskSource::kNetwork);
+    loop.post_task([&order]() { order.push_back(2); }, EventLoop::TaskSource::kNetwork);
+    loop.post_task([&order]() { order.push_back(3); }, EventLoop::TaskSource::kInput);
+    loop.post_task([&order]() { order.push_back(4); }, EventLoop::TaskSource::kNetwork);
+    loop.post_task([&order]() { order.push_back(5); }, EventLoop::TaskSource::kInput);
+
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 5u);
+    EXPECT_EQ(order[0], 3);
+    EXPECT_EQ(order[1], 5);
+    EXPECT_EQ(order[2], 1);
+    EXPECT_EQ(order[3], 2);
+    EXPECT_EQ(order[4], 4);
+}
+
+TEST(EventLoopTest, PostTaskDefaultSourceMatchesInputPriority) {
+    EventLoop loop;
+    std::vector<int> order;
+
+    loop.post_task([&order]() { order.push_back(2); }, EventLoop::TaskSource::kNetwork);
+    loop.post_task([&order]() { order.push_back(1); });
+    loop.post_task([&order]() { order.push_back(3); }, EventLoop::TaskSource::kIdle);
+
     loop.run_pending();
 
     ASSERT_EQ(order.size(), 3u);

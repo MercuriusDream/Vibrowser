@@ -1,6 +1,50 @@
 #pragma once
 #import <Cocoa/Cocoa.h>
 #import "render_view.h"
+#include <cmath>
+
+struct BrowserWindowLogicalPoint {
+    CGFloat x = 0.0;
+    CGFloat y = 0.0;
+};
+
+static inline CGFloat browser_window_snap_document_axis_for_renderer(CGFloat documentCoord,
+                                                                     CGFloat rendererScale) {
+    const CGFloat normalizedScale = render_view_normalized_renderer_scale(rendererScale);
+    const CGFloat normalizedCoord = std::isfinite(documentCoord)
+        ? std::max<CGFloat>(0.0, documentCoord)
+        : 0.0;
+    return std::lround(normalizedCoord * normalizedScale) / normalizedScale;
+}
+
+static inline BrowserWindowLogicalPoint browser_window_normalize_document_scroll_point(
+    CGFloat documentX,
+    CGFloat documentY,
+    CGFloat rendererScale) {
+    return {
+        browser_window_snap_document_axis_for_renderer(documentX, rendererScale),
+        browser_window_snap_document_axis_for_renderer(documentY, rendererScale)
+    };
+}
+
+static inline BrowserWindowLogicalPoint browser_window_normalize_document_hit_test_point(
+    CGFloat documentX,
+    CGFloat documentY,
+    CGFloat renderedDocumentOriginX,
+    CGFloat rendererScale) {
+    const CGFloat normalizedScale = render_view_normalized_renderer_scale(rendererScale);
+    const CGFloat normalizedOriginX = std::isfinite(renderedDocumentOriginX)
+        ? std::max<CGFloat>(0.0, renderedDocumentOriginX)
+        : 0.0;
+    const CGFloat normalizedDocumentX = std::isfinite(documentX)
+        ? std::max<CGFloat>(0.0, documentX)
+        : 0.0;
+    return {
+        normalizedOriginX +
+            std::lround((normalizedDocumentX - normalizedOriginX) * normalizedScale) / normalizedScale,
+        browser_window_snap_document_axis_for_renderer(documentY, rendererScale)
+    };
+}
 
 // BrowserTab encapsulates per-tab state
 @interface BrowserTab : NSObject

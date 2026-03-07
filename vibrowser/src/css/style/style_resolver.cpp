@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <limits>
 #include <sstream>
+#include <string_view>
 #include <unordered_map>
 
 namespace clever::css {
@@ -47,11 +48,91 @@ std::string to_lower(const std::string& s) {
     return result;
 }
 
+void append_conditional_context_key(std::string& key,
+                                    char context_type,
+                                    const std::string& condition) {
+    key.push_back(context_type);
+    key.push_back(':');
+    key += std::to_string(condition.size());
+    key.push_back(':');
+    key += condition;
+    key.push_back(';');
+}
+
+std::string build_conditional_context_key(const StyleRule& rule,
+                                          size_t satisfied_context_count) {
+    if (!rule.conditional_rule_contexts.empty()) {
+        if (satisfied_context_count >= rule.conditional_rule_contexts.size()) {
+            return "";
+        }
+        std::string key;
+        for (size_t index = satisfied_context_count;
+             index < rule.conditional_rule_contexts.size();
+             ++index) {
+            const auto& context = rule.conditional_rule_contexts[index];
+            append_conditional_context_key(
+                key,
+                context.type == ConditionalRuleContext::Type::Media ? 'm' : 's',
+                context.condition);
+        }
+        return key;
+    }
+
+    const size_t total_conditions =
+        rule.media_conditions.size() + rule.supports_conditions.size();
+    if (total_conditions == 0 || satisfied_context_count >= total_conditions) {
+        return "";
+    }
+
+    std::string key;
+    size_t remaining_skip = satisfied_context_count;
+    for (const auto& condition : rule.media_conditions) {
+        if (remaining_skip > 0) {
+            --remaining_skip;
+            continue;
+        }
+        append_conditional_context_key(key, 'm', condition);
+    }
+    for (const auto& condition : rule.supports_conditions) {
+        if (remaining_skip > 0) {
+            --remaining_skip;
+            continue;
+        }
+        append_conditional_context_key(key, 's', condition);
+    }
+    return key;
+}
+
 Specificity selector_specificity(const ComplexSelector& selector) {
     if (selector.precomputed_specificity.has_value()) {
         return *selector.precomputed_specificity;
     }
     return compute_specificity(selector);
+}
+
+bool attribute_name_matches_ascii_case_insensitive(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(lhs[i])) !=
+            std::tolower(static_cast<unsigned char>(rhs[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool element_has_attribute_bucket_key(const ElementView& element, std::string_view bucket_key) {
+    if (bucket_key.empty()) {
+        return false;
+    }
+    for (const auto& [name, _] : element.attributes) {
+        if (attribute_name_matches_ascii_case_insensitive(name, bucket_key)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool matches_rightmost_selector_key(const ElementView& element, const ComplexSelector& selector) {
@@ -66,26 +147,21 @@ bool matches_rightmost_selector_key(const ElementView& element, const ComplexSel
                              selector.rightmost_match_key.value) != element.classes.end();
         case RightmostSelectorKeyType::Id:
             return element.id == selector.rightmost_match_key.value;
+        case RightmostSelectorKeyType::Attribute:
+            return element_has_attribute_bucket_key(element, selector.rightmost_match_key.value);
     }
 
     return true;
 }
 
-struct RuleBuckets {
-    std::vector<size_t> unkeyed_rule_indices;
-    std::unordered_map<std::string, std::vector<size_t>> type_rule_indices;
-    std::unordered_map<std::string, std::vector<size_t>> class_rule_indices;
-    std::unordered_map<std::string, std::vector<size_t>> id_rule_indices;
-};
-
-RuleBuckets build_rule_buckets(const std::vector<StyleRule>& rules) {
-    RuleBuckets buckets;
+RightmostRuleBuckets build_rule_buckets(const std::vector<StyleRule>& rules) {
+    RightmostRuleBuckets buckets;
     for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
         const auto& rule = rules[rule_index];
         for (const auto& selector : rule.selectors.selectors) {
             switch (selector.rightmost_match_key.type) {
                 case RightmostSelectorKeyType::None:
-                    buckets.unkeyed_rule_indices.push_back(rule_index);
+                    buckets.universal_rule_indices.push_back(rule_index);
                     break;
                 case RightmostSelectorKeyType::Type:
                     buckets.type_rule_indices[selector.rightmost_match_key.value].push_back(rule_index);
@@ -96,49 +172,112 @@ RuleBuckets build_rule_buckets(const std::vector<StyleRule>& rules) {
                 case RightmostSelectorKeyType::Id:
                     buckets.id_rule_indices[selector.rightmost_match_key.value].push_back(rule_index);
                     break;
+                case RightmostSelectorKeyType::Attribute:
+                    if (!selector.rightmost_match_key.value.empty()) {
+                        buckets.attribute_rule_indices[selector.rightmost_match_key.value]
+                            .push_back(rule_index);
+                    } else {
+                        buckets.universal_rule_indices.push_back(rule_index);
+                    }
+                    break;
             }
         }
     }
     return buckets;
 }
 
-void mark_bucket_candidates(const std::vector<size_t>& bucket_indices,
-                            std::vector<bool>& candidate_rules) {
+void mark_bucket_rule_indices(const std::vector<size_t>& bucket_indices,
+                             std::vector<bool>& candidate_rules) {
     for (size_t rule_index : bucket_indices) {
         candidate_rules[rule_index] = true;
     }
 }
 
-std::vector<bool> collect_candidate_rules(const std::vector<StyleRule>& rules,
-                                          const ElementView& element) {
-    std::vector<bool> candidate_rules(rules.size(), false);
-    if (rules.empty()) {
-        return candidate_rules;
-    }
-
-    RuleBuckets buckets = build_rule_buckets(rules);
-    mark_bucket_candidates(buckets.unkeyed_rule_indices, candidate_rules);
+void mark_element_bucket_candidates(const RightmostRuleBuckets& buckets,
+                                   const ElementView& element,
+                                   std::vector<bool>& candidate_rules) {
+    mark_bucket_rule_indices(buckets.universal_rule_indices, candidate_rules);
 
     auto type_it = buckets.type_rule_indices.find(element.tag_name);
     if (type_it != buckets.type_rule_indices.end()) {
-        mark_bucket_candidates(type_it->second, candidate_rules);
+        mark_bucket_rule_indices(type_it->second, candidate_rules);
     }
 
-    if (!element.id.empty()) {
-        auto id_it = buckets.id_rule_indices.find(element.id);
-        if (id_it != buckets.id_rule_indices.end()) {
-            mark_bucket_candidates(id_it->second, candidate_rules);
-        }
+    auto id_it = buckets.id_rule_indices.find(element.id);
+    if (id_it != buckets.id_rule_indices.end()) {
+        mark_bucket_rule_indices(id_it->second, candidate_rules);
     }
 
     for (const auto& class_name : element.classes) {
         auto class_it = buckets.class_rule_indices.find(class_name);
         if (class_it != buckets.class_rule_indices.end()) {
-            mark_bucket_candidates(class_it->second, candidate_rules);
+            mark_bucket_rule_indices(class_it->second, candidate_rules);
         }
     }
 
+    if (buckets.attribute_rule_indices.empty()) {
+        return;
+    }
+
+    for (const auto& attribute : element.attributes) {
+        // Attribute buckets are keyed only by stable attribute name. Full operator
+        // and case-flag semantics stay in selector_matcher.cpp.
+        const std::string attribute_bucket_key = to_lower(attribute.first);
+        auto attribute_it = buckets.attribute_rule_indices.find(attribute_bucket_key);
+        if (attribute_it != buckets.attribute_rule_indices.end()) {
+            mark_bucket_rule_indices(attribute_it->second, candidate_rules);
+        }
+    }
+}
+
+std::vector<bool> collect_candidate_rules(const RightmostRuleBuckets& buckets,
+                                         size_t rule_count,
+                                         const ElementView& element) {
+    std::vector<bool> candidate_rules(rule_count, false);
+    if (rule_count == 0) {
+        return candidate_rules;
+    }
+
+    mark_element_bucket_candidates(buckets, element, candidate_rules);
+
     return candidate_rules;
+}
+
+template <typename SheetBucket, typename MediaMatches, typename ScopeMatches,
+          typename SupportsMatches, typename RuleCollector>
+void collect_from_active_rule_groups(const StyleSheet& sheet,
+                                     const SheetBucket& buckets,
+                                     const ElementView& element,
+                                     MediaMatches&& media_matches,
+                                     ScopeMatches&& scope_matches,
+                                     SupportsMatches&& supports_matches,
+                                     RuleCollector&& collect_rules) {
+    collect_rules(sheet.rules, buckets.rules, 0);
+
+    for (size_t layer_index = 0; layer_index < sheet.layer_rules.size(); ++layer_index) {
+        collect_rules(sheet.layer_rules[layer_index].rules, buckets.layer_rules[layer_index], 0);
+    }
+
+    for (size_t mq_index = 0; mq_index < sheet.media_queries.size(); ++mq_index) {
+        const auto& mq = sheet.media_queries[mq_index];
+        if (media_matches(mq_index)) {
+            collect_rules(mq.rules, buckets.media_rules[mq_index], 1);
+        }
+    }
+
+    for (size_t scope_index = 0; scope_index < sheet.scope_rules.size(); ++scope_index) {
+        const auto& scope = sheet.scope_rules[scope_index];
+        if (scope_matches(scope, element)) {
+            collect_rules(scope.rules, buckets.scope_rules[scope_index], 0);
+        }
+    }
+
+    for (size_t supports_index = 0; supports_index < sheet.supports_rules.size(); ++supports_index) {
+        const auto& supports = sheet.supports_rules[supports_index];
+        if (supports_matches(supports_index)) {
+            collect_rules(supports.rules, buckets.supports_rules[supports_index], 1);
+        }
+    }
 }
 
 // Get the string value from a declaration's ComponentValue vector
@@ -338,6 +477,13 @@ void normalize_display_contents_style(ComputedStyle& style) {
 }
 
 } // anonymous namespace
+
+size_t StyleResolver::ConditionalRuleCacheKeyHash::operator()(
+    const ConditionalRuleCacheKey& key) const {
+    const size_t rule_hash = std::hash<const StyleRule*>{}(key.rule);
+    const size_t prefix_hash = std::hash<size_t>{}(key.satisfied_context_count);
+    return rule_hash ^ (prefix_hash + 0x9e3779b9 + (rule_hash << 6) + (rule_hash >> 2));
+}
 
 // ============================================================================
 // PropertyCascade
@@ -7388,19 +7534,51 @@ void PropertyCascade::apply_declaration(
 
 void StyleResolver::add_stylesheet(const StyleSheet& sheet) {
     stylesheets_.push_back(sheet);
+    stylesheet_rule_buckets_.resize(stylesheets_.size());
+    auto& sheet_bucket = stylesheet_rule_buckets_.back();
+
+    sheet_bucket.rules = build_rule_buckets(sheet.rules);
+
+    sheet_bucket.layer_rules.reserve(sheet.layer_rules.size());
+    for (const auto& layer : sheet.layer_rules) {
+        RightmostRuleBuckets layer_buckets = build_rule_buckets(layer.rules);
+        sheet_bucket.layer_rules.push_back(std::move(layer_buckets));
+    }
+
+    sheet_bucket.media_rules.reserve(sheet.media_queries.size());
+    for (const auto& mq : sheet.media_queries) {
+        RightmostRuleBuckets mq_buckets = build_rule_buckets(mq.rules);
+        sheet_bucket.media_rules.push_back(std::move(mq_buckets));
+    }
+
+    sheet_bucket.supports_rules.reserve(sheet.supports_rules.size());
+    for (const auto& supports : sheet.supports_rules) {
+        RightmostRuleBuckets supports_buckets = build_rule_buckets(supports.rules);
+        sheet_bucket.supports_rules.push_back(std::move(supports_buckets));
+    }
+
+    sheet_bucket.scope_rules.reserve(sheet.scope_rules.size());
+    for (const auto& scope : sheet.scope_rules) {
+        RightmostRuleBuckets scope_buckets = build_rule_buckets(scope.rules);
+        sheet_bucket.scope_rules.push_back(std::move(scope_buckets));
+    }
+
+    ++stylesheet_generation_;
     invalidate_conditional_caches();
 }
 
 void StyleResolver::set_viewport(float width, float height) {
+    if (viewport_width_ == width && viewport_height_ == height) {
+        return;
+    }
     viewport_width_ = width;
     viewport_height_ = height;
-    invalidate_conditional_caches();
+    media_condition_cache_.clear();
+    media_condition_cache_state_.valid = false;
 }
 
 void StyleResolver::invalidate_conditional_caches() {
-    media_condition_cache_.clear();
-    supports_condition_cache_.clear();
-    media_condition_cache_state_.valid = false;
+    conditional_rule_cache_.clear();
 }
 
 void StyleResolver::refresh_media_condition_cache_state() const {
@@ -7413,14 +7591,69 @@ void StyleResolver::refresh_media_condition_cache_state() const {
     }
 
     media_condition_cache_.clear();
+    ++media_condition_generation_;
     media_condition_cache_state_.viewport_width = viewport_width_;
     media_condition_cache_state_.viewport_height = viewport_height_;
     media_condition_cache_state_.dark_mode = dark_mode;
     media_condition_cache_state_.valid = true;
 }
 
+bool StyleResolver::rule_has_remaining_media_conditions(
+    const StyleRule& rule,
+    size_t satisfied_context_count) const {
+    if (!rule.conditional_rule_contexts.empty()) {
+        for (size_t index = satisfied_context_count;
+             index < rule.conditional_rule_contexts.size();
+             ++index) {
+            if (rule.conditional_rule_contexts[index].type ==
+                ConditionalRuleContext::Type::Media) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    return satisfied_context_count < rule.media_conditions.size();
+}
+
 void StyleResolver::set_default_custom_property(const std::string& name, const std::string& value) {
     default_custom_props_[name] = value;
+}
+
+StyleResolver::ResolveConditionalContext
+StyleResolver::build_resolve_conditional_context() const {
+    ResolveConditionalContext context;
+    context.sheets.resize(stylesheets_.size());
+
+    size_t media_condition_count = 0;
+    size_t supports_condition_count = 0;
+    for (const auto& sheet : stylesheets_) {
+        media_condition_count += sheet.media_queries.size();
+        supports_condition_count += sheet.supports_rules.size();
+    }
+    context.media_condition_matches.reserve(media_condition_count);
+    context.supports_condition_matches.reserve(supports_condition_count);
+
+    for (size_t sheet_index = 0; sheet_index < stylesheets_.size(); ++sheet_index) {
+        const auto& sheet = stylesheets_[sheet_index];
+        auto& sheet_context = context.sheets[sheet_index];
+
+        sheet_context.media_matches.reserve(sheet.media_queries.size());
+        for (const auto& media_query : sheet.media_queries) {
+            const bool matches = evaluate_media_condition(media_query.condition);
+            sheet_context.media_matches.push_back(matches);
+            context.media_condition_matches.emplace(media_query.condition, matches);
+        }
+
+        sheet_context.supports_matches.reserve(sheet.supports_rules.size());
+        for (const auto& supports_rule : sheet.supports_rules) {
+            const bool matches = evaluate_supports_condition(supports_rule.condition);
+            sheet_context.supports_matches.push_back(matches);
+            context.supports_condition_matches.emplace(supports_rule.condition, matches);
+        }
+    }
+
+    return context;
 }
 
 ComputedStyle StyleResolver::resolve(
@@ -7428,7 +7661,9 @@ ComputedStyle StyleResolver::resolve(
     const ComputedStyle& parent_style) const {
 
     // Collect matching rules
-    auto matched_rules = collect_matching_rules(element);
+    auto matched_rules = collect_matching_rules(
+        element,
+        build_resolve_conditional_context());
 
     // Apply tag defaults first
     ComputedStyle tag_defaults = default_style_for_tag(element.tag_name);
@@ -7980,6 +8215,18 @@ bool StyleResolver::evaluate_media_condition(const std::string& condition) const
     return matches;
 }
 
+bool StyleResolver::evaluate_media_condition(const ResolveConditionalContext& context,
+                                             const std::string& condition) const {
+    auto cached = context.media_condition_matches.find(condition);
+    if (cached != context.media_condition_matches.end()) {
+        return cached->second;
+    }
+
+    const bool matches = evaluate_media_condition(condition);
+    context.media_condition_matches.emplace(condition, matches);
+    return matches;
+}
+
 bool StyleResolver::evaluate_supports_condition(const std::string& condition) const {
     auto cached = supports_condition_cache_.find(condition);
     if (cached != supports_condition_cache_.end()) {
@@ -8094,18 +8341,121 @@ bool StyleResolver::evaluate_supports_condition(const std::string& condition) co
     return matches;
 }
 
-bool StyleResolver::rule_conditions_match(const StyleRule& rule) const {
-    for (const auto& condition : rule.media_conditions) {
-        if (!evaluate_media_condition(condition)) {
-            return false;
+bool StyleResolver::evaluate_supports_condition(const ResolveConditionalContext& context,
+                                                const std::string& condition) const {
+    auto cached = context.supports_condition_matches.find(condition);
+    if (cached != context.supports_condition_matches.end()) {
+        return cached->second;
+    }
+
+    const bool matches = evaluate_supports_condition(condition);
+    context.supports_condition_matches.emplace(condition, matches);
+    return matches;
+}
+
+bool StyleResolver::rule_conditions_match(const StyleRule& rule,
+                                          const ResolveConditionalContext& context,
+                                          size_t satisfied_context_count) const {
+    if (rule_has_remaining_media_conditions(rule, satisfied_context_count)) {
+        refresh_media_condition_cache_state();
+    }
+
+    const size_t stylesheet_generation = stylesheet_generation_;
+    const size_t media_generation = media_condition_generation_;
+    const ConditionalRuleCacheKey cache_key{&rule, satisfied_context_count};
+    auto cached = conditional_rule_cache_.find(cache_key);
+    if (cached != conditional_rule_cache_.end() &&
+        cached->second.stylesheet_generation == stylesheet_generation &&
+        (!cached->second.depends_on_media ||
+         cached->second.media_generation == media_generation)) {
+        return cached->second.matches;
+    }
+
+    const std::string conditional_context_key =
+        build_conditional_context_key(rule, satisfied_context_count);
+
+    if (!conditional_context_key.empty()) {
+        auto pass_cached = context.conditional_rule_matches.find(conditional_context_key);
+        if (pass_cached != context.conditional_rule_matches.end()) {
+            conditional_rule_cache_[cache_key] = pass_cached->second;
+            return pass_cached->second.matches;
         }
     }
 
-    for (const auto& condition : rule.supports_conditions) {
-        if (!evaluate_supports_condition(condition)) {
-            return false;
+    ConditionalRuleDecision decision;
+    auto store_decision = [&](const ConditionalRuleDecision& cached_decision) {
+        ConditionalRuleDecision generation_aware_decision = cached_decision;
+        generation_aware_decision.stylesheet_generation = stylesheet_generation;
+        generation_aware_decision.media_generation = media_generation;
+        if (!conditional_context_key.empty()) {
+            context.conditional_rule_matches[conditional_context_key] =
+                generation_aware_decision;
+        }
+        conditional_rule_cache_[cache_key] = generation_aware_decision;
+    };
+
+    const bool has_remaining_conditions =
+        !conditional_context_key.empty() ||
+        (!rule.conditional_rule_contexts.empty() &&
+         satisfied_context_count < rule.conditional_rule_contexts.size()) ||
+        (rule.conditional_rule_contexts.empty() &&
+         satisfied_context_count <
+             rule.media_conditions.size() + rule.supports_conditions.size());
+    if (has_remaining_conditions) {
+        ++conditional_rule_compute_count_;
+    }
+
+    if (!rule.conditional_rule_contexts.empty()) {
+        for (size_t index = satisfied_context_count;
+             index < rule.conditional_rule_contexts.size();
+             ++index) {
+            const auto& rule_context = rule.conditional_rule_contexts[index];
+            if (rule_context.type == ConditionalRuleContext::Type::Media) {
+                decision.depends_on_media = true;
+                if (!evaluate_media_condition(context, rule_context.condition)) {
+                    decision.matches = false;
+                    store_decision(decision);
+                    return false;
+                }
+                continue;
+            }
+
+            if (!evaluate_supports_condition(context, rule_context.condition)) {
+                decision.matches = false;
+                store_decision(decision);
+                return false;
+            }
+        }
+    } else {
+        size_t remaining_skip = satisfied_context_count;
+        for (const auto& condition : rule.media_conditions) {
+            if (remaining_skip > 0) {
+                --remaining_skip;
+                continue;
+            }
+            decision.depends_on_media = true;
+            if (!evaluate_media_condition(context, condition)) {
+                decision.matches = false;
+                store_decision(decision);
+                return false;
+            }
+        }
+
+        for (const auto& condition : rule.supports_conditions) {
+            if (remaining_skip > 0) {
+                --remaining_skip;
+                continue;
+            }
+            if (!evaluate_supports_condition(context, condition)) {
+                decision.matches = false;
+                store_decision(decision);
+                return false;
+            }
         }
     }
+
+    decision.matches = true;
+    store_decision(decision);
 
     return true;
 }
@@ -8162,16 +8512,19 @@ bool StyleResolver::is_element_in_scope(const ElementView& element, const ScopeR
 // --- Helper: collect from a rule list ---
 
 void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
-                                        const ElementView& element,
-                                        std::vector<MatchedRule>& result,
-                                        size_t& source_order) const {
-    std::vector<bool> candidate_rules = collect_candidate_rules(rules, element);
+                                      const RightmostRuleBuckets& buckets,
+                                      const ElementView& element,
+                                      const ResolveConditionalContext& context,
+                                      std::vector<MatchedRule>& result,
+                                      size_t& source_order,
+                                      size_t satisfied_context_count) const {
+    std::vector<bool> candidate_rules = collect_candidate_rules(buckets, rules.size(), element);
     for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
         if (!candidate_rules[rule_index]) {
             continue;
         }
         const auto& rule = rules[rule_index];
-        if (!rule_conditions_match(rule)) {
+        if (!rule_conditions_match(rule, context, satisfied_context_count)) {
             continue;
         }
         bool matched_any = false;
@@ -8198,17 +8551,20 @@ void StyleResolver::collect_from_rules(const std::vector<StyleRule>& rules,
 }
 
 void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rules,
-                                               const ElementView& element,
-                                               const std::string& pseudo_name,
-                                               std::vector<MatchedRule>& result,
-                                               size_t& source_order) const {
-    std::vector<bool> candidate_rules = collect_candidate_rules(rules, element);
+                                             const RightmostRuleBuckets& buckets,
+                                             const ElementView& element,
+                                             const std::string& pseudo_name,
+                                             const ResolveConditionalContext& context,
+                                             std::vector<MatchedRule>& result,
+                                             size_t& source_order,
+                                             size_t satisfied_context_count) const {
+    std::vector<bool> candidate_rules = collect_candidate_rules(buckets, rules.size(), element);
     for (size_t rule_index = 0; rule_index < rules.size(); ++rule_index) {
         if (!candidate_rules[rule_index]) {
             continue;
         }
         const auto& rule = rules[rule_index];
-        if (!rule_conditions_match(rule)) {
+        if (!rule_conditions_match(rule, context, satisfied_context_count)) {
             continue;
         }
         bool matched_any = false;
@@ -8264,32 +8620,46 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
 // --- Updated collect functions ---
 
 std::vector<MatchedRule> StyleResolver::collect_matching_rules(const ElementView& element) const {
+    return collect_matching_rules(element, build_resolve_conditional_context());
+}
+
+std::vector<MatchedRule> StyleResolver::collect_matching_rules(
+    const ElementView& element,
+    const ResolveConditionalContext& context) const {
     std::vector<MatchedRule> result;
     size_t source_order = 0;
 
-    for (const auto& sheet : stylesheets_) {
-        collect_from_rules(sheet.rules, element, result, source_order);
-        for (const auto& layer : sheet.layer_rules) {
-            collect_from_rules(layer.rules, element, result, source_order);
-        }
+    for (size_t sheet_index = 0; sheet_index < stylesheets_.size(); ++sheet_index) {
+        const auto& sheet = stylesheets_[sheet_index];
+        const auto& bucket = stylesheet_rule_buckets_[sheet_index];
+        const auto& sheet_context = context.sheets[sheet_index];
 
-        for (const auto& mq : sheet.media_queries) {
-            if (evaluate_media_condition(mq.condition)) {
-                collect_from_rules(mq.rules, element, result, source_order);
-            }
-        }
-
-        for (const auto& scope : sheet.scope_rules) {
-            if (is_element_in_scope(element, scope)) {
-                collect_from_rules(scope.rules, element, result, source_order);
-            }
-        }
-
-        for (const auto& supports : sheet.supports_rules) {
-            if (evaluate_supports_condition(supports.condition)) {
-                collect_from_rules(supports.rules, element, result, source_order);
-            }
-        }
+        collect_from_active_rule_groups(
+            sheet,
+            bucket,
+            element,
+            [&sheet_context](size_t media_index) {
+                return sheet_context.media_matches[media_index];
+            },
+            [this](const ScopeRule& scope, const ElementView& scoped_element) {
+                return is_element_in_scope(scoped_element, scope);
+            },
+            [&sheet_context](size_t supports_index) {
+                return sheet_context.supports_matches[supports_index];
+            },
+            [this, &element, &context, &result, &source_order](
+                const std::vector<StyleRule>& rules,
+                const RightmostRuleBuckets& rule_buckets,
+                size_t satisfied_context_count) {
+                collect_from_rules(
+                    rules,
+                    rule_buckets,
+                    element,
+                    context,
+                    result,
+                    source_order,
+                    satisfied_context_count);
+            });
     }
 
     return result;
@@ -8298,33 +8668,48 @@ std::vector<MatchedRule> StyleResolver::collect_matching_rules(const ElementView
 std::vector<MatchedRule> StyleResolver::collect_pseudo_rules(
     const ElementView& element,
     const std::string& pseudo_name) const {
+    return collect_pseudo_rules(element, pseudo_name, build_resolve_conditional_context());
+}
 
+std::vector<MatchedRule> StyleResolver::collect_pseudo_rules(
+    const ElementView& element,
+    const std::string& pseudo_name,
+    const ResolveConditionalContext& context) const {
     std::vector<MatchedRule> result;
     size_t source_order = 0;
 
-    for (const auto& sheet : stylesheets_) {
-        collect_pseudo_from_rules(sheet.rules, element, pseudo_name, result, source_order);
-        for (const auto& layer : sheet.layer_rules) {
-            collect_pseudo_from_rules(layer.rules, element, pseudo_name, result, source_order);
-        }
+    for (size_t sheet_index = 0; sheet_index < stylesheets_.size(); ++sheet_index) {
+        const auto& sheet = stylesheets_[sheet_index];
+        const auto& bucket = stylesheet_rule_buckets_[sheet_index];
+        const auto& sheet_context = context.sheets[sheet_index];
 
-        for (const auto& mq : sheet.media_queries) {
-            if (evaluate_media_condition(mq.condition)) {
-                collect_pseudo_from_rules(mq.rules, element, pseudo_name, result, source_order);
-            }
-        }
-
-        for (const auto& scope : sheet.scope_rules) {
-            if (is_element_in_scope(element, scope)) {
-                collect_pseudo_from_rules(scope.rules, element, pseudo_name, result, source_order);
-            }
-        }
-
-        for (const auto& supports : sheet.supports_rules) {
-            if (evaluate_supports_condition(supports.condition)) {
-                collect_pseudo_from_rules(supports.rules, element, pseudo_name, result, source_order);
-            }
-        }
+        collect_from_active_rule_groups(
+            sheet,
+            bucket,
+            element,
+            [&sheet_context](size_t media_index) {
+                return sheet_context.media_matches[media_index];
+            },
+            [this](const ScopeRule& scope, const ElementView& scoped_element) {
+                return is_element_in_scope(scoped_element, scope);
+            },
+            [&sheet_context](size_t supports_index) {
+                return sheet_context.supports_matches[supports_index];
+            },
+            [this, &element, &pseudo_name, &context, &result, &source_order](
+                const std::vector<StyleRule>& rules,
+                const RightmostRuleBuckets& rule_buckets,
+                size_t satisfied_context_count) {
+                collect_pseudo_from_rules(
+                    rules,
+                    rule_buckets,
+                    element,
+                    pseudo_name,
+                    context,
+                    result,
+                    source_order,
+                    satisfied_context_count);
+            });
     }
 
     return result;
@@ -8335,7 +8720,10 @@ std::optional<ComputedStyle> StyleResolver::resolve_pseudo(
     const std::string& pseudo_name,
     const ComputedStyle& element_style) const {
 
-    auto matched_rules = collect_pseudo_rules(element, pseudo_name);
+    auto matched_rules = collect_pseudo_rules(
+        element,
+        pseudo_name,
+        build_resolve_conditional_context());
     if (matched_rules.empty()) {
         return std::nullopt;
     }
