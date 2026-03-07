@@ -1,5 +1,6 @@
 #pragma once
 #include <clever/layout/box.h>
+#include <array>
 #include <functional>
 #include <unordered_map>
 
@@ -12,21 +13,46 @@ using TextMeasureFn = std::function<float(const std::string& text, float font_si
                                           const std::string& font_family, int font_weight,
                                           bool is_italic, float letter_spacing)>;
 
+struct IntrinsicWidthHintEntry {
+    size_t signature = 0;
+    float measured = -1.0f;
+};
+
 class LayoutEngine {
 public:
+    LayoutEngine();
+
     // Compute layout for the tree rooted at node
     void compute(LayoutNode& root, float viewport_width, float viewport_height);
 
     // Set the text measurement function (injected by render pipeline)
-    void set_text_measurer(TextMeasureFn fn) { text_measurer_ = std::move(fn); }
+    void set_text_measurer(TextMeasureFn fn);
+
+    int inline_block_shrink_wrap_relayout_count() const {
+        return inline_block_shrink_wrap_relayout_count_;
+    }
+
+    int relayout_max_content_width_memo_hit_count() const {
+        return relayout_max_content_width_memo_hit_count_;
+    }
+
+    int relayout_min_content_width_memo_hit_count() const {
+        return relayout_min_content_width_memo_hit_count_;
+    }
+
+    int inline_block_wrapped_text_measure_reuse_count() const {
+        return inline_block_wrapped_text_measure_reuse_count_;
+    }
 
 private:
-    void layout_block(LayoutNode& node, float containing_width);
+    void layout_block(LayoutNode& node, float containing_width, float known_width = -1.0f);
     void layout_inline(LayoutNode& node, float containing_width);
     void layout_flex(LayoutNode& node, float containing_width);
     void layout_grid(LayoutNode& node, float containing_width);
     void layout_table(LayoutNode& node, float containing_width);
+    void layout_inline_block_child(LayoutNode& child, float containing_width);
     void layout_children(LayoutNode& node);
+    void clear_intrinsic_measurement_caches();
 
     float compute_width(LayoutNode& node, float containing_width);
     float compute_height(LayoutNode& node, float containing_height = -1);
@@ -80,6 +106,15 @@ private:
     float viewport_height_ = 0;
     TextMeasureFn text_measurer_;
     std::unordered_map<IntrinsicWidthCacheKey, float, IntrinsicWidthCacheKeyHash> intrinsic_width_cache_;
+    std::unordered_map<const LayoutNode*, std::array<IntrinsicWidthHintEntry, 2>> table_auto_width_hints_;
+    std::unordered_map<const LayoutNode*, std::array<IntrinsicWidthHintEntry, 2>> relayout_intrinsic_width_hints_;
+    const LayoutNode* table_width_hint_root_ = nullptr;
+    const LayoutNode* relayout_intrinsic_width_hint_root_ = nullptr;
+    size_t same_tree_intrinsic_width_owner_token_ = 0;
+    int inline_block_shrink_wrap_relayout_count_ = 0;
+    int relayout_max_content_width_memo_hit_count_ = 0;
+    int relayout_min_content_width_memo_hit_count_ = 0;
+    int inline_block_wrapped_text_measure_reuse_count_ = 0;
 };
 
 } // namespace clever::layout

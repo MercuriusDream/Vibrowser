@@ -2,9 +2,554 @@
 #include <clever/js/js_dom_bindings.h>
 #include <clever/js/js_timers.h>
 #include <clever/js/js_window.h>
+#include <clever/js/js_workers.h>
 #include <clever/html/tree_builder.h>
+#include <clever/layout/box.h>
 #include <gtest/gtest.h>
+
+extern "C" {
+#include <quickjs.h>
+}
+
+#include <CommonCrypto/CommonDigest.h>
+#include <arpa/inet.h>
+#include <array>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <netinet/in.h>
 #include <string>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
+#include <vector>
+
+namespace {
+
+static const char kBase64Chars[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::string base64_encode_bytes(const uint8_t* data, size_t size) {
+    std::string output;
+    output.reserve(((size + 2) / 3) * 4);
+
+    unsigned int value = 0;
+    int bits = -6;
+    for (size_t i = 0; i < size; ++i) {
+        value = (value << 8) + data[i];
+        bits += 8;
+        while (bits >= 0) {
+            output.push_back(kBase64Chars[(value >> bits) & 0x3F]);
+            bits -= 6;
+        }
+    }
+    if (bits > -6) {
+        output.push_back(kBase64Chars[((value << 8) >> (bits + 8)) & 0x3F]);
+    }
+    while (output.size() % 4 != 0) {
+        output.push_back('=');
+    }
+    return output;
+}
+
+std::string websocket_accept_from_request(const std::string& request) {
+    static constexpr std::string_view kHeader = "Sec-WebSocket-Key:";
+    const size_t key_start = request.find(kHeader);
+    if (key_start == std::string::npos) {
+        return {};
+    }
+    size_t value_start = key_start + kHeader.size();
+    while (value_start < request.size() &&
+           (request[value_start] == ' ' || request[value_start] == '\t')) {
+        ++value_start;
+    }
+    const size_t value_end = request.find("\r\n", value_start);
+    if (value_end == std::string::npos || value_end <= value_start) {
+        return {};
+    }
+
+    std::string key = request.substr(value_start, value_end - value_start);
+    key += "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    std::array<uint8_t, CC_SHA1_DIGEST_LENGTH> digest {};
+    CC_SHA1(reinterpret_cast<const unsigned char*>(key.data()),
+            static_cast<CC_LONG>(key.size()),
+            digest.data());
+    return base64_encode_bytes(digest.data(), digest.size());
+}
+
+class ScopedWebSocketTestServer {
+public:
+    ScopedWebSocketTestServer() {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, 1) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~ScopedWebSocketTestServer() {
+        int listen_fd = -1;
+        int client_fd = -1;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            if (listen_fd_ >= 0) {
+                listen_fd = listen_fd_;
+                listen_fd_ = -1;
+            }
+            if (client_fd_ >= 0) {
+                client_fd = client_fd_;
+                client_fd_ = -1;
+            }
+        }
+        if (listen_fd >= 0) {
+            ::shutdown(listen_fd, SHUT_RDWR);
+            ::close(listen_fd);
+        }
+        if (client_fd >= 0) {
+            ::shutdown(client_fd, SHUT_RDWR);
+            ::close(client_fd);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+    bool wait_until_open(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(state_mutex_);
+        return state_cv_.wait_for(lock, timeout, [this] { return handshake_complete_; });
+    }
+
+    bool send_text_frame(const std::string& payload) {
+        std::string frame;
+        frame.push_back(0x81);
+        append_frame_length(frame, payload.size());
+        frame.append(payload);
+        return send_frame(frame);
+    }
+
+    bool send_text_frames(const std::vector<std::string>& payloads) {
+        std::string frames;
+        for (const auto& payload : payloads) {
+            frames.push_back(0x81);
+            append_frame_length(frames, payload.size());
+            frames.append(payload);
+        }
+        return send_frame(frames);
+    }
+
+    bool send_close_frame(uint16_t code, const std::string& reason) {
+        const uint8_t hi = static_cast<uint8_t>((code >> 8) & 0xFF);
+        const uint8_t lo = static_cast<uint8_t>(code & 0xFF);
+        std::string frame;
+        frame.push_back(0x88);
+        const size_t reason_len = reason.size();
+        append_frame_length(frame, reason_len + 2);
+        frame.push_back(static_cast<char>(hi));
+        frame.push_back(static_cast<char>(lo));
+        frame.append(reason);
+        return send_frame(frame);
+    }
+
+private:
+    static void append_frame_length(std::string& frame, size_t len) {
+        if (len < 126) {
+            frame.push_back(static_cast<uint8_t>(len));
+            return;
+        }
+        if (len <= 0xFFFF) {
+            frame.push_back(126);
+            frame.push_back(static_cast<uint8_t>((len >> 8) & 0xFF));
+            frame.push_back(static_cast<uint8_t>(len & 0xFF));
+            return;
+        }
+        frame.push_back(127);
+        for (int i = 7; i >= 0; --i) {
+            frame.push_back(static_cast<uint8_t>((len >> (8 * i)) & 0xFF));
+        }
+    }
+
+    bool send_frame(const std::string& frame) {
+        int fd = -1;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            if (!handshake_complete_ || client_fd_ < 0) {
+                return false;
+            }
+            fd = client_fd_;
+        }
+
+        size_t sent_total = 0;
+        while (sent_total < frame.size()) {
+            ssize_t sent = ::send(fd, frame.data() + sent_total,
+                                  frame.size() - sent_total, 0);
+            if (sent <= 0) {
+                return false;
+            }
+            sent_total += static_cast<size_t>(sent);
+        }
+        return true;
+    }
+
+    void run() {
+        int accepted_fd = ::accept(listen_fd_, nullptr, nullptr);
+        if (accepted_fd < 0) {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            client_fd_ = accepted_fd;
+        }
+
+        std::string request;
+        char buffer[1024];
+        while (request.find("\r\n\r\n") == std::string::npos) {
+            ssize_t n = ::recv(client_fd_, buffer, sizeof(buffer), 0);
+            if (n <= 0) {
+                return;
+            }
+            request.append(buffer, static_cast<size_t>(n));
+        }
+
+        const std::string accept = websocket_accept_from_request(request);
+        if (accept.empty()) {
+            return;
+        }
+
+        const std::string handshake_response =
+            "HTTP/1.1 101 Switching Protocols\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Accept: " + accept + "\r\n"
+            "\r\n";
+        if (::send(client_fd_, handshake_response.data(), handshake_response.size(), 0) < 0) {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            handshake_complete_ = true;
+        }
+        state_cv_.notify_all();
+
+        while (true) {
+            ssize_t n = ::recv(client_fd_, buffer, sizeof(buffer), 0);
+            if (n <= 0) {
+                break;
+            }
+        }
+    }
+
+    int listen_fd_ = -1;
+    int client_fd_ = -1;
+    uint16_t port_ = 0;
+    std::thread server_thread_;
+    std::mutex state_mutex_;
+    std::condition_variable state_cv_;
+    bool handshake_complete_ = false;
+};
+
+class ScopedHttpResponseServer {
+public:
+    explicit ScopedHttpResponseServer(std::vector<std::string> responses)
+        : responses_(std::move(responses)) {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, static_cast<int>(responses_.size())) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~ScopedHttpResponseServer() {
+        if (listen_fd_ >= 0) {
+            ::shutdown(listen_fd_, SHUT_RDWR);
+            ::close(listen_fd_);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+private:
+    void run() {
+        for (const auto& response : responses_) {
+            int client_fd = ::accept(listen_fd_, nullptr, nullptr);
+            if (client_fd < 0) {
+                return;
+            }
+
+            std::string request;
+            char buffer[1024];
+            while (request.find("\r\n\r\n") == std::string::npos) {
+                ssize_t n = ::recv(client_fd, buffer, sizeof(buffer), 0);
+                if (n <= 0) {
+                    ::close(client_fd);
+                    return;
+                }
+                request.append(buffer, static_cast<size_t>(n));
+            }
+
+            size_t total_sent = 0;
+            while (total_sent < response.size()) {
+                ssize_t sent = ::send(client_fd,
+                                      response.data() + total_sent,
+                                      response.size() - total_sent,
+                                      0);
+                if (sent <= 0) {
+                    break;
+                }
+                total_sent += static_cast<size_t>(sent);
+            }
+
+            ::shutdown(client_fd, SHUT_RDWR);
+            ::close(client_fd);
+        }
+    }
+
+    int listen_fd_ = -1;
+    uint16_t port_ = 0;
+    std::thread server_thread_;
+    std::vector<std::string> responses_;
+};
+
+bool is_registered_worker_global(JSContext* ctx, const char* global_name) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue worker = JS_GetPropertyStr(ctx, global, global_name);
+    const bool registered = clever::js::debug_worker_is_registered(ctx, worker);
+    JS_FreeValue(ctx, worker);
+    JS_FreeValue(ctx, global);
+    return registered;
+}
+
+class CoordinatedHttpResponseServer {
+public:
+    explicit CoordinatedHttpResponseServer(std::string response)
+        : response_(std::move(response)) {
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listen_fd_ < 0) {
+            return;
+        }
+
+        int reuse = 1;
+        ::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        socklen_t addr_len = sizeof(addr);
+        if (::getsockname(listen_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+        port_ = ntohs(addr.sin_port);
+
+        if (::listen(listen_fd_, 1) != 0) {
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+            return;
+        }
+
+        server_thread_ = std::thread([this] { run(); });
+    }
+
+    ~CoordinatedHttpResponseServer() {
+        allow_response();
+        if (listen_fd_ >= 0) {
+            ::shutdown(listen_fd_, SHUT_RDWR);
+            ::close(listen_fd_);
+        }
+        if (client_fd_ >= 0) {
+            ::shutdown(client_fd_, SHUT_RDWR);
+            ::close(client_fd_);
+        }
+        if (server_thread_.joinable()) {
+            server_thread_.join();
+        }
+    }
+
+    bool is_valid() const { return listen_fd_ >= 0 && port_ > 0; }
+    uint16_t port() const { return port_; }
+
+    bool wait_for_request(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(state_mutex_);
+        return state_cv_.wait_for(lock, timeout, [this] { return request_received_; });
+    }
+
+    void allow_response() {
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            response_allowed_ = true;
+        }
+        state_cv_.notify_all();
+    }
+
+private:
+    void run() {
+        client_fd_ = ::accept(listen_fd_, nullptr, nullptr);
+        if (client_fd_ < 0) {
+            return;
+        }
+
+        std::string request;
+        char buffer[1024];
+        while (request.find("\r\n\r\n") == std::string::npos) {
+            ssize_t n = ::recv(client_fd_, buffer, sizeof(buffer), 0);
+            if (n <= 0) {
+                return;
+            }
+            request.append(buffer, static_cast<size_t>(n));
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            request_received_ = true;
+        }
+        state_cv_.notify_all();
+
+        {
+            std::unique_lock<std::mutex> lock(state_mutex_);
+            state_cv_.wait(lock, [this] { return response_allowed_; });
+        }
+
+        size_t total_sent = 0;
+        while (total_sent < response_.size()) {
+            ssize_t sent = ::send(client_fd_,
+                                  response_.data() + total_sent,
+                                  response_.size() - total_sent,
+                                  0);
+            if (sent <= 0) {
+                break;
+            }
+            total_sent += static_cast<size_t>(sent);
+        }
+
+        ::shutdown(client_fd_, SHUT_RDWR);
+        ::close(client_fd_);
+        client_fd_ = -1;
+    }
+
+    int listen_fd_ = -1;
+    int client_fd_ = -1;
+    uint16_t port_ = 0;
+    std::string response_;
+    std::thread server_thread_;
+    std::mutex state_mutex_;
+    std::condition_variable state_cv_;
+    bool request_received_ = false;
+    bool response_allowed_ = false;
+};
+
+JSValue js_advance_host_timers(JSContext* ctx, JSValueConst /*this_val*/, int argc, JSValueConst* argv) {
+    int delay_ms = 0;
+    if (argc >= 1) {
+        JS_ToInt32(ctx, &delay_ms, argv[0]);
+    }
+    return JS_NewInt32(ctx, clever::js::flush_ready_timers(ctx, delay_ms));
+}
+
+void install_js_timer_test_helpers(JSContext* ctx) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JS_SetPropertyStr(
+        ctx,
+        global,
+        "__advanceHostTimers",
+        JS_NewCFunction(ctx, js_advance_host_timers, "__advanceHostTimers", 1));
+    JS_FreeValue(ctx, global);
+}
+
+std::string poll_js_value_until_not(clever::js::JSEngine& engine,
+                                    const std::string& expression,
+                                    const std::string& pending_value,
+                                    std::chrono::milliseconds timeout = std::chrono::milliseconds(80)) {
+    using namespace std::chrono_literals;
+
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    std::string value = pending_value;
+    while (std::chrono::steady_clock::now() < deadline) {
+        engine.evaluate("0");
+        EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+        value = engine.evaluate(expression);
+        EXPECT_FALSE(engine.has_error()) << engine.last_error();
+        if (value != pending_value) {
+            break;
+        }
+
+        std::this_thread::sleep_for(1ms);
+    }
+    return value;
+}
+
+} // namespace
 
 // ============================================================================
 // 1. JSEngine basic initialization and destruction
@@ -1353,6 +1898,59 @@ TEST(JSTimers, IntervalSchedulingStaysAlignedAfterCoarseAdvance) {
     clever::js::cleanup_timers(engine.context());
 }
 
+TEST(JSTimers, IntervalAvoidsCallbackDrift) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    install_js_timer_test_helpers(engine.context());
+    engine.evaluate(R"(
+        var ticks = [];
+        var id = setInterval(function() {
+            ticks.push(ticks.length + 1);
+            if (ticks.length === 1) {
+                __advanceHostTimers(35);
+            }
+            if (ticks.length === 2) {
+                clearInterval(id);
+            }
+        }, 10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 10), 1);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 4), 0);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 1), 1);
+    EXPECT_EQ(engine.evaluate("ticks.join(',')"), "1,2");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
+TEST(JSTimers, ClearedIntervalDoesNotRescheduleAfterCallback) {
+    clever::js::JSEngine engine;
+    clever::js::install_timer_bindings(engine.context());
+    install_js_timer_test_helpers(engine.context());
+    engine.evaluate(R"(
+        var ticks = 0;
+        var id = setInterval(function() {
+            ticks = ticks + 1;
+            clearInterval(id);
+            __advanceHostTimers(100);
+        }, 10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 10), 1);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 100), 0);
+    EXPECT_EQ(engine.evaluate("ticks"), "1");
+
+    clever::js::cleanup_timers(engine.context());
+}
+
 TEST(JSTimers, ClearIntervalWorks) {
     clever::js::JSEngine engine;
     clever::js::install_timer_bindings(engine.context());
@@ -1935,6 +2533,294 @@ TEST(JSWebSocket, CloseOnClosedSocketIsNoop) {
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3"); // CLOSED
+}
+
+TEST(JSWebSocket, ClosePathStopsReceiveThreadWithoutSleepPollingV2064) {
+    ScopedWebSocketTestServer server;
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto create_result = engine.evaluate((std::string(R"(
+        (() => {
+            globalThis.__v2064ws = new WebSocket('ws://127.0.0.1:)")
+        + std::to_string(server.port())
+        + R"(/test');
+            return 'created';
+        })()
+    )"));
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(create_result, "created");
+    ASSERT_TRUE(server.wait_until_open(std::chrono::milliseconds(500)));
+
+    auto started = std::chrono::steady_clock::now();
+    auto result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2064ws.close(1000, 'done');
+            return globalThis.__v2064ws.readyState;
+        })()
+    )");
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started);
+
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+    EXPECT_LT(elapsed_ms.count(), 250);
+
+    auto cleanup_result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2064ws = undefined;
+            return 'cleared';
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(cleanup_result, "cleared");
+    JS_RunGC(engine.runtime());
+}
+
+TEST(JSWebSocket, EventCallbacksQueuedToCheckpoint) {
+    ScopedWebSocketTestServer server;
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto create_result = engine.evaluate((std::string(R"(
+        (() => {
+            globalThis.__v2064ws = new WebSocket('ws://127.0.0.1:)")
+        + std::to_string(server.port())
+        + R"(/test');
+            globalThis.__v2064wsEvents = [];
+            globalThis.__v2064ws.onopen = function() {
+                globalThis.__v2064wsEvents.push('open');
+            };
+            globalThis.__v2064ws.onmessage = function(event) {
+                globalThis.__v2064wsEvents.push('message:' + event.data);
+            };
+            globalThis.__v2064ws.onclose = function(event) {
+                globalThis.__v2064wsEvents.push(
+                    `close:${event.code}:${event.reason}`);
+            };
+            return 'created';
+        })()
+    )"));
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(create_result, "created");
+    ASSERT_TRUE(server.wait_until_open(std::chrono::milliseconds(500)));
+
+    ASSERT_TRUE(server.send_text_frame("hello"));
+    ASSERT_TRUE(server.send_close_frame(1000, "bye"));
+
+    EXPECT_EQ(engine.evaluate("globalThis.__v2064wsEvents.length"), "1");
+
+    std::string events = "0";
+    for (int i = 0; i < 20; ++i) {
+        events = engine.evaluate("globalThis.__v2064wsEvents.join(',')");
+        if (events == "open,message:hello,close:1000:bye") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+
+    EXPECT_EQ(events, "open,message:hello,close:1000:bye");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto cleanup_result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2064ws = undefined;
+            globalThis.__v2064wsEvents = undefined;
+            return 'cleared';
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(cleanup_result, "cleared");
+    JS_RunGC(engine.runtime());
+}
+
+TEST(JSWebSocket, QueuedCallbacksKeepStateAliveUntilDispatchCompletes) {
+    ScopedWebSocketTestServer server;
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto create_result = engine.evaluate((std::string(R"(
+        (() => {
+            globalThis.__v2064ws = new WebSocket('ws://127.0.0.1:)")
+        + std::to_string(server.port())
+        + R"(/test');
+            globalThis.__v2064wsEvents = [];
+            globalThis.__v2064ws.onopen = function() {
+                globalThis.__v2064wsEvents.push('open');
+            };
+            globalThis.__v2064ws.onmessage = function(event) {
+                globalThis.__v2064wsEvents.push('message:' + event.data);
+                globalThis.__v2064ws = undefined;
+            };
+            globalThis.__v2064ws.onclose = function(event) {
+                globalThis.__v2064wsEvents.push(
+                    `close:${event.code}:${event.reason}`);
+            };
+            return 'created';
+        })()
+    )"));
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(create_result, "created");
+    ASSERT_TRUE(server.wait_until_open(std::chrono::milliseconds(500)));
+
+    ASSERT_TRUE(server.send_text_frame("later"));
+    ASSERT_TRUE(server.send_close_frame(1000, "done"));
+
+    for (int i = 0; i < 20; ++i) {
+        clever::js::flush_fetch_promise_jobs(engine.context());
+        const auto events = engine.evaluate("globalThis.__v2064wsEvents.join(',')");
+        if (events == "open,message:later,close:1000:done") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+
+    const auto events = engine.evaluate("globalThis.__v2064wsEvents.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(events, "open,message:later,close:1000:done");
+
+    auto cleanup_result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2064wsEvents = undefined;
+            return 'cleared';
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(cleanup_result, "cleared");
+    JS_RunGC(engine.runtime());
+}
+
+TEST(JSWebSocket, OpenAndCloseEventsAreCheckpointOrdered) {
+    ScopedWebSocketTestServer server;
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto create_result = engine.evaluate((std::string(R"(
+        (() => {
+            globalThis.__v2064ws = new WebSocket('ws://127.0.0.1:)")
+        + std::to_string(server.port())
+        + R"(/test');
+            globalThis.__v2064wsEvents = [];
+            globalThis.__v2064ws.onopen = function() {
+                globalThis.__v2064wsEvents.push('open');
+            };
+            globalThis.__v2064ws.onclose = function(event) {
+                globalThis.__v2064wsEvents.push(`close:${event.code}:${event.reason}`);
+            };
+            globalThis.__v2064ws.close(1001, 'manual');
+            return globalThis.__v2064ws.readyState;
+        })()
+    )"));
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(create_result, "3");
+    ASSERT_TRUE(server.wait_until_open(std::chrono::milliseconds(500)));
+
+    EXPECT_EQ(engine.evaluate("globalThis.__v2064wsEvents.length"), "2");
+
+    std::string events = "0";
+    for (int i = 0; i < 20; ++i) {
+        events = engine.evaluate("globalThis.__v2064wsEvents.join(',')");
+        if (events == "open,close:1001:manual") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    }
+
+    EXPECT_EQ(events, "open,close:1001:manual");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto cleanup_result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2064ws = undefined;
+            globalThis.__v2064wsEvents = undefined;
+            return 'cleared';
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(cleanup_result, "cleared");
+    JS_RunGC(engine.runtime());
+}
+
+TEST(JSWebSocket, MessageDeliveryWaitsForMainCheckpointMicrotasks) {
+    using namespace std::chrono_literals;
+
+    ScopedWebSocketTestServer server;
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto create_result = engine.evaluate((std::string(R"(
+        (() => {
+            globalThis.__v2098ws = new WebSocket('ws://127.0.0.1:)")
+        + std::to_string(server.port())
+        + R"(/test');
+            globalThis.__v2098wsTurn = 'setup';
+            globalThis.__v2098wsOrder = [];
+            globalThis.__v2098ws.onmessage = function(event) {
+                globalThis.__v2098wsOrder.push(
+                    'message:' + event.data + ':' + globalThis.__v2098wsTurn);
+            };
+            return 'created';
+        })()
+    )"));
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(create_result, "created");
+    ASSERT_TRUE(server.wait_until_open(std::chrono::milliseconds(500)));
+    ASSERT_TRUE(server.send_text_frame("hello"));
+
+    std::this_thread::sleep_for(20ms);
+
+    auto current_turn = engine.evaluate(R"(
+        globalThis.__v2098wsTurn = 'turn-1';
+        Promise.resolve().then(function() {
+            globalThis.__v2098wsOrder.push(
+                'microtask:' + globalThis.__v2098wsTurn);
+        });
+        globalThis.__v2098wsOrder.push('sync:' + globalThis.__v2098wsTurn);
+        globalThis.__v2098wsOrder.join(',');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(current_turn, "sync:turn-1");
+
+    auto next_turn = engine.evaluate(R"(
+        globalThis.__v2098wsTurn = 'turn-2';
+        Promise.resolve().then(function() {
+            globalThis.__v2098wsOrder.push(
+                'microtask:' + globalThis.__v2098wsTurn);
+        });
+        globalThis.__v2098wsOrder.push('turn:' + globalThis.__v2098wsTurn);
+        globalThis.__v2098wsOrder.join(',');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn, "sync:turn-1,microtask:turn-1,message:hello:turn-1,turn:turn-2");
+
+    auto delivered = engine.evaluate("globalThis.__v2098wsOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered,
+              "sync:turn-1,microtask:turn-1,message:hello:turn-1,turn:turn-2,"
+              "microtask:turn-2");
+
+    auto cleanup_result = engine.evaluate(R"(
+        (() => {
+            globalThis.__v2098ws.close();
+            globalThis.__v2098ws = undefined;
+            globalThis.__v2098wsOrder = undefined;
+            globalThis.__v2098wsTurn = undefined;
+            return 'cleared';
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(cleanup_result, "cleared");
+    JS_RunGC(engine.runtime());
 }
 
 TEST(JSWebSocket, EventHandlerGetterSetterOnopen) {
@@ -3232,6 +4118,266 @@ TEST(JSDom, MutationObserverStub) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, MutationObserverFlushesAtCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto inline_order = engine.evaluate(R"(
+        globalThis.moOrder = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moOrder.push('observer:' + records.length);
+        });
+        observer.observe(target, { attributes: true, childList: true });
+
+        target.setAttribute('data-step', '1');
+        moOrder.push('after-set-attr');
+        target.appendChild(document.createElement('span'));
+        moOrder.push('after-append');
+
+        moOrder.join(',')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_order, "after-set-attr,after-append");
+
+    auto checkpoint_order = engine.evaluate("moOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(checkpoint_order, "after-set-attr,after-append,observer:2");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverBatchesSynchronousMutations) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.moBatches = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moBatches.push(records.map(function(record) {
+                return record.type + ':' + record.attributeName;
+            }).join(','));
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-first', '1');
+        target.setAttribute('data-second', '2');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto batch_count = engine.evaluate("String(moBatches.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_count, "1");
+
+    auto batch_records = engine.evaluate("moBatches[0]");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(batch_records, "attributes:data-first,attributes:data-second");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverRunsAfterNestedPromiseJobsAtCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto inline_order = engine.evaluate(R"(
+        globalThis.moPromiseOrder = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moPromiseOrder.push('observer:' + records.length);
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-sync', '1');
+        Promise.resolve().then(function() {
+            moPromiseOrder.push('promise-1');
+            return Promise.resolve().then(function() {
+                moPromiseOrder.push('promise-2');
+            });
+        });
+        moPromiseOrder.push('sync-end');
+
+        moPromiseOrder.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_order, "sync-end");
+
+    auto checkpoint_order = engine.evaluate("moPromiseOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(checkpoint_order, "sync-end,promise-1,promise-2,observer:1");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverCoalescesPromiseMutationsIntoOneCheckpointBatch) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto inline_order = engine.evaluate(R"(
+        globalThis.moCompoundBatch = [];
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function(records) {
+            moCompoundBatch.push(
+                'observer:' + records.map(function(record) {
+                    return record.attributeName;
+                }).join('|'));
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-sync', '1');
+        Promise.resolve().then(function() {
+            moCompoundBatch.push('promise-1');
+            target.setAttribute('data-promise', '2');
+            return Promise.resolve().then(function() {
+                moCompoundBatch.push('promise-2');
+                target.setAttribute('data-nested', '3');
+            });
+        });
+        moCompoundBatch.push('sync-end');
+
+        moCompoundBatch.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_order, "sync-end");
+
+    auto checkpoint_order = engine.evaluate("moCompoundBatch.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(checkpoint_order,
+              "sync-end,promise-1,promise-2,observer:data-sync|data-promise|data-nested");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverNestedMutationsAreDeferredToNextCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto result = engine.evaluate(R"(
+        globalThis.moNested = [];
+        var depth = 0;
+        var nestedMutationQueued = false;
+        var target = document.getElementById('target');
+        var observer = new MutationObserver(function() {
+            moNested.push('entry-' + depth);
+            if (depth > 0) {
+                moNested.push('reentrant');
+            }
+            depth++;
+            if (!nestedMutationQueued) {
+                nestedMutationQueued = true;
+                target.setAttribute('data-child', '2');
+            }
+            depth--;
+            moNested.push('exit-' + depth);
+        });
+        observer.observe(target, { attributes: true });
+        target.setAttribute('data-root', '1');
+        moNested.push('after-trigger');
+        moNested.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "after-trigger");
+
+    auto callback_order = engine.evaluate("moNested.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(callback_order, "after-trigger,entry-0,exit-0,entry-0,exit-0");
+
+    auto reentrant = engine.evaluate("moNested.includes('reentrant')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(reentrant, "false");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverAttributeOldValueAndTakeRecordsV2066) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto result = engine.evaluate(R"(
+        var target = document.getElementById('target');
+        var callbackCount = 0;
+        var observer = new MutationObserver(function() {
+            callbackCount++;
+        });
+        observer.observe(target, { attributes: true });
+
+        target.setAttribute('data-empty', '');
+        target.setAttribute('data-empty', 'filled');
+        var noOldValue = observer.takeRecords().map(function(record) {
+            return record.attributeName + ':' + String(record.oldValue);
+        }).join('|');
+
+        observer.observe(target, { attributes: true, attributeOldValue: true });
+        target.setAttribute('data-empty', '');
+        target.setAttribute('data-empty', 'filled-again');
+        var withOldValue = observer.takeRecords().map(function(record) {
+            return record.attributeName + ':' + (record.oldValue === null ? '<null>' : '[' + record.oldValue + ']');
+        }).join('|');
+
+        target.setAttribute('data-stale', 'queued');
+        observer.disconnect();
+        var afterDisconnect = observer.takeRecords().length;
+
+        [noOldValue, withOldValue, String(afterDisconnect), String(callbackCount)].join('||');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "data-empty:null|data-empty:null||data-empty:[filled]|data-empty:[]||0||0");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MutationObserverCharacterDataOldValueRespectsOptionsV2066) {
+    auto doc = clever::html::parse("<html><body><div id='target'>before</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto result = engine.evaluate(R"(
+        var text = document.getElementById('target').firstChild;
+        var callbackCount = 0;
+        var observer = new MutationObserver(function() {
+            callbackCount++;
+        });
+        observer.observe(text, { characterData: true });
+
+        text.textContent = 'after-no-old';
+        var withoutOldValue = observer.takeRecords().map(function(record) {
+            return record.type + ':' + String(record.oldValue);
+        }).join('|');
+
+        observer.observe(text, { characterData: true, characterDataOldValue: true });
+        text.textContent = 'after-with-old';
+        var withOldValue = observer.takeRecords().map(function(record) {
+            return record.type + ':' + (record.oldValue === null ? '<null>' : '[' + record.oldValue + ']');
+        }).join('|');
+
+        text.textContent = 'queued-then-drained';
+        var drained = observer.takeRecords().map(function(record) {
+            return record.oldValue === null ? '<null>' : '[' + record.oldValue + ']';
+        }).join('|');
+        var afterDrain = observer.takeRecords().length;
+
+        [withoutOldValue, withOldValue, drained, String(afterDrain), String(callbackCount)].join('||');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "characterData:null||characterData:[after-no-old]||[after-with-old]||0||0");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // ============================================================================
 // IntersectionObserver stub
 // ============================================================================
@@ -3246,10 +4392,12 @@ TEST(JSDom, IntersectionObserverStub) {
         var hasObserve = typeof io.observe === 'function';
         var hasUnobserve = typeof io.unobserve === 'function';
         var hasDisconnect = typeof io.disconnect === 'function';
+        var hasTakeRecords = typeof io.takeRecords === 'function';
         io.observe(document.getElementById('target'));
         io.unobserve(document.getElementById('target'));
         io.disconnect();
-        hasObserve && hasUnobserve && hasDisconnect
+        Array.isArray(io.takeRecords()) && hasObserve && hasUnobserve &&
+            hasDisconnect && hasTakeRecords
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
@@ -3260,6 +4408,53 @@ TEST(JSDom, IntersectionObserverStub) {
 // ============================================================================
 // ResizeObserver stub
 // ============================================================================
+
+static void set_resize_observer_layout_geometry(
+        clever::layout::LayoutNode& node,
+        float content_width,
+        float content_height,
+        float padding_left,
+        float padding_top,
+        float padding_right,
+        float padding_bottom,
+        float border_left,
+        float border_top,
+        float border_right,
+        float border_bottom) {
+    node.geometry.width = content_width + padding_left + padding_right + border_left + border_right;
+    node.geometry.height = content_height + padding_top + padding_bottom + border_top + border_bottom;
+    node.geometry.padding.left = padding_left;
+    node.geometry.padding.top = padding_top;
+    node.geometry.padding.right = padding_right;
+    node.geometry.padding.bottom = padding_bottom;
+    node.geometry.border.left = border_left;
+    node.geometry.border.top = border_top;
+    node.geometry.border.right = border_right;
+    node.geometry.border.bottom = border_bottom;
+}
+
+static std::unique_ptr<clever::layout::LayoutNode> make_resize_observer_layout_root(
+        clever::html::SimpleNode* target,
+        float content_width,
+        float content_height,
+        float padding_left,
+        float padding_top,
+        float padding_right,
+        float padding_bottom,
+        float border_left,
+        float border_top,
+        float border_right,
+        float border_bottom) {
+    auto root = std::make_unique<clever::layout::LayoutNode>();
+    root->dom_node = target;
+    set_resize_observer_layout_geometry(*root, content_width, content_height,
+                                        padding_left, padding_top,
+                                        padding_right, padding_bottom,
+                                        border_left, border_top,
+                                        border_right, border_bottom);
+    return root;
+}
+
 TEST(JSDom, ResizeObserverStub) {
     auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
     ASSERT_NE(doc, nullptr);
@@ -3271,10 +4466,12 @@ TEST(JSDom, ResizeObserverStub) {
         var hasObserve = typeof ro.observe === 'function';
         var hasUnobserve = typeof ro.unobserve === 'function';
         var hasDisconnect = typeof ro.disconnect === 'function';
+        var hasTakeRecords = typeof ro.takeRecords === 'function';
         ro.observe(document.getElementById('target'));
         ro.unobserve(document.getElementById('target'));
         ro.disconnect();
-        hasObserve && hasUnobserve && hasDisconnect
+        Array.isArray(ro.takeRecords()) && hasObserve && hasUnobserve &&
+            hasDisconnect && hasTakeRecords
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
@@ -4154,18 +5351,228 @@ TEST(JSFetch, FetchRejectsUnsupportedRequestSchemeBeforeDispatch) {
     EXPECT_EQ(result, "TypeError: Failed to fetch (CORS blocked)");
 }
 
+TEST(JSFetch, AbortBeforeDispatchRejectsWithAbortError) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://app.example/", 1024, 768);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"(
+        var fetchAbortResult = 'pending';
+        var controller = new AbortController();
+        controller.abort();
+        fetch('http://127.0.0.1:1/aborted', { signal: controller.signal })
+            .then(function() { fetchAbortResult = 'resolved'; })
+            .catch(function(err) {
+                fetchAbortResult = (err && err.name ? err.name : 'Error') + ':' +
+                    (err && err.message ? err.message : String(err));
+            });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("fetchAbortResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "AbortError:The operation was aborted");
+}
+
+TEST(JSFetch, AbortAfterDispatchCompletesAtCheckpointV2089) {
+    const std::string delayed_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 7\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "delayed";
+    CoordinatedHttpResponseServer server(delayed_response);
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto initial = engine.evaluate((R"(
+        globalThis.__fetchCheckpointOrder = [];
+        globalThis.__fetchCheckpointController = new AbortController();
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/delayed', {
+            signal: __fetchCheckpointController.signal
+        }).then(function() {
+            __fetchCheckpointOrder.push('resolved');
+        }).catch(function(err) {
+            __fetchCheckpointOrder.push(err && err.name ? err.name : 'Error');
+        });
+        Promise.resolve().then(function() {
+            __fetchCheckpointOrder.push('microtask');
+        });
+        __fetchCheckpointController.abort();
+        __fetchCheckpointOrder.push('after-abort');
+        __fetchCheckpointOrder.join(',');
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(initial, "after-abort");
+
+    auto after_checkpoint = engine.evaluate("__fetchCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "after-abort,microtask,AbortError");
+}
+
+TEST(JSFetch, AbortAfterDispatchRejectsBeforeDelayedResponseArrives) {
+    const std::string delayed_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 7\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "delayed";
+    CoordinatedHttpResponseServer server(delayed_response);
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var fetchAbortAfterDispatch = 'pending';
+        var fetchAbortController = new AbortController();
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/delayed', {
+            signal: fetchAbortController.signal
+        }).then(function() {
+            fetchAbortAfterDispatch = 'resolved';
+        }).catch(function(err) {
+            fetchAbortAfterDispatch = (err && err.name ? err.name : 'Error') + ':' +
+                (err && err.message ? err.message : String(err));
+        });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    ASSERT_TRUE(server.wait_for_request(std::chrono::milliseconds(1000)));
+
+    engine.evaluate("fetchAbortController.abort()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    server.allow_response();
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    std::string result = "pending";
+    while (std::chrono::steady_clock::now() < deadline) {
+        clever::js::flush_fetch_promise_jobs(engine.context());
+        result = engine.evaluate("fetchAbortAfterDispatch");
+        EXPECT_FALSE(engine.has_error()) << engine.last_error();
+        if (result != "pending") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_EQ(result, "AbortError:The operation was aborted");
+}
+
+TEST(JSFetch, AbortSuppressesLateFulfillmentBodyConsumption) {
+    const std::string delayed_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 9\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "late-body";
+    CoordinatedHttpResponseServer server(delayed_response);
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var fetchLateBodyResult = 'pending';
+        var fetchLateBodyText = 'unset';
+        var fetchLateController = new AbortController();
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/late', {
+            signal: fetchLateController.signal
+        }).then(function(resp) {
+            return resp.text().then(function(text) {
+                fetchLateBodyText = text;
+                fetchLateBodyResult = 'resolved';
+            });
+        }).catch(function(err) {
+            fetchLateBodyResult = err && err.name ? err.name : String(err);
+        });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    ASSERT_TRUE(server.wait_for_request(std::chrono::milliseconds(1000)));
+
+    engine.evaluate("fetchLateController.abort()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    server.allow_response();
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    std::string result = "pending";
+    while (std::chrono::steady_clock::now() < deadline) {
+        clever::js::flush_fetch_promise_jobs(engine.context());
+        result = engine.evaluate("fetchLateBodyResult");
+        EXPECT_FALSE(engine.has_error()) << engine.last_error();
+        if (result != "pending") {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_EQ(result, "AbortError");
+    auto body = engine.evaluate("fetchLateBodyText");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(body, "unset");
+}
+
 TEST(JSFetch, XHRRejectsUnsupportedRequestSchemeBeforeDispatch) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://app.example/", 1024, 768);
     clever::js::install_fetch_bindings(engine.context());
     auto result = engine.evaluate(R"(
-        var xhr = new XMLHttpRequest();
-        xhr.open('GET', 'ftp://api.example/data');
-        xhr.send();
-        [xhr.readyState, xhr.status].join(',')
+        globalThis.__xhrBeforeDispatch = new XMLHttpRequest();
+        __xhrBeforeDispatch.open('GET', 'ftp://api.example/data');
+        __xhrBeforeDispatch.send();
+        [__xhrBeforeDispatch.readyState, __xhrBeforeDispatch.status].join(',')
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
-    EXPECT_EQ(result, "4,0");
+    EXPECT_EQ(result, "1,0");
+    auto after_checkpoint = engine.evaluate(
+        "[__xhrBeforeDispatch.readyState, __xhrBeforeDispatch.status].join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "4,0");
+}
+
+TEST(JSXHR, UnsupportedSchemeCompletionRunsAfterMicrotasksV2089) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://app.example/", 1024, 768);
+    clever::js::install_fetch_bindings(engine.context());
+    auto result = engine.evaluate(R"(
+        globalThis.__xhrOrder = [];
+        globalThis.__xhrMicrotask = new XMLHttpRequest();
+        __xhrMicrotask.onreadystatechange = function() {
+            __xhrOrder.push('readystatechange:' + __xhrMicrotask.readyState);
+        };
+        __xhrMicrotask.onerror = function() {
+            __xhrOrder.push('error');
+        };
+        Promise.resolve().then(function() {
+            __xhrOrder.push('microtask');
+        });
+        __xhrMicrotask.open('GET', 'ftp://api.example/data');
+        __xhrMicrotask.send();
+        __xhrOrder.push('after-send');
+        __xhrOrder.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "after-send");
+
+    auto after_checkpoint = engine.evaluate("__xhrOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "after-send,microtask,readystatechange:4,error");
 }
 
 // ============================================================================
@@ -4559,6 +5966,104 @@ TEST(JSEventPropagation, ComposedPathReturnsAncestorChain) {
     // First element in path should be the target (child)
     auto first = engine.evaluate("firstId");
     EXPECT_EQ(first, "child");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, EventObjectMethodsStillWorkWithoutPerDispatchEvalV2062) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='parent'><button id='child'>x</button></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        var eventLog = '';
+        var parent = document.getElementById('parent');
+        var child = document.getElementById('child');
+
+        child.addEventListener('click', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.push('mutated');
+            var secondPath = e.composedPath();
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            eventLog = [
+                e.defaultPrevented,
+                e.__stopped,
+                e.__immediate_stopped,
+                firstPath.length === secondPath.length + 1,
+                secondPath.length >= 4,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'child',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent'
+            ].join('|');
+        });
+
+        child.addEventListener('click', function() {
+            eventLog += '|unexpected-second-listener';
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* child_node = find_node_by_id(doc.get(), "child");
+    ASSERT_NE(child_node, nullptr);
+
+    bool prevented = clever::js::dispatch_event(engine.context(), child_node, "click");
+    EXPECT_TRUE(prevented);
+    EXPECT_EQ(engine.evaluate("eventLog"), "true|true|true|true|true|true|true");
+
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, MouseEventObjectMethodsStillWorkWithoutPerDispatchEvalV2062) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='parent'><button id='child'>x</button></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        var mouseLog = '';
+        var parent = document.getElementById('parent');
+        var child = document.getElementById('child');
+
+        child.addEventListener('mousedown', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.pop();
+            var secondPath = e.composedPath();
+            e.stopPropagation();
+            e.preventDefault();
+            mouseLog = [
+                e.getModifierState('Control'),
+                e.getModifierState('Shift'),
+                e.getModifierState('Alt'),
+                e.getModifierState('Meta'),
+                e.getModifierState('CapsLock'),
+                e.defaultPrevented,
+                e.__stopped,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'child',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent',
+                e.clientX,
+                e.clientY,
+                secondPath.length >= 4
+            ].join('|');
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* child_node = find_node_by_id(doc.get(), "child");
+    ASSERT_NE(child_node, nullptr);
+
+    bool prevented = clever::js::dispatch_mouse_event(
+        engine.context(), child_node, "mousedown",
+        12.0, 34.0, 56.0, 78.0,
+        1, 1,
+        true, false, true, false,
+        2);
+    EXPECT_TRUE(prevented);
+    EXPECT_EQ(engine.evaluate("mouseLog"), "true|false|true|false|false|true|true|true|true|12|34|true");
 
     clever::js::cleanup_dom_bindings(engine.context());
 }
@@ -5285,43 +6790,49 @@ TEST(JSWorker, ConstructorExists) {
     EXPECT_EQ(result, "function");
 }
 
-TEST(JSWorker, DISABLED_NewWorkerCreatesObject) {
+TEST(JSWorker, NewWorkerCreatesObject) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
 
     auto result = engine.evaluate(R"(
         var w = new Worker('__inline:// empty worker');
-        typeof w;
+        var type = typeof w;
+        w.terminate();
+        type;
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "object");
 }
 
-TEST(JSWorker, DISABLED_PostMessageExistsAsFunction) {
+TEST(JSWorker, PostMessageExistsAsFunction) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
 
     auto result = engine.evaluate(R"(
         var w = new Worker('__inline:// empty');
-        typeof w.postMessage;
+        var type = typeof w.postMessage;
+        w.terminate();
+        type;
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "function");
 }
 
-TEST(JSWorker, DISABLED_TerminateExistsAsFunction) {
+TEST(JSWorker, TerminateExistsAsFunction) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
 
     auto result = engine.evaluate(R"(
         var w = new Worker('__inline:// empty');
-        typeof w.terminate;
+        var type = typeof w.terminate;
+        w.terminate();
+        type;
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "function");
 }
 
-TEST(JSWorker, DISABLED_OnmessageGetterSetter) {
+TEST(JSWorker, OnmessageGetterSetter) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
 
@@ -5330,6 +6841,7 @@ TEST(JSWorker, DISABLED_OnmessageGetterSetter) {
         var initial = w.onmessage;
         w.onmessage = function(e) {};
         var afterSet = typeof w.onmessage;
+        w.terminate();
         // Initial should be undefined, after set should be a function
         (initial === undefined || initial === null) + ',' + afterSet;
     )");
@@ -5337,7 +6849,7 @@ TEST(JSWorker, DISABLED_OnmessageGetterSetter) {
     EXPECT_EQ(result, "true,function");
 }
 
-TEST(JSWorker, DISABLED_OnerrorGetterSetter) {
+TEST(JSWorker, OnerrorGetterSetter) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
 
@@ -5346,6 +6858,7 @@ TEST(JSWorker, DISABLED_OnerrorGetterSetter) {
         var initial = w.onerror;
         w.onerror = function(e) {};
         var afterSet = typeof w.onerror;
+        w.terminate();
         (initial === undefined || initial === null) + ',' + afterSet;
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
@@ -5453,6 +6966,659 @@ TEST(JSWorker, DISABLED_MultipleWorkersCoexist) {
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "11,110");
+}
+
+TEST(JSWorker, MessagePumpDeliversQueuedMessages) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerResult = e.data; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    std::this_thread::sleep_for(20ms);
+
+    auto next_turn_result = engine.evaluate("__workerResult");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn_result, "pending");
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, MessageDeliveryDoesNotReenterCurrentTurn) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerOrder = [];
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerOrder.push('worker:' + e.data); };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto inline_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerOrder.push('after-post');
+        __workerOrder.join(',')
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_result, "after-post");
+
+    std::this_thread::sleep_for(20ms);
+
+    auto next_turn_result = engine.evaluate(R"(
+        __workerOrder.push('next-turn');
+        __workerOrder.join(',')
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn_result, "after-post,next-turn");
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "after-post,next-turn,worker:echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, MicrotasksFlushBeforeQueuedWorkerDelivery) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerOrder = [];
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerOrder.push('worker:' + e.data); };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto inline_result = engine.evaluate(R"(
+        Promise.resolve().then(function() { __workerOrder.push('microtask'); });
+        __worker.postMessage('hello');
+        __workerOrder.push('after-post');
+        __workerOrder.join(',')
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(inline_result, "after-post");
+
+    std::this_thread::sleep_for(20ms);
+
+    auto next_turn_result = engine.evaluate(R"(
+        __workerOrder.push('next-turn');
+        __workerOrder.join(',')
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn_result, "after-post,microtask,next-turn");
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "after-post,microtask,next-turn,worker:echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, DeliveryWaitsForNextTurnMicrotasks) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerOrder = [];
+        globalThis.__workerTurn = 'setup';
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) {
+            __workerOrder.push('worker:' + e.data + ':' + __workerTurn);
+        };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto current_turn = engine.evaluate(R"(
+        globalThis.__workerTurn = 'turn-1';
+        Promise.resolve().then(function() { __workerOrder.push('microtask:' + __workerTurn); });
+        __worker.postMessage('hello');
+        __workerOrder.push('sync:' + __workerTurn);
+        __workerOrder.join(',');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(current_turn, "sync:turn-1");
+
+    std::this_thread::sleep_for(20ms);
+
+    auto next_turn = engine.evaluate(R"(
+        globalThis.__workerTurn = 'turn-2';
+        Promise.resolve().then(function() { __workerOrder.push('microtask:' + __workerTurn); });
+        __workerOrder.push('turn:' + __workerTurn);
+        __workerOrder.join(',');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn, "sync:turn-1,microtask:turn-1,turn:turn-2");
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered,
+              "sync:turn-1,microtask:turn-1,turn:turn-2,microtask:turn-2,"
+              "worker:echo:hello:turn-2");
+
+    engine.evaluate(R"(
+        __worker.terminate();
+        __worker = null;
+        __workerTurn = null;
+        __workerOrder = null;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, TerminateKeepsCheckpointQueuedMessagesAlive) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__workerCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) {
+            __workerCount++;
+            __workerResult = e.data;
+        };
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerResult + ',' + __workerCount;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending,0");
+
+    std::this_thread::sleep_for(20ms);
+
+    auto terminate_result = engine.evaluate(R"(
+        __worker.terminate();
+        __workerResult + ',' + __workerCount;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(terminate_result, "pending,0");
+
+    auto delivered = engine.evaluate("__workerResult + ',' + __workerCount");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "echo:hello,1");
+
+    auto result = engine.evaluate(R"(
+        var snapshot = __workerResult + ',' + __workerCount;
+        __worker = null;
+        snapshot;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "echo:hello,1");
+}
+
+TEST(JSWorker, TerminateUnregistersAfterCheckpointDeliveryDrains) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__workerCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) {
+            __workerCount++;
+            __workerResult = e.data;
+        };
+        __worker.postMessage('hello');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    std::this_thread::sleep_for(20ms);
+
+    auto terminate_snapshot = engine.evaluate(R"(
+        __worker.terminate();
+        [__workerResult, __workerCount].join(',');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(terminate_snapshot, "pending,0");
+
+    EXPECT_EQ(clever::js::debug_worker_registry_size(engine.context()), 0u);
+    EXPECT_FALSE(is_registered_worker_global(engine.context(), "__worker"));
+
+    auto delivered = engine.evaluate("__workerResult + ',' + __workerCount");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "echo:hello,1");
+
+    EXPECT_EQ(clever::js::debug_worker_registry_size(engine.context()), 0u);
+    EXPECT_FALSE(is_registered_worker_global(engine.context(), "__worker"));
+
+    auto stable = engine.evaluate(R"(
+        __worker.onmessage = function(e) { __workerCount += 100; };
+        [__workerResult, __workerCount].join(',');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(stable, "echo:hello,1");
+
+    EXPECT_EQ(clever::js::debug_worker_registry_size(engine.context()), 0u);
+    EXPECT_FALSE(is_registered_worker_global(engine.context(), "__worker"));
+
+    auto later_turn = engine.evaluate("__workerResult + ',' + __workerCount");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(later_turn, "echo:hello,1");
+
+    engine.evaluate("__worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, WorkerCloseKeepsCheckpointQueuedMessagesAlive) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    auto init_result = engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__workerCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); close(); }');
+        __worker.onmessage = function(e) {
+            __workerCount++;
+            __workerResult = e.data;
+        };
+        __worker.postMessage('hello');
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(init_result, "pending");
+
+    std::this_thread::sleep_for(20ms);
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto before_checkpoint = engine.evaluate("__workerResult + ',' + __workerCount");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "echo:hello,1");
+
+    auto delivered = engine.evaluate("__workerResult + ',' + __workerCount");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "echo:hello,1");
+
+    auto result = engine.evaluate(R"(
+        var snapshot = __workerResult + ',' + __workerCount;
+        __worker = null;
+        snapshot;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "echo:hello,1");
+}
+
+TEST(JSWorker, WorkerCloseUnregistersAfterCheckpointDeliveryDrains) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__workerCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); close(); }');
+        __worker.onmessage = function(e) {
+            __workerCount++;
+            __workerResult = e.data;
+        };
+        __worker.postMessage('hello');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    std::this_thread::sleep_for(20ms);
+
+    EXPECT_EQ(clever::js::debug_worker_registry_size(engine.context()), 1u);
+    EXPECT_TRUE(is_registered_worker_global(engine.context(), "__worker"));
+
+    auto checkpoint_snapshot = engine.evaluate("__workerResult + ',' + __workerCount");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(checkpoint_snapshot, "pending,0");
+
+    EXPECT_EQ(clever::js::debug_worker_registry_size(engine.context()), 0u);
+    EXPECT_FALSE(is_registered_worker_global(engine.context(), "__worker"));
+
+    auto delivered = engine.evaluate("__workerResult + ',' + __workerCount");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "echo:hello,1");
+
+    auto later_turn = engine.evaluate(R"(
+        __worker.onmessage = function(e) { __workerCount += 100; };
+        [__workerResult, __workerCount].join(',');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(later_turn, "echo:hello,1");
+
+    EXPECT_EQ(clever::js::debug_worker_registry_size(engine.context()), 0u);
+    EXPECT_FALSE(is_registered_worker_global(engine.context(), "__worker"));
+
+    engine.evaluate("__worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, TimerTurnsDoNotDropCheckpointQueuedWorkerMessages) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+    clever::js::install_timer_bindings(engine.context());
+
+    auto init_result = engine.evaluate(R"(
+        globalThis.__workerOrder = [];
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerOrder.push('worker:' + e.data); };
+        setTimeout(function() {
+            __workerOrder.push('timer');
+            Promise.resolve().then(function() { __workerOrder.push('timer-microtask'); });
+        }, 0);
+        __worker.postMessage('hello');
+        __workerOrder.push('after-post');
+        __workerOrder.join(',');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(init_result, "after-post");
+
+    std::this_thread::sleep_for(20ms);
+
+    EXPECT_EQ(clever::js::flush_ready_timers(engine.context(), 0), 1);
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto before_checkpoint = engine.evaluate(R"(
+        __workerOrder.push('next-checkpoint');
+        __workerOrder.join(',');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "after-post,timer,timer-microtask,worker:echo:hello,next-checkpoint");
+
+    auto delivered = engine.evaluate("__workerOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "after-post,timer,timer-microtask,worker:echo:hello,next-checkpoint");
+
+    clever::js::cleanup_timers(engine.context());
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, WorkerCloseSuppressesQueuedErrorsBeforePump) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerError = 'pending';
+        globalThis.__workerErrorCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function() { try { throw new Error("boom from worker"); } finally { close(); } }');
+        __worker.onerror = function(e) {
+            __workerErrorCount++;
+            __workerError = e.message;
+        };
+        __worker.postMessage('hello');
+        __workerError;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    std::this_thread::sleep_for(20ms);
+
+    auto result = engine.evaluate(R"(
+        var snapshot = __workerError + ',' + __workerErrorCount;
+        __worker = null;
+        snapshot;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "pending,0");
+}
+
+TEST(JSWorker, TerminateKeepsCheckpointQueuedErrorsAlive) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerError = 'pending';
+        globalThis.__workerErrorCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function() { throw new Error("boom from worker"); }');
+        __worker.onerror = function(e) {
+            __workerErrorCount++;
+            __workerError = e.message;
+        };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerError + ',' + __workerErrorCount;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending,0");
+
+    std::this_thread::sleep_for(20ms);
+
+    auto terminate_result = engine.evaluate(R"(
+        __worker.terminate();
+        __workerError + ',' + __workerErrorCount;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(terminate_result, "pending,0");
+
+    auto delivered = engine.evaluate("__workerError + ',' + __workerErrorCount");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "boom from worker,1");
+
+    auto stable = engine.evaluate("__workerError + ',' + __workerErrorCount");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(stable, "boom from worker,1");
+
+    engine.evaluate("__worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, WorkerCloseSuppressesLateMessageAndErrorAfterRetirement) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__workerMessageCount = 0;
+        globalThis.__workerError = 'pending';
+        globalThis.__workerErrorCount = 0;
+        globalThis.__worker = new Worker('__inline:onmessage = function() { close(); postMessage("late"); throw new Error("late boom"); }');
+        __worker.onmessage = function(e) {
+            __workerMessageCount++;
+            __workerResult = e.data;
+        };
+        __worker.onerror = function(e) {
+            __workerErrorCount++;
+            __workerError = e.message;
+        };
+        __worker.postMessage('hello');
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    std::this_thread::sleep_for(20ms);
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto result = engine.evaluate(R"(
+        [
+            __workerResult,
+            __workerMessageCount,
+            __workerError,
+            __workerErrorCount
+        ].join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "pending,0,pending,0");
+
+    auto stable = engine.evaluate(R"(
+        __worker = null;
+        [
+            __workerResult,
+            __workerMessageCount,
+            __workerError,
+            __workerErrorCount
+        ].join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(stable, "pending,0,pending,0");
+}
+
+TEST(JSWorker, FinishedThreadTeardownUnregistersWithoutQueuedDelivery) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__worker = new Worker('__inline:close();');
+        typeof __worker;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    std::this_thread::sleep_for(20ms);
+
+    EXPECT_EQ(clever::js::debug_worker_registry_size(engine.context()), 1u);
+    EXPECT_TRUE(is_registered_worker_global(engine.context(), "__worker"));
+
+    auto worker_type = engine.evaluate("typeof __worker");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(worker_type, "object");
+
+    EXPECT_EQ(clever::js::debug_worker_registry_size(engine.context()), 0u);
+    EXPECT_FALSE(is_registered_worker_global(engine.context(), "__worker"));
+
+    auto later_turn = engine.evaluate("typeof __worker");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(later_turn, "object");
+
+    EXPECT_EQ(clever::js::debug_worker_registry_size(engine.context()), 0u);
+    EXPECT_FALSE(is_registered_worker_global(engine.context(), "__worker"));
+
+    engine.evaluate("__worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, MessagePumpDoesNotWaitForPollingSliceV2065) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerResult = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function(e) { postMessage("echo:" + e.data); }');
+        __worker.onmessage = function(e) { __workerResult = e.data; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerResult;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    const auto deadline = std::chrono::steady_clock::now() + 80ms;
+    std::string delivered = "pending";
+    while (std::chrono::steady_clock::now() < deadline) {
+        engine.evaluate("0");
+        ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+        delivered = engine.evaluate("__workerResult");
+        ASSERT_FALSE(engine.has_error()) << engine.last_error();
+        if (delivered == "echo:hello") {
+            break;
+        }
+
+        std::this_thread::sleep_for(1ms);
+    }
+
+    EXPECT_EQ(delivered, "echo:hello");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSWorker, MessagePumpDeliversWorkerError) {
+    using namespace std::chrono_literals;
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://example.com/", 800, 600);
+
+    engine.evaluate(R"(
+        globalThis.__workerError = 'pending';
+        globalThis.__worker = new Worker('__inline:onmessage = function() { throw new Error("boom from worker"); }');
+        __worker.onerror = function(e) { __workerError = e.message; };
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto post_result = engine.evaluate(R"(
+        __worker.postMessage('hello');
+        __workerError;
+    )");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(post_result, "pending");
+
+    std::this_thread::sleep_for(20ms);
+
+    auto next_turn_result = engine.evaluate("__workerError");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(next_turn_result, "pending");
+
+    engine.evaluate("0");
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto delivered = engine.evaluate("__workerError");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(delivered, "boom from worker");
+
+    engine.evaluate("__worker.terminate(); __worker = null;");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
 }
 
 // ============================================================================
@@ -5905,6 +8071,90 @@ TEST(JSDom, KeyboardEventConstructor) {
         "})()");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result2, "|0|false");
+
+    auto doc_with_input = clever::html::parse(
+        "<html><body><div id='parent'><input id='field'></div></body></html>");
+    ASSERT_NE(doc_with_input, nullptr);
+
+    clever::js::cleanup_dom_bindings(engine.context());
+    clever::js::install_dom_bindings(engine.context(), doc_with_input.get());
+
+    engine.evaluate(R"(
+        var keyboardDispatchLog = [];
+        var keyboardBubbleLog = [];
+        var parent = document.getElementById('parent');
+        var field = document.getElementById('field');
+
+        parent.addEventListener('keydown', function(e) {
+            keyboardBubbleLog.push(e.type + ':' + e.key);
+        });
+
+        field.addEventListener('keydown', function(e) {
+            var firstPath = e.composedPath();
+            firstPath.pop();
+            var secondPath = e.composedPath();
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            keyboardDispatchLog.push([
+                e.key,
+                e.code,
+                e.keyCode,
+                e.charCode,
+                e.which,
+                e.location,
+                e.repeat,
+                e.isComposing,
+                e.getModifierState('Control'),
+                e.getModifierState('Shift'),
+                e.getModifierState('Alt'),
+                e.getModifierState('Meta'),
+                e.getModifierState('CapsLock'),
+                e.defaultPrevented,
+                e.__stopped,
+                secondPath[0] && secondPath[0].getAttribute && secondPath[0].getAttribute('id') === 'field',
+                secondPath[1] && secondPath[1].getAttribute && secondPath[1].getAttribute('id') === 'parent',
+                secondPath.length >= 4,
+                firstPath.length + 1 === secondPath.length
+            ].join('|'));
+        });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto* field_node = find_node_by_id(doc_with_input.get(), "field");
+    ASSERT_NE(field_node, nullptr);
+
+    clever::js::KeyboardEventInit enter_init;
+    enter_init.key = "Enter";
+    enter_init.code = "Enter";
+    enter_init.key_code = 13;
+    enter_init.char_code = 13;
+    enter_init.location = 1;
+    enter_init.ctrl_key = true;
+    enter_init.repeat = true;
+    bool enter_prevented = clever::js::dispatch_keyboard_event(
+        engine.context(), field_node, "keydown", enter_init);
+    EXPECT_TRUE(enter_prevented);
+
+    clever::js::KeyboardEventInit letter_init;
+    letter_init.key = "a";
+    letter_init.code = "KeyA";
+    letter_init.key_code = 65;
+    letter_init.char_code = 97;
+    letter_init.location = 0;
+    letter_init.alt_key = true;
+    letter_init.meta_key = true;
+    letter_init.is_composing = true;
+    bool letter_prevented = clever::js::dispatch_keyboard_event(
+        engine.context(), field_node, "keydown", letter_init);
+    EXPECT_FALSE(letter_prevented);
+
+    EXPECT_EQ(
+        engine.evaluate("keyboardDispatchLog.join(';')"),
+        "Enter|Enter|13|13|13|1|true|false|true|false|false|false|false|true|true|true|true|true|true;"
+        "a|KeyA|65|97|65|0|false|true|false|false|true|true|false|false|false|true|true|true|true");
+    EXPECT_EQ(engine.evaluate("keyboardBubbleLog.join(';')"), "keydown:a");
 
     clever::js::cleanup_dom_bindings(engine.context());
 }
@@ -8351,6 +10601,47 @@ TEST(JSXHR, Abort) {
     EXPECT_EQ(result, "1,0");
 }
 
+TEST(JSXHR, AbortAfterSendCallbacksWaitForCheckpointV2089) {
+    const std::string delayed_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 7\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "delayed";
+    CoordinatedHttpResponseServer server(delayed_response);
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    auto result = engine.evaluate((R"(
+        globalThis.__xhrAbortOrder = [];
+        globalThis.__xhrAbort = new XMLHttpRequest();
+        __xhrAbort.onreadystatechange = function() {
+            __xhrAbortOrder.push('readystatechange:' + __xhrAbort.readyState);
+        };
+        Promise.resolve().then(function() {
+            __xhrAbortOrder.push('microtask');
+        });
+        __xhrAbort.open('GET', 'http://127.0.0.1:)" + std::to_string(server.port()) + R"(/delayed');
+        __xhrAbort.send();
+        __xhrAbort.abort();
+        __xhrAbortOrder.push('after-abort');
+        __xhrAbortOrder.join(',');
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "after-abort");
+
+    auto after_checkpoint = engine.evaluate("__xhrAbortOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "after-abort,microtask,readystatechange:0");
+}
+
 TEST(JSXHR, TimeoutAndCredentials) {
     clever::js::JSEngine engine;
     clever::js::install_fetch_bindings(engine.context());
@@ -8768,7 +11059,7 @@ TEST(JSDom, QueueMicrotaskInDomBindings) {
 }
 
 // ============================================================================
-// Cycle 244 — IntersectionObserver fires initial callback on observe()
+// Cycle 244 / 2087 — IntersectionObserver initial delivery is checkpoint-queued
 // ============================================================================
 
 TEST(JSDom, IntersectionObserverInitialCallback) {
@@ -8791,7 +11082,17 @@ TEST(JSDom, IntersectionObserverInitialCallback) {
         fired + ',' + entryCount + ',' + wasIntersecting;
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
-    EXPECT_EQ(result, "true,1,false");
+    EXPECT_EQ(result, "false,0,null");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("fired + ',' + entryCount + ',' + wasIntersecting");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "false,0,null");
+
+    auto after_checkpoint = engine.evaluate("fired + ',' + entryCount + ',' + wasIntersecting");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "true,1,false");
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
@@ -8813,7 +11114,17 @@ TEST(JSDom, IntersectionObserverInitialEntryHasRects) {
         String(hasRect);
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
-    EXPECT_EQ(result, "true");
+    EXPECT_EQ(result, "false");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("String(hasRect)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "false");
+
+    auto after_checkpoint = engine.evaluate("String(hasRect)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "true");
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
@@ -8832,7 +11143,1245 @@ TEST(JSDom, IntersectionObserverNoDuplicateObserve) {
         String(callCount);
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
-    EXPECT_EQ(result, "1");
+    EXPECT_EQ(result, "0");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("String(callCount)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "0");
+
+    auto after_checkpoint = engine.evaluate("String(callCount)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverBatchesRepeatedGeometryChecksBeforeCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.ioBatchCounts = [];
+        var observer = new IntersectionObserver(function(entries) {
+            ioBatchCounts.push(entries.length);
+        });
+        observer.observe(document.getElementById('target'));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("String(ioBatchCounts.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "0");
+
+    auto after_checkpoint = engine.evaluate("ioBatchCounts.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverRunsAfterPromiseCheckpointWork) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.ioOrder = [];
+        var observer = new IntersectionObserver(function() {
+            ioOrder.push('observer');
+        });
+        observer.observe(document.getElementById('target'));
+        Promise.resolve().then(function() {
+            ioOrder.push('promise');
+        });
+        ioOrder.push('sync');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto after_script_checkpoint = engine.evaluate("ioOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_script_checkpoint, "sync,promise");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_observer_checkpoint = engine.evaluate("ioOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_observer_checkpoint, "sync,promise");
+
+    auto after_observer_checkpoint = engine.evaluate("ioOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_observer_checkpoint, "sync,promise,observer");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverNestedMutationsStayOutOfLine) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.ioNestedOrder = [];
+        globalThis.ioInside = false;
+        var target = document.getElementById('target');
+        var mo = new MutationObserver(function(records) {
+            ioNestedOrder.push('mo:' + ioInside + ':' + records.length);
+        });
+        mo.observe(target, { attributes: true });
+
+        var io = new IntersectionObserver(function() {
+            ioNestedOrder.push('io:start');
+            ioInside = true;
+            target.setAttribute('data-io', '1');
+            ioNestedOrder.push('io:after-mutate');
+            ioInside = false;
+            ioNestedOrder.push('io:end');
+        });
+        io.observe(target);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("ioNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "");
+
+    auto after_checkpoint = engine.evaluate("ioNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "io:start,io:after-mutate,io:end,mo:false:1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverNestedObserveRunsInNextBatch) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='target-a'></div><div id='target-b'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.ioNestedObserveOrder = [];
+        var targetA = document.getElementById('target-a');
+        var targetB = document.getElementById('target-b');
+        var observer1 = new IntersectionObserver(function(entries) {
+            ioNestedObserveOrder.push('observer1:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+            observer2.observe(targetB);
+            ioNestedObserveOrder.push('observer1:observed-target-b');
+        });
+        var observer2 = new IntersectionObserver(function(entries) {
+            ioNestedObserveOrder.push('observer2:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+        });
+        observer1.observe(targetA);
+        observer2.observe(targetA);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_first_checkpoint = engine.evaluate("ioNestedObserveOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_first_checkpoint, "");
+
+    auto after_first_checkpoint = engine.evaluate("ioNestedObserveOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_first_checkpoint,
+              "observer1:target-a,observer1:observed-target-b,observer2:target-a");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_second_checkpoint = engine.evaluate("ioNestedObserveOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_second_checkpoint,
+              "observer1:target-a,observer1:observed-target-b,observer2:target-a");
+
+    auto after_second_checkpoint = engine.evaluate("ioNestedObserveOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_second_checkpoint,
+              "observer1:target-a,observer1:observed-target-b,observer2:target-a,observer2:target-b");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverDisconnectPreservesAlreadyQueuedBatch) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.ioDisconnectOrder = [];
+        var target = document.getElementById('target');
+        var observer1 = new IntersectionObserver(function(entries) {
+            ioDisconnectOrder.push('observer1:' + entries.length);
+            observer2.disconnect();
+            ioDisconnectOrder.push('observer1:after-disconnect');
+        });
+        var observer2 = new IntersectionObserver(function(entries) {
+            ioDisconnectOrder.push('observer2:' + entries.length);
+        });
+        observer2.observe(target);
+        observer1.observe(target);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("ioDisconnectOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "");
+
+    auto after_checkpoint = engine.evaluate("ioDisconnectOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint,
+              "observer1:1,observer1:after-disconnect,observer2:1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverTakeRecordsDrainsQueuedBatchBeforeCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.ioTakeRecordsOrder = [];
+        var observer = new IntersectionObserver(function(entries) {
+            ioTakeRecordsOrder.push('callback:' + entries.length);
+        });
+        observer.observe(document.getElementById('target'));
+        Promise.resolve().then(function() {
+            ioTakeRecordsOrder.push('promise');
+        });
+        ioTakeRecordsOrder.push('sync');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto after_script_checkpoint = engine.evaluate("ioTakeRecordsOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_script_checkpoint, "sync,promise");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto drained_before_checkpoint = engine.evaluate(R"(
+        (function() {
+            var drained = observer.takeRecords();
+            return drained.length + ':' +
+                drained[0].target.getAttribute('id') + ':' +
+                ioTakeRecordsOrder.join(',');
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(drained_before_checkpoint, "1:target:sync,promise");
+
+    auto after_checkpoint = engine.evaluate("ioTakeRecordsOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "sync,promise");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverTakeRecordsAdvancesTrackedStateUntilReobserve) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.ioTakeRecordsState = [];
+        var observer = new IntersectionObserver(function(entries) {
+            ioTakeRecordsState.push('callback:' + entries.length);
+        });
+        var target = document.getElementById('target');
+        observer.observe(target);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto drained_initial = engine.evaluate(R"(
+        (function() {
+            var drained = observer.takeRecords();
+            return drained.length + ':' + drained[0].target.getAttribute('id');
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(drained_initial, "1:target");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto unchanged_checkpoint = engine.evaluate(R"(
+        ioTakeRecordsState.push('turn-2');
+        ioTakeRecordsState.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(unchanged_checkpoint, "turn-2");
+
+    auto after_unchanged_checkpoint = engine.evaluate("ioTakeRecordsState.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_unchanged_checkpoint, "turn-2");
+
+    auto drained_after_unchanged_checkpoint = engine.evaluate("String(observer.takeRecords().length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(drained_after_unchanged_checkpoint, "0");
+
+    engine.evaluate(R"(
+        observer.disconnect();
+        observer.observe(document.getElementById('target'));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_reobserve_checkpoint = engine.evaluate("ioTakeRecordsState.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_reobserve_checkpoint, "turn-2");
+
+    auto after_reobserve_checkpoint = engine.evaluate("ioTakeRecordsState.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_reobserve_checkpoint, "turn-2,callback:1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverNextTurnPromiseCanDrainPendingRecordsBeforeDelivery) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.ioNextTurnTakeRecords = [];
+        var observer = new IntersectionObserver(function(entries) {
+            ioNextTurnTakeRecords.push('callback:' + entries.length);
+        });
+        observer.observe(document.getElementById('target'));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto turn_result = engine.evaluate(R"(
+        Promise.resolve().then(function() {
+            var drained = observer.takeRecords();
+            ioNextTurnTakeRecords.push('promise:' + drained.length + ':' +
+                drained.map(function(entry) {
+                    return entry.target.getAttribute('id');
+                }).join('+'));
+        });
+        ioNextTurnTakeRecords.push('turn');
+        ioNextTurnTakeRecords.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(turn_result, "turn");
+
+    auto after_turn_checkpoint = engine.evaluate("ioNextTurnTakeRecords.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_turn_checkpoint, "turn,promise:1:target");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverTakeRecordsDuringDeliveryDrainsLaterBatchAndReobserveWaits) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='target-a'></div><div id='target-b'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.ioReentrantOrder = [];
+        var targetA = document.getElementById('target-a');
+        var targetB = document.getElementById('target-b');
+        var observer1 = new IntersectionObserver(function() {
+            ioReentrantOrder.push('observer1:start');
+            var drained = observer2.takeRecords();
+            ioReentrantOrder.push('observer1:drained:' + drained.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+            observer2.disconnect();
+            observer2.observe(targetB);
+            ioReentrantOrder.push('observer1:end');
+        });
+        var observer2 = new IntersectionObserver(function(entries) {
+            ioReentrantOrder.push('observer2:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+        });
+        observer1.observe(targetA);
+        observer2.observe(targetA);
+        Promise.resolve().then(function() {
+            ioReentrantOrder.push('promise');
+        });
+        ioReentrantOrder.push('sync');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto after_script_checkpoint = engine.evaluate("ioReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_script_checkpoint, "sync,promise");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_first_checkpoint = engine.evaluate("ioReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_first_checkpoint, "sync,promise");
+
+    auto after_first_checkpoint = engine.evaluate("ioReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_first_checkpoint,
+              "sync,promise,observer1:start,observer1:drained:target-a,observer1:end");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto before_second_checkpoint = engine.evaluate("ioReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_second_checkpoint,
+              "sync,promise,observer1:start,observer1:drained:target-a,observer1:end");
+
+    auto after_second_checkpoint = engine.evaluate("ioReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_second_checkpoint,
+              "sync,promise,observer1:start,observer1:drained:target-a,observer1:end,observer2:target-b");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ObserverCheckpointRunsIntersectionBeforeResizeAndCanDrainResizeBatch) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.observerCheckpointOrder = [];
+        var target = document.getElementById('target');
+        var resizeObserver = new ResizeObserver(function(entries) {
+            observerCheckpointOrder.push('resize:' + entries.length);
+        });
+        var intersectionObserver = new IntersectionObserver(function(entries) {
+            observerCheckpointOrder.push('intersection:start:' + entries.length);
+            var drained = resizeObserver.takeRecords();
+            observerCheckpointOrder.push('intersection:drained-resize:' + drained.length);
+            observerCheckpointOrder.push('intersection:end');
+        });
+        resizeObserver.observe(target);
+        intersectionObserver.observe(target);
+        Promise.resolve().then(function() {
+            observerCheckpointOrder.push('promise');
+        });
+        observerCheckpointOrder.push('sync');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto after_script_checkpoint = engine.evaluate("observerCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_script_checkpoint, "sync,promise");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("observerCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "sync,promise");
+
+    auto after_checkpoint = engine.evaluate("observerCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint,
+              "sync,promise,intersection:start:1,intersection:drained-resize:1,intersection:end");
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto after_next_resize_checkpoint = engine.evaluate("observerCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_next_resize_checkpoint,
+              "sync,promise,intersection:start:1,intersection:drained-resize:1,intersection:end");
+
+    auto after_resize_delivery = engine.evaluate("observerCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_resize_delivery,
+              "sync,promise,intersection:start:1,intersection:drained-resize:1,intersection:end,resize:1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ObserverCheckpointKeepsNestedResizeObserveForNextBatchAfterIntersectionCallback) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='target-a'></div><div id='target-b'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.crossObserverNestedOrder = [];
+        var targetA = document.getElementById('target-a');
+        var targetB = document.getElementById('target-b');
+        var resizeObserver = new ResizeObserver(function(entries) {
+            crossObserverNestedOrder.push('resize:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+        });
+        var intersectionObserver = new IntersectionObserver(function(entries) {
+            crossObserverNestedOrder.push('intersection:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+            resizeObserver.observe(targetB);
+            crossObserverNestedOrder.push('intersection:observed-target-b');
+        });
+        resizeObserver.observe(targetA);
+        intersectionObserver.observe(targetA);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_first_checkpoint = engine.evaluate("crossObserverNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_first_checkpoint, "");
+
+    auto after_first_checkpoint = engine.evaluate("crossObserverNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_first_checkpoint,
+              "intersection:target-a,intersection:observed-target-b,resize:target-a");
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_second_checkpoint = engine.evaluate("crossObserverNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_second_checkpoint,
+              "intersection:target-a,intersection:observed-target-b,resize:target-a");
+
+    auto after_second_checkpoint = engine.evaluate("crossObserverNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_second_checkpoint,
+              "intersection:target-a,intersection:observed-target-b,resize:target-a,resize:target-b");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, IntersectionObserverSharedCheckpointRunsQueuedPromiseBeforeResizeDelivery) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.sharedCheckpointOrder = [];
+        var target = document.getElementById('target');
+        var resizeObserver = new ResizeObserver(function(entries) {
+            sharedCheckpointOrder.push('resize:' + entries.length);
+        });
+        var intersectionObserver = new IntersectionObserver(function(entries) {
+            sharedCheckpointOrder.push('intersection:' + entries.length);
+        });
+        resizeObserver.observe(target);
+        intersectionObserver.observe(target);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto queued_turn = engine.evaluate(R"(
+        Promise.resolve().then(function() {
+            sharedCheckpointOrder.push('promise-1');
+            return Promise.resolve().then(function() {
+                sharedCheckpointOrder.push('promise-2');
+            });
+        });
+        sharedCheckpointOrder.push('turn');
+        sharedCheckpointOrder.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(queued_turn, "turn");
+
+    auto after_checkpoint = engine.evaluate("sharedCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "turn,promise-1,promise-2,intersection:1,resize:1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ObserverCheckpointOrderStaysDeterministicWhenResizeQueuesBeforeIntersection) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.reversedSharedCheckpointOrder = [];
+        var target = document.getElementById('target');
+        var resizeObserver = new ResizeObserver(function(entries) {
+            reversedSharedCheckpointOrder.push('resize:' + entries.length);
+        });
+        var intersectionObserver = new IntersectionObserver(function(entries) {
+            reversedSharedCheckpointOrder.push('intersection:' + entries.length);
+        });
+        resizeObserver.observe(target);
+        intersectionObserver.observe(target);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto queued_turn = engine.evaluate(R"(
+        Promise.resolve().then(function() {
+            reversedSharedCheckpointOrder.push('promise');
+        });
+        reversedSharedCheckpointOrder.push('turn');
+        reversedSharedCheckpointOrder.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(queued_turn, "turn");
+
+    auto after_checkpoint = engine.evaluate("reversedSharedCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "turn,promise,intersection:1,resize:1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ObserverCheckpointNextTurnPromiseCanDrainBothQueuesBeforeDelivery) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.sharedTakeRecordsOrder = [];
+        var target = document.getElementById('target');
+        var resizeObserver = new ResizeObserver(function(entries) {
+            sharedTakeRecordsOrder.push('resize:' + entries.length);
+        });
+        var intersectionObserver = new IntersectionObserver(function(entries) {
+            sharedTakeRecordsOrder.push('intersection:' + entries.length);
+        });
+        resizeObserver.observe(target);
+        intersectionObserver.observe(target);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+
+    auto turn_result = engine.evaluate(R"(
+        Promise.resolve().then(function() {
+            var intersectionEntries = intersectionObserver.takeRecords();
+            var resizeEntries = resizeObserver.takeRecords();
+            sharedTakeRecordsOrder.push(
+                'promise:' +
+                intersectionEntries.map(function(entry) {
+                    return entry.target.getAttribute('id');
+                }).join('+') +
+                ':' +
+                resizeEntries.map(function(entry) {
+                    return entry.target.getAttribute('id');
+                }).join('+'));
+        });
+        sharedTakeRecordsOrder.push('turn');
+        sharedTakeRecordsOrder.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(turn_result, "turn");
+
+    auto after_checkpoint = engine.evaluate("sharedTakeRecordsOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "turn,promise:target:target");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverSharedCheckpointTakeRecordsAndReobserveStayDeferredToNextCheckpoint) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='target-a'></div><div id='target-b'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.resizeSharedCheckpointOrder = [];
+        var targetA = document.getElementById('target-a');
+        var targetB = document.getElementById('target-b');
+        var resizeObserver = new ResizeObserver(function(entries) {
+            resizeSharedCheckpointOrder.push('resize:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+        });
+        var intersectionObserver = new IntersectionObserver(function(entries) {
+            resizeSharedCheckpointOrder.push('intersection:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+            var drained = resizeObserver.takeRecords();
+            resizeSharedCheckpointOrder.push('intersection:drained:' + drained.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+            resizeObserver.disconnect();
+            resizeObserver.observe(targetB);
+            resizeSharedCheckpointOrder.push('intersection:reobserve-target-b');
+        });
+        resizeObserver.observe(targetA);
+        intersectionObserver.observe(targetA);
+        Promise.resolve().then(function() {
+            resizeSharedCheckpointOrder.push('promise');
+        });
+        resizeSharedCheckpointOrder.push('sync');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto after_script_checkpoint = engine.evaluate("resizeSharedCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_script_checkpoint, "sync,promise");
+
+    clever::js::fire_intersection_observers(engine.context(), 800, 600);
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_first_checkpoint = engine.evaluate("resizeSharedCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_first_checkpoint, "sync,promise");
+
+    auto after_first_checkpoint = engine.evaluate("resizeSharedCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_first_checkpoint,
+              "sync,promise,intersection:target-a,intersection:drained:target-a,"
+              "intersection:reobserve-target-b");
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_second_checkpoint = engine.evaluate("resizeSharedCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_second_checkpoint,
+              "sync,promise,intersection:target-a,intersection:drained:target-a,"
+              "intersection:reobserve-target-b");
+
+    auto after_second_checkpoint = engine.evaluate("resizeSharedCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_second_checkpoint,
+              "sync,promise,intersection:target-a,intersection:drained:target-a,"
+              "intersection:reobserve-target-b,resize:target-b");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverInitialDeliveryIsCheckpointQueuedAndBatched) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.resizeBatches = [];
+        var observer = new ResizeObserver(function(entries) {
+            resizeBatches.push(entries.length + ':' + typeof entries[0].contentRect);
+        });
+        observer.observe(document.getElementById('target'));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("String(resizeBatches.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "0");
+
+    auto after_checkpoint = engine.evaluate("resizeBatches.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "1:object");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverBorderBoxReportsCachedBorderAndContentSizes) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* target_node = find_node_by_id(doc.get(), "target");
+    ASSERT_NE(target_node, nullptr);
+
+    auto layout_root = make_resize_observer_layout_root(target_node,
+                                                        100.0f, 60.0f,
+                                                        7.0f, 8.0f, 9.0f, 10.0f,
+                                                        3.0f, 4.0f, 5.0f, 6.0f);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.resizeSizes = [];
+        var observer = new ResizeObserver(function(entries) {
+            var entry = entries[0];
+            resizeSizes.push([
+                entry.borderBoxSize[0].inlineSize,
+                entry.borderBoxSize[0].blockSize,
+                entry.contentBoxSize[0].inlineSize,
+                entry.contentBoxSize[0].blockSize,
+                entry.contentRect.width,
+                entry.contentRect.height
+            ].join('|'));
+        });
+        observer.observe(document.getElementById('target'), { box: 'border-box' });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::populate_layout_geometry(engine.context(), layout_root.get());
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("String(resizeSizes.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "0");
+
+    auto after_checkpoint = engine.evaluate("resizeSizes.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "124|88|100|60|100|60");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverBorderBoxBatchUsesLatestQueuedGeometrySnapshot) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* target_node = find_node_by_id(doc.get(), "target");
+    ASSERT_NE(target_node, nullptr);
+
+    auto layout_root = make_resize_observer_layout_root(target_node,
+                                                        100.0f, 60.0f,
+                                                        7.0f, 8.0f, 9.0f, 10.0f,
+                                                        3.0f, 4.0f, 5.0f, 6.0f);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.borderDeliveries = [];
+        var observer = new ResizeObserver(function(entries) {
+            borderDeliveries.push(entries[0].borderBoxSize[0].inlineSize + 'x' +
+                                  entries[0].borderBoxSize[0].blockSize);
+        });
+        observer.observe(document.getElementById('target'), { box: 'border-box' });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::populate_layout_geometry(engine.context(), layout_root.get());
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    set_resize_observer_layout_geometry(*layout_root,
+                                        130.0f, 75.0f,
+                                        7.0f, 8.0f, 9.0f, 10.0f,
+                                        3.0f, 4.0f, 5.0f, 6.0f);
+    clever::js::populate_layout_geometry(engine.context(), layout_root.get());
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("String(borderDeliveries.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "0");
+
+    auto after_checkpoint = engine.evaluate("borderDeliveries.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "154x103");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverBorderBoxEntriesStayStableAcrossLaterDeliveries) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* target_node = find_node_by_id(doc.get(), "target");
+    ASSERT_NE(target_node, nullptr);
+
+    auto layout_root = make_resize_observer_layout_root(target_node,
+                                                        100.0f, 60.0f,
+                                                        7.0f, 8.0f, 9.0f, 10.0f,
+                                                        3.0f, 4.0f, 5.0f, 6.0f);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.firstBorderEntry = null;
+        globalThis.latestBorderEntry = null;
+        globalThis.borderReads = [];
+        var observer = new ResizeObserver(function(entries) {
+            var entry = entries[0];
+            if (!firstBorderEntry) {
+                firstBorderEntry = entry;
+            }
+            latestBorderEntry = entry;
+            borderReads.push(
+                entry.borderBoxSize[0].inlineSize + 'x' + entry.borderBoxSize[0].blockSize + '|' +
+                entry.borderBoxSize[0].inlineSize + 'x' + entry.borderBoxSize[0].blockSize);
+        });
+        observer.observe(document.getElementById('target'), { box: 'border-box' });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::populate_layout_geometry(engine.context(), layout_root.get());
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto first_before_checkpoint = engine.evaluate("String(borderReads.length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(first_before_checkpoint, "0");
+
+    auto first_after_checkpoint = engine.evaluate("borderReads.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(first_after_checkpoint, "124x88|124x88");
+
+    set_resize_observer_layout_geometry(*layout_root,
+                                        140.0f, 80.0f,
+                                        7.0f, 8.0f, 9.0f, 10.0f,
+                                        3.0f, 4.0f, 5.0f, 6.0f);
+    clever::js::populate_layout_geometry(engine.context(), layout_root.get());
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto old_entry_before_second_checkpoint = engine.evaluate(
+        "firstBorderEntry.borderBoxSize[0].inlineSize + 'x' + firstBorderEntry.borderBoxSize[0].blockSize");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(old_entry_before_second_checkpoint, "124x88");
+
+    auto second_after_checkpoint = engine.evaluate(
+        "borderReads.join(',') + ';' + "
+        "firstBorderEntry.borderBoxSize[0].inlineSize + 'x' + firstBorderEntry.borderBoxSize[0].blockSize + ';' + "
+        "latestBorderEntry.borderBoxSize[0].inlineSize + 'x' + latestBorderEntry.borderBoxSize[0].blockSize");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(second_after_checkpoint, "124x88|124x88,164x108|164x108;124x88;164x108");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverDeliveryRunsAfterPromiseMicrotasks) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    auto setup = engine.evaluate(R"(
+        globalThis.resizeOrder = [];
+        var observer = new ResizeObserver(function() {
+            resizeOrder.push('observer');
+        });
+        observer.observe(document.getElementById('target'));
+        Promise.resolve().then(function() {
+            resizeOrder.push('promise');
+        });
+        resizeOrder.push('sync');
+        resizeOrder.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(setup, "sync");
+
+    auto after_script_checkpoint = engine.evaluate("resizeOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_script_checkpoint, "sync,promise");
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_observer_checkpoint = engine.evaluate("resizeOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_observer_checkpoint, "sync,promise");
+
+    auto after_observer_checkpoint = engine.evaluate("resizeOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_observer_checkpoint, "sync,promise,observer");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverTakeRecordsDrainsQueuedBatchBeforeCheckpoint) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.resizeTakeRecordsOrder = [];
+        var observer = new ResizeObserver(function(entries) {
+            resizeTakeRecordsOrder.push('callback:' + entries.length);
+        });
+        observer.observe(document.getElementById('target'));
+        Promise.resolve().then(function() {
+            resizeTakeRecordsOrder.push('promise');
+        });
+        resizeTakeRecordsOrder.push('sync');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto after_script_checkpoint = engine.evaluate("resizeTakeRecordsOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_script_checkpoint, "sync,promise");
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto drained_before_checkpoint = engine.evaluate(R"(
+        (function() {
+            var drained = observer.takeRecords();
+            return drained.length + ':' +
+                drained[0].target.getAttribute('id') + ':' +
+                typeof drained[0].contentRect + ':' +
+                resizeTakeRecordsOrder.join(',');
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(drained_before_checkpoint, "1:target:object:sync,promise");
+
+    auto after_checkpoint = engine.evaluate("resizeTakeRecordsOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "sync,promise");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverTakeRecordsAdvancesTrackedSizeUntilObservedAgain) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* target_node = find_node_by_id(doc.get(), "target");
+    ASSERT_NE(target_node, nullptr);
+
+    auto layout_root = make_resize_observer_layout_root(target_node,
+                                                        100.0f, 60.0f,
+                                                        7.0f, 8.0f, 9.0f, 10.0f,
+                                                        3.0f, 4.0f, 5.0f, 6.0f);
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.resizeTakeRecordsState = [];
+        var observer = new ResizeObserver(function(entries) {
+            resizeTakeRecordsState.push('callback:' + entries.length);
+        });
+        observer.observe(document.getElementById('target'), { box: 'border-box' });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::populate_layout_geometry(engine.context(), layout_root.get());
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto drained_initial = engine.evaluate(R"(
+        (function() {
+            var drained = observer.takeRecords();
+            return drained.length + ':' + drained[0].borderBoxSize[0].inlineSize + 'x' +
+                drained[0].borderBoxSize[0].blockSize;
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(drained_initial, "1:124x88");
+
+    clever::js::populate_layout_geometry(engine.context(), layout_root.get());
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto unchanged_checkpoint = engine.evaluate(R"(
+        resizeTakeRecordsState.push('turn-2');
+        resizeTakeRecordsState.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(unchanged_checkpoint, "turn-2");
+
+    auto after_unchanged_checkpoint = engine.evaluate("resizeTakeRecordsState.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_unchanged_checkpoint, "turn-2");
+
+    auto drained_after_unchanged_checkpoint = engine.evaluate("String(observer.takeRecords().length)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(drained_after_unchanged_checkpoint, "0");
+
+    engine.evaluate(R"(
+        observer.unobserve(document.getElementById('target'));
+        observer.observe(document.getElementById('target'), { box: 'border-box' });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::populate_layout_geometry(engine.context(), layout_root.get());
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_reobserve_checkpoint = engine.evaluate("resizeTakeRecordsState.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_reobserve_checkpoint, "turn-2");
+
+    auto after_reobserve_checkpoint = engine.evaluate("resizeTakeRecordsState.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_reobserve_checkpoint, "turn-2,callback:1");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverNextTurnPromiseCanDrainPendingRecordsBeforeDelivery) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.resizeNextTurnTakeRecords = [];
+        var observer = new ResizeObserver(function(entries) {
+            resizeNextTurnTakeRecords.push('callback:' + entries.length);
+        });
+        observer.observe(document.getElementById('target'));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto turn_result = engine.evaluate(R"(
+        Promise.resolve().then(function() {
+            var drained = observer.takeRecords();
+            resizeNextTurnTakeRecords.push('promise:' + drained.length + ':' +
+                drained.map(function(entry) {
+                    return entry.target.getAttribute('id') + ':' + typeof entry.contentRect;
+                }).join('+'));
+        });
+        resizeNextTurnTakeRecords.push('turn');
+        resizeNextTurnTakeRecords.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(turn_result, "turn");
+
+    auto after_turn_checkpoint = engine.evaluate("resizeNextTurnTakeRecords.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_turn_checkpoint, "turn,promise:1:target:object");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverTakeRecordsDuringDeliveryDrainsLaterBatchAndReobserveWaits) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='target-a'></div><div id='target-b'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.resizeReentrantOrder = [];
+        var targetA = document.getElementById('target-a');
+        var targetB = document.getElementById('target-b');
+        var observer1 = new ResizeObserver(function() {
+            resizeReentrantOrder.push('observer1:start');
+            var drained = observer2.takeRecords();
+            resizeReentrantOrder.push('observer1:drained:' + drained.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+            observer2.disconnect();
+            observer2.observe(targetB);
+            resizeReentrantOrder.push('observer1:end');
+        });
+        var observer2 = new ResizeObserver(function(entries) {
+            resizeReentrantOrder.push('observer2:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+        });
+        observer1.observe(targetA);
+        observer2.observe(targetA);
+        Promise.resolve().then(function() {
+            resizeReentrantOrder.push('promise');
+        });
+        resizeReentrantOrder.push('sync');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto after_script_checkpoint = engine.evaluate("resizeReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_script_checkpoint, "sync,promise");
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_first_checkpoint = engine.evaluate("resizeReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_first_checkpoint, "sync,promise");
+
+    auto after_first_checkpoint = engine.evaluate("resizeReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_first_checkpoint,
+              "sync,promise,observer1:start,observer1:drained:target-a,observer1:end");
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_second_checkpoint = engine.evaluate("resizeReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_second_checkpoint,
+              "sync,promise,observer1:start,observer1:drained:target-a,observer1:end");
+
+    auto after_second_checkpoint = engine.evaluate("resizeReentrantOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_second_checkpoint,
+              "sync,promise,observer1:start,observer1:drained:target-a,observer1:end,observer2:target-b");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverNestedObserveRunsInNextBatch) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='target-a'></div><div id='target-b'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.resizeNestedOrder = [];
+        var targetA = document.getElementById('target-a');
+        var targetB = document.getElementById('target-b');
+        var observer1 = new ResizeObserver(function(entries) {
+            resizeNestedOrder.push('observer1:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+            observer2.observe(targetB);
+            resizeNestedOrder.push('observer1:observed-target-b');
+        });
+        var observer2 = new ResizeObserver(function(entries) {
+            resizeNestedOrder.push('observer2:' + entries.map(function(entry) {
+                return entry.target.getAttribute('id');
+            }).join('+'));
+        });
+        observer1.observe(targetA);
+        observer2.observe(targetA);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_first_checkpoint = engine.evaluate("resizeNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_first_checkpoint, "");
+
+    auto after_first_checkpoint = engine.evaluate("resizeNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_first_checkpoint,
+              "observer1:target-a,observer1:observed-target-b,observer2:target-a");
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_second_checkpoint = engine.evaluate("resizeNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_second_checkpoint,
+              "observer1:target-a,observer1:observed-target-b,observer2:target-a");
+
+    auto after_second_checkpoint = engine.evaluate("resizeNestedOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_second_checkpoint,
+              "observer1:target-a,observer1:observed-target-b,observer2:target-a,observer2:target-b");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ResizeObserverDisconnectPreservesAlreadyQueuedBatch) {
+    auto doc = clever::html::parse("<html><body><div id='target'></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+
+    engine.evaluate(R"(
+        globalThis.resizeDisconnectOrder = [];
+        var target = document.getElementById('target');
+        var observer1 = new ResizeObserver(function(entries) {
+            resizeDisconnectOrder.push('observer1:' + entries.length);
+            observer2.disconnect();
+            resizeDisconnectOrder.push('observer1:after-disconnect');
+        });
+        var observer2 = new ResizeObserver(function(entries) {
+            resizeDisconnectOrder.push('observer2:' + entries.length);
+        });
+        observer2.observe(target);
+        observer1.observe(target);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::fire_resize_observers(engine.context(), 800, 600);
+
+    auto before_checkpoint = engine.evaluate("resizeDisconnectOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "");
+
+    auto after_checkpoint = engine.evaluate("resizeDisconnectOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint,
+              "observer1:1,observer1:after-disconnect,observer2:1");
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
@@ -8896,6 +12445,837 @@ TEST(JSFetch, ResponseBlobTextRoundTrip) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "round trip");
     clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSFetch, ResponseArrayBufferReturnsBodyBytesV2068) {
+    const char raw_body_bytes[] = {0x00, 0x7f, static_cast<char>(0x80),
+                                   static_cast<char>(0xff), 'A', 'B', 'C'};
+    const std::string body_bytes(raw_body_bytes, sizeof(raw_body_bytes));
+    const std::string redirect_response =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: /final\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+    const std::string final_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "Content-Length: 7\r\n"
+        "Connection: close\r\n"
+        "\r\n" + body_bytes;
+
+    ScopedHttpResponseServer server({redirect_response, final_response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var bytesResult = 'pending';
+        var redirectedResult = false;
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/start')
+            .then(function(resp) {
+                redirectedResult = resp.redirected;
+                return resp.arrayBuffer();
+            })
+            .then(function(buf) {
+                bytesResult = Array.from(new Uint8Array(buf)).join(',');
+            })
+            .catch(function(err) {
+                bytesResult = err.message || String(err);
+            });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto bytes = engine.evaluate("bytesResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(bytes, "0,127,128,255,65,66,67");
+
+    auto redirected = engine.evaluate("String(redirectedResult)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(redirected, "true");
+}
+
+TEST(JSFetch, ResponseArrayBufferEmptyBodyStaysEmptyV2068) {
+    const std::string empty_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    ScopedHttpResponseServer server({empty_response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"(
+        var byteLengthResult = -1;
+        fetch('http://127.0.0.1:)" + std::to_string(server.port()) + R"(/empty')
+            .then(function(resp) {
+                return resp.arrayBuffer();
+            })
+            .then(function(buf) {
+                byteLengthResult = buf.byteLength;
+            })
+            .catch(function(err) {
+                byteLengthResult = err.message || String(err);
+            });
+    )").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("String(byteLengthResult)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSFetch, ResponseBodyUsedTracksTextAndArrayBufferConsumptionV2069) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var outcome = 'pending';
+        var r = new Response('{"ok":true}', {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+        });
+        var before = r.bodyUsed;
+        r.text()
+            .then(function(text) {
+                return Promise.all([
+                    Promise.resolve(text),
+                    r.arrayBuffer().then(
+                        function() { return 'arrayBuffer-resolved'; },
+                        function(err) { return err && err.message ? err.message : String(err); }
+                    ),
+                    r.json().then(
+                        function() { return 'json-resolved'; },
+                        function(err) { return err && err.message ? err.message : String(err); }
+                    )
+                ]);
+            })
+            .then(function(values) {
+                outcome = [
+                    String(before),
+                    String(r.bodyUsed),
+                    values[0],
+                    values[1],
+                    values[2]
+                ].join('|');
+            })
+            .catch(function(err) {
+                outcome = err && err.message ? err.message : String(err);
+            });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("outcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              R"(false|true|{"ok":true}|Response body is already used|Response body is already used)");
+}
+
+TEST(JSFetch, ResponseCloneRejectsAfterBodyConsumptionV2069) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var cloneOutcome = 'pending';
+        var r = new Response('clone-me', { status: 200 });
+        r.text()
+            .then(function() {
+                try {
+                    r.clone();
+                    cloneOutcome = 'clone-resolved';
+                } catch (err) {
+                    cloneOutcome = err && err.message ? err.message : String(err);
+                }
+            })
+            .catch(function(err) {
+                cloneOutcome = err && err.message ? err.message : String(err);
+            });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("cloneOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Response body is already used");
+}
+
+TEST(JSFetch, ResponseBlobMarksBodyUsedAndRejectsSecondReadV2069) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var blobOutcome = 'pending';
+        var r = new Response('hello', { status: 200 });
+        var before = r.bodyUsed;
+        r.blob()
+            .then(function(b) {
+                return r.text().then(
+                    function() { return 'text-resolved'; },
+                    function(err) { return err && err.message ? err.message : String(err); }
+                ).then(function(textResult) {
+                    blobOutcome = [
+                        String(before),
+                        String(r.bodyUsed),
+                        String(b.size),
+                        textResult
+                    ].join('|');
+                });
+            })
+            .catch(function(err) {
+                blobOutcome = err && err.message ? err.message : String(err);
+            });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("blobOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false|true|5|Response body is already used");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSFetch, ResponseFormDataMarksBodyUsedAndRejectsSecondReadV2069) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var formOutcome = 'pending';
+        var r = new Response('alpha=1&beta=2', {
+            status: 200,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        var before = r.bodyUsed;
+        r.formData()
+            .then(function(fd) {
+                return r.text().then(
+                    function() { return 'text-resolved'; },
+                    function(err) { return err && err.message ? err.message : String(err); }
+                ).then(function(textResult) {
+                    formOutcome = [
+                        String(before),
+                        String(r.bodyUsed),
+                        String(typeof fd),
+                        textResult
+                    ].join('|');
+                });
+            })
+            .catch(function(err) {
+                formOutcome = err && err.message ? err.message : String(err);
+            });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("formOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false|true|object|Response body is already used");
+}
+
+TEST(JSFetch, ResponseBodyStreamReadsFetchedBytesOnceV2069) {
+    const std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "Content-Length: 4\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "WXYZ";
+
+    ScopedHttpResponseServer server({response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    const std::string script = R"JS(
+        var streamResult = 'pending';
+        fetch('http://127.0.0.1:)JS" + std::to_string(server.port()) + R"JS(/bytes')
+            .then(function(resp) {
+                var before = resp.bodyUsed;
+                var reader = resp.body.getReader();
+                return reader.read().then(function(first) {
+                    var firstBytes = first.value ? Array.from(first.value).join(',') : 'none';
+                    var afterFirst = resp.bodyUsed;
+                    return reader.read().then(function(second) {
+                        return resp.text().then(
+                            function() { return 'text-resolved'; },
+                            function(err) { return err && err.message ? err.message : String(err); }
+                        ).then(function(textResult) {
+                            streamResult = [
+                                String(before),
+                                String(afterFirst),
+                                String(first.done),
+                                firstBytes,
+                                String(second.done),
+                                String(second.value === undefined),
+                                textResult
+                            ].join('|');
+                        });
+                    });
+                });
+            })
+            .catch(function(err) {
+                streamResult = err && err.message ? err.message : String(err);
+            });
+    )JS";
+    engine.evaluate(script.c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("streamResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              "false|true|false|87,88,89,90|true|true|Response body is already used");
+}
+
+TEST(JSFetch, ResponseBodyStreamReadsMultipleChunksV2071) {
+    const std::string body = "ABCDEFGH";
+    const std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        body;
+
+    ScopedHttpResponseServer server({response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    const std::string script = R"JS(
+        var streamResult = 'pending';
+        function chunkText(value) {
+            return value ? String.fromCharCode.apply(null, Array.from(value)) : '';
+        }
+        fetch('http://127.0.0.1:)JS" + std::to_string(server.port()) +
+                               R"JS(/chunked')
+            .then(function(resp) {
+                var reader = resp.body.getReader();
+                var cloneWhileLocked = 'missing';
+                try {
+                    resp.clone();
+                    cloneWhileLocked = 'clone-resolved';
+                } catch (err) {
+                    cloneWhileLocked = err && err.message ? err.message : String(err);
+                }
+                return reader.read().then(function(first) {
+                    var firstText = chunkText(first.value);
+                    return reader.read().then(function(second) {
+                        var secondText = chunkText(second.value);
+                        return reader.read().then(function(third) {
+                            return resp.text().then(
+                                function() { return 'text-resolved'; },
+                                function(err) { return err && err.message ? err.message : String(err); }
+                            ).then(function(textResult) {
+                                streamResult = [
+                                    String(first.done),
+                                    firstText,
+                                    String(second.done),
+                                    secondText,
+                                    String(third.done),
+                                    String(third.value === undefined),
+                                    textResult,
+                                    cloneWhileLocked
+                                ].join('|');
+                            });
+                        });
+                    });
+                });
+            })
+            .catch(function(err) {
+                streamResult = err && err.message ? err.message : String(err);
+            });
+    )JS";
+    engine.evaluate(script.c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("streamResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              "false|ABCD|false|EFGH|true|true|Response body is already used|Response body is already used");
+}
+
+TEST(JSFetch, ResponseBodyReaderResolvesAtCheckpointAfterQueuedMicrotasksV2090) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto initial = engine.evaluate(R"JS(
+        var bodyCheckpointOrder = [];
+        var reader = new Response('ABCDEFGH', { status: 200 }).body.getReader();
+        Promise.resolve().then(function() {
+            bodyCheckpointOrder.push('microtask');
+        });
+        reader.read().then(function(result) {
+            bodyCheckpointOrder.push(
+                result.value ? String.fromCharCode.apply(null, Array.from(result.value)) : 'done');
+        });
+        bodyCheckpointOrder.push('after-read');
+        bodyCheckpointOrder.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(initial, "after-read");
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("bodyCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "after-read,microtask,ABCD");
+}
+
+TEST(JSFetch, ResponseBodyReaderEOFResolvesAtCheckpointAfterLaterMicrotasksV2091) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto initial = engine.evaluate(R"JS(
+        var eofCheckpointOrder = [];
+        var reader = new Response('ABCD', { status: 200 }).body.getReader();
+        reader.read().then(function(first) {
+            eofCheckpointOrder.push(
+                first.value ? String.fromCharCode.apply(null, Array.from(first.value)) : 'done');
+            reader.read().then(function(result) {
+                eofCheckpointOrder.push(result.done ? 'done' : 'chunk');
+            });
+            Promise.resolve().then(function() {
+                eofCheckpointOrder.push('microtask');
+            });
+            eofCheckpointOrder.push('after-eof-read');
+        });
+        eofCheckpointOrder.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(initial, "");
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("eofCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ABCD,after-eof-read,microtask,done");
+}
+
+TEST(JSFetch, ResponseBodyReaderCancelResolvesAtCheckpointAfterLaterMicrotasksV2091) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto initial = engine.evaluate(R"JS(
+        var cancelCheckpointOrder = [];
+        var reader = new Response('ABCDEFGH', { status: 200 }).body.getReader();
+        reader.read().then(
+            function() {
+                cancelCheckpointOrder.push('resolved');
+            },
+            function(err) {
+                cancelCheckpointOrder.push(err && err.name ? err.name : 'Error');
+            }
+        );
+        reader.cancel().then(function() {
+            cancelCheckpointOrder.push('cancelled');
+        });
+        Promise.resolve().then(function() {
+            cancelCheckpointOrder.push('microtask');
+        });
+        cancelCheckpointOrder.push('after-cancel');
+        cancelCheckpointOrder.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(initial, "after-cancel");
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("cancelCheckpointOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "after-cancel,microtask,AbortError,cancelled");
+}
+
+TEST(JSFetch, AbortSignalRejectsLaterBodyReaderReadsV2085) {
+    const std::string body = "ABCDEFGH";
+    const std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        body;
+
+    ScopedHttpResponseServer server({response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    const std::string script = R"JS(
+        var abortReadOutcome = 'pending';
+        function chunkText(value) {
+            return value ? String.fromCharCode.apply(null, Array.from(value)) : '';
+        }
+        fetch('http://127.0.0.1:)JS" + std::to_string(server.port()) + R"JS(/abort-read', {
+            signal: (function() {
+                abortReadController = new AbortController();
+                return abortReadController.signal;
+            })()
+        }).then(function(resp) {
+            var body = resp.body;
+            var reader = body.getReader();
+            var lockedAfterGetReader = body.locked;
+            return reader.read().then(function(first) {
+                abortReadController.abort();
+                return reader.read().then(
+                    function() { return 'resolved'; },
+                    function(err) {
+                        return (err && err.name ? err.name : 'Error') + ':' +
+                            (err && err.message ? err.message : String(err));
+                    }
+                ).then(function(secondReadResult) {
+                    var lockedBeforeRelease = body.locked;
+                    reader.releaseLock();
+                    abortReadOutcome = [
+                        String(first.done),
+                        chunkText(first.value),
+                        String(resp.bodyUsed),
+                        String(lockedAfterGetReader),
+                        String(body.locked),
+                        secondReadResult,
+                        String(resp.bodyUsed),
+                        String(lockedBeforeRelease),
+                        String(body.locked)
+                    ].join('|');
+                });
+            });
+        }).catch(function(err) {
+            abortReadOutcome = err && err.message ? err.message : String(err);
+        });
+    )JS";
+    engine.evaluate(script.c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("abortReadOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              "false|ABCD|true|true|false|AbortError:The operation was aborted|true|true|false");
+}
+
+TEST(JSFetch, AbortStreamReadRejectsAtCheckpointAfterQueuedMicrotasksV2090) {
+    const std::string body = "ABCDEFGH";
+    const std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        body;
+
+    ScopedHttpResponseServer server({response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate((R"JS(
+        var abortStreamOrder = [];
+        var abortStreamResult = 'pending';
+        var abortStreamController = new AbortController();
+        fetch('http://127.0.0.1:)JS" + std::to_string(server.port()) + R"JS(/abort-stream', {
+            signal: abortStreamController.signal
+        }).then(function(resp) {
+            var reader = resp.body.getReader();
+            Promise.resolve().then(function() {
+                abortStreamOrder.push('microtask');
+            });
+            reader.read().then(
+                function() {
+                    abortStreamOrder.push('resolved');
+                },
+                function(err) {
+                    abortStreamOrder.push(err && err.name ? err.name : 'Error');
+                }
+            ).then(function() {
+                abortStreamResult = abortStreamOrder.join(',');
+            });
+            abortStreamController.abort();
+            abortStreamOrder.push('after-abort');
+        }).catch(function(err) {
+            abortStreamResult = err && err.message ? err.message : String(err);
+        });
+    )JS").c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("abortStreamResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "after-abort,microtask,AbortError");
+}
+
+TEST(JSFetch, AbortSignalRejectsActiveReaderAndBodyHelpersV2086) {
+    const std::string body = "ABCDEFGH";
+    const std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "Connection: close\r\n"
+        "\r\n" +
+        body;
+
+    ScopedHttpResponseServer server({response});
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(
+        engine.context(),
+        "http://127.0.0.1:" + std::to_string(server.port()) + "/",
+        800,
+        600);
+    clever::js::install_fetch_bindings(engine.context());
+    const std::string script = R"JS(
+        var abortHelperOutcome = 'pending';
+        fetch('http://127.0.0.1:)JS" + std::to_string(server.port()) + R"JS(/abort-helper', {
+            signal: (function() {
+                abortHelperController = new AbortController();
+                return abortHelperController.signal;
+            })()
+        }).then(function(resp) {
+            var body = resp.body;
+            var reader = body.getReader();
+            var beforeAbort = resp.bodyUsed;
+            abortHelperController.abort();
+            var afterAbort = resp.bodyUsed;
+            function formatError(err) {
+                return (err && err.name ? err.name : 'Error') + ':' +
+                    (err && err.message ? err.message : String(err));
+            }
+            return Promise.all([
+                reader.read().then(
+                    function() { return 'resolved'; },
+                    formatError
+                ),
+                resp.text().then(
+                    function() { return 'resolved'; },
+                    formatError
+                ),
+                resp.arrayBuffer().then(
+                    function() { return 'resolved'; },
+                    formatError
+                )
+            ]).then(function(values) {
+                var lockedBeforeRelease = body.locked;
+                reader.releaseLock();
+                abortHelperOutcome = [
+                    String(beforeAbort),
+                    String(afterAbort),
+                    values[0],
+                    values[1],
+                    values[2],
+                    String(lockedBeforeRelease),
+                    String(body.locked),
+                    String(resp.bodyUsed)
+                ].join('|');
+            });
+        }).catch(function(err) {
+            abortHelperOutcome = err && err.message ? err.message : String(err);
+        });
+    )JS";
+    engine.evaluate(script.c_str());
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("abortHelperOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              "false|true|AbortError:The operation was aborted|AbortError:The operation was aborted|AbortError:The operation was aborted|true|false|true");
+}
+
+TEST(JSFetch, ResponseBodyReaderLockBlocksOtherConsumersV2070) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var lockOutcome = 'pending';
+        var r = new Response('locked', { status: 200 });
+        var before = r.bodyUsed;
+        var body = r.body;
+        var beforeLocked = body.locked;
+        var reader = body.getReader();
+        var afterGetReaderLocked = body.locked;
+        Promise.all([
+            r.text().then(
+                function() { return 'text-resolved'; },
+                function(err) { return err && err.message ? err.message : String(err); }
+            ),
+            Promise.resolve((function() {
+                try {
+                    r.clone();
+                    return 'clone-resolved';
+                } catch (err) {
+                    return err && err.message ? err.message : String(err);
+                }
+            })())
+        ]).then(function(values) {
+            reader.releaseLock();
+            lockOutcome = [
+                String(before),
+                String(r.bodyUsed),
+                String(beforeLocked),
+                String(afterGetReaderLocked),
+                String(body.locked),
+                values[0],
+                values[1]
+            ].join('|');
+        });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("lockOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              "false|false|false|true|false|Response body is already used|Response body is already used");
+}
+
+TEST(JSFetch, ResponseBodyStreamCancelKeepsReaderLockUntilReleaseV2085) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var cancelOutcome = 'pending';
+        var r = new Response('ABCDEFGH', { status: 200 });
+        var body = r.body;
+        var reader = body.getReader();
+        reader.read().then(function(first) {
+            return body.cancel().then(function() {
+                return reader.read().then(
+                    function() { return 'resolved'; },
+                    function(err) {
+                        return (err && err.name ? err.name : 'Error') + ':' +
+                            (err && err.message ? err.message : String(err));
+                    }
+                ).then(function(secondReadResult) {
+                    var lockedBeforeRelease = body.locked;
+                    reader.releaseLock();
+                    cancelOutcome = [
+                        String(first.done),
+                        String(Array.from(first.value).join(',')),
+                        String(r.bodyUsed),
+                        secondReadResult,
+                        String(lockedBeforeRelease),
+                        String(body.locked)
+                    ].join('|');
+                });
+            });
+        }).catch(function(err) {
+            cancelOutcome = err && err.message ? err.message : String(err);
+        });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("cancelOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              "false|65,66,67,68|true|AbortError:The operation was aborted.|true|false");
+}
+
+TEST(JSFetch, ResponseBodyReaderReleaseLockPreservesBodyUsedAfterReadV2084) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var releaseOutcome = 'pending';
+        var r = new Response('ABCDEFGH', { status: 200 });
+        var body = r.body;
+        var reader = body.getReader();
+        reader.read().then(function(first) {
+            reader.releaseLock();
+            return Promise.all([
+                Promise.resolve(String(r.bodyUsed)),
+                Promise.resolve(String(body.locked)),
+                r.text().then(
+                    function() { return 'text-resolved'; },
+                    function(err) { return err && err.message ? err.message : String(err); }
+                ),
+                Promise.resolve((function() {
+                    try {
+                        r.clone();
+                        return 'clone-resolved';
+                    } catch (err) {
+                        return err && err.message ? err.message : String(err);
+                    }
+                })())
+            ]).then(function(values) {
+                releaseOutcome = [
+                    String(first.done),
+                    String(Array.from(first.value).join(',')),
+                    values[0],
+                    values[1],
+                    values[2],
+                    values[3]
+                ].join('|');
+            });
+        }).catch(function(err) {
+            releaseOutcome = err && err.message ? err.message : String(err);
+        });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = engine.evaluate("releaseOutcome");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result,
+              "false|65,66,67,68|true|false|Response body is already used|Response body is already used");
 }
 
 // ============================================================================
@@ -9488,6 +13868,144 @@ TEST(JSDom, WebSocketBinaryType) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
     clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, WebSocketMessageDeliveryWaitsForCheckpointMicrotasks) {
+    using namespace std::chrono_literals;
+
+    auto doc = clever::html::parse("<html><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    ScopedWebSocketTestServer server;
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto create_result = engine.evaluate((std::string(R"(
+        (() => {
+            globalThis.__jdws = new WebSocket('ws://127.0.0.1:)")
+        + std::to_string(server.port())
+        + R"(/test');
+            globalThis.__jdwsTurn = 'setup';
+            globalThis.__jdwsOrder = [];
+            globalThis.__jdws.onmessage = function(event) {
+                globalThis.__jdwsOrder.push(
+                    'message:' + event.data + ':' + globalThis.__jdwsTurn);
+            };
+            return 'created';
+        })()
+    )"));
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    ASSERT_EQ(create_result, "created");
+    ASSERT_TRUE(server.wait_until_open(500ms));
+    ASSERT_TRUE(server.send_text_frame("hello"));
+
+    std::this_thread::sleep_for(20ms);
+
+    auto before_checkpoint = engine.evaluate(R"(
+        globalThis.__jdwsTurn = 'turn-1';
+        Promise.resolve().then(function() {
+            globalThis.__jdwsOrder.push('microtask:' + globalThis.__jdwsTurn);
+        });
+        globalThis.__jdwsOrder.push('sync:' + globalThis.__jdwsTurn);
+        globalThis.__jdwsOrder.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(before_checkpoint, "sync:turn-1");
+
+    auto after_checkpoint = engine.evaluate("globalThis.__jdwsOrder.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(after_checkpoint, "sync:turn-1,microtask:turn-1,message:hello:turn-1");
+
+    auto cleanup_result = engine.evaluate(R"(
+        (() => {
+            globalThis.__jdws.close();
+            globalThis.__jdws = undefined;
+            globalThis.__jdwsOrder = undefined;
+            globalThis.__jdwsTurn = undefined;
+            return 'cleared';
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(cleanup_result, "cleared");
+    clever::js::cleanup_dom_bindings(engine.context());
+    JS_RunGC(engine.runtime());
+}
+
+TEST(JSDom, WebSocketCloseRetiresLateNetworkCallbacksButKeepsCapturedOrder) {
+    using namespace std::chrono_literals;
+
+    auto doc = clever::html::parse("<html><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    ScopedWebSocketTestServer server;
+    ASSERT_TRUE(server.is_valid());
+
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    clever::js::install_fetch_bindings(engine.context());
+
+    auto create_result = engine.evaluate((std::string(R"(
+        (() => {
+            globalThis.__jdws = new WebSocket('ws://127.0.0.1:)")
+        + std::to_string(server.port())
+        + R"(/test');
+            globalThis.__jdwsOrder = [];
+            globalThis.__jdws.onopen = function() {
+                globalThis.__jdwsOrder.push('open');
+            };
+            globalThis.__jdws.onmessage = function(event) {
+                globalThis.__jdwsOrder.push('message:' + event.data);
+                if (event.data === 'first') {
+                    globalThis.__jdws.close(1000, 'client');
+                }
+            };
+            globalThis.__jdws.onclose = function(event) {
+                globalThis.__jdwsOrder.push(
+                    'close:' + event.code + ':' + event.reason);
+            };
+            return 'created';
+        })()
+    )"));
+    ASSERT_FALSE(engine.has_error()) << engine.last_error();
+    ASSERT_EQ(create_result, "created");
+    ASSERT_TRUE(server.wait_until_open(500ms));
+    ASSERT_TRUE(server.send_text_frames({"first", "second"}));
+
+    std::thread late_sender([&server] {
+        std::this_thread::sleep_for(75ms);
+        server.send_text_frame("late");
+    });
+
+    std::string order;
+    for (int i = 0; i < 20; ++i) {
+        clever::js::flush_fetch_promise_jobs(engine.context());
+        order = engine.evaluate("globalThis.__jdwsOrder.join(',')");
+        if (order == "open,message:first,message:second,close:1000:client") {
+            break;
+        }
+        std::this_thread::sleep_for(25ms);
+    }
+    late_sender.join();
+
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(order, "open,message:first,message:second,close:1000:client");
+    EXPECT_EQ(engine.evaluate("String(globalThis.__jdwsOrder.includes('message:late'))"), "false");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+
+    auto cleanup_result = engine.evaluate(R"(
+        (() => {
+            globalThis.__jdws = undefined;
+            globalThis.__jdwsOrder = undefined;
+            return 'cleared';
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(cleanup_result, "cleared");
+    clever::js::cleanup_dom_bindings(engine.context());
+    JS_RunGC(engine.runtime());
 }
 
 // ============================================================================
@@ -11194,6 +15712,75 @@ TEST(JSDom, ImageConstructor) {
         // decode() returns Promise
         checks.push(typeof img.decode === 'function');
         String(checks.every(function(c){return c;}));
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, HTMLDialogElementCloseDispatchesEventV2067) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var dialog = document.createElement('dialog');
+        document.body.appendChild(dialog);
+        var events = [];
+        dialog.returnValue = 'seed';
+        dialog.addEventListener('close', function(event) {
+            events.push(event.type + ':' + String(dialog.open) + ':' + dialog.returnValue);
+        });
+        dialog.showModal();
+        var openBeforeClose = dialog.open;
+        dialog.close('done');
+        String(
+            openBeforeClose === true &&
+            dialog.open === false &&
+            dialog.returnValue === 'done' &&
+            events.length === 1 &&
+            events[0] === 'close:false:done'
+        )
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, HTMLDialogElementRepeatedCloseIsStableV2067) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var dialog = document.createElement('dialog');
+        document.body.appendChild(dialog);
+        var closeCount = 0;
+        dialog.addEventListener('close', function() { closeCount++; });
+        dialog.returnValue = 'initial';
+
+        dialog.showModal();
+        dialog.close('first-close');
+        var afterFirstClose = closeCount === 1 &&
+            dialog.open === false &&
+            dialog.returnValue === 'first-close';
+
+        dialog.close();
+        var afterRepeatedClose = closeCount === 1 &&
+            dialog.open === false &&
+            dialog.returnValue === 'first-close';
+
+        dialog.showModal();
+        var persistedAcrossShowModal = dialog.open === true &&
+            dialog.returnValue === 'first-close';
+        dialog.close();
+
+        String(
+            afterFirstClose &&
+            afterRepeatedClose &&
+            persistedAcrossShowModal &&
+            closeCount === 2 &&
+            dialog.open === false &&
+            dialog.returnValue === 'first-close'
+        )
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");

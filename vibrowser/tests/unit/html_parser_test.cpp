@@ -2323,6 +2323,15 @@ TEST(TreeBuilder, TemplateElement) {
     ASSERT_NE(doc, nullptr);
     auto* tmpl = doc->find_element("template");
     ASSERT_NE(tmpl, nullptr);
+    ASSERT_TRUE(tmpl->children.empty());
+    ASSERT_NE(tmpl->template_content, nullptr);
+    ASSERT_EQ(tmpl->template_content->type, clever::html::SimpleNode::DocumentFragment);
+    ASSERT_EQ(tmpl->template_content->children.size(), 1u);
+
+    auto* paragraph = tmpl->template_content->children[0].get();
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_EQ(paragraph->tag_name, "p");
+    EXPECT_EQ(paragraph->text_content(), "Template content");
 }
 
 // ============================================================================
@@ -9883,13 +9892,16 @@ TEST(TreeBuilder, TemplateElementsV61) {
 
     auto* template_elem = doc->find_element("template");
     ASSERT_NE(template_elem, nullptr);
+    ASSERT_TRUE(template_elem->children.empty());
+    ASSERT_NE(template_elem->template_content, nullptr);
+    ASSERT_EQ(template_elem->template_content->children.size(), 2u);
 
-    // Template should have child elements
-    auto ps = doc->find_all_elements("p");
-    auto spans = doc->find_all_elements("span");
-
-    EXPECT_EQ(ps.size(), 1u);
-    EXPECT_EQ(spans.size(), 1u);
+    EXPECT_EQ(doc->find_all_elements("p").size(), 0u);
+    EXPECT_EQ(doc->find_all_elements("span").size(), 0u);
+    EXPECT_EQ(template_elem->template_content->children[0]->tag_name, "p");
+    EXPECT_EQ(template_elem->template_content->children[0]->text_content(), "Template content");
+    EXPECT_EQ(template_elem->template_content->children[1]->tag_name, "span");
+    EXPECT_EQ(template_elem->template_content->children[1]->text_content(), "Nested span");
 }
 
 // Test 4: Custom elements - testing hyphenated element names
@@ -19912,14 +19924,282 @@ TEST(HtmlParserTest, TemplateAndSlotElementsRecognizedV121) {
     auto* tmpl = doc->find_element("template");
     ASSERT_NE(tmpl, nullptr);
     EXPECT_EQ(get_attr_v63(tmpl, "id"), "card-tmpl");
+    ASSERT_TRUE(tmpl->children.empty());
+    ASSERT_NE(tmpl->template_content, nullptr);
+    ASSERT_EQ(tmpl->template_content->children.size(), 1u);
 
-    auto* slot = doc->find_element("slot");
+    auto* card = tmpl->template_content->children[0].get();
+    ASSERT_NE(card, nullptr);
+    ASSERT_EQ(card->tag_name, "div");
+    ASSERT_EQ(card->children.size(), 1u);
+
+    auto* slot = card->children[0].get();
     ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->tag_name, "slot");
     EXPECT_EQ(get_attr_v63(slot, "name"), "title");
+    EXPECT_EQ(slot->text_content(), "Default");
+    EXPECT_EQ(doc->find_element("slot"), nullptr);
 
     auto* span = doc->find_element("span");
     ASSERT_NE(span, nullptr);
     EXPECT_EQ(span->text_content(), "Visible content");
+}
+
+TEST(TreeBuilder, NestedTemplateContentStaysInOwnFragments) {
+    auto doc = parse(
+        "<html><body><template id=\"outer\"><div>Outer"
+        "<template id=\"inner\"><span>Inner</span></template>"
+        "</div></template><p>Visible</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer = doc->find_element("template");
+    ASSERT_NE(outer, nullptr);
+    ASSERT_EQ(outer->template_content->children.size(), 1u);
+    ASSERT_TRUE(outer->children.empty());
+
+    auto* outer_div = outer->template_content->children[0].get();
+    ASSERT_NE(outer_div, nullptr);
+    ASSERT_EQ(outer_div->tag_name, "div");
+    ASSERT_EQ(outer_div->children.size(), 2u);
+    EXPECT_EQ(outer_div->children[0]->text_content(), "Outer");
+
+    auto* inner = outer_div->children[1].get();
+    ASSERT_NE(inner, nullptr);
+    ASSERT_EQ(inner->tag_name, "template");
+    ASSERT_TRUE(inner->children.empty());
+    ASSERT_NE(inner->template_content, nullptr);
+    ASSERT_EQ(inner->template_content->children.size(), 1u);
+    ASSERT_EQ(inner->template_content->children[0]->tag_name, "span");
+    EXPECT_EQ(inner->template_content->children[0]->text_content(), "Inner");
+
+    EXPECT_EQ(doc->find_all_elements("span").size(), 0u);
+    auto* visible = doc->find_element("p");
+    ASSERT_NE(visible, nullptr);
+    EXPECT_EQ(visible->text_content(), "Visible");
+}
+
+TEST(TreeBuilder, FosterParentedTemplateDescendantsStayInTemplateContent) {
+    auto doc = parse(
+        "<html><body><template id=\"outer\">"
+        "<table><template id=\"inner\"><span>Inner</span></template><tr><td>Cell</td></tr></table>"
+        "</template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer = doc->find_element("template");
+    ASSERT_NE(outer, nullptr);
+    ASSERT_TRUE(outer->children.empty());
+    ASSERT_NE(outer->template_content, nullptr);
+    ASSERT_EQ(outer->template_content->children.size(), 2u);
+
+    auto* inner = outer->template_content->children[0].get();
+    ASSERT_NE(inner, nullptr);
+    ASSERT_EQ(inner->tag_name, "template");
+    ASSERT_TRUE(inner->children.empty());
+    ASSERT_NE(inner->template_content, nullptr);
+    ASSERT_EQ(inner->template_content->children.size(), 1u);
+    ASSERT_EQ(inner->template_content->children[0]->tag_name, "span");
+    EXPECT_EQ(inner->template_content->children[0]->text_content(), "Inner");
+
+    auto* table = outer->template_content->children[1].get();
+    ASSERT_NE(table, nullptr);
+    ASSERT_EQ(table->tag_name, "table");
+    EXPECT_EQ(doc->find_all_elements("span").size(), 0u);
+}
+
+TEST(TreeBuilder, FosterParentedNodesBeforeTemplateTableStayInTemplateFragment) {
+    auto doc = parse(
+        "<html><body><template id=\"outer\">"
+        "<table>lead<div>after</div><tr><td>Cell</td></tr></table>"
+        "</template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer = doc->find_element("template");
+    ASSERT_NE(outer, nullptr);
+    ASSERT_TRUE(outer->children.empty());
+    ASSERT_NE(outer->template_content, nullptr);
+    ASSERT_EQ(outer->template_content->children.size(), 3u);
+
+    auto* lead = outer->template_content->children[0].get();
+    ASSERT_NE(lead, nullptr);
+    ASSERT_EQ(lead->type, SimpleNode::Text);
+    EXPECT_EQ(lead->data, "lead");
+
+    auto* div = outer->template_content->children[1].get();
+    ASSERT_NE(div, nullptr);
+    ASSERT_EQ(div->tag_name, "div");
+    EXPECT_EQ(div->text_content(), "after");
+
+    auto* table = outer->template_content->children[2].get();
+    ASSERT_NE(table, nullptr);
+    ASSERT_EQ(table->tag_name, "table");
+}
+
+TEST(TreeBuilder, AdoptionAgencyFosterParentingStaysInTemplateFragment) {
+    auto doc = parse(
+        "<html><body><template id=\"outer\">"
+        "<table><b>lead<p>after</b></p><tr><td>Cell</td></tr></table>"
+        "</template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer = doc->find_element("template");
+    ASSERT_NE(outer, nullptr);
+    ASSERT_TRUE(outer->children.empty());
+    ASSERT_NE(outer->template_content, nullptr);
+
+    auto* template_table = outer->template_content->find_element("table");
+    ASSERT_NE(template_table, nullptr);
+    auto* template_cell = outer->template_content->find_element("td");
+    ASSERT_NE(template_cell, nullptr);
+    EXPECT_EQ(template_cell->text_content(), "Cell");
+
+    EXPECT_GE(outer->template_content->find_all_elements("p").size(), 1u);
+    EXPECT_GE(outer->template_content->find_all_elements("b").size(), 1u);
+    EXPECT_EQ(doc->find_all_elements("p").size(), 0u);
+    EXPECT_EQ(doc->find_all_elements("b").size(), 0u);
+    EXPECT_EQ(doc->find_all_elements("td").size(), 0u);
+}
+
+TEST(TreeBuilder, NestedTemplateTableFosteredDescendantsStayInTemplateFragments) {
+    auto doc = parse(
+        "<html><body><template id=\"outer\">"
+        "<table><template id=\"inner\"><table>lead<div>after</div><tr><td>Inner</td></tr></table></template>"
+        "<tr><td>Outer</td></tr></table>"
+        "</template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer = doc->find_element("template");
+    ASSERT_NE(outer, nullptr);
+    ASSERT_TRUE(outer->children.empty());
+    ASSERT_NE(outer->template_content, nullptr);
+    ASSERT_EQ(outer->template_content->children.size(), 2u);
+
+    auto* inner = outer->template_content->children[0].get();
+    ASSERT_NE(inner, nullptr);
+    ASSERT_EQ(inner->tag_name, "template");
+    ASSERT_TRUE(inner->children.empty());
+    ASSERT_NE(inner->template_content, nullptr);
+    ASSERT_EQ(inner->template_content->children.size(), 3u);
+
+    auto* lead = inner->template_content->children[0].get();
+    ASSERT_NE(lead, nullptr);
+    ASSERT_EQ(lead->type, SimpleNode::Text);
+    EXPECT_EQ(lead->data, "lead");
+
+    auto* div = inner->template_content->children[1].get();
+    ASSERT_NE(div, nullptr);
+    ASSERT_EQ(div->tag_name, "div");
+    EXPECT_EQ(div->text_content(), "after");
+
+    auto* inner_table = inner->template_content->children[2].get();
+    ASSERT_NE(inner_table, nullptr);
+    ASSERT_EQ(inner_table->tag_name, "table");
+    ASSERT_EQ(inner_table->text_content(), "Inner");
+
+    auto* outer_table = outer->template_content->children[1].get();
+    ASSERT_NE(outer_table, nullptr);
+    ASSERT_EQ(outer_table->tag_name, "table");
+    EXPECT_EQ(outer_table->text_content(), "Outer");
+    EXPECT_EQ(doc->find_all_elements("div").size(), 0u);
+}
+
+TEST(TreeBuilder, AdoptionAgencyUsesInnermostNestedTemplateFragment) {
+    auto doc = parse(
+        "<html><body><template id=\"outer\">"
+        "<table><template id=\"inner\"><table><b>lead<p>after</b></p><tr><td>Inner</td></tr></table></template>"
+        "<tr><td>Outer</td></tr></table>"
+        "</template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer = doc->find_element("template");
+    ASSERT_NE(outer, nullptr);
+    ASSERT_TRUE(outer->children.empty());
+    ASSERT_NE(outer->template_content, nullptr);
+    ASSERT_EQ(outer->template_content->children.size(), 2u);
+
+    auto* inner = outer->template_content->children[0].get();
+    ASSERT_NE(inner, nullptr);
+    ASSERT_EQ(inner->tag_name, "template");
+    ASSERT_TRUE(inner->children.empty());
+    ASSERT_NE(inner->template_content, nullptr);
+
+    auto* inner_table = inner->template_content->find_element("table");
+    ASSERT_NE(inner_table, nullptr);
+    auto* inner_cell = inner->template_content->find_element("td");
+    ASSERT_NE(inner_cell, nullptr);
+    EXPECT_EQ(inner_cell->text_content(), "Inner");
+
+    EXPECT_GE(inner->template_content->find_all_elements("p").size(), 1u);
+    EXPECT_GE(inner->template_content->find_all_elements("b").size(), 1u);
+    EXPECT_EQ(outer->template_content->find_all_elements("p").size(), 0u);
+    EXPECT_EQ(outer->template_content->find_all_elements("b").size(), 0u);
+    EXPECT_EQ(doc->find_all_elements("p").size(), 0u);
+    EXPECT_EQ(doc->find_all_elements("b").size(), 0u);
+    EXPECT_EQ(doc->find_all_elements("td").size(), 0u);
+}
+
+TEST(TreeBuilder, FormattingReconstructionAfterNestedTemplateTableStaysInInnerFragment) {
+    auto doc = parse(
+        "<html><body><template id=\"outer\">"
+        "<table><template id=\"inner\"><table><b>lead</table>tail</template>"
+        "<tr><td>Outer</td></tr></table>"
+        "</template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer = doc->find_element("template");
+    ASSERT_NE(outer, nullptr);
+    ASSERT_TRUE(outer->children.empty());
+    ASSERT_NE(outer->template_content, nullptr);
+    ASSERT_EQ(outer->template_content->children.size(), 2u);
+
+    auto* inner = outer->template_content->children[0].get();
+    ASSERT_NE(inner, nullptr);
+    ASSERT_EQ(inner->tag_name, "template");
+    ASSERT_TRUE(inner->children.empty());
+    ASSERT_NE(inner->template_content, nullptr);
+
+    EXPECT_EQ(outer->template_content->find_all_elements("b").size(), 0u);
+    EXPECT_EQ(doc->find_all_elements("b").size(), 0u);
+
+    auto inner_b = inner->template_content->find_all_elements("b");
+    EXPECT_GE(inner_b.size(), 1u);
+    EXPECT_NE(inner->template_content->text_content().find("lead"), std::string::npos);
+    EXPECT_NE(inner->template_content->text_content().find("tail"), std::string::npos);
+
+    auto* outer_table = outer->template_content->children[1].get();
+    ASSERT_NE(outer_table, nullptr);
+    ASSERT_EQ(outer_table->tag_name, "table");
+    EXPECT_EQ(outer_table->text_content(), "Outer");
+}
+
+TEST(TreeBuilder, AdoptionAgencyReconstructionStaysInInnermostTemplateFragment) {
+    auto doc = parse(
+        "<html><body><template id=\"outer\">"
+        "<table><template id=\"inner\"><table><b><p>lead</b></p><tr><td>Inner</td></tr></table>tail</template>"
+        "<tr><td>Outer</td></tr></table>"
+        "</template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer = doc->find_element("template");
+    ASSERT_NE(outer, nullptr);
+    ASSERT_TRUE(outer->children.empty());
+    ASSERT_NE(outer->template_content, nullptr);
+    ASSERT_EQ(outer->template_content->children.size(), 2u);
+
+    auto* inner = outer->template_content->children[0].get();
+    ASSERT_NE(inner, nullptr);
+    ASSERT_EQ(inner->tag_name, "template");
+    ASSERT_TRUE(inner->children.empty());
+    ASSERT_NE(inner->template_content, nullptr);
+
+    EXPECT_EQ(outer->template_content->find_all_elements("p").size(), 0u);
+    EXPECT_EQ(outer->template_content->find_all_elements("b").size(), 0u);
+    EXPECT_EQ(doc->find_all_elements("p").size(), 0u);
+    EXPECT_EQ(doc->find_all_elements("b").size(), 0u);
+
+    EXPECT_GE(inner->template_content->find_all_elements("p").size(), 1u);
+    EXPECT_GE(inner->template_content->find_all_elements("b").size(), 1u);
+    EXPECT_NE(inner->template_content->text_content().find("lead"), std::string::npos);
+    EXPECT_NE(inner->template_content->text_content().find("tail"), std::string::npos);
 }
 
 TEST(HtmlParserTest, MixedCaseAttributeNamesLowercasedV121) {

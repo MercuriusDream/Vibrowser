@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <atomic>
 #include <memory>
 #include <queue>
 #include <mutex>
@@ -10,8 +12,7 @@
 #include <string>
 
 extern "C" {
-struct JSContext;
-struct JSRuntime;
+#include <quickjs.h>
 }
 
 namespace clever::js {
@@ -59,6 +60,9 @@ public:
                            int32_t lineno,
                            const std::string& name);
 
+    // Permanently stop any future main-thread delivery for this worker.
+    void retire_main_delivery();
+
     // Terminate the worker thread (async)
     void terminate();
 
@@ -85,8 +89,9 @@ private:
     std::mutex queue_mutex_;
     std::condition_variable queue_cv_;
 
-    bool should_terminate_ = false;
-    bool finished_ = false;
+    std::atomic<bool> should_terminate_ { false };
+    std::atomic<bool> finished_ { false };
+    std::atomic<bool> main_delivery_retired_ { false };
     std::function<std::string(const std::string&)> module_fetcher_;
 };
 
@@ -96,5 +101,9 @@ void install_worker_bindings(JSContext* ctx);
 // Process any pending worker messages in the main thread
 // Call this periodically to receive messages from active workers
 void process_worker_messages(JSContext* ctx);
+
+// Test-only worker registry introspection helpers.
+size_t debug_worker_registry_size(JSContext* ctx);
+bool debug_worker_is_registered(JSContext* ctx, JSValueConst worker_value);
 
 } // namespace clever::js

@@ -29,9 +29,46 @@ bool domain_matches_value(const std::string& cookie_domain, const std::string& r
     return request_domain[pos - 1] == '.' && request_domain.substr(pos) == cookie_domain;
 }
 
-std::string normalize_path(const std::string& path) {
-    if (path.empty() || path[0] != '/') return "/";
-    return path;
+std::string request_target_path_component(const std::string& request_target) {
+    if (request_target.empty()) return "/";
+    if (request_target[0] == '/' &&
+        (request_target.size() == 1 || request_target[1] != '/')) {
+        return request_target;
+    }
+
+    size_t path_start = std::string::npos;
+    if (request_target.size() >= 2 && request_target[0] == '/' && request_target[1] == '/') {
+        path_start = request_target.find('/', 2);
+    } else if (const size_t scheme_pos = request_target.find("://");
+               scheme_pos != std::string::npos) {
+        path_start = request_target.find('/', scheme_pos + 3);
+    }
+
+    if (path_start == std::string::npos) return "/";
+    return request_target.substr(path_start);
+}
+
+std::string strip_query_and_fragment(const std::string& path) {
+    const size_t suffix_pos = path.find_first_of("?#");
+    if (suffix_pos == std::string::npos) return path;
+    return path.substr(0, suffix_pos);
+}
+
+std::string normalize_request_path(const std::string& request_target) {
+    std::string normalized =
+        strip_query_and_fragment(request_target_path_component(request_target));
+    if (normalized.empty()) return "/";
+    if (normalized[0] != '/') normalized.insert(normalized.begin(), '/');
+    return normalized;
+}
+
+std::string default_path_for_request(const std::string& request_path) {
+    const std::string normalized_request_path = normalize_request_path(request_path);
+    if (normalized_request_path == "/") return "/";
+
+    const size_t last_slash = normalized_request_path.rfind('/');
+    if (last_slash == std::string::npos || last_slash == 0) return "/";
+    return normalized_request_path.substr(0, last_slash);
 }
 
 } // anonymous namespace
@@ -42,11 +79,12 @@ CookieJar& CookieJar::shared() {
 }
 
 void CookieJar::set_from_header(const std::string& header_value,
-                                 const std::string& request_domain) {
+                                const std::string& request_domain,
+                                const std::string& request_path) {
     // Parse: name=value; Path=/; Domain=.example.com; Secure; HttpOnly
     Cookie cookie;
     cookie.domain = to_lower(request_domain);
-    cookie.path = "/";
+    cookie.path = default_path_for_request(request_path);
 
     // Split by semicolons
     std::istringstream iss(header_value);
@@ -87,7 +125,9 @@ void CookieJar::set_from_header(const std::string& header_value,
             cookie.domain = dom;
             cookie.host_only = false;
         } else if (attr_name == "path") {
-            cookie.path = normalize_path(attr_value);
+            if (!attr_value.empty() && attr_value[0] == '/') {
+                cookie.path = attr_value;
+            }
         } else if (attr_name == "secure") {
             cookie.secure = true;
         } else if (attr_name == "httponly") {
@@ -118,12 +158,14 @@ void CookieJar::set_from_header(const std::string& header_value,
 
     std::lock_guard<std::mutex> lock(mutex_);
 
-    // Replace existing cookie with same name+domain+path
+    // Host-only and Domain cookies can coexist for the same normalized domain/path.
+    // Only replace an existing cookie when the storage scope also matches.
     auto& domain_cookies = cookies_[cookie.domain];
     domain_cookies.erase(
         std::remove_if(domain_cookies.begin(), domain_cookies.end(),
                        [&](const Cookie& existing) {
-                           return existing.name == cookie.name && existing.path == cookie.path;
+                           return existing.name == cookie.name && existing.path == cookie.path &&
+                                  existing.host_only == cookie.host_only;
                        }),
         domain_cookies.end());
 
@@ -132,6 +174,7 @@ void CookieJar::set_from_header(const std::string& header_value,
         return;
     }
 
+    cookie.creation_index = next_cookie_creation_index_++;
     domain_cookies.push_back(std::move(cookie));
 }
 
@@ -140,9 +183,13 @@ std::string CookieJar::get_cookie_header(const std::string& domain, const std::s
                                           bool is_top_level_nav) const {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    std::string result;
     std::string domain_lower = to_lower(domain);
-    std::string request_path = normalize_path(path);
+    std::string request_path = normalize_request_path(path);
+    struct CookieMatch {
+        const Cookie* cookie = nullptr;
+        size_t path_length = 0;
+    };
+    std::vector<CookieMatch> matches;
 
     for (auto& [cookie_domain, domain_cookies] : cookies_) {
         int64_t now = static_cast<int64_t>(std::time(nullptr));
@@ -168,9 +215,25 @@ std::string CookieJar::get_cookie_header(const std::string& domain, const std::s
                 if (ss == "none" && !cookie.secure) continue;
             }
 
-            if (!result.empty()) result += "; ";
-            result += cookie.name + "=" + cookie.value;
+            matches.push_back(CookieMatch{
+                .cookie = &cookie,
+                .path_length = cookie.path.size(),
+            });
         }
+    }
+
+    std::sort(matches.begin(), matches.end(),
+              [](const CookieMatch& lhs, const CookieMatch& rhs) {
+                  if (lhs.path_length != rhs.path_length) {
+                      return lhs.path_length > rhs.path_length;
+                  }
+                  return lhs.cookie->creation_index < rhs.cookie->creation_index;
+              });
+
+    std::string result;
+    for (const CookieMatch& match : matches) {
+        if (!result.empty()) result += "; ";
+        result += match.cookie->name + "=" + match.cookie->value;
     }
 
     return result;
@@ -200,12 +263,13 @@ bool CookieJar::domain_matches(const Cookie& cookie,
 
 bool CookieJar::path_matches(const std::string& cookie_path,
                                const std::string& request_path) const {
-    if (cookie_path == "/") return true;
-    if (cookie_path == request_path) return true;
-    if (request_path.rfind(cookie_path, 0) != 0) return false;
-    if (cookie_path.back() == '/') return true;
-    return request_path.size() > cookie_path.size() &&
-           request_path[cookie_path.size()] == '/';
+    const std::string normalized_cookie_path = cookie_path.empty() ? "/" : cookie_path;
+    if (normalized_cookie_path == "/") return true;
+    if (normalized_cookie_path == request_path) return true;
+    if (request_path.rfind(normalized_cookie_path, 0) != 0) return false;
+    if (normalized_cookie_path.back() == '/') return true;
+    return request_path.size() > normalized_cookie_path.size() &&
+           request_path[normalized_cookie_path.size()] == '/';
 }
 
 } // namespace clever::net

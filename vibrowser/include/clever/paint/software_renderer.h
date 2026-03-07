@@ -61,11 +61,15 @@ struct AffineTransform {
 
 class SoftwareRenderer {
 public:
+    static constexpr float kMaxBoxShadowBlurRadius = 64.0f;
+    static constexpr float kBoxShadowBlurWorkRegionMultiplier = 3.0f;
+
     SoftwareRenderer(int width, int height, float dpr = 1.0f);
     ~SoftwareRenderer();
 
     // Render a display list to the pixel buffer
     void render(const DisplayList& list);
+    void render(const DisplayList& list, const Rect& dirty_rect);
 
     // Clear with a color
     void clear(const Color& color);
@@ -82,6 +86,32 @@ public:
     float dpr() const { return dpr_; }
     int pixels_width() const { return std::max(1, static_cast<int>(std::round(static_cast<float>(width_) * dpr_))); }
     int pixels_height() const { return std::max(1, static_cast<int>(std::round(static_cast<float>(height_) * dpr_))); }
+    size_t filter_blur_scratch_allocation_count_for_testing() const { return filter_blur_scratch_allocations_; }
+    int filter_blur_scratch_last_requested_width_for_testing() const { return filter_blur_scratch_last_requested_width_; }
+    int filter_blur_scratch_last_requested_height_for_testing() const { return filter_blur_scratch_last_requested_height_; }
+    int filter_last_write_x_for_testing() const { return filter_last_write_x_; }
+    int filter_last_write_y_for_testing() const { return filter_last_write_y_; }
+    int filter_last_write_width_for_testing() const { return filter_last_write_width_; }
+    int filter_last_write_height_for_testing() const { return filter_last_write_height_; }
+    size_t drop_shadow_alpha_scratch_allocation_count_for_testing() const { return drop_shadow_alpha_scratch_allocations_; }
+    int drop_shadow_alpha_scratch_last_requested_width_for_testing() const { return drop_shadow_alpha_scratch_last_requested_width_; }
+    int drop_shadow_alpha_scratch_last_requested_height_for_testing() const { return drop_shadow_alpha_scratch_last_requested_height_; }
+    size_t drop_shadow_blur_scratch_allocation_count_for_testing() const { return drop_shadow_blur_scratch_allocations_; }
+    int drop_shadow_blur_scratch_last_requested_width_for_testing() const { return drop_shadow_blur_scratch_last_requested_width_; }
+    int drop_shadow_blur_scratch_last_requested_height_for_testing() const { return drop_shadow_blur_scratch_last_requested_height_; }
+    size_t text_shadow_layer_scratch_allocation_count_for_testing() const { return text_shadow_layer_scratch_allocations_; }
+    int text_shadow_layer_last_requested_x_for_testing() const { return text_shadow_layer_last_requested_x_; }
+    int text_shadow_layer_last_requested_y_for_testing() const { return text_shadow_layer_last_requested_y_; }
+    int text_shadow_layer_last_requested_width_for_testing() const { return text_shadow_layer_last_requested_width_; }
+    int text_shadow_layer_last_requested_height_for_testing() const { return text_shadow_layer_last_requested_height_; }
+    int clip_path_last_mask_x_for_testing() const { return clip_path_last_mask_x_; }
+    int clip_path_last_mask_y_for_testing() const { return clip_path_last_mask_y_; }
+    int clip_path_last_mask_width_for_testing() const { return clip_path_last_mask_width_; }
+    int clip_path_last_mask_height_for_testing() const { return clip_path_last_mask_height_; }
+    int blend_last_backdrop_x_for_testing() const { return blend_last_backdrop_x_; }
+    int blend_last_backdrop_y_for_testing() const { return blend_last_backdrop_y_; }
+    int blend_last_backdrop_width_for_testing() const { return blend_last_backdrop_width_; }
+    int blend_last_backdrop_height_for_testing() const { return blend_last_backdrop_height_; }
 
     // Save as PPM image
     bool save_ppm(const std::string& filename) const;
@@ -100,6 +130,49 @@ private:
     std::stack<Rect> clip_stack_;
     std::stack<AffineTransform> transform_stack_;
     AffineTransform current_transform_ = AffineTransform::identity();
+    std::vector<float> filter_blur_scratch_;
+    int filter_blur_scratch_width_ = 0;
+    int filter_blur_scratch_height_ = 0;
+    int filter_blur_scratch_last_requested_width_ = 0;
+    int filter_blur_scratch_last_requested_height_ = 0;
+    int filter_last_write_x_ = 0;
+    int filter_last_write_y_ = 0;
+    int filter_last_write_width_ = 0;
+    int filter_last_write_height_ = 0;
+    size_t filter_blur_scratch_allocations_ = 0;
+    std::vector<uint8_t> drop_shadow_alpha_scratch_;
+    int drop_shadow_alpha_scratch_width_ = 0;
+    int drop_shadow_alpha_scratch_height_ = 0;
+    int drop_shadow_alpha_scratch_last_requested_width_ = 0;
+    int drop_shadow_alpha_scratch_last_requested_height_ = 0;
+    size_t drop_shadow_alpha_scratch_allocations_ = 0;
+    std::vector<float> drop_shadow_blur_scratch_;
+    int drop_shadow_blur_scratch_width_ = 0;
+    int drop_shadow_blur_scratch_height_ = 0;
+    int drop_shadow_blur_scratch_last_requested_width_ = 0;
+    int drop_shadow_blur_scratch_last_requested_height_ = 0;
+    size_t drop_shadow_blur_scratch_allocations_ = 0;
+    std::vector<uint8_t> text_shadow_layer_scratch_;
+    int text_shadow_layer_scratch_width_ = 0;
+    int text_shadow_layer_scratch_height_ = 0;
+    int text_shadow_layer_last_requested_x_ = 0;
+    int text_shadow_layer_last_requested_y_ = 0;
+    int text_shadow_layer_last_requested_width_ = 0;
+    int text_shadow_layer_last_requested_height_ = 0;
+    size_t text_shadow_layer_scratch_allocations_ = 0;
+    int clip_path_last_mask_x_ = 0;
+    int clip_path_last_mask_y_ = 0;
+    int clip_path_last_mask_width_ = 0;
+    int clip_path_last_mask_height_ = 0;
+    int blend_last_backdrop_x_ = 0;
+    int blend_last_backdrop_y_ = 0;
+    int blend_last_backdrop_width_ = 0;
+    int blend_last_backdrop_height_ = 0;
+    std::vector<uint8_t>* active_pixel_target_ = nullptr;
+    int active_pixel_target_origin_x_ = 0;
+    int active_pixel_target_origin_y_ = 0;
+    int active_pixel_target_width_ = 0;
+    int active_pixel_target_height_ = 0;
 
     // Set pixel with transform applied (maps through current_transform_)
     void set_pixel_transformed(float fx, float fy, const Color& color);
@@ -151,6 +224,8 @@ private:
         std::vector<uint8_t> pixels; // RGBA snapshot of the region
     };
     std::stack<BackdropSnapshot> backdrop_stack_;
+
+    void render_internal(const DisplayList& list, const Rect* dirty_rect);
 };
 
 } // namespace clever::paint

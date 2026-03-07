@@ -1,11 +1,14 @@
 #include <clever/layout/layout_engine.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <sstream>
 #include <functional>
+#include <unordered_set>
 #include <clever/css/style/style_resolver.h>
 
 namespace clever::layout {
@@ -13,6 +16,241 @@ namespace clever::layout {
 namespace {
 
 constexpr float kMarginCollapseEpsilon = 0.0001f;
+
+struct IntrinsicHeightCacheKey {
+    const LayoutNode* node = nullptr;
+    bool max_content = false;
+    float specified_height = 0;
+
+    bool operator==(const IntrinsicHeightCacheKey& other) const {
+        return node == other.node && max_content == other.max_content
+            && specified_height == other.specified_height;
+    }
+};
+
+struct IntrinsicHeightCacheKeyHash {
+    size_t operator()(const IntrinsicHeightCacheKey& key) const {
+        size_t seed = std::hash<const LayoutNode*>{}(key.node);
+        seed ^= std::hash<bool>{}(key.max_content) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<float>{}(key.specified_height) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
+using IntrinsicHeightCache = std::unordered_map<IntrinsicHeightCacheKey, float, IntrinsicHeightCacheKeyHash>;
+struct MaxContentWidthCacheKey {
+    const LayoutNode* node = nullptr;
+    float specified_width = 0;
+
+    bool operator==(const MaxContentWidthCacheKey& other) const {
+        return node == other.node && specified_width == other.specified_width;
+    }
+};
+
+struct MaxContentWidthCacheKeyHash {
+    size_t operator()(const MaxContentWidthCacheKey& key) const {
+        size_t seed = std::hash<const LayoutNode*>{}(key.node);
+        seed ^= std::hash<float>{}(key.specified_width) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
+using MaxContentWidthCache =
+    std::unordered_map<MaxContentWidthCacheKey, float, MaxContentWidthCacheKeyHash>;
+
+struct SameTreeIntrinsicWidthHintKey {
+    const LayoutNode* node = nullptr;
+    bool max_content = false;
+    float specified_width = 0;
+
+    bool operator==(const SameTreeIntrinsicWidthHintKey& other) const {
+        return node == other.node && max_content == other.max_content
+            && specified_width == other.specified_width;
+    }
+};
+
+struct SameTreeIntrinsicWidthHintKeyHash {
+    size_t operator()(const SameTreeIntrinsicWidthHintKey& key) const {
+        size_t seed = std::hash<const LayoutNode*>{}(key.node);
+        seed ^= std::hash<bool>{}(key.max_content) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        seed ^= std::hash<float>{}(key.specified_width) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+
+using SameTreeIntrinsicWidthHintCache =
+    std::unordered_map<SameTreeIntrinsicWidthHintKey, IntrinsicWidthHintEntry,
+                       SameTreeIntrinsicWidthHintKeyHash>;
+
+struct TableIntrinsicTopologySnapshot {
+    const LayoutNode* table = nullptr;
+    int row = 0;
+    int column = 0;
+    int colspan = 1;
+    int rowspan = 1;
+    bool wrapping_disabled = false;
+};
+
+thread_local IntrinsicHeightCache g_intrinsic_height_cache;
+thread_local MaxContentWidthCache g_max_content_width_cache;
+thread_local SameTreeIntrinsicWidthHintCache g_same_tree_intrinsic_width_hints;
+thread_local std::unordered_map<const LayoutNode*, size_t> g_same_tree_intrinsic_width_signatures;
+thread_local std::unordered_map<const LayoutNode*, bool> g_same_tree_intrinsic_width_deferred_inputs;
+thread_local std::unordered_map<const LayoutNode*, TableIntrinsicTopologySnapshot>
+    g_previous_table_intrinsic_topology;
+thread_local std::unordered_map<const LayoutNode*, TableIntrinsicTopologySnapshot>
+    g_current_table_intrinsic_topology;
+thread_local std::unordered_set<const LayoutNode*> g_active_table_intrinsic_hint_cells;
+thread_local std::unordered_set<const LayoutNode*> g_topology_evicted_table_intrinsic_hint_cells;
+thread_local const LayoutNode* g_same_tree_intrinsic_width_root = nullptr;
+thread_local size_t g_same_tree_intrinsic_width_owner_token = 0;
+thread_local int g_relayout_intrinsic_width_scope_depth = 0;
+std::atomic_size_t g_layout_engine_owner_token_counter{0};
+
+inline void hash_combine(size_t& seed, size_t value) {
+    seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+bool table_intrinsic_hint_needs_eviction(const TableIntrinsicTopologySnapshot& previous,
+                                         const TableIntrinsicTopologySnapshot& current) {
+    if (previous.table != current.table) return true;
+    const int previous_row_end = previous.row + previous.rowspan;
+    const int current_row_end = current.row + current.rowspan;
+    const int previous_column_end = previous.column + previous.colspan;
+    const int current_column_end = current.column + current.colspan;
+    return previous.wrapping_disabled != current.wrapping_disabled
+        || current.rowspan < previous.rowspan
+        || current.colspan < previous.colspan
+        || current_row_end < previous_row_end
+        || current_column_end < previous_column_end;
+}
+
+bool intrinsic_width_wrapping_disabled(const LayoutNode& node) {
+    return node.white_space_nowrap || node.white_space == 1 || node.white_space == 2;
+}
+
+bool uses_intrinsic_width_keyword(const LayoutNode& node) {
+    return node.specified_width <= -2.0f && node.specified_width >= -5.0f;
+}
+
+bool is_relayout_intrinsic_width_hint_root(const LayoutNode& node) {
+    return node.float_type != 0
+        || node.mode == LayoutMode::InlineBlock
+        || node.mode == LayoutMode::Table
+        || node.display == DisplayType::InlineBlock
+        || node.display == DisplayType::Table
+        || node.display == DisplayType::TableRow
+        || node.display == DisplayType::TableCell
+        || uses_intrinsic_width_keyword(node);
+}
+
+bool node_has_deferred_intrinsic_width_inputs(const LayoutNode& node) {
+    return node.css_width.has_value() || node.css_min_width.has_value()
+        || node.css_max_width.has_value();
+}
+
+void hash_optional_length(size_t& seed, const std::optional<clever::css::Length>& length) {
+    hash_combine(seed, std::hash<bool>{}(length.has_value()));
+    if (!length.has_value()) return;
+    hash_combine(seed, std::hash<int>{}(static_cast<int>(length->unit)));
+    hash_combine(seed, std::hash<float>{}(length->value));
+    hash_combine(seed, std::hash<const void*>{}(length->calc_expr.get()));
+}
+
+bool intrinsic_width_subtree_has_deferred_inputs(const LayoutNode& node, int depth = 0) {
+    if (depth > 256) return true;
+    auto cached = g_same_tree_intrinsic_width_deferred_inputs.find(&node);
+    if (cached != g_same_tree_intrinsic_width_deferred_inputs.end()) {
+        return cached->second;
+    }
+
+    bool has_deferred_inputs = node_has_deferred_intrinsic_width_inputs(node);
+    if (!has_deferred_inputs) {
+        for (const auto& child : node.children) {
+            if (child->content_visibility == 1) continue;
+            if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+            if (child->position_type >= 2 || child->float_type != 0) continue;
+            if (intrinsic_width_subtree_has_deferred_inputs(*child, depth + 1)) {
+                has_deferred_inputs = true;
+                break;
+            }
+        }
+    }
+
+    g_same_tree_intrinsic_width_deferred_inputs.emplace(&node, has_deferred_inputs);
+    return has_deferred_inputs;
+}
+
+size_t intrinsic_width_subtree_signature(const LayoutNode& node, int depth = 0) {
+    if (depth > 256) return 0;
+    auto cached = g_same_tree_intrinsic_width_signatures.find(&node);
+    if (cached != g_same_tree_intrinsic_width_signatures.end()) {
+        return cached->second;
+    }
+
+    size_t seed = 0;
+    hash_combine(seed, std::hash<int>{}(static_cast<int>(node.mode)));
+    hash_combine(seed, std::hash<int>{}(static_cast<int>(node.display)));
+    hash_combine(seed, std::hash<std::string>{}(node.tag_name));
+    hash_combine(seed, std::hash<bool>{}(node.is_text));
+    hash_combine(seed, std::hash<bool>{}(node.display_contents));
+    hash_combine(seed, std::hash<float>{}(node.specified_width));
+    hash_combine(seed, std::hash<float>{}(node.min_width));
+    hash_combine(seed, std::hash<float>{}(node.max_width));
+    hash_optional_length(seed, node.css_width);
+    hash_optional_length(seed, node.css_min_width);
+    hash_optional_length(seed, node.css_max_width);
+    hash_combine(seed, std::hash<float>{}(node.contain_intrinsic_width));
+    hash_combine(seed, std::hash<int>{}(node.colspan));
+    hash_combine(seed, std::hash<int>{}(node.rowspan));
+    hash_combine(seed, std::hash<float>{}(node.geometry.padding.left));
+    hash_combine(seed, std::hash<float>{}(node.geometry.padding.right));
+    hash_combine(seed, std::hash<float>{}(node.geometry.border.left));
+    hash_combine(seed, std::hash<float>{}(node.geometry.border.right));
+    hash_combine(seed, std::hash<int>{}(node.content_visibility));
+    hash_combine(seed, std::hash<int>{}(node.position_type));
+    hash_combine(seed, std::hash<int>{}(node.float_type));
+    hash_combine(seed, std::hash<int>{}(node.white_space));
+    hash_combine(seed, std::hash<bool>{}(node.white_space_nowrap));
+    hash_combine(seed, std::hash<bool>{}(node.white_space_pre));
+    hash_combine(seed, std::hash<int>{}(node.white_space_collapse));
+    hash_combine(seed, std::hash<int>{}(node.word_break));
+    hash_combine(seed, std::hash<int>{}(node.overflow_wrap));
+    hash_combine(seed, std::hash<int>{}(node.hyphens));
+    hash_combine(seed, std::hash<int>{}(node.text_transform));
+    hash_combine(seed, std::hash<int>{}(node.font_variant));
+    hash_combine(seed, std::hash<int>{}(node.contain));
+
+    if (node.is_text) {
+        hash_combine(seed, std::hash<std::string>{}(node.text_content));
+        hash_combine(seed, std::hash<float>{}(node.font_size));
+        hash_combine(seed, std::hash<std::string>{}(node.font_family));
+        hash_combine(seed, std::hash<int>{}(node.font_weight));
+        hash_combine(seed, std::hash<bool>{}(node.font_italic));
+        hash_combine(seed, std::hash<float>{}(node.letter_spacing));
+        hash_combine(seed, std::hash<float>{}(node.word_spacing));
+        hash_combine(seed, std::hash<int>{}(node.tab_size));
+    }
+
+    size_t intrinsic_signature_child_count = 0;
+    for (const auto& child : node.children) {
+        if (child->content_visibility == 1) continue;
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+        if (child->position_type >= 2 || child->float_type != 0) continue;
+        intrinsic_signature_child_count++;
+    }
+    hash_combine(seed, std::hash<size_t>{}(intrinsic_signature_child_count));
+    for (const auto& child : node.children) {
+        if (child->content_visibility == 1) continue;
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+        if (child->position_type >= 2 || child->float_type != 0) continue;
+        hash_combine(seed, std::hash<const LayoutNode*>{}(child.get()));
+        hash_combine(seed, intrinsic_width_subtree_signature(*child, depth + 1));
+    }
+
+    g_same_tree_intrinsic_width_signatures.emplace(&node, seed);
+    return seed;
+}
 
 float collapse_vertical_margins(float first, float second) {
     // CSS2.1 8.3.1: collapse two vertical margins by taking the
@@ -100,6 +338,63 @@ std::string collapse_whitespace(const std::string& text, int white_space, bool w
     return text;
 }
 
+struct PreparedTextMetrics {
+    std::string text;
+    float font_size = 0.0f;
+};
+
+PreparedTextMetrics prepare_text_for_measurement(const LayoutNode& node) {
+    PreparedTextMetrics prepared{node.text_content, node.font_size};
+
+    if (node.text_transform == 2) { // uppercase
+        std::transform(prepared.text.begin(), prepared.text.end(),
+                       prepared.text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    } else if (node.text_transform == 3) { // lowercase
+        std::transform(prepared.text.begin(), prepared.text.end(),
+                       prepared.text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    } else if (node.text_transform == 1) { // capitalize
+        bool cap_next = true;
+        for (char& c : prepared.text) {
+            if (c == ' ') {
+                cap_next = true;
+            } else if (cap_next) {
+                c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                cap_next = false;
+            }
+        }
+    }
+
+    if (node.tag_name != "br") {
+        prepared.text = collapse_whitespace(prepared.text, node.white_space, node.white_space_pre,
+                                            node.white_space_collapse);
+    }
+
+    if (node.font_variant == 1) {
+        int lower_count = 0;
+        int upper_count = 0;
+        for (char c : prepared.text) {
+            if (std::islower(static_cast<unsigned char>(c))) {
+                lower_count++;
+            } else if (std::isupper(static_cast<unsigned char>(c))) {
+                upper_count++;
+            }
+        }
+        int total_alpha = lower_count + upper_count;
+        if (total_alpha > 0) {
+            float lower_ratio = static_cast<float>(lower_count) / static_cast<float>(total_alpha);
+            float blend = lower_ratio * 0.8f + (1.0f - lower_ratio);
+            prepared.font_size = node.font_size * blend;
+        }
+        std::transform(prepared.text.begin(), prepared.text.end(),
+                       prepared.text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    }
+
+    return prepared;
+}
+
 // Helper to apply min/max width and height constraints to element dimensions
 inline void apply_min_max_constraints(LayoutNode& node) {
     // Clamp width to min/max bounds
@@ -125,11 +420,126 @@ float fit_content_limit_from_style(const LayoutNode& node, const std::string& na
     return parsed->to_px(containing_size);
 }
 
+static float shrink_to_fit_width_from_intrinsics(const LayoutNode& node, float containing_width,
+                                                float min_content_width, float max_content_width) {
+    float horiz_margins = 0;
+    if (!is_margin_auto(node.geometry.margin.left)) horiz_margins += node.geometry.margin.left;
+    if (!is_margin_auto(node.geometry.margin.right)) horiz_margins += node.geometry.margin.right;
+    float avail = std::max(0.0f, containing_width - horiz_margins);
+    float width = std::min(std::max(min_content_width, avail), max_content_width);
+    width = std::max(width, node.min_width);
+    width = std::min(width, node.max_width);
+    return std::max(width, 0.0f);
+}
+
+static bool is_shrink_wrap_width_intrinsically_stable(const LayoutNode& node,
+                                                     float shrink_wrap_width,
+                                                     float min_content_width,
+                                                     float max_content_width) {
+    const float min_intrinsic_bound = std::max(min_content_width, node.min_width);
+    const float max_intrinsic_bound = std::min(max_content_width, node.max_width);
+    return std::abs(min_intrinsic_bound - max_intrinsic_bound) <= kMarginCollapseEpsilon
+        || shrink_wrap_width <= min_intrinsic_bound + kMarginCollapseEpsilon
+        || shrink_wrap_width >= max_intrinsic_bound - kMarginCollapseEpsilon;
+}
+
+void restore_wrapped_anonymous_children(LayoutNode& node,
+                                        const std::vector<LayoutNode*>& original_child_order) {
+    auto wrapped_children = std::move(node.children);
+    std::unordered_map<LayoutNode*, std::unique_ptr<LayoutNode>> restored_children_by_ptr;
+    restored_children_by_ptr.reserve(original_child_order.size());
+
+    std::function<void(std::unique_ptr<LayoutNode>, float, float)> restore_child =
+        [&](std::unique_ptr<LayoutNode> child, float offset_x, float offset_y) {
+            if (!child) return;
+
+            if (child->is_anonymous) {
+                const float child_offset_x =
+                    offset_x + child->geometry.x + child->geometry.border.left + child->geometry.padding.left;
+                const float child_offset_y =
+                    offset_y + child->geometry.y + child->geometry.border.top + child->geometry.padding.top;
+                auto anonymous_children = std::move(child->children);
+                for (auto& anonymous_child : anonymous_children) {
+                    restore_child(std::move(anonymous_child), child_offset_x, child_offset_y);
+                }
+                return;
+            }
+
+            child->geometry.x += offset_x;
+            child->geometry.y += offset_y;
+            child->parent = &node;
+            LayoutNode* raw_child = child.get();
+            restored_children_by_ptr.emplace(raw_child, std::move(child));
+        };
+
+    for (auto& child : wrapped_children) {
+        restore_child(std::move(child), 0.0f, 0.0f);
+    }
+
+    std::vector<std::unique_ptr<LayoutNode>> restored_children;
+    restored_children.reserve(original_child_order.size());
+    for (LayoutNode* original_child : original_child_order) {
+        auto it = restored_children_by_ptr.find(original_child);
+        if (it == restored_children_by_ptr.end()) continue;
+        restored_children.push_back(std::move(it->second));
+    }
+    node.children = std::move(restored_children);
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
 // Text measurement helpers (delegate to platform callback or fallback to 0.6f)
 // ---------------------------------------------------------------------------
+
+float inline_block_used_width_from_children(const LayoutNode& node);
+
+LayoutEngine::LayoutEngine()
+    : same_tree_intrinsic_width_owner_token_(++g_layout_engine_owner_token_counter) {}
+
+void LayoutEngine::set_text_measurer(TextMeasureFn fn) {
+    text_measurer_ = std::move(fn);
+    intrinsic_width_cache_.clear();
+    table_auto_width_hints_.clear();
+    relayout_intrinsic_width_hints_.clear();
+    table_width_hint_root_ = nullptr;
+    relayout_intrinsic_width_hint_root_ = nullptr;
+    ++same_tree_intrinsic_width_owner_token_;
+}
+
+void LayoutEngine::layout_inline_block_child(LayoutNode& child, float containing_width) {
+    // Keep percentage min/max resolution anchored to the parent containing block
+    // while shrink-wrapping the inline-block's own contents.
+    if (child.specified_width >= 0) {
+        child.geometry.width = child.specified_width;
+        layout_block(child, containing_width);
+        return;
+    }
+
+    const float min_content_w = measure_intrinsic_width(child, /*max_content=*/false);
+    const float max_content_w = measure_intrinsic_width(child, /*max_content=*/true);
+    const float shrink_wrap_width = compute_width(child, containing_width);
+    layout_block(child, containing_width, shrink_wrap_width);
+    if (is_shrink_wrap_width_intrinsically_stable(
+            child, shrink_wrap_width, min_content_w, max_content_w)) {
+        return;
+    }
+
+    const float used_width = inline_block_used_width_from_children(child);
+    if (std::abs(used_width - child.geometry.width) <= kMarginCollapseEpsilon) {
+        return;
+    }
+
+    const float relayout_width = shrink_to_fit_width_from_intrinsics(
+        child, used_width, min_content_w, max_content_w);
+    if (std::abs(relayout_width - child.geometry.width) <= kMarginCollapseEpsilon) {
+        return;
+    }
+
+    ++inline_block_shrink_wrap_relayout_count_;
+    child.geometry.width = relayout_width;
+    layout_block(child, used_width, relayout_width);
+}
 
 float LayoutEngine::measure_text(const std::string& text, float font_size,
                                   const std::string& font_family, int font_weight,
@@ -166,11 +576,36 @@ float LayoutEngine::avg_char_width(float font_size, const std::string& font_fami
 
 // ---------------------------------------------------------------------------
 
+static bool is_out_of_flow_for_intrinsic_measurement(const LayoutNode& node) {
+    return node.position_type >= 2 || node.float_type != 0;
+}
+
 static bool participates_in_intrinsic_width_measurement(const LayoutNode& node) {
+    if (node.content_visibility == 1) return false;
     if (node.display == DisplayType::None || node.mode == LayoutMode::None) return false;
-    if (node.position_type == 2 || node.position_type == 3) return false;
-    if (node.float_type != 0) return false;
+    if (is_out_of_flow_for_intrinsic_measurement(node)) return false;
     return true;
+}
+
+static bool participates_in_intrinsic_height_measurement(const LayoutNode& node) {
+    if (node.content_visibility == 1) return false;
+    return participates_in_intrinsic_width_measurement(node);
+}
+
+float inline_block_used_width_from_children(const LayoutNode& node) {
+    float max_child_width = 0.0f;
+    for (const auto& child : node.children) {
+        if (!participates_in_intrinsic_width_measurement(*child)) continue;
+        float child_width = child->geometry.margin_box_width();
+        if (node.text_align == 0) {
+            max_child_width = std::max(max_child_width, child->geometry.x + child_width);
+        } else {
+            max_child_width = std::max(max_child_width, child_width);
+        }
+    }
+    return max_child_width
+        + node.geometry.padding.left + node.geometry.padding.right
+        + node.geometry.border.left + node.geometry.border.right;
 }
 
 size_t LayoutEngine::IntrinsicWidthCacheKeyHash::operator()(const IntrinsicWidthCacheKey& key) const {
@@ -180,13 +615,91 @@ size_t LayoutEngine::IntrinsicWidthCacheKeyHash::operator()(const IntrinsicWidth
     return seed;
 }
 
+struct ScopedRelayoutIntrinsicWidthScope {
+    explicit ScopedRelayoutIntrinsicWidthScope(bool active)
+        : active_(active) {
+        if (active_) ++g_relayout_intrinsic_width_scope_depth;
+    }
+
+    ~ScopedRelayoutIntrinsicWidthScope() {
+        if (active_) --g_relayout_intrinsic_width_scope_depth;
+    }
+
+private:
+    bool active_ = false;
+};
+
 // Measure intrinsic content width for min-content/max-content sizing
 float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_content, int depth) {
     if (depth > 256) return 0;
+    if (depth > 0 && !participates_in_intrinsic_width_measurement(node)) return 0;
+
+    const bool relayout_hint_root = is_relayout_intrinsic_width_hint_root(node);
+    const bool stable_cross_relayout_subtree =
+        !intrinsic_width_subtree_has_deferred_inputs(node);
+    const bool should_reuse_relayout_intrinsic_hint =
+        stable_cross_relayout_subtree
+        && (relayout_hint_root || g_relayout_intrinsic_width_scope_depth > 0);
+    const bool opens_relayout_scope =
+        depth == 0 && relayout_hint_root && stable_cross_relayout_subtree;
+    size_t subtree_signature = 0;
+    bool subtree_signature_computed = false;
+
+    if (max_content) {
+        MaxContentWidthCacheKey max_content_cache_key{&node, node.specified_width};
+        auto max_content_cache_it = g_max_content_width_cache.find(max_content_cache_key);
+        if (max_content_cache_it != g_max_content_width_cache.end()) {
+            return max_content_cache_it->second;
+        }
+    }
 
     IntrinsicWidthCacheKey cache_key{&node, max_content, node.specified_width};
     auto cache_it = intrinsic_width_cache_.find(cache_key);
     if (cache_it != intrinsic_width_cache_.end()) return cache_it->second;
+
+    if (should_reuse_relayout_intrinsic_hint) {
+        if (!subtree_signature_computed) {
+            subtree_signature = intrinsic_width_subtree_signature(node);
+            subtree_signature_computed = true;
+        }
+        auto relayout_hint_it = relayout_intrinsic_width_hints_.find(&node);
+        if (relayout_hint_it != relayout_intrinsic_width_hints_.end()) {
+            const IntrinsicWidthHintEntry& relayout_hint =
+                relayout_hint_it->second[max_content ? 1 : 0];
+            if (relayout_hint.measured >= 0.0f && relayout_hint.signature == subtree_signature) {
+                if (max_content) {
+                    ++relayout_max_content_width_memo_hit_count_;
+                    g_max_content_width_cache.emplace(MaxContentWidthCacheKey{&node, node.specified_width},
+                                                      relayout_hint.measured);
+                } else {
+                    ++relayout_min_content_width_memo_hit_count_;
+                    intrinsic_width_cache_.emplace(cache_key, relayout_hint.measured);
+                }
+                return relayout_hint.measured;
+            }
+        }
+    }
+
+    ScopedRelayoutIntrinsicWidthScope relayout_scope(opens_relayout_scope);
+    SameTreeIntrinsicWidthHintKey same_tree_key{&node, max_content, node.specified_width};
+    if (!subtree_signature_computed) {
+        subtree_signature = intrinsic_width_subtree_signature(node);
+        subtree_signature_computed = true;
+    }
+    auto same_tree_it = g_same_tree_intrinsic_width_hints.find(same_tree_key);
+    if (same_tree_it != g_same_tree_intrinsic_width_hints.end()
+        && same_tree_it->second.signature == subtree_signature) {
+        if (should_reuse_relayout_intrinsic_hint) {
+            relayout_intrinsic_width_hints_[&node][max_content ? 1 : 0] = same_tree_it->second;
+        }
+        if (max_content) {
+            g_max_content_width_cache.emplace(
+                MaxContentWidthCacheKey{&node, node.specified_width}, same_tree_it->second.measured);
+        } else {
+            intrinsic_width_cache_.emplace(cache_key, same_tree_it->second.measured);
+        }
+        return same_tree_it->second.measured;
+    }
 
     const TextMeasureFn* measurer = text_measurer_ ? &text_measurer_ : nullptr;
     float width = 0;
@@ -194,13 +707,16 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
         width = std::max(width, node.specified_width);
     }
     if (node.is_text && !node.text_content.empty()) {
+        PreparedTextMetrics prepared = prepare_text_for_measurement(node);
+        const std::string& text_for_measurement = prepared.text;
+        float measurement_font_size = prepared.font_size;
         if (max_content) {
             // max-content: no wrapping, full text width.
             // Expand tab characters per tab-size, then add word-spacing per space.
             std::string expanded;
-            expanded.reserve(node.text_content.size());
+            expanded.reserve(text_for_measurement.size());
             int space_count = 0;
-            for (char c : node.text_content) {
+            for (char c : text_for_measurement) {
                 if (c == '\t' && node.tab_size > 0) {
                     for (int t = 0; t < node.tab_size; ++t) expanded += ' ';
                     space_count++;
@@ -210,24 +726,56 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
                 }
             }
             if (measurer && *measurer) {
-                width = (*measurer)(expanded, node.font_size, node.font_family,
+                width = (*measurer)(expanded, measurement_font_size, node.font_family,
                                     node.font_weight, node.font_italic, node.letter_spacing);
                 // word-spacing adds extra width per inter-word space
                 if (node.word_spacing != 0.0f) width += node.word_spacing * static_cast<float>(space_count);
             } else {
-                float char_w = node.font_size * 0.6f;
+                float char_w = measurement_font_size * 0.6f;
                 width = static_cast<float>(expanded.size()) * char_w;
                 if (node.word_spacing != 0.0f) width += node.word_spacing * static_cast<float>(space_count);
             }
         } else {
             // min-content: longest word — measure each word individually
             float longest_word = 0;
-            if (measurer && *measurer) {
+            const bool wraps_disabled = intrinsic_width_wrapping_disabled(node);
+            const bool break_all = !wraps_disabled && node.word_break == 1;
+            const bool overflow_wrap_anywhere =
+                !wraps_disabled && node.word_break != 2 && node.overflow_wrap == 2;
+
+            if (break_all || overflow_wrap_anywhere) {
+                if (measurer && *measurer) {
+                    for (char c : text_for_measurement) {
+                        std::string break_unit;
+                        if (c == '\t' && node.tab_size > 0) {
+                            break_unit.assign(static_cast<size_t>(node.tab_size), ' ');
+                        } else if (c == ' ' || c == '\n') {
+                            continue;
+                        } else {
+                            break_unit.assign(1, c);
+                        }
+                        if (break_unit.empty()) continue;
+                        float w = (*measurer)(break_unit, measurement_font_size, node.font_family,
+                                              node.font_weight, node.font_italic, node.letter_spacing);
+                        longest_word = std::max(longest_word, w);
+                    }
+                } else {
+                    float char_w = measurement_font_size * 0.6f;
+                    for (char c : text_for_measurement) {
+                        if (c == ' ' || c == '\n') continue;
+                        float break_unit_width = char_w;
+                        if (c == '\t' && node.tab_size > 0) {
+                            break_unit_width *= static_cast<float>(node.tab_size);
+                        }
+                        longest_word = std::max(longest_word, break_unit_width);
+                    }
+                }
+            } else if (measurer && *measurer) {
                 std::string cur_word;
-                for (char c : node.text_content) {
+                for (char c : text_for_measurement) {
                     if (c == ' ' || c == '\t' || c == '\n') {
                         if (!cur_word.empty()) {
-                            float w = (*measurer)(cur_word, node.font_size, node.font_family,
+                            float w = (*measurer)(cur_word, measurement_font_size, node.font_family,
                                                   node.font_weight, node.font_italic, node.letter_spacing);
                             longest_word = std::max(longest_word, w);
                             cur_word.clear();
@@ -237,14 +785,14 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
                     }
                 }
                 if (!cur_word.empty()) {
-                    float w = (*measurer)(cur_word, node.font_size, node.font_family,
+                    float w = (*measurer)(cur_word, measurement_font_size, node.font_family,
                                           node.font_weight, node.font_italic, node.letter_spacing);
                     longest_word = std::max(longest_word, w);
                 }
             } else {
-                float char_w = node.font_size * 0.6f;
+                float char_w = measurement_font_size * 0.6f;
                 float cur_word = 0;
-                for (char c : node.text_content) {
+                for (char c : text_for_measurement) {
                     if (c == ' ' || c == '\t' || c == '\n') {
                         longest_word = std::max(longest_word, cur_word);
                         cur_word = 0;
@@ -265,7 +813,6 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
         }
     } else {
         for (auto& child : node.children) {
-            if (child->content_visibility == 1) continue;
             if (!participates_in_intrinsic_width_measurement(*child)) continue;
             float cw = measure_intrinsic_width(*child, max_content, depth + 1);
             if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||
@@ -279,7 +826,19 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
     float padding_border = node.geometry.padding.left + node.geometry.padding.right +
                            node.geometry.border.left + node.geometry.border.right;
     float measured = std::max(width, children_width) + padding_border;
-    intrinsic_width_cache_.emplace(cache_key, measured);
+    measured = std::max(measured, node.min_width);
+    if (node.max_width < std::numeric_limits<float>::max()) {
+        measured = std::min(measured, node.max_width);
+    }
+    if (max_content) {
+        g_max_content_width_cache.emplace(MaxContentWidthCacheKey{&node, node.specified_width}, measured);
+    } else {
+        intrinsic_width_cache_.emplace(cache_key, measured);
+    }
+    if (should_reuse_relayout_intrinsic_hint) {
+        relayout_intrinsic_width_hints_[&node][max_content ? 1 : 0] = {subtree_signature, measured};
+    }
+    g_same_tree_intrinsic_width_hints[same_tree_key] = {subtree_signature, measured};
     return measured;
 }
 
@@ -290,6 +849,12 @@ float LayoutEngine::measure_intrinsic_width(const LayoutNode& node, bool max_con
 static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
                                        const TextMeasureFn* measurer, int depth = 0) {
     if (depth > 256) return 0;
+    if (depth > 0 && !participates_in_intrinsic_height_measurement(node)) return 0;
+
+    IntrinsicHeightCacheKey cache_key{&node, max_content, node.specified_height};
+    auto cache_it = g_intrinsic_height_cache.find(cache_key);
+    if (cache_it != g_intrinsic_height_cache.end()) return cache_it->second;
+
     float height = 0;
     if (node.is_text && !node.text_content.empty()) {
         float line_h = node.font_size * 1.2f; // approximate line height
@@ -332,6 +897,7 @@ static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
     // Recurse into children and accumulate
     float children_height = 0;
     for (auto& child : node.children) {
+        if (!participates_in_intrinsic_height_measurement(*child)) continue;
         float ch = measure_intrinsic_height(*child, max_content, measurer, depth + 1);
         if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||
             child->display == DisplayType::InlineBlock) {
@@ -342,11 +908,47 @@ static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
     }
     float padding_border = node.geometry.padding.top + node.geometry.padding.bottom +
                            node.geometry.border.top + node.geometry.border.bottom;
-    return std::max(height, children_height) + padding_border;
+    float measured = std::max(height, children_height) + padding_border;
+    g_intrinsic_height_cache.emplace(cache_key, measured);
+    return measured;
+}
+
+void LayoutEngine::clear_intrinsic_measurement_caches() {
+    intrinsic_width_cache_.clear();
+    g_intrinsic_height_cache.clear();
+    g_max_content_width_cache.clear();
 }
 
 void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewport_height) {
-    intrinsic_width_cache_.clear();
+    if (g_same_tree_intrinsic_width_owner_token != same_tree_intrinsic_width_owner_token_
+        || g_same_tree_intrinsic_width_root != &root) {
+        g_same_tree_intrinsic_width_hints.clear();
+        g_same_tree_intrinsic_width_deferred_inputs.clear();
+        g_previous_table_intrinsic_topology.clear();
+        g_current_table_intrinsic_topology.clear();
+        g_active_table_intrinsic_hint_cells.clear();
+        g_topology_evicted_table_intrinsic_hint_cells.clear();
+        g_same_tree_intrinsic_width_owner_token = same_tree_intrinsic_width_owner_token_;
+        g_same_tree_intrinsic_width_root = &root;
+    }
+    g_same_tree_intrinsic_width_hints.clear();
+    g_same_tree_intrinsic_width_signatures.clear();
+    g_same_tree_intrinsic_width_deferred_inputs.clear();
+    g_current_table_intrinsic_topology.clear();
+    g_active_table_intrinsic_hint_cells.clear();
+    g_topology_evicted_table_intrinsic_hint_cells.clear();
+    g_relayout_intrinsic_width_scope_depth = 0;
+    if (table_width_hint_root_ != &root) {
+        table_auto_width_hints_.clear();
+        table_width_hint_root_ = &root;
+    }
+    if (relayout_intrinsic_width_hint_root_ != &root) {
+        relayout_intrinsic_width_hints_.clear();
+        relayout_intrinsic_width_hint_root_ = &root;
+    }
+    clear_intrinsic_measurement_caches();
+    inline_block_shrink_wrap_relayout_count_ = 0;
+    inline_block_wrapped_text_measure_reuse_count_ = 0;
     viewport_width_ = viewport_width;
     viewport_height_ = viewport_height;
     root.geometry.x = 0;
@@ -410,13 +1012,39 @@ void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewpor
         case LayoutMode::None:
             root.geometry.width = 0;
             root.geometry.height = 0;
-            intrinsic_width_cache_.clear();
+            for (auto it = table_auto_width_hints_.begin(); it != table_auto_width_hints_.end();) {
+                if (g_active_table_intrinsic_hint_cells.find(it->first)
+                    == g_active_table_intrinsic_hint_cells.end()) {
+                    relayout_intrinsic_width_hints_.erase(it->first);
+                    it = table_auto_width_hints_.erase(it);
+                    continue;
+                }
+                ++it;
+            }
+            g_previous_table_intrinsic_topology = g_current_table_intrinsic_topology;
+            clear_intrinsic_measurement_caches();
+            g_same_tree_intrinsic_width_hints.clear();
+            g_same_tree_intrinsic_width_signatures.clear();
+            g_same_tree_intrinsic_width_deferred_inputs.clear();
             return;
         default:
             layout_block(root, viewport_width);
             break;
     }
-    intrinsic_width_cache_.clear();
+    for (auto it = table_auto_width_hints_.begin(); it != table_auto_width_hints_.end();) {
+        if (g_active_table_intrinsic_hint_cells.find(it->first)
+            == g_active_table_intrinsic_hint_cells.end()) {
+            relayout_intrinsic_width_hints_.erase(it->first);
+            it = table_auto_width_hints_.erase(it);
+            continue;
+        }
+        ++it;
+    }
+    g_previous_table_intrinsic_topology = g_current_table_intrinsic_topology;
+    clear_intrinsic_measurement_caches();
+    g_same_tree_intrinsic_width_hints.clear();
+    g_same_tree_intrinsic_width_signatures.clear();
+    g_same_tree_intrinsic_width_deferred_inputs.clear();
 }
 
 // Aspect-ratio resolution:
@@ -503,11 +1131,7 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
         // min(max(min-content-width, available-width), max-content-width).
         float min_content_w = measure_intrinsic_width(node, /*max_content=*/false);
         float max_content_w = measure_intrinsic_width(node, /*max_content=*/true);
-        float horiz_margins = 0;
-        if (!is_margin_auto(node.geometry.margin.left)) horiz_margins += node.geometry.margin.left;
-        if (!is_margin_auto(node.geometry.margin.right)) horiz_margins += node.geometry.margin.right;
-        float avail = std::max(0.0f, containing_width - horiz_margins);
-        w = std::min(std::max(min_content_w, avail), max_content_w);
+        w = shrink_to_fit_width_from_intrinsics(node, containing_width, min_content_w, max_content_w);
     } else {
         float horiz_margins = 0;
         // Only subtract non-auto margins
@@ -626,7 +1250,7 @@ float LayoutEngine::compute_height(LayoutNode& node, float containing_height) {
     return -1; // signal: compute from children
 }
 
-void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
+void LayoutEngine::layout_block(LayoutNode& node, float containing_width, float known_width) {
     if (node.display == DisplayType::None || node.mode == LayoutMode::None) {
         node.geometry.width = 0;
         node.geometry.height = 0;
@@ -690,7 +1314,11 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
 
     // Compute width FIRST (resolves css_width percentage) — needed before auto margins
     if (node.parent != nullptr) {
-        node.geometry.width = compute_width(node, containing_width);
+        if (known_width >= 0.0f) {
+            node.geometry.width = known_width;
+        } else {
+            node.geometry.width = compute_width(node, containing_width);
+        }
     }
 
     // Resolve auto margins for centering (AFTER width is resolved)
@@ -744,6 +1372,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
     }
 
     float children_height = 0;
+    std::vector<LayoutNode*> original_child_order;
 
     if (has_inline_children && !has_block_children) {
         // Pure inline formatting context
@@ -761,6 +1390,10 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         // Wrap consecutive inline children into anonymous block boxes so that
         // each inline run gets its own inline formatting context, and block
         // children remain in the normal block flow.
+        original_child_order.reserve(node.children.size());
+        for (const auto& child : node.children) {
+            original_child_order.push_back(child.get());
+        }
         wrap_anonymous_blocks(node);
         // After wrapping, all in-flow children are block-level.
         position_block_children(node);
@@ -778,6 +1411,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
             }
             children_height += child->geometry.margin_box_height();
         }
+        restore_wrapped_anonymous_children(node, original_child_order);
     } else {
         // Pure block formatting context (no inline children)
         position_block_children(node);
@@ -1055,58 +1689,9 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
             node.geometry.height = 0;
             return;
         }
-        // Apply text-transform before measuring
-        if (node.text_transform == 2) { // uppercase
-            std::transform(node.text_content.begin(), node.text_content.end(),
-                           node.text_content.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-        } else if (node.text_transform == 3) { // lowercase
-            std::transform(node.text_content.begin(), node.text_content.end(),
-                           node.text_content.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        } else if (node.text_transform == 1) { // capitalize
-            bool cap_next = true;
-            for (size_t i = 0; i < node.text_content.size(); i++) {
-                if (node.text_content[i] == ' ') {
-                    cap_next = true;
-                } else if (cap_next) {
-                    node.text_content[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(node.text_content[i])));
-                    cap_next = false;
-                }
-            }
-        }
-
-        // Apply CSS white-space collapsing before measuring and font-variant processing.
-        // Skip for <br> elements — their newline must be preserved regardless of white-space.
-        if (node.tag_name != "br") {
-            node.text_content = collapse_whitespace(node.text_content, node.white_space, node.white_space_pre, node.white_space_collapse);
-        }
-
-        // font-variant: small-caps — measure per-character width since
-        // originally-lowercase letters render at 80% font size while
-        // originally-uppercase letters render at 100%.
-        float effective_font_size = node.font_size;
-        if (node.font_variant == 1) {
-            // Compute a blended effective font size based on the ratio of
-            // lowercase vs uppercase characters in the original text.
-            int lower_count = 0;
-            int upper_count = 0;
-            for (char c : node.text_content) {
-                if (std::islower(static_cast<unsigned char>(c))) lower_count++;
-                else if (std::isupper(static_cast<unsigned char>(c))) upper_count++;
-            }
-            int total_alpha = lower_count + upper_count;
-            if (total_alpha > 0) {
-                float lower_ratio = static_cast<float>(lower_count) / static_cast<float>(total_alpha);
-                // Blend: lowercase chars use 80% size, uppercase use 100%
-                float blend = lower_ratio * 0.8f + (1.0f - lower_ratio) * 1.0f;
-                effective_font_size = node.font_size * blend;
-            }
-            // Transform text to uppercase for display (small-caps shows all caps)
-            std::transform(node.text_content.begin(), node.text_content.end(),
-                           node.text_content.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-        }
+        PreparedTextMetrics prepared = prepare_text_for_measurement(node);
+        const std::string& layout_text = prepared.text;
+        float effective_font_size = prepared.font_size;
 
         float char_width = avg_char_width(effective_font_size, node.font_family, node.font_weight,
                                           node.font_italic, node.is_monospace, node.letter_spacing);
@@ -1122,7 +1707,7 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
                 float max_line_width = 0;
                 int line_count = 1;
                 std::string current_line;
-                for (char c : node.text_content) {
+                for (char c : layout_text) {
                     if (c == '\n') {
                         float lw = current_line.empty() ? 0.0f :
                             measure_text(current_line, effective_font_size, node.font_family,
@@ -1159,7 +1744,7 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
                 int line_count = 1;
                 float current_line_width = 0;
 
-                for (char c : node.text_content) {
+                for (char c : layout_text) {
                     if (c == '\n') {
                         max_line_width = std::max(max_line_width, current_line_width);
                         current_line_width = 0;
@@ -1180,11 +1765,11 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
             }
         } else {
             // Normal text: use real measurement or fallback
-            float text_width = measure_text(node.text_content, effective_font_size, node.font_family,
+            float text_width = measure_text(layout_text, effective_font_size, node.font_family,
                                             node.font_weight, node.font_italic, node.letter_spacing);
             // Add word_spacing for each space character
             if (node.word_spacing != 0) {
-                for (char c : node.text_content) {
+                for (char c : layout_text) {
                     if (c == ' ') text_width += node.word_spacing;
                 }
             }
@@ -1232,6 +1817,9 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
         for (auto& child : node.children) {
             if (child->display == DisplayType::None || child->mode == LayoutMode::None)
                 continue;
+            if (child->content_visibility == 1) continue;
+            if (child->position_type == 2 || child->position_type == 3) continue;
+            if (child->float_type != 0) continue;
             layout_inline(*child, containing_width);
             apply_min_max_constraints(*child);
             child->geometry.x = total_w;
@@ -1491,41 +2079,7 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                 layout_block(*child, layout_width);
                 break;
             case LayoutMode::InlineBlock:
-                // Inline-block shrink-wraps to content unless explicit width.
-                // Always pass layout_width as the containing_width so that
-                // percentage min/max (e.g. max-width:100%) resolve against the
-                // parent container, not the element's own intrinsic size.
-                if (child->specified_width >= 0) {
-                    // Pre-assign geometry.width so it is set even when parent
-                    // pointer is null (unit tests may not use append_child).
-                    child->geometry.width = child->specified_width;
-                    layout_block(*child, layout_width);
-                } else {
-                    layout_block(*child, layout_width);
-                    // Shrink-wrap width to content
-                    // When text-align is center/right, gc.x includes the centering
-                    // offset which would inflate the width. Use just gc.margin_box_width()
-                    // in that case to get the correct intrinsic width.
-                    float max_cw = 0;
-                    for (auto& gc : child->children) {
-                        if (!participates_in_intrinsic_width_measurement(*gc)) continue;
-                        if (child->text_align == 0) {
-                            max_cw = std::max(max_cw, gc->geometry.x + gc->geometry.margin_box_width());
-                        } else {
-                            max_cw = std::max(max_cw, gc->geometry.margin_box_width());
-                        }
-                    }
-                    float sw = max_cw
-                        + child->geometry.padding.left + child->geometry.padding.right
-                        + child->geometry.border.left + child->geometry.border.right;
-                    // Re-layout with shrink-wrapped width so internal alignment
-                    // (text-align) uses the correct content area, not the original
-                    // containing width.
-                    if (sw != child->geometry.width) {
-                        child->geometry.width = sw;
-                        layout_block(*child, sw);
-                    }
-                }
+                layout_inline_block_child(*child, layout_width);
                 break;
             case LayoutMode::Inline:
                 layout_inline(*child, layout_width);
@@ -2267,39 +2821,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
         // Layout child — InlineBlock uses block model internally but participates inline
         if (child->mode == LayoutMode::InlineBlock ||
             child->display == DisplayType::InlineBlock) {
-            // Always pass containing_width so percentage min/max (e.g. max-width:100%)
-            // resolve against the parent container, not the child's own intrinsic size.
-            if (child->specified_width >= 0) {
-                // Pre-assign so width is set even when parent == nullptr
-                // (unit tests that use children.push_back instead of append_child).
-                child->geometry.width = child->specified_width;
-            }
-            layout_block(*child, containing_width);
-            // Shrink-wrap width to content if no explicit width
-            if (child->specified_width < 0) {
-                // When parent has text-align center/right, the centering offset
-                // in gc.x inflates the measurement. Use just gc.margin_box_width()
-                // in that case to avoid double-centering.
-                float max_child_w = 0;
-                for (auto& gc : child->children) {
-                    if (!participates_in_intrinsic_width_measurement(*gc)) continue;
-                    float w = gc->geometry.margin_box_width();
-                    if (child->text_align == 0) {
-                        max_child_w = std::max(max_child_w, gc->geometry.x + w);
-                    } else {
-                        max_child_w = std::max(max_child_w, w);
-                    }
-                }
-                float sw = max_child_w
-                    + child->geometry.padding.left + child->geometry.padding.right
-                    + child->geometry.border.left + child->geometry.border.right;
-                // Re-layout with shrink-wrapped width so internal alignment
-                // (text-align) uses the correct content area.
-                if (sw != child->geometry.width) {
-                    child->geometry.width = sw;
-                    layout_block(*child, sw);
-                }
-            }
+            layout_inline_block_child(*child, containing_width);
         } else {
             layout_inline(*child, containing_width);
         }
@@ -2369,8 +2891,10 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
             float char_w = avg_char_width(child->font_size, child->font_family, child->font_weight,
                                           child->font_italic, child->is_monospace, child->letter_spacing);
             float single_line_h = child->font_size * child->line_height;
-            float total_text_width = measure_text(child->text_content, child->font_size, child->font_family,
-                                                  child->font_weight, child->font_italic, child->letter_spacing);
+            float total_text_width = child->geometry.width;
+            if (node.mode == LayoutMode::InlineBlock || node.display == DisplayType::InlineBlock) {
+                ++inline_block_wrapped_text_measure_reuse_count_;
+            }
             float avail_first_line = containing_width - cursor_x;
 
             if (total_text_width > avail_first_line) {
@@ -2402,8 +2926,10 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
             float char_w = avg_char_width(child->font_size, child->font_family, child->font_weight,
                                           child->font_italic, child->is_monospace, child->letter_spacing);
             float single_line_h = child->font_size * child->line_height;
-            float total_text_width = measure_text(child->text_content, child->font_size, child->font_family,
-                                                  child->font_weight, child->font_italic, child->letter_spacing);
+            float total_text_width = child->geometry.width;
+            if (node.mode == LayoutMode::InlineBlock || node.display == DisplayType::InlineBlock) {
+                ++inline_block_wrapped_text_measure_reuse_count_;
+            }
 
             // Split text into words (used by both greedy and balanced paths)
             const std::string& text = child->text_content;
@@ -5690,6 +6216,44 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
 
     bool is_fixed_layout = (node.table_layout == 1);
 
+    if (!is_fixed_layout) {
+        for (size_t ri = 0; ri < rows.size(); ri++) {
+            auto* row = rows[ri];
+            int col_idx = 0;
+            for (auto& cell : row->children) {
+                if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
+                if (cell->position_type == 2 || cell->position_type == 3) continue;
+                if (!is_table_cell(*cell)) continue;
+
+                while (col_idx < num_cols &&
+                       ri < scan_occupancy.size() &&
+                       static_cast<size_t>(col_idx) < scan_occupancy[ri].size() &&
+                       scan_occupancy[ri][static_cast<size_t>(col_idx)] != 0) {
+                    col_idx++;
+                }
+                if (col_idx >= num_cols) break;
+
+                int span = std::max(1, cell->colspan);
+                int rspan = std::max(1, cell->rowspan);
+                const int effective_colspan = std::max(1, std::min(span, num_cols - col_idx));
+                const int remaining_rows = static_cast<int>(rows.size() - ri);
+                const int effective_rowspan = std::max(1, std::min(rspan, remaining_rows));
+                const bool cell_nowrap = intrinsic_width_wrapping_disabled(*cell);
+                g_active_table_intrinsic_hint_cells.insert(cell.get());
+                g_current_table_intrinsic_topology[cell.get()] = {
+                    &node,
+                    static_cast<int>(ri),
+                    col_idx,
+                    effective_colspan,
+                    effective_rowspan,
+                    cell_nowrap,
+                };
+
+                col_idx += span;
+            }
+        }
+    }
+
     if (is_fixed_layout) {
         // ---- Fixed table layout (CSS 2.1 Section 17.5.2.1) ----
         // Column widths are determined from the first row only.
@@ -5719,6 +6283,9 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         // Scan ALL rows: use maximum explicit/intrinsic width per column.
         // Use scan_occupancy to skip columns already occupied by rowspans from prior rows,
         // ensuring correct column index assignment when rowspan cells are present.
+        // Keep intrinsic width hints for this root tree between width-oscillation
+        // recomputes so unchanged subtrees are not remeasured.
+        auto& auto_cell_width_hints = table_auto_width_hints_;
         for (size_t ri = 0; ri < rows.size(); ri++) {
             auto* row = rows[ri];
             int col_idx = 0;
@@ -5745,8 +6312,40 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                 } else if (cell->css_width.has_value()) {
                     width_hint = cell->css_width->to_px(available_for_cols);
                 } else {
-                    bool cell_nowrap = (cell->white_space == 1);
-                    width_hint = measure_intrinsic_width(*cell, cell_nowrap);
+                    const bool cell_nowrap = intrinsic_width_wrapping_disabled(*cell);
+                    auto current_topology_it = g_current_table_intrinsic_topology.find(cell.get());
+                    if (current_topology_it != g_current_table_intrinsic_topology.end()
+                        && g_topology_evicted_table_intrinsic_hint_cells.find(cell.get())
+                            == g_topology_evicted_table_intrinsic_hint_cells.end()) {
+                        auto previous_topology_it = g_previous_table_intrinsic_topology.find(cell.get());
+                        if (previous_topology_it != g_previous_table_intrinsic_topology.end()
+                            && table_intrinsic_hint_needs_eviction(previous_topology_it->second,
+                                                                   current_topology_it->second)) {
+                            auto_cell_width_hints.erase(cell.get());
+                            relayout_intrinsic_width_hints_.erase(cell.get());
+                            g_same_tree_intrinsic_width_hints.erase(
+                                SameTreeIntrinsicWidthHintKey{cell.get(), false, cell->specified_width});
+                            g_same_tree_intrinsic_width_hints.erase(
+                                SameTreeIntrinsicWidthHintKey{cell.get(), true, cell->specified_width});
+                            g_topology_evicted_table_intrinsic_hint_cells.insert(cell.get());
+                        }
+                    }
+                    size_t cell_signature = intrinsic_width_subtree_signature(*cell);
+                    // Keep table auto-width hint dirtiness branch-local: a sibling span mutation
+                    // can change column distribution without invalidating another cell's own
+                    // intrinsic content width measurement.
+                    auto hint_it = auto_cell_width_hints.find(cell.get());
+                    if (hint_it == auto_cell_width_hints.end()) {
+                        hint_it = auto_cell_width_hints.emplace(
+                            cell.get(),
+                            std::array<IntrinsicWidthHintEntry, 2>{}).first;
+                    }
+                    IntrinsicWidthHintEntry& cached_hint = hint_it->second[cell_nowrap ? 1 : 0];
+                    if (cached_hint.measured < 0.0f || cached_hint.signature != cell_signature) {
+                        cached_hint.measured = measure_intrinsic_width(*cell, cell_nowrap);
+                        cached_hint.signature = cell_signature;
+                    }
+                    width_hint = cached_hint.measured;
                 }
 
                 if (width_hint > 0 && span == 1 && col_idx < num_cols) {

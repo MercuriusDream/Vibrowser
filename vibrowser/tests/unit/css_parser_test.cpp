@@ -292,6 +292,26 @@ TEST_F(CSSSelectorTest, UniversalSelector) {
     EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Universal);
 }
 
+TEST(CSSParserTest, SelectorStoresRightmostMatchKeyV2062) {
+    auto list = parse_selector_list("#hero.card, .item.active, nav, *, :where(.cta)");
+    ASSERT_EQ(list.selectors.size(), 5u);
+
+    EXPECT_EQ(list.selectors[0].rightmost_match_key.type, RightmostSelectorKeyType::Id);
+    EXPECT_EQ(list.selectors[0].rightmost_match_key.value, "hero");
+
+    EXPECT_EQ(list.selectors[1].rightmost_match_key.type, RightmostSelectorKeyType::Class);
+    EXPECT_EQ(list.selectors[1].rightmost_match_key.value, "item");
+
+    EXPECT_EQ(list.selectors[2].rightmost_match_key.type, RightmostSelectorKeyType::Type);
+    EXPECT_EQ(list.selectors[2].rightmost_match_key.value, "nav");
+
+    EXPECT_EQ(list.selectors[3].rightmost_match_key.type, RightmostSelectorKeyType::None);
+    EXPECT_TRUE(list.selectors[3].rightmost_match_key.value.empty());
+
+    EXPECT_EQ(list.selectors[4].rightmost_match_key.type, RightmostSelectorKeyType::Class);
+    EXPECT_EQ(list.selectors[4].rightmost_match_key.value, "cta");
+}
+
 // Test 19: Attribute selector [href]
 TEST_F(CSSSelectorTest, AttributeSelectorExists) {
     auto list = parse_selector_list("[href]");
@@ -313,6 +333,25 @@ TEST_F(CSSSelectorTest, AttributeSelectorExact) {
     EXPECT_EQ(ss.attr_name, "type");
     EXPECT_EQ(ss.attr_value, "text");
     EXPECT_EQ(ss.attr_match, AttributeMatch::Exact);
+}
+
+TEST_F(CSSSelectorTest, AttributeSelectorParsesCaseFlags) {
+    auto list = parse_selector_list(R"([type="BUTTON" i], [data-id="AbC" s])");
+    ASSERT_EQ(list.selectors.size(), 2u);
+
+    const auto& insensitive =
+        list.selectors[0].parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(insensitive.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(insensitive.attr_name, "type");
+    EXPECT_EQ(insensitive.attr_value, "BUTTON");
+    EXPECT_EQ(insensitive.argument, "i");
+
+    const auto& sensitive =
+        list.selectors[1].parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(sensitive.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(sensitive.attr_name, "data-id");
+    EXPECT_EQ(sensitive.attr_value, "AbC");
+    EXPECT_EQ(sensitive.argument, "s");
 }
 
 // Test 21: Compound selector "div.foo#bar"
@@ -769,6 +808,449 @@ TEST(CSSParserTest, SupportsRuleNotCondition) {
         "@supports not (display: unknown-value) { div { color: green; } }");
     ASSERT_EQ(sheet.supports_rules.size(), 1u);
     EXPECT_TRUE(sheet.supports_rules[0].condition.find("not") != std::string::npos);
+}
+
+TEST(CSSParserTest, MediaRuleParsesNestedSupports) {
+    auto sheet = parse_stylesheet(
+        "@media screen { @supports (display: grid) { .grid { display: grid; } } }");
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 1u);
+    EXPECT_EQ(sheet.media_queries[0].rules[0].selector_text, ".grid");
+    ASSERT_EQ(sheet.media_queries[0].rules[0].media_conditions.size(), 1u);
+    EXPECT_EQ(sheet.media_queries[0].rules[0].media_conditions[0], "screen");
+    ASSERT_EQ(sheet.media_queries[0].rules[0].supports_conditions.size(), 1u);
+    EXPECT_EQ(sheet.media_queries[0].rules[0].supports_conditions[0], "(display: grid)");
+    ASSERT_EQ(sheet.media_queries[0].rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.media_queries[0].rules[0].declarations[0].property, "display");
+}
+
+TEST(CSSParserTest, SupportsRuleParsesNestedMedia) {
+    auto sheet = parse_stylesheet(
+        "@supports (display: grid) { @media screen { .grid { display: grid; } } }");
+    ASSERT_EQ(sheet.supports_rules.size(), 1u);
+    ASSERT_EQ(sheet.supports_rules[0].rules.size(), 1u);
+    EXPECT_EQ(sheet.supports_rules[0].rules[0].selector_text, ".grid");
+    ASSERT_EQ(sheet.supports_rules[0].rules[0].supports_conditions.size(), 1u);
+    EXPECT_EQ(sheet.supports_rules[0].rules[0].supports_conditions[0], "(display: grid)");
+    ASSERT_EQ(sheet.supports_rules[0].rules[0].media_conditions.size(), 1u);
+    EXPECT_EQ(sheet.supports_rules[0].rules[0].media_conditions[0], "screen");
+    ASSERT_EQ(sheet.supports_rules[0].rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.supports_rules[0].rules[0].declarations[0].property, "display");
+}
+
+TEST(CSSParserTest, NestedConditionalRulesRetainCombinedOuterAndInnerConditions) {
+    auto sheet = parse_stylesheet(
+        "@media screen {"
+        "  @supports (display: grid) {"
+        "    @media (min-width: 768px) {"
+        "      .grid { display: grid; }"
+        "    }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 1u);
+    const auto& rule = sheet.media_queries[0].rules[0];
+    EXPECT_EQ(rule.selector_text, ".grid");
+    EXPECT_EQ(rule.media_conditions,
+              (std::vector<std::string>{"screen", "(min-width: 768px)"}));
+    EXPECT_EQ(rule.supports_conditions,
+              (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(rule.conditional_rule_contexts.size(), 3u);
+    EXPECT_EQ(rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(rule.conditional_rule_contexts[1].condition, "(display: grid)");
+    EXPECT_EQ(rule.conditional_rule_contexts[2].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(rule.conditional_rule_contexts[2].condition, "(min-width: 768px)");
+}
+
+TEST(CSSParserTest, SupportsMediaSupportsChainPreservesFullNestedConditionalOrder) {
+    auto sheet = parse_stylesheet(
+        "@supports (display: grid) {"
+        "  @media screen and (min-width: 768px) {"
+        "    @supports (grid-template-columns: subgrid) {"
+        "      .layout { display: grid; }"
+        "    }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.supports_rules.size(), 1u);
+    ASSERT_EQ(sheet.supports_rules[0].rules.size(), 1u);
+    const auto& rule = sheet.supports_rules[0].rules[0];
+    EXPECT_EQ(rule.selector_text, ".layout");
+    EXPECT_EQ(rule.media_conditions,
+              (std::vector<std::string>{"screen and (min-width: 768px)"}));
+    EXPECT_EQ(rule.supports_conditions,
+              (std::vector<std::string>{"(display: grid)", "(grid-template-columns: subgrid)"}));
+    ASSERT_EQ(rule.conditional_rule_contexts.size(), 3u);
+    EXPECT_EQ(rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(rule.conditional_rule_contexts[0].condition, "(display: grid)");
+    EXPECT_EQ(rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(rule.conditional_rule_contexts[1].condition, "screen and (min-width: 768px)");
+    EXPECT_EQ(rule.conditional_rule_contexts[2].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(rule.conditional_rule_contexts[2].condition, "(grid-template-columns: subgrid)");
+}
+
+TEST(CSSParserTest, NestedConditionalSiblingsKeepOrderAndOwnCombinedConditions) {
+    auto sheet = parse_stylesheet(
+        "@media screen {"
+        "  .base { color: black; }"
+        "  @supports (display: grid) { .grid { display: grid; } }"
+        "  @media (orientation: landscape) { .wide { display: block; } }"
+        "}");
+
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 3u);
+
+    const auto& base_rule = sheet.media_queries[0].rules[0];
+    EXPECT_EQ(base_rule.selector_text, ".base");
+    EXPECT_EQ(base_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_TRUE(base_rule.supports_conditions.empty());
+    ASSERT_EQ(base_rule.conditional_rule_contexts.size(), 1u);
+    EXPECT_EQ(base_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(base_rule.conditional_rule_contexts[0].condition, "screen");
+
+    const auto& grid_rule = sheet.media_queries[0].rules[1];
+    EXPECT_EQ(grid_rule.selector_text, ".grid");
+    EXPECT_EQ(grid_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_EQ(grid_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(grid_rule.conditional_rule_contexts.size(), 2u);
+    EXPECT_EQ(grid_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(grid_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(grid_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(grid_rule.conditional_rule_contexts[1].condition, "(display: grid)");
+
+    const auto& wide_rule = sheet.media_queries[0].rules[2];
+    EXPECT_EQ(wide_rule.selector_text, ".wide");
+    EXPECT_EQ(wide_rule.media_conditions,
+              (std::vector<std::string>{"screen", "(orientation: landscape)"}));
+    EXPECT_TRUE(wide_rule.supports_conditions.empty());
+    ASSERT_EQ(wide_rule.conditional_rule_contexts.size(), 2u);
+    EXPECT_EQ(wide_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(wide_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(wide_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(wide_rule.conditional_rule_contexts[1].condition, "(orientation: landscape)");
+}
+
+TEST(CSSParserTest, NestedConditionalAtRulesInsideNestedStyleRulesRetainFullContextStack) {
+    auto sheet = parse_stylesheet(
+        "@media screen {"
+        "  .card {"
+        "    color: black;"
+        "    @supports (display: grid) {"
+        "      display: grid;"
+        "      @media (min-width: 768px) {"
+        "        & .item {"
+        "          color: red;"
+        "          @supports (grid-template-columns: subgrid) {"
+        "            display: subgrid;"
+        "          }"
+        "        }"
+        "      }"
+        "    }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 4u);
+
+    const auto& base_rule = sheet.media_queries[0].rules[0];
+    EXPECT_EQ(base_rule.selector_text, ".card");
+    EXPECT_EQ(base_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_TRUE(base_rule.supports_conditions.empty());
+    ASSERT_EQ(base_rule.conditional_rule_contexts.size(), 1u);
+    EXPECT_EQ(base_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(base_rule.conditional_rule_contexts[0].condition, "screen");
+
+    const auto& supports_rule = sheet.media_queries[0].rules[1];
+    EXPECT_EQ(supports_rule.selector_text, ".card");
+    EXPECT_EQ(supports_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_EQ(supports_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(supports_rule.conditional_rule_contexts.size(), 2u);
+    EXPECT_EQ(supports_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(supports_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(supports_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(supports_rule.conditional_rule_contexts[1].condition, "(display: grid)");
+
+    const auto& nested_rule = sheet.media_queries[0].rules[2];
+    EXPECT_EQ(nested_rule.selector_text, ".card .item");
+    EXPECT_EQ(nested_rule.media_conditions,
+              (std::vector<std::string>{"screen", "(min-width: 768px)"}));
+    EXPECT_EQ(nested_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(nested_rule.conditional_rule_contexts.size(), 3u);
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[1].condition, "(display: grid)");
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[2].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(nested_rule.conditional_rule_contexts[2].condition, "(min-width: 768px)");
+
+    const auto& deep_supports_rule = sheet.media_queries[0].rules[3];
+    EXPECT_EQ(deep_supports_rule.selector_text, ".card .item");
+    EXPECT_EQ(deep_supports_rule.media_conditions,
+              (std::vector<std::string>{"screen", "(min-width: 768px)"}));
+    EXPECT_EQ(deep_supports_rule.supports_conditions,
+              (std::vector<std::string>{"(display: grid)", "(grid-template-columns: subgrid)"}));
+    ASSERT_EQ(deep_supports_rule.conditional_rule_contexts.size(), 4u);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[1].condition, "(display: grid)");
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[2].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[2].condition, "(min-width: 768px)");
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[3].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(deep_supports_rule.conditional_rule_contexts[3].condition, "(grid-template-columns: subgrid)");
+}
+
+TEST(CSSParserTest, NestedConditionalAtRulesExpandSelectorListParentsRecursively) {
+    auto sheet = parse_stylesheet(
+        ".card, .panel {"
+        "  color: black;"
+        "  .section, &.featured {"
+        "    display: block;"
+        "    @media screen {"
+        "      .item, &:hover { color: red; }"
+        "    }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.rules.size(), 3u);
+    EXPECT_EQ(sheet.rules[0].selector_text, ".card, .panel");
+    EXPECT_EQ(sheet.rules[1].selector_text,
+              ".card .section, .panel .section, .card.featured, .panel.featured");
+
+    const auto& media_rule = sheet.rules[2];
+    EXPECT_EQ(media_rule.selector_text,
+              ".card .section .item, .panel .section .item, .card.featured .item, "
+              ".panel.featured .item, .card .section:hover, .panel .section:hover, "
+              ".card.featured:hover, .panel.featured:hover");
+    EXPECT_EQ(media_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_TRUE(media_rule.supports_conditions.empty());
+    ASSERT_EQ(media_rule.declarations.size(), 1u);
+    EXPECT_EQ(media_rule.declarations[0].property, "color");
+}
+
+TEST(CSSParserTest, NestedSupportsExpandSelectorListParentsInsideNestingBlocks) {
+    auto sheet = parse_stylesheet(
+        ".card, .panel {"
+        "  @supports (display: grid) {"
+        "    .title, &:focus { display: grid; }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.rules.size(), 2u);
+    EXPECT_EQ(sheet.rules[0].selector_text, ".card, .panel");
+
+    const auto& supports_rule = sheet.rules[1];
+    EXPECT_EQ(supports_rule.selector_text,
+              ".card .title, .panel .title, .card:focus, .panel:focus");
+    EXPECT_TRUE(supports_rule.media_conditions.empty());
+    EXPECT_EQ(supports_rule.supports_conditions,
+              (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(supports_rule.declarations.size(), 1u);
+    EXPECT_EQ(supports_rule.declarations[0].property, "display");
+}
+
+TEST(CSSParserTest, NestedLayerContainerAndScopeBlocksPreserveParentSelectorAncestry) {
+    auto sheet = parse_stylesheet(
+        ".card {"
+        "  color: black;"
+        "  .title { font-weight: bold; }"
+        "  @layer theme {"
+        "    color: blue;"
+        "    .accent { color: orange; }"
+        "  }"
+        "  @container sidebar (min-width: 30rem) {"
+        "    display: grid;"
+        "    & .media { gap: 1rem; }"
+        "  }"
+        "  @scope (&) to (& .footer) {"
+        "    .badge { text-transform: uppercase; }"
+        "  }"
+        "  .footer { margin-top: 1rem; }"
+        "}");
+
+    ASSERT_GE(sheet.rules.size(), 3u);
+    EXPECT_EQ(sheet.rules[0].selector_text, ".card");
+    EXPECT_EQ(sheet.rules[1].selector_text, ".card .title");
+    EXPECT_EQ(sheet.rules[2].selector_text, ".card .footer");
+
+    ASSERT_EQ(sheet.layer_rules.size(), 1u);
+    EXPECT_EQ(sheet.layer_rules[0].name, "theme");
+    ASSERT_EQ(sheet.layer_rules[0].rules.size(), 2u);
+    bool saw_layer_parent = false;
+    bool saw_layer_nested = false;
+    for (const auto& rule : sheet.layer_rules[0].rules) {
+        if (rule.selector_text == ".card") {
+            saw_layer_parent = true;
+            EXPECT_TRUE(rule.in_layer);
+            EXPECT_EQ(rule.layer_name, "theme");
+        }
+        if (rule.selector_text == ".card .accent") {
+            saw_layer_nested = true;
+        }
+    }
+    EXPECT_TRUE(saw_layer_parent);
+    EXPECT_TRUE(saw_layer_nested);
+
+    ASSERT_EQ(sheet.container_rules.size(), 1u);
+    EXPECT_EQ(sheet.container_rules[0].name, "sidebar");
+    EXPECT_EQ(sheet.container_rules[0].condition, "(min-width: 30rem)");
+    ASSERT_EQ(sheet.container_rules[0].rules.size(), 2u);
+    bool saw_container_parent = false;
+    bool saw_container_nested = false;
+    for (const auto& rule : sheet.container_rules[0].rules) {
+        if (rule.selector_text == ".card") {
+            saw_container_parent = true;
+        }
+        if (rule.selector_text == ".card .media") {
+            saw_container_nested = true;
+        }
+    }
+    EXPECT_TRUE(saw_container_parent);
+    EXPECT_TRUE(saw_container_nested);
+
+    ASSERT_EQ(sheet.scope_rules.size(), 1u);
+    EXPECT_EQ(sheet.scope_rules[0].scope_start, ".card");
+    EXPECT_EQ(sheet.scope_rules[0].scope_end, ".card .footer");
+    ASSERT_EQ(sheet.scope_rules[0].scope_contexts.size(), 1u);
+    EXPECT_EQ(sheet.scope_rules[0].scope_contexts[0].scope_start, ".card");
+    EXPECT_EQ(sheet.scope_rules[0].scope_contexts[0].scope_end, ".card .footer");
+    ASSERT_EQ(sheet.scope_rules[0].rules.size(), 1u);
+    const auto& scoped_rule = sheet.scope_rules[0].rules[0];
+    EXPECT_EQ(scoped_rule.selector_text, ".card .badge");
+    ASSERT_EQ(scoped_rule.scope_contexts.size(), 1u);
+    EXPECT_EQ(scoped_rule.scope_contexts[0].scope_start, ".card");
+    EXPECT_EQ(scoped_rule.scope_contexts[0].scope_end, ".card .footer");
+}
+
+TEST(CSSParserTest, NestedLayerContainerAndScopeBlocksRetainConditionalWrappers) {
+    auto sheet = parse_stylesheet(
+        "@media screen {"
+        "  .card {"
+        "    .lead { color: black; }"
+        "    @supports (display: grid) {"
+        "      @layer theme {"
+        "        & .feature { display: grid; }"
+        "      }"
+        "      @container sidebar (min-width: 30rem) {"
+        "        & .item { color: red; }"
+        "      }"
+        "      @scope (&) {"
+        "        .badge { color: blue; }"
+        "      }"
+        "    }"
+        "    @media (min-width: 768px) {"
+        "      .wide { display: block; }"
+        "    }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 3u);
+    EXPECT_EQ(sheet.media_queries[0].rules[1].selector_text, ".card .lead");
+    EXPECT_EQ(sheet.media_queries[0].rules[2].selector_text, ".card .wide");
+    EXPECT_EQ(sheet.media_queries[0].rules[2].media_conditions,
+              (std::vector<std::string>{"screen", "(min-width: 768px)"}));
+
+    ASSERT_EQ(sheet.layer_rules.size(), 1u);
+    ASSERT_EQ(sheet.layer_rules[0].rules.size(), 1u);
+    const auto& layered_rule = sheet.layer_rules[0].rules[0];
+    EXPECT_EQ(layered_rule.selector_text, ".card .feature");
+    EXPECT_EQ(layered_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_EQ(layered_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(layered_rule.conditional_rule_contexts.size(), 2u);
+    EXPECT_EQ(layered_rule.conditional_rule_contexts[0].type, ConditionalRuleContext::Type::Media);
+    EXPECT_EQ(layered_rule.conditional_rule_contexts[0].condition, "screen");
+    EXPECT_EQ(layered_rule.conditional_rule_contexts[1].type, ConditionalRuleContext::Type::Supports);
+    EXPECT_EQ(layered_rule.conditional_rule_contexts[1].condition, "(display: grid)");
+
+    ASSERT_EQ(sheet.container_rules.size(), 1u);
+    ASSERT_EQ(sheet.container_rules[0].rules.size(), 1u);
+    const auto& container_rule = sheet.container_rules[0].rules[0];
+    EXPECT_EQ(container_rule.selector_text, ".card .item");
+    EXPECT_EQ(container_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_EQ(container_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+
+    ASSERT_EQ(sheet.scope_rules.size(), 1u);
+    EXPECT_EQ(sheet.scope_rules[0].scope_start, ".card");
+    ASSERT_EQ(sheet.scope_rules[0].scope_contexts.size(), 1u);
+    EXPECT_EQ(sheet.scope_rules[0].scope_contexts[0].scope_start, ".card");
+    EXPECT_TRUE(sheet.scope_rules[0].scope_contexts[0].scope_end.empty());
+    ASSERT_EQ(sheet.scope_rules[0].rules.size(), 1u);
+    const auto& scoped_rule = sheet.scope_rules[0].rules[0];
+    EXPECT_EQ(scoped_rule.selector_text, ".card .badge");
+    EXPECT_EQ(scoped_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_EQ(scoped_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(scoped_rule.scope_contexts.size(), 1u);
+    EXPECT_EQ(scoped_rule.scope_contexts[0].scope_start, ".card");
+    EXPECT_TRUE(scoped_rule.scope_contexts[0].scope_end.empty());
+}
+
+TEST(CSSParserTest, NestedScopeBlocksInsideConditionalNestingRetainScopeStackOnRules) {
+    auto sheet = parse_stylesheet(
+        "@media screen {"
+        "  .card {"
+        "    @scope (& .body) to (& .footer) {"
+        "      @supports (display: grid) {"
+        "        .item { display: grid; }"
+        "        @scope (& .section) {"
+        "          & .badge { color: red; }"
+        "        }"
+        "      }"
+        "    }"
+        "  }"
+        "}");
+
+    ASSERT_EQ(sheet.scope_rules.size(), 2u);
+
+    const ScopeRule* outer_scope = nullptr;
+    const ScopeRule* inner_scope = nullptr;
+    for (const auto& scope_rule : sheet.scope_rules) {
+        if (scope_rule.scope_contexts.size() == 1u) {
+            outer_scope = &scope_rule;
+            continue;
+        }
+        if (scope_rule.scope_contexts.size() == 2u) {
+            inner_scope = &scope_rule;
+        }
+    }
+
+    ASSERT_NE(outer_scope, nullptr);
+    ASSERT_NE(inner_scope, nullptr);
+
+    EXPECT_EQ(outer_scope->scope_start, ".card .body");
+    EXPECT_EQ(outer_scope->scope_end, ".card .footer");
+    ASSERT_EQ(outer_scope->scope_contexts.size(), 1u);
+    EXPECT_EQ(outer_scope->scope_contexts[0].scope_start, ".card .body");
+    EXPECT_EQ(outer_scope->scope_contexts[0].scope_end, ".card .footer");
+    ASSERT_EQ(outer_scope->rules.size(), 1u);
+    const auto& outer_rule = outer_scope->rules[0];
+    EXPECT_EQ(outer_rule.selector_text, ".card .item");
+    EXPECT_EQ(outer_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_EQ(outer_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(outer_rule.scope_contexts.size(), 1u);
+    EXPECT_EQ(outer_rule.scope_contexts[0].scope_start, ".card .body");
+    EXPECT_EQ(outer_rule.scope_contexts[0].scope_end, ".card .footer");
+
+    EXPECT_EQ(inner_scope->scope_start, ".card .section");
+    EXPECT_TRUE(inner_scope->scope_end.empty());
+    ASSERT_EQ(inner_scope->scope_contexts.size(), 2u);
+    EXPECT_EQ(inner_scope->scope_contexts[0].scope_start, ".card .body");
+    EXPECT_EQ(inner_scope->scope_contexts[0].scope_end, ".card .footer");
+    EXPECT_EQ(inner_scope->scope_contexts[1].scope_start, ".card .section");
+    EXPECT_TRUE(inner_scope->scope_contexts[1].scope_end.empty());
+    ASSERT_EQ(inner_scope->rules.size(), 1u);
+    const auto& inner_rule = inner_scope->rules[0];
+    EXPECT_EQ(inner_rule.selector_text, ".card .badge");
+    EXPECT_EQ(inner_rule.media_conditions, (std::vector<std::string>{"screen"}));
+    EXPECT_EQ(inner_rule.supports_conditions, (std::vector<std::string>{"(display: grid)"}));
+    ASSERT_EQ(inner_rule.scope_contexts.size(), 2u);
+    EXPECT_EQ(inner_rule.scope_contexts[0].scope_start, ".card .body");
+    EXPECT_EQ(inner_rule.scope_contexts[0].scope_end, ".card .footer");
+    EXPECT_EQ(inner_rule.scope_contexts[1].scope_start, ".card .section");
+    EXPECT_TRUE(inner_rule.scope_contexts[1].scope_end.empty());
 }
 
 // =============================================================================
@@ -1392,6 +1874,27 @@ TEST_F(CSSSelectorTest, FunctionalPseudoSelectorListsCachedAtParseTime) {
     EXPECT_TRUE(saw_has);
 }
 
+TEST_F(CSSSelectorTest, MixedCaseFunctionalPseudoSharedKeysStayCanonicalV2101) {
+    auto lowercase = parse_selector_list(":is(article > .card, section .card)");
+    auto mixed_case = parse_selector_list(":IS(article > .card, section .card)");
+
+    ASSERT_EQ(lowercase.selectors.size(), 1u);
+    ASSERT_EQ(mixed_case.selectors.size(), 1u);
+
+    const auto& lowercase_simple =
+        lowercase.selectors[0].parts[0].compound.simple_selectors[0];
+    const auto& mixed_case_simple =
+        mixed_case.selectors[0].parts[0].compound.simple_selectors[0];
+    ASSERT_TRUE(lowercase_simple.parsed_selector_list);
+    ASSERT_TRUE(mixed_case_simple.parsed_selector_list);
+    EXPECT_EQ(lowercase_simple.parsed_selector_list.get(), mixed_case_simple.parsed_selector_list.get());
+
+    EXPECT_EQ(lowercase.selectors[0].rightmost_match_key.type, RightmostSelectorKeyType::Class);
+    EXPECT_EQ(lowercase.selectors[0].rightmost_match_key.value, "card");
+    EXPECT_EQ(mixed_case.selectors[0].rightmost_match_key.type, RightmostSelectorKeyType::Class);
+    EXPECT_EQ(mixed_case.selectors[0].rightmost_match_key.value, "card");
+}
+
 TEST_F(CSSSelectorTest, FunctionalPseudoSpecificityUsesCachedSelectorList) {
     auto list = parse_selector_list(":is(.match, #target)");
     ASSERT_EQ(list.selectors.size(), 1u);
@@ -1411,6 +1914,16 @@ TEST_F(CSSSelectorTest, FunctionalPseudoSpecificityUsesCachedSelectorList) {
     EXPECT_EQ(after.a, 1);
     EXPECT_EQ(after.b, 0);
     EXPECT_EQ(after.c, 0);
+}
+
+TEST_F(CSSSelectorTest, SelectorStoresPrecomputedSpecificity) {
+    auto list = parse_selector_list("div:is(.card, #hero):not(section):where(article, .lead)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+
+    const auto& selector = list.selectors[0];
+    ASSERT_TRUE(selector.precomputed_specificity.has_value());
+    EXPECT_EQ(*selector.precomputed_specificity, (Specificity{1, 0, 2}));
+    EXPECT_EQ(compute_specificity(selector), (Specificity{1, 0, 2}));
 }
 
 TEST_F(CSSSelectorTest, AttributeSelectorDashMatchLang) {

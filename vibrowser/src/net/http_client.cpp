@@ -1,5 +1,6 @@
 #include <clever/net/http_client.h>
 #include <clever/net/cookie_jar.h>
+#include <clever/url/url.h>
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -12,13 +13,15 @@
 
 #include <algorithm>
 #include <cctype>
-#include <memory>
+#include <charconv>
 #include <chrono>
 #include <deque>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
-#include <map>
-#include <mutex>
+#include <string_view>
 
 namespace clever::net {
 
@@ -35,6 +38,268 @@ struct PooledTlsConn {
 
 std::map<std::string, std::deque<PooledTlsConn>> g_tls_pool;
 std::mutex g_tls_pool_mutex;
+
+bool request_cancelled(const Request& request) {
+    return request.is_cancelled();
+}
+
+void set_request_active_fd(const Request& request, int fd) {
+    if (request.cancellation_state) {
+        request.cancellation_state->set_active_fd(fd);
+    }
+}
+
+void clear_request_active_fd(const Request& request, int fd) {
+    if (request.cancellation_state) {
+        request.cancellation_state->clear_active_fd(fd);
+    }
+}
+
+std::optional<size_t> find_crlf(const std::vector<uint8_t>& buffer, size_t start) {
+    if (start >= buffer.size()) {
+        return std::nullopt;
+    }
+
+    for (size_t i = start; i + 1 < buffer.size(); ++i) {
+        if (buffer[i] == '\r' && buffer[i + 1] == '\n') {
+            return i;
+        }
+    }
+    return std::nullopt;
+}
+
+std::string_view trim_ascii_whitespace(std::string_view value) {
+    while (!value.empty() &&
+           (value.front() == ' ' || value.front() == '\t')) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() &&
+           (value.back() == ' ' || value.back() == '\t')) {
+        value.remove_suffix(1);
+    }
+    return value;
+}
+
+bool is_complete_chunked_body(const std::vector<uint8_t>& buffer, size_t body_start) {
+    size_t pos = body_start;
+    while (true) {
+        const auto line_end = find_crlf(buffer, pos);
+        if (!line_end.has_value()) {
+            return false;
+        }
+
+        std::string_view size_line(reinterpret_cast<const char*>(buffer.data() + pos),
+                                   *line_end - pos);
+        size_line = trim_ascii_whitespace(size_line);
+        const auto extension = size_line.find(';');
+        const std::string_view size_text = trim_ascii_whitespace(
+            extension == std::string_view::npos ? size_line : size_line.substr(0, extension));
+        if (size_text.empty()) {
+            return false;
+        }
+
+        size_t chunk_size = 0;
+        const auto [ptr, ec] = std::from_chars(size_text.data(),
+                                               size_text.data() + size_text.size(),
+                                               chunk_size, 16);
+        if (ec != std::errc{} || ptr != size_text.data() + size_text.size()) {
+            return false;
+        }
+
+        pos = *line_end + 2;
+        if (chunk_size == 0) {
+            while (true) {
+                const auto trailer_end = find_crlf(buffer, pos);
+                if (!trailer_end.has_value()) {
+                    return false;
+                }
+                if (*trailer_end == pos) {
+                    return true;
+                }
+                pos = *trailer_end + 2;
+            }
+        }
+
+        if (pos + chunk_size + 2 > buffer.size()) {
+            return false;
+        }
+        if (buffer[pos + chunk_size] != '\r' || buffer[pos + chunk_size + 1] != '\n') {
+            return false;
+        }
+        pos += chunk_size + 2;
+    }
+}
+
+bool has_explicit_response_framing(const std::vector<uint8_t>& buffer) {
+    const char* sep = "\r\n\r\n";
+    const auto header_it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
+    if (header_it == buffer.end()) {
+        return false;
+    }
+
+    std::string header_str(buffer.begin(),
+                           buffer.begin() + static_cast<std::ptrdiff_t>(
+                               (header_it - buffer.begin()) + 4));
+    std::transform(header_str.begin(), header_str.end(), header_str.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return header_str.find("content-length:") != std::string::npos ||
+           header_str.find("transfer-encoding: chunked") != std::string::npos ||
+           header_str.find("transfer-encoding:chunked") != std::string::npos;
+}
+
+std::string strip_fragment_from_url(const std::string& url) {
+    const size_t fragment_pos = url.find('#');
+    if (fragment_pos == std::string::npos) {
+        return url;
+    }
+    return url.substr(0, fragment_pos);
+}
+
+std::string make_cache_key_fallback(std::string_view raw_url) {
+    std::string normalized(strip_fragment_from_url(std::string(raw_url)));
+    const size_t scheme_sep = normalized.find("://");
+    if (scheme_sep == std::string::npos) {
+        return normalized;
+    }
+
+    std::string scheme = normalized.substr(0, scheme_sep);
+    std::transform(scheme.begin(), scheme.end(), scheme.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if (scheme != "http" && scheme != "https") {
+        return normalized;
+    }
+
+    const size_t authority_start = scheme_sep + 3;
+    const size_t suffix_start = normalized.find_first_of("/?", authority_start);
+    const std::string authority = normalized.substr(
+        authority_start,
+        suffix_start == std::string::npos ? std::string::npos : suffix_start - authority_start);
+    if (authority.empty()) {
+        return normalized;
+    }
+
+    const size_t userinfo_sep = authority.rfind('@');
+    const std::string_view authority_host_port = userinfo_sep == std::string::npos
+                                                     ? std::string_view(authority)
+                                                     : std::string_view(authority).substr(userinfo_sep + 1);
+
+    std::string host;
+    std::optional<uint16_t> port;
+    if (!authority_host_port.empty() && authority_host_port.front() == '[') {
+        const size_t closing_bracket = authority_host_port.find(']');
+        if (closing_bracket == std::string_view::npos) {
+            return normalized;
+        }
+
+        host.assign(authority_host_port.substr(0, closing_bracket + 1));
+        if (closing_bracket + 1 < authority_host_port.size()) {
+            if (authority_host_port[closing_bracket + 1] != ':') {
+                return normalized;
+            }
+            const std::string_view port_text = authority_host_port.substr(closing_bracket + 2);
+            if (port_text.empty()) {
+                return normalized;
+            }
+            for (const char ch : port_text) {
+                if (!std::isdigit(static_cast<unsigned char>(ch))) {
+                    return normalized;
+                }
+            }
+            const unsigned long parsed_port = std::stoul(std::string(port_text));
+            if (parsed_port > 65535UL) {
+                return normalized;
+            }
+            port = static_cast<uint16_t>(parsed_port);
+        }
+    } else {
+        const size_t colon = authority_host_port.rfind(':');
+        if (colon == std::string_view::npos) {
+            host.assign(authority_host_port);
+        } else {
+            host.assign(authority_host_port.substr(0, colon));
+            const std::string_view port_text = authority_host_port.substr(colon + 1);
+            if (port_text.empty()) {
+                return normalized;
+            }
+            for (const char ch : port_text) {
+                if (!std::isdigit(static_cast<unsigned char>(ch))) {
+                    return normalized;
+                }
+            }
+            const unsigned long parsed_port = std::stoul(std::string(port_text));
+            if (parsed_port > 65535UL) {
+                return normalized;
+            }
+            port = static_cast<uint16_t>(parsed_port);
+        }
+    }
+
+    std::transform(host.begin(), host.end(), host.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if ((scheme == "http" && port == 80) || (scheme == "https" && port == 443)) {
+        port.reset();
+    }
+
+    std::string suffix = suffix_start == std::string::npos ? "/" : normalized.substr(suffix_start);
+    if (!suffix.empty() && suffix.front() == '?') {
+        suffix.insert(suffix.begin(), '/');
+    }
+
+    std::string normalized_authority;
+    if (userinfo_sep != std::string::npos) {
+        normalized_authority = authority.substr(0, userinfo_sep + 1);
+    }
+    normalized_authority += host;
+    if (port.has_value()) {
+        normalized_authority += ':';
+        normalized_authority += std::to_string(*port);
+    }
+
+    return scheme + "://" + normalized_authority + suffix;
+}
+
+std::optional<clever::url::URL> request_url_for_redirect_resolution(const Request& request) {
+    if (!request.url.empty()) {
+        if (auto parsed = clever::url::parse(request.url)) {
+            parsed->fragment.clear();
+            if (parsed->is_special() && !parsed->host.empty() && parsed->path.empty()) {
+                parsed->path = "/";
+            }
+            return parsed;
+        }
+        return std::nullopt;
+    }
+
+    clever::url::URL url;
+    url.scheme = (request.use_tls || request.port == 443) ? "https" : "http";
+    url.host = request.host;
+    if (url.host.empty()) {
+        return std::nullopt;
+    }
+    if ((url.scheme == "http" && request.port != 80) ||
+        (url.scheme == "https" && request.port != 443)) {
+        url.port = request.port;
+    }
+    url.path = request.path.empty() ? "/" : request.path;
+    url.query = request.query;
+    url.fragment.clear();
+    return url;
+}
+
+std::optional<std::string> resolve_redirect_url(const Request& request,
+                                                const std::string& location) {
+    const auto base = request_url_for_redirect_resolution(request);
+    if (!base.has_value()) {
+        return std::nullopt;
+    }
+
+    const auto resolved = clever::url::parse(location, &*base);
+    if (!resolved.has_value()) {
+        return std::nullopt;
+    }
+
+    return resolved->serialize();
+}
 
 std::unique_ptr<TlsSocket> acquire_tls_conn(const std::string& host, uint16_t port, int& fd) {
     fd = -1;
@@ -198,11 +463,25 @@ HttpCache& HttpCache::instance() {
 }
 
 std::string HttpCache::make_cache_key(const std::string& url) {
-    const size_t fragment_pos = url.find('#');
-    if (fragment_pos == std::string::npos) {
-        return url;
+    const auto parsed = clever::url::parse(url);
+    if (!parsed.has_value()) {
+        return make_cache_key_fallback(url);
     }
-    return url.substr(0, fragment_pos);
+
+    clever::url::URL normalized = *parsed;
+    std::transform(normalized.scheme.begin(), normalized.scheme.end(), normalized.scheme.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    std::transform(normalized.host.begin(), normalized.host.end(), normalized.host.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    normalized.fragment.clear();
+    if ((normalized.scheme == "http" || normalized.scheme == "https") && normalized.path.empty()) {
+        normalized.path = "/";
+    }
+    if ((normalized.scheme == "http" && normalized.port == 80) ||
+        (normalized.scheme == "https" && normalized.port == 443)) {
+        normalized.port.reset();
+    }
+    return normalized.serialize();
 }
 
 std::optional<CacheEntry> HttpCache::lookup(const std::string& url) {
@@ -330,7 +609,7 @@ void HttpClient::set_max_redirects(int max) {
     max_redirects_ = max;
 }
 
-int HttpClient::connect_to(const std::string& host, uint16_t port) {
+int HttpClient::connect_to(const std::string& host, uint16_t port, const Request* request) {
     // Resolve hostname
     struct addrinfo hints {};
     hints.ai_family = AF_UNSPEC;
@@ -347,8 +626,14 @@ int HttpClient::connect_to(const std::string& host, uint16_t port) {
 
     int fd = -1;
     for (auto* rp = result; rp != nullptr; rp = rp->ai_next) {
+        if (request && request_cancelled(*request)) {
+            break;
+        }
         fd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (fd < 0) continue;
+        if (request) {
+            set_request_active_fd(*request, fd);
+        }
 
         // Set socket to non-blocking for connect timeout
         int flags = ::fcntl(fd, F_GETFL, 0);
@@ -388,6 +673,9 @@ int HttpClient::connect_to(const std::string& host, uint16_t port) {
         }
 
         // Failed, try next address
+        if (request) {
+            clear_request_active_fd(*request, fd);
+        }
         ::close(fd);
         fd = -1;
     }
@@ -396,9 +684,12 @@ int HttpClient::connect_to(const std::string& host, uint16_t port) {
     return fd;
 }
 
-bool HttpClient::send_all(int fd, const uint8_t* data, size_t len) {
+bool HttpClient::send_all(int fd, const uint8_t* data, size_t len, const Request& request) {
     size_t sent = 0;
     while (sent < len) {
+        if (request_cancelled(request)) {
+            return false;
+        }
         ssize_t n = ::send(fd, data + sent, len - sent, 0);
         if (n < 0) {
             if (errno == EINTR) continue;
@@ -410,7 +701,48 @@ bool HttpClient::send_all(int fd, const uint8_t* data, size_t len) {
     return true;
 }
 
-std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
+bool HttpClient::has_complete_response(const std::vector<uint8_t>& buffer) {
+    const char* sep = "\r\n\r\n";
+    const auto header_it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
+    if (header_it == buffer.end()) {
+        return false;
+    }
+
+    const size_t header_end = static_cast<size_t>(header_it - buffer.begin()) + 4;
+    std::string header_str(buffer.begin(),
+                           buffer.begin() + static_cast<std::ptrdiff_t>(header_end));
+    std::string lower_header = header_str;
+    std::transform(lower_header.begin(), lower_header.end(), lower_header.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    const std::string cl_header = "content-length:";
+    const auto cl_pos = lower_header.find(cl_header);
+    if (cl_pos != std::string::npos) {
+        const auto val_start = cl_pos + cl_header.size();
+        const auto val_end = lower_header.find("\r\n", val_start);
+        if (val_end != std::string::npos) {
+            std::string_view value(header_str.data() + static_cast<std::ptrdiff_t>(val_start),
+                                   val_end - val_start);
+            value = trim_ascii_whitespace(value);
+            try {
+                const size_t content_length = std::stoull(std::string(value));
+                return buffer.size() >= header_end + content_length;
+            } catch (...) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    if (lower_header.find("transfer-encoding: chunked") != std::string::npos ||
+        lower_header.find("transfer-encoding:chunked") != std::string::npos) {
+        return is_complete_chunked_body(buffer, header_end);
+    }
+
+    return false;
+}
+
+std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd, const Request& request) {
     std::vector<uint8_t> buffer;
     constexpr size_t kChunkSize = 8192;
 
@@ -418,6 +750,9 @@ std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
     auto deadline = std::chrono::steady_clock::now() + timeout_;
 
     while (true) {
+        if (request_cancelled(request)) {
+            return std::nullopt;
+        }
         auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
             deadline - std::chrono::steady_clock::now());
         if (remaining.count() <= 0) {
@@ -433,6 +768,9 @@ std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
         if (poll_rv <= 0) {
             break;  // Timeout or error
         }
+        if (request_cancelled(request)) {
+            return std::nullopt;
+        }
 
         uint8_t chunk[kChunkSize];
         ssize_t n = ::recv(fd, chunk, kChunkSize, 0);
@@ -447,68 +785,9 @@ std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
 
         buffer.insert(buffer.end(), chunk, chunk + n);
 
-        // Check if we have a complete response
-        // First, find end of headers
-        const char* sep = "\r\n\r\n";
-        auto it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
-        if (it == buffer.end()) {
-            continue;  // Headers not yet complete
+        if (has_complete_response(buffer)) {
+            return buffer;
         }
-
-        size_t header_end = static_cast<size_t>(it - buffer.begin()) + 4;
-
-        // Check for Content-Length
-        std::string header_str(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(header_end));
-
-        // Case-insensitive search for Content-Length
-        std::string lower_header = header_str;
-        std::transform(lower_header.begin(), lower_header.end(), lower_header.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-
-        std::string cl_header = "content-length:";
-        auto cl_pos = lower_header.find(cl_header);
-        if (cl_pos != std::string::npos) {
-            auto val_start = cl_pos + cl_header.size();
-            auto val_end = lower_header.find("\r\n", val_start);
-            if (val_end != std::string::npos) {
-                std::string val = header_str.substr(val_start, val_end - val_start);
-                // Trim whitespace
-                while (!val.empty() && val.front() == ' ') val.erase(val.begin());
-                try {
-                    size_t content_length = std::stoull(val);
-                    if (buffer.size() >= header_end + content_length) {
-                        return buffer;  // Complete response
-                    }
-                } catch (...) {
-                    // Fall through
-                }
-            }
-            continue;  // Need more data
-        }
-
-        // Check for Transfer-Encoding: chunked
-        if (lower_header.find("transfer-encoding: chunked") != std::string::npos ||
-            lower_header.find("transfer-encoding:chunked") != std::string::npos) {
-            // Look for the final chunk marker: "\r\n0\r\n\r\n"
-            // (the last chunk "0\r\n" followed by empty trailer "\r\n")
-            const char* end7 = "\r\n0\r\n\r\n";
-            auto end_it = std::search(buffer.begin() + static_cast<std::ptrdiff_t>(header_end),
-                                       buffer.end(),
-                                       end7, end7 + 7);
-            if (end_it != buffer.end()) {
-                return buffer;
-            }
-            // Also check "0\r\n\r\n" at the very start of body (first chunk is empty/zero)
-            const char* end5 = "0\r\n\r\n";
-            auto body_start = buffer.begin() + static_cast<std::ptrdiff_t>(header_end);
-            if (std::distance(body_start, buffer.end()) >= 5 &&
-                std::equal(end5, end5 + 5, body_start)) {
-                return buffer;
-            }
-            continue;
-        }
-
-        // No Content-Length and not chunked: keep reading until connection closes
     }
 
     if (buffer.empty()) {
@@ -518,6 +797,9 @@ std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
 }
 
 std::optional<Response> HttpClient::do_request(const Request& request) {
+    if (request_cancelled(request)) {
+        return std::nullopt;
+    }
     // Serialize the HTTP request bytes
     auto data = request.serialize();
 
@@ -531,19 +813,24 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             if (attempt == 0) {
                 tls = acquire_tls_conn(request.host, request.port, fd);
                 is_reused = (tls != nullptr);
+                if (fd >= 0) {
+                    set_request_active_fd(request, fd);
+                }
 
                 if (!tls) {
-                    fd = connect_to(request.host, request.port);
+                    fd = connect_to(request.host, request.port, &request);
                     if (fd < 0) {
                         return std::nullopt;
                     }
 
                     tls = std::make_unique<TlsSocket>();
                     if (!tls->connect(request.host, request.port, fd)) {
+                        clear_request_active_fd(request, fd);
                         ::close(fd);
                         return std::nullopt;
                     }
                 } else if (!tls->is_connected()) {
+                    clear_request_active_fd(request, fd);
                     tls->close();
                     ::close(fd);
                     fd = -1;
@@ -555,30 +842,34 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             } else {
                 is_reused = false;
                 if (fd >= 0) {
+                    clear_request_active_fd(request, fd);
                     tls->close();
                     ::close(fd);
                     tls.reset();
                 }
 
-                fd = connect_to(request.host, request.port);
+                fd = connect_to(request.host, request.port, &request);
                 if (fd < 0) {
                     return std::nullopt;
                 }
 
                 tls = std::make_unique<TlsSocket>();
                 if (!tls->connect(request.host, request.port, fd)) {
+                    clear_request_active_fd(request, fd);
                     ::close(fd);
                     return std::nullopt;
                 }
             }
 
             // Send request through TLS
-            if (!tls->send(data.data(), data.size())) {
+            if (request_cancelled(request) || !tls->send(data.data(), data.size())) {
                 if (is_reused && attempt == 0) {
+                    clear_request_active_fd(request, fd);
                     tls->close();
                     ::close(fd);
                     continue;
                 }
+                clear_request_active_fd(request, fd);
                 tls->close();
                 ::close(fd);
                 return std::nullopt;
@@ -589,6 +880,10 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             auto deadline = std::chrono::steady_clock::now() + timeout_;
 
             while (true) {
+                if (request_cancelled(request)) {
+                    buffer.clear();
+                    break;
+                }
                 auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
                     deadline - std::chrono::steady_clock::now());
                 if (remaining.count() <= 0) {
@@ -605,6 +900,10 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
                     if (errno == EINTR) continue;
                     break;  // Error
                 }
+                if (request_cancelled(request)) {
+                    buffer.clear();
+                    break;
+                }
 
                 auto chunk = tls->recv();
                 if (!chunk.has_value()) {
@@ -614,15 +913,21 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
                     if (poll_rv == 0) {
                         // poll timed out and no TLS data — check if we already
                         // have enough data to parse (Connection: close case)
-                        if (!buffer.empty()) break;
+                        if (has_complete_response(buffer)) break;
+                        if (!buffer.empty() && !has_explicit_response_framing(buffer)) break;
                         continue;  // Keep waiting
                     }
                     // errSSLWouldBlock or graceful close — if we have a
                     // complete response in the buffer, return it
+                    if (has_complete_response(buffer)) {
+                        break;
+                    }
                     if (!buffer.empty()) {
                         const char* sep = "\r\n\r\n";
                         auto it2 = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
-                        if (it2 != buffer.end()) break;  // Have headers, done
+                        if (it2 != buffer.end() && !has_explicit_response_framing(buffer)) {
+                            break;  // Connection-close response
+                        }
                     }
                     // No data yet, connection may have closed
                     break;
@@ -630,74 +935,19 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
 
                 buffer.insert(buffer.end(), chunk->begin(), chunk->end());
 
-                // Check if we have a complete response
-                const char* sep = "\r\n\r\n";
-                auto it = std::search(buffer.begin(), buffer.end(), sep, sep + 4);
-                if (it == buffer.end()) {
-                    continue;  // Headers not yet complete
+                if (has_complete_response(buffer)) {
+                    break;
                 }
-
-                size_t header_end = static_cast<size_t>(it - buffer.begin()) + 4;
-
-                // Check for Content-Length
-                std::string header_str(buffer.begin(),
-                                       buffer.begin() + static_cast<std::ptrdiff_t>(header_end));
-                std::string lower_header = header_str;
-                std::transform(lower_header.begin(), lower_header.end(),
-                               lower_header.begin(),
-                               [](unsigned char c) { return std::tolower(c); });
-
-                std::string cl_header = "content-length:";
-                auto cl_pos = lower_header.find(cl_header);
-                if (cl_pos != std::string::npos) {
-                    auto val_start = cl_pos + cl_header.size();
-                    auto val_end = lower_header.find("\r\n", val_start);
-                    if (val_end != std::string::npos) {
-                        std::string val = header_str.substr(val_start, val_end - val_start);
-                        while (!val.empty() && val.front() == ' ') val.erase(val.begin());
-                        try {
-                            size_t content_length = std::stoull(val);
-                            if (buffer.size() >= header_end + content_length) {
-                                break;
-                            }
-                        } catch (...) {
-                            // Fall through
-                        }
-                    }
-                    continue;
-                }
-
-                // Check for Transfer-Encoding: chunked
-                if (lower_header.find("transfer-encoding: chunked") != std::string::npos ||
-                    lower_header.find("transfer-encoding:chunked") != std::string::npos) {
-                    const char* end7 = "\r\n0\r\n\r\n";
-                    auto end_it = std::search(
-                        buffer.begin() + static_cast<std::ptrdiff_t>(header_end),
-                        buffer.end(),
-                        end7,
-                        end7 + 7);
-                    if (end_it != buffer.end()) {
-                        break;
-                    }
-                    // Also check "0\r\n\r\n" at very start of body
-                    const char* end5 = "0\r\n\r\n";
-                    auto body_start = buffer.begin() + static_cast<std::ptrdiff_t>(header_end);
-                    if (std::distance(body_start, buffer.end()) >= 5 &&
-                        std::equal(end5, end5 + 5, body_start)) {
-                        break;
-                    }
-                    continue;
-                }
-
-                // No Content-Length and not chunked — keep reading until connection close
             }
 
             if (buffer.empty()) {
                 if (is_reused && attempt == 0) {
+                    clear_request_active_fd(request, fd);
                     tls->close();
                     ::close(fd);
                     continue;
                 }
+                clear_request_active_fd(request, fd);
                 tls->close();
                 ::close(fd);
                 return std::nullopt;
@@ -705,6 +955,7 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
 
             auto resp = Response::parse(buffer);
             if (!resp.has_value()) {
+                clear_request_active_fd(request, fd);
                 tls->close();
                 ::close(fd);
                 return std::nullopt;
@@ -745,9 +996,11 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             }
 
             if (!should_keep_alive) {
+                clear_request_active_fd(request, fd);
                 tls->close();
                 ::close(fd);
             } else {
+                clear_request_active_fd(request, fd);
                 release_tls_conn(request.host, request.port, std::move(tls), fd);
             }
 
@@ -763,21 +1016,26 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
         // Try to reuse a pooled connection first
         int fd = pool.acquire(request.host, request.port);
         bool reused = (fd >= 0);
+        if (fd >= 0) {
+            set_request_active_fd(request, fd);
+        }
 
         if (!reused) {
-            fd = connect_to(request.host, request.port);
+            fd = connect_to(request.host, request.port, &request);
             if (fd < 0) {
                 return std::nullopt;
             }
         }
 
-        if (!send_all(fd, data.data(), data.size())) {
+        if (!send_all(fd, data.data(), data.size(), request)) {
+            clear_request_active_fd(request, fd);
             ::close(fd);
             // If we reused a stale connection, retry with a fresh one
             if (reused) {
-                fd = connect_to(request.host, request.port);
+                fd = connect_to(request.host, request.port, &request);
                 if (fd < 0) return std::nullopt;
-                if (!send_all(fd, data.data(), data.size())) {
+                if (!send_all(fd, data.data(), data.size(), request)) {
+                    clear_request_active_fd(request, fd);
                     ::close(fd);
                     return std::nullopt;
                 }
@@ -786,20 +1044,23 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             }
         }
 
-        auto raw = recv_response(fd);
+        auto raw = recv_response(fd, request);
 
         if (!raw.has_value()) {
+            clear_request_active_fd(request, fd);
             ::close(fd);
             // If we reused a stale connection, retry with a fresh one
             if (reused) {
-                fd = connect_to(request.host, request.port);
+                fd = connect_to(request.host, request.port, &request);
                 if (fd < 0) return std::nullopt;
-                if (!send_all(fd, data.data(), data.size())) {
+                if (!send_all(fd, data.data(), data.size(), request)) {
+                    clear_request_active_fd(request, fd);
                     ::close(fd);
                     return std::nullopt;
                 }
-                raw = recv_response(fd);
+                raw = recv_response(fd, request);
                 if (!raw.has_value()) {
+                    clear_request_active_fd(request, fd);
                     ::close(fd);
                     return std::nullopt;
                 }
@@ -810,6 +1071,7 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
 
         auto resp = Response::parse(*raw);
         if (!resp.has_value()) {
+            clear_request_active_fd(request, fd);
             ::close(fd);
             return std::nullopt;
         }
@@ -849,9 +1111,11 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
         }
 
         if (!should_keep_alive) {
+            clear_request_active_fd(request, fd);
             ::close(fd);
         } else {
             // Return connection to pool for reuse
+            clear_request_active_fd(request, fd);
             pool.release(request.host, request.port, fd);
         }
 
@@ -940,14 +1204,14 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
 
                 std::string one_cookie = trim(raw_value.substr(segment_start, i - segment_start));
                 if (!one_cookie.empty()) {
-                    CookieJar::shared().set_from_header(one_cookie, current.host);
+                    CookieJar::shared().set_from_header(one_cookie, current.host, current.path);
                 }
                 segment_start = i + 1;
             }
 
             std::string trailing_cookie = trim(raw_value.substr(segment_start));
             if (!trailing_cookie.empty()) {
-                CookieJar::shared().set_from_header(trailing_cookie, current.host);
+                CookieJar::shared().set_from_header(trailing_cookie, current.host, current.path);
             }
         }
 
@@ -985,25 +1249,28 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
                 return resp;  // No Location header, return as-is
             }
 
-            std::string new_url = *location;
-
-            // Handle relative URLs
-            if (new_url.find("://") == std::string::npos) {
-                // Relative URL: prepend scheme + host
-                std::string scheme = (current.port == 443) ? "https://" : "http://";
-                if (new_url.front() != '/') {
-                    new_url = "/" + new_url;
-                }
-                new_url = scheme + current.host + new_url;
+            const auto new_url = resolve_redirect_url(current, *location);
+            if (!new_url.has_value()) {
+                return resp;
             }
 
-            // For 303, change method to GET
-            if (resp->status == 303) {
+            const bool rewrite_post_redirect_to_get =
+                current.method == Method::POST &&
+                (resp->status == 301 || resp->status == 302 || resp->status == 303);
+            const bool rewrite_see_other_to_get =
+                resp->status == 303 && current.method != Method::HEAD;
+            if (rewrite_post_redirect_to_get || rewrite_see_other_to_get) {
                 current.method = Method::GET;
                 current.body.clear();
+                current.headers.remove("content-length");
+                current.headers.remove("content-type");
+                current.headers.remove("content-encoding");
+                current.headers.remove("content-language");
+                current.headers.remove("content-location");
+                current.headers.remove("transfer-encoding");
             }
 
-            current.url = new_url;
+            current.url = *new_url;
             current.parse_url();
             ++redirects;
             was_redirected = true;

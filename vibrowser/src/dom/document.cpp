@@ -2,6 +2,33 @@
 
 namespace clever::dom {
 
+DocumentVisibilityLifecycle::DocumentVisibilityLifecycle()
+    : visibility_state_("visible") {}
+
+const std::string& DocumentVisibilityLifecycle::visibility_state() const {
+    return visibility_state_;
+}
+
+bool DocumentVisibilityLifecycle::hidden() const {
+    return hidden_;
+}
+
+void DocumentVisibilityLifecycle::synchronize(std::string_view visibility_state, bool hidden) {
+    visibility_state_.assign(visibility_state);
+    hidden_ = hidden;
+}
+
+void DocumentVisibilityLifecycle::arm_dispatch() {
+    dispatch_armed_ = true;
+}
+
+bool DocumentVisibilityLifecycle::update_and_should_dispatch(std::string_view visibility_state,
+                                                            bool hidden) {
+    const bool changed = visibility_state_ != visibility_state || hidden_ != hidden;
+    synchronize(visibility_state, hidden);
+    return dispatch_armed_ && changed;
+}
+
 Document::Document() : Node(NodeType::Document) {}
 
 Element* Document::document_element() const {

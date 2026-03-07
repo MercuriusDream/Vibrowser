@@ -48,7 +48,8 @@ public:
                      int text_rendering = 0, int font_kerning = 0,
                      int font_optical_sizing = 0, float word_spacing = 0,
                      float clip_x = -1, float clip_y = -1,
-                     float clip_w = -1, float clip_h = -1);
+                     float clip_w = -1, float clip_h = -1,
+                     float effective_render_scale = 1.0f);
 
     // Measure text width for a given string and font size.
     float measure_text_width(const std::string& text, float font_size,
@@ -69,7 +70,8 @@ private:
                             float letter_spacing = 0, int text_rendering = 0,
                             int font_kerning = 0, float word_spacing = 0,
                             float clip_x = -1, float clip_y = -1,
-                            float clip_w = -1, float clip_h = -1);
+                            float clip_w = -1, float clip_h = -1,
+                            float effective_render_scale = 1.0f);
 };
 
 } // namespace clever::paint

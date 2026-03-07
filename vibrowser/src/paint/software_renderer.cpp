@@ -8,6 +8,60 @@
 namespace clever::paint {
 
 namespace {
+constexpr float kMinSoftwareShadowSigma = 0.5f;
+// Hard cap to keep hostile CSS shadows from ballooning software raster work.
+constexpr float kBoxShadowBlurRadiusCap = SoftwareRenderer::kMaxBoxShadowBlurRadius;
+constexpr float kBoxShadowWorkRegionMultiplier = SoftwareRenderer::kBoxShadowBlurWorkRegionMultiplier;
+
+Rect intersect_rects(const Rect& a, const Rect& b) {
+    Rect result {};
+    result.x = std::max(a.x, b.x);
+    result.y = std::max(a.y, b.y);
+    const float right = std::min(a.x + a.width, b.x + b.width);
+    const float bottom = std::min(a.y + a.height, b.y + b.height);
+    result.width = std::max(0.0f, right - result.x);
+    result.height = std::max(0.0f, bottom - result.y);
+    return result;
+}
+
+bool rect_has_area(const Rect& rect) {
+    return rect.width > 0.0f && rect.height > 0.0f;
+}
+
+Rect scale_rect_to_pixel_bounds(const Rect& rect, float scale) {
+    if (!rect_has_area(rect) || !std::isfinite(scale) || scale <= 0.0f) {
+        return Rect{0, 0, 0, 0};
+    }
+    const float left = std::floor(rect.x * scale);
+    const float top = std::floor(rect.y * scale);
+    const float right = std::ceil((rect.x + rect.width) * scale);
+    const float bottom = std::ceil((rect.y + rect.height) * scale);
+    return Rect{
+        left,
+        top,
+        std::max(0.0f, right - left),
+        std::max(0.0f, bottom - top)
+    };
+}
+
+Rect expand_rect(const Rect& rect, float amount) {
+    return Rect{
+        rect.x - amount,
+        rect.y - amount,
+        rect.width + amount * 2.0f,
+        rect.height + amount * 2.0f
+    };
+}
+
+bool rect_to_pixel_bounds(const Rect& rect, int max_width, int max_height,
+                          int& x0, int& y0, int& x1, int& y1) {
+    x0 = std::max(0, static_cast<int>(std::floor(rect.x)));
+    y0 = std::max(0, static_cast<int>(std::floor(rect.y)));
+    x1 = std::min(max_width, static_cast<int>(std::ceil(rect.x + rect.width)));
+    y1 = std::min(max_height, static_cast<int>(std::ceil(rect.y + rect.height)));
+    return x0 < x1 && y0 < y1;
+}
+
 int reflect_coordinate(int value, int limit) {
     if (limit <= 1) return 0;
     const int period = limit * 2 - 2;
@@ -37,6 +91,28 @@ std::vector<float> make_gaussian_kernel(float radius, int& kernel_radius) {
     }
     return kernel;
 }
+
+template <typename T>
+void ensure_scratch_buffer(std::vector<T>& buffer, int& buffer_width, int& buffer_height,
+                           size_t& allocation_count, int width, int height, size_t elements_per_pixel) {
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    const size_t required_size = static_cast<size_t>(width) * static_cast<size_t>(height) * elements_per_pixel;
+    const bool can_reuse_existing = buffer.size() >= required_size;
+    if (!can_reuse_existing) {
+        buffer_width = std::max(buffer_width, width);
+        buffer_height = std::max(buffer_height, height);
+        const size_t allocation_size =
+            static_cast<size_t>(buffer_width) * static_cast<size_t>(buffer_height) * elements_per_pixel;
+        buffer.assign(allocation_size, T{});
+        ++allocation_count;
+        return;
+    }
+    buffer_width = std::max(buffer_width, width);
+    buffer_height = std::max(buffer_height, height);
+    std::fill_n(buffer.begin(), required_size, T{});
+}
 }  // namespace
 
 SoftwareRenderer::SoftwareRenderer(int width, int height, float dpr)
@@ -49,6 +125,22 @@ SoftwareRenderer::SoftwareRenderer(int width, int height, float dpr)
 SoftwareRenderer::~SoftwareRenderer() = default;
 
 void SoftwareRenderer::render(const DisplayList& list) {
+    render_internal(list, nullptr);
+}
+
+void SoftwareRenderer::render(const DisplayList& list, const Rect& dirty_rect) {
+    render_internal(list, &dirty_rect);
+}
+
+void SoftwareRenderer::render_internal(const DisplayList& list, const Rect* dirty_rect) {
+    text_shadow_layer_last_requested_x_ = 0;
+    text_shadow_layer_last_requested_y_ = 0;
+    text_shadow_layer_last_requested_width_ = 0;
+    text_shadow_layer_last_requested_height_ = 0;
+    blend_last_backdrop_x_ = 0;
+    blend_last_backdrop_y_ = 0;
+    blend_last_backdrop_width_ = 0;
+    blend_last_backdrop_height_ = 0;
     const auto scale_value = [this](float value) {
         return std::round(value * dpr_);
     };
@@ -58,6 +150,16 @@ void SoftwareRenderer::render(const DisplayList& list) {
             scale_value(rect.width), scale_value(rect.height)
         };
     };
+    const bool has_dirty_rect = dirty_rect != nullptr;
+    const Rect scaled_dirty_rect = has_dirty_rect
+        ? scale_rect_to_pixel_bounds(*dirty_rect, dpr_)
+        : Rect{0, 0, 0, 0};
+    if (has_dirty_rect && !rect_has_area(scaled_dirty_rect)) {
+        return;
+    }
+    if (has_dirty_rect) {
+        clip_stack_.push(scaled_dirty_rect);
+    }
 
     for (auto& cmd : list.commands()) {
         switch (cmd.type) {
@@ -99,6 +201,10 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 float text_shadow_blur = scale_value(cmd.text_shadow_blur);
                 float shadow_offset_x = scale_value(cmd.text_shadow_offset_x);
                 float shadow_offset_y = scale_value(cmd.text_shadow_offset_y);
+                text_shadow_layer_last_requested_x_ = 0;
+                text_shadow_layer_last_requested_y_ = 0;
+                text_shadow_layer_last_requested_width_ = 0;
+                text_shadow_layer_last_requested_height_ = 0;
                 // Expand tabs based on tab_size before rendering
                 std::string render_text = cmd.text;
                 if (render_text.find('\t') != std::string::npos) {
@@ -179,27 +285,78 @@ void SoftwareRenderer::render(const DisplayList& list) {
                     break;
                 }
 
-                size_t pixel_bytes = static_cast<size_t>(pixels_width()) *
-                                    static_cast<size_t>(pixels_height()) * 4;
-                if (pixel_bytes == 0) break;
+                float sigma = text_shadow_blur / 2.0f;
+                int radius = 0;
+                if (sigma > 0.01f) {
+                    radius = static_cast<int>(std::ceil(sigma * 3.0f));
+                    if (radius < 1) radius = 1;
+                    if (radius > 128) radius = 128;
+                }
 
-                // Render shadow text into an isolated transparent layer first.
-                std::vector<uint8_t> backdrop_pixels;
-                backdrop_pixels.swap(pixels_);
-                pixels_.assign(pixel_bytes, 0);
+                Rect shadow_capture_bounds = bounds;
+                if (!clip_stack_.empty()) {
+                    Rect shadow_write_bounds = clip_stack_.top();
+                    if (radius > 0) {
+                        shadow_write_bounds = expand_rect(shadow_write_bounds, static_cast<float>(radius));
+                    }
+                    shadow_capture_bounds = intersect_rects(shadow_capture_bounds, shadow_write_bounds);
+                }
+
+                int layer_x0 = 0;
+                int layer_y0 = 0;
+                int layer_x1 = 0;
+                int layer_y1 = 0;
+                if (!rect_to_pixel_bounds(shadow_capture_bounds, pixels_width(), pixels_height(),
+                                          layer_x0, layer_y0, layer_x1, layer_y1)) {
+                    break;
+                }
+
+                const int layer_width = layer_x1 - layer_x0;
+                const int layer_height = layer_y1 - layer_y0;
+                if (layer_width <= 0 || layer_height <= 0) {
+                    break;
+                }
+
+                text_shadow_layer_last_requested_x_ = layer_x0;
+                text_shadow_layer_last_requested_y_ = layer_y0;
+                text_shadow_layer_last_requested_width_ = layer_width;
+                text_shadow_layer_last_requested_height_ = layer_height;
+                ensure_scratch_buffer(text_shadow_layer_scratch_, text_shadow_layer_scratch_width_,
+                                      text_shadow_layer_scratch_height_, text_shadow_layer_scratch_allocations_,
+                                      layer_width, layer_height, 4);
+                std::vector<uint8_t>& shadow_layer = text_shadow_layer_scratch_;
+                active_pixel_target_ = &shadow_layer;
+                active_pixel_target_origin_x_ = layer_x0;
+                active_pixel_target_origin_y_ = layer_y0;
+                active_pixel_target_width_ = layer_width;
+                active_pixel_target_height_ = layer_height;
+                bool restored_clip = false;
+                Rect original_clip {};
+                if (!clip_stack_.empty()) {
+                    original_clip = clip_stack_.top();
+                    clip_stack_.pop();
+                    clip_stack_.push(shadow_capture_bounds);
+                    restored_clip = true;
+                }
                 render_text_command();
-                std::vector<uint8_t> shadow_layer;
-                shadow_layer.swap(pixels_);
-                pixels_.swap(backdrop_pixels);
+                if (restored_clip) {
+                    clip_stack_.pop();
+                    clip_stack_.push(original_clip);
+                }
+                active_pixel_target_ = nullptr;
+                active_pixel_target_origin_x_ = 0;
+                active_pixel_target_origin_y_ = 0;
+                active_pixel_target_width_ = 0;
+                active_pixel_target_height_ = 0;
 
                 // Find tight alpha bounds for the rendered shadow layer.
-                int min_x = pixels_width();
-                int min_y = pixels_height();
+                int min_x = layer_width;
+                int min_y = layer_height;
                 int max_x = -1;
                 int max_y = -1;
-                for (int py = 0; py < pixels_height(); py++) {
-                    for (int px = 0; px < pixels_width(); px++) {
-                        size_t idx = (static_cast<size_t>(py) * static_cast<size_t>(pixels_width()) + static_cast<size_t>(px)) * 4 + 3;
+                for (int py = 0; py < layer_height; py++) {
+                    for (int px = 0; px < layer_width; px++) {
+                        size_t idx = (static_cast<size_t>(py) * static_cast<size_t>(layer_width) + static_cast<size_t>(px)) * 4 + 3;
                         if (shadow_layer[idx] > 0) {
                             if (px < min_x) min_x = px;
                             if (px > max_x) max_x = px;
@@ -210,7 +367,6 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 }
                 if (max_x < min_x || max_y < min_y) break;
 
-                float sigma = text_shadow_blur / 2.0f;
                 if (sigma <= 0.01f) {
                     for (int py = min_y; py <= max_y; py++) {
                         for (int px = min_x; px <= max_x; px++) {
@@ -219,22 +375,18 @@ void SoftwareRenderer::render(const DisplayList& list) {
                             if (alpha == 0) continue;
                             Color c = cmd.color;
                             c.a = alpha;
-                            set_pixel(static_cast<int>(std::round(static_cast<float>(px) + shadow_offset_x)),
-                                      static_cast<int>(std::round(static_cast<float>(py) + shadow_offset_y)),
+                            set_pixel(layer_x0 + static_cast<int>(std::round(static_cast<float>(px) + shadow_offset_x)),
+                                      layer_y0 + static_cast<int>(std::round(static_cast<float>(py) + shadow_offset_y)),
                                       c);
                         }
                     }
                     break;
                 }
 
-                int radius = static_cast<int>(std::ceil(sigma * 3.0f));
-                if (radius < 1) radius = 1;
-                if (radius > 128) radius = 128;
-
                 int bx0 = std::max(0, min_x - radius);
                 int by0 = std::max(0, min_y - radius);
-                int bx1 = std::min(pixels_width() - 1, max_x + radius);
-                int by1 = std::min(pixels_height() - 1, max_y + radius);
+                int bx1 = std::min(layer_width - 1, max_x + radius);
+                int by1 = std::min(layer_height - 1, max_y + radius);
                 int bw = bx1 - bx0 + 1;
                 int bh = by1 - by0 + 1;
                 if (bw <= 0 || bh <= 0) break;
@@ -255,7 +407,7 @@ void SoftwareRenderer::render(const DisplayList& list) {
                     int sy = by0 + py;
                     for (int px = 0; px < bw; px++) {
                         int sx = bx0 + px;
-                        size_t src_idx = (static_cast<size_t>(sy) * static_cast<size_t>(pixels_width()) + static_cast<size_t>(sx)) * 4 + 3;
+                        size_t src_idx = (static_cast<size_t>(sy) * static_cast<size_t>(layer_width) + static_cast<size_t>(sx)) * 4 + 3;
                         src_alpha[static_cast<size_t>(py) * static_cast<size_t>(bw) + static_cast<size_t>(px)] = shadow_layer[src_idx];
                     }
                 }
@@ -301,9 +453,9 @@ void SoftwareRenderer::render(const DisplayList& list) {
 
                 // Composite blurred shadow back onto the main framebuffer.
                 for (int py = 0; py < bh; py++) {
-                    int dy = by0 + py;
+                    int dy = layer_y0 + by0 + py;
                     for (int px = 0; px < bw; px++) {
-                        int dx = bx0 + px;
+                        int dx = layer_x0 + bx0 + px;
                         uint8_t alpha = blurred_alpha[static_cast<size_t>(py) * static_cast<size_t>(bw) + static_cast<size_t>(px)];
                         if (alpha == 0) continue;
                         Color c = cmd.color;
@@ -597,16 +749,7 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 if (clip_stack_.empty()) {
                     clip_stack_.push(scale_rect(cmd.bounds));
                 } else {
-                    const Rect& current = clip_stack_.top();
-                    Rect scaled = scale_rect(cmd.bounds);
-                    Rect next;
-                    next.x = std::max(current.x, scaled.x);
-                    next.y = std::max(current.y, scaled.y);
-                    float right = std::min(current.x + current.width, scaled.x + scaled.width);
-                    float bottom = std::min(current.y + current.height, scaled.y + scaled.height);
-                    next.width = std::max(0.0f, right - next.x);
-                    next.height = std::max(0.0f, bottom - next.y);
-                    clip_stack_.push(next);
+                    clip_stack_.push(intersect_rects(clip_stack_.top(), scale_rect(cmd.bounds)));
                 }
                 break;
             case PaintCommand::PopClip:
@@ -733,16 +876,29 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 break;
             case PaintCommand::SaveBackdrop: {
                 // Save a snapshot of the current pixel region for later blend-mode compositing
-                Rect bounds = scale_rect(cmd.bounds);
-                int bx0 = std::max(0, static_cast<int>(std::floor(bounds.x)));
-                int by0 = std::max(0, static_cast<int>(std::floor(bounds.y)));
-                int bx1 = std::min(pixels_width(), static_cast<int>(std::ceil(bounds.x + bounds.width)));
-                int by1 = std::min(pixels_height(), static_cast<int>(std::ceil(bounds.y + bounds.height)));
-                int bw = bx1 - bx0;
-                int bh = by1 - by0;
+                Rect snapshot_bounds = scale_rect(cmd.bounds);
+                if (!clip_stack_.empty()) {
+                    snapshot_bounds = intersect_rects(snapshot_bounds, clip_stack_.top());
+                }
+                blend_last_backdrop_x_ = 0;
+                blend_last_backdrop_y_ = 0;
+                blend_last_backdrop_width_ = 0;
+                blend_last_backdrop_height_ = 0;
+
                 BackdropSnapshot snap;
-                snap.bounds = bounds;
-                if (bw > 0 && bh > 0) {
+                snap.bounds = snapshot_bounds;
+
+                int bx0 = 0;
+                int by0 = 0;
+                int bx1 = 0;
+                int by1 = 0;
+                if (rect_to_pixel_bounds(snapshot_bounds, pixels_width(), pixels_height(), bx0, by0, bx1, by1)) {
+                    int bw = bx1 - bx0;
+                    int bh = by1 - by0;
+                    blend_last_backdrop_x_ = bx0;
+                    blend_last_backdrop_y_ = by0;
+                    blend_last_backdrop_width_ = bw;
+                    blend_last_backdrop_height_ = bh;
                     snap.pixels.resize(static_cast<size_t>(bw * bh * 4));
                     for (int py = by0; py < by1; py++) {
                         for (int px = bx0; px < bx1; px++) {
@@ -779,6 +935,10 @@ void SoftwareRenderer::render(const DisplayList& list) {
                 break;
         }
     }
+
+    if (has_dirty_rect) {
+        clip_stack_.pop();
+    }
 }
 
 void SoftwareRenderer::clear(const Color& color) {
@@ -812,31 +972,48 @@ void SoftwareRenderer::set_pixel(int x, int y, const Color& color) {
         }
     }
 
-    int idx = (y * pixels_width() + x) * 4;
+    std::vector<uint8_t>* target_pixels = &pixels_;
+    int local_x = x;
+    int local_y = y;
+    int target_width = pixels_width();
+    if (active_pixel_target_ != nullptr) {
+        if (x < active_pixel_target_origin_x_ ||
+            x >= active_pixel_target_origin_x_ + active_pixel_target_width_ ||
+            y < active_pixel_target_origin_y_ ||
+            y >= active_pixel_target_origin_y_ + active_pixel_target_height_) {
+            return;
+        }
+        target_pixels = active_pixel_target_;
+        target_width = active_pixel_target_width_;
+        local_x -= active_pixel_target_origin_x_;
+        local_y -= active_pixel_target_origin_y_;
+    }
+
+    int idx = (local_y * target_width + local_x) * 4;
 
     if (color.a == 255) {
         // Fully opaque: direct write
-        pixels_[idx + 0] = color.r;
-        pixels_[idx + 1] = color.g;
-        pixels_[idx + 2] = color.b;
-        pixels_[idx + 3] = 255;
+        (*target_pixels)[idx + 0] = color.r;
+        (*target_pixels)[idx + 1] = color.g;
+        (*target_pixels)[idx + 2] = color.b;
+        (*target_pixels)[idx + 3] = 255;
     } else if (color.a == 0) {
         // Fully transparent: no-op
         return;
     } else {
         // Alpha blending: result = (src * src_a + dst * (255 - src_a)) / 255
-        uint8_t dst_r = pixels_[idx + 0];
-        uint8_t dst_g = pixels_[idx + 1];
-        uint8_t dst_b = pixels_[idx + 2];
-        uint8_t dst_a = pixels_[idx + 3];
+        uint8_t dst_r = (*target_pixels)[idx + 0];
+        uint8_t dst_g = (*target_pixels)[idx + 1];
+        uint8_t dst_b = (*target_pixels)[idx + 2];
+        uint8_t dst_a = (*target_pixels)[idx + 3];
 
         uint16_t src_a = color.a;
         uint16_t inv_a = 255 - src_a;
 
-        pixels_[idx + 0] = static_cast<uint8_t>((color.r * src_a + dst_r * inv_a) / 255);
-        pixels_[idx + 1] = static_cast<uint8_t>((color.g * src_a + dst_g * inv_a) / 255);
-        pixels_[idx + 2] = static_cast<uint8_t>((color.b * src_a + dst_b * inv_a) / 255);
-        pixels_[idx + 3] = static_cast<uint8_t>(std::min(255u, static_cast<unsigned>(src_a) + dst_a));
+        (*target_pixels)[idx + 0] = static_cast<uint8_t>((color.r * src_a + dst_r * inv_a) / 255);
+        (*target_pixels)[idx + 1] = static_cast<uint8_t>((color.g * src_a + dst_g * inv_a) / 255);
+        (*target_pixels)[idx + 2] = static_cast<uint8_t>((color.b * src_a + dst_b * inv_a) / 255);
+        (*target_pixels)[idx + 3] = static_cast<uint8_t>(std::min(255u, static_cast<unsigned>(src_a) + dst_a));
     }
 }
 
@@ -1020,13 +1197,40 @@ void SoftwareRenderer::draw_box_shadow(const Rect& shadow_rect, const Rect& elem
     // The CSS blur radius maps to the Gaussian sigma as: sigma = blur_radius / 2.
     // This follows the CSS spec where the blur radius is approximately 2*sigma.
 
-    int x0 = std::max(0, static_cast<int>(std::floor(shadow_rect.x)));
-    int y0 = std::max(0, static_cast<int>(std::floor(shadow_rect.y)));
-    int x1 = std::min(pixels_width(), static_cast<int>(std::ceil(shadow_rect.x + shadow_rect.width)));
-    int y1 = std::min(pixels_height(), static_cast<int>(std::ceil(shadow_rect.y + shadow_rect.height)));
+    const float safe_blur_radius = std::clamp(
+        std::isfinite(blur_radius) ? blur_radius : 0.0f,
+        0.0f, kBoxShadowBlurRadiusCap);
+    const float safe_expand = std::ceil(safe_blur_radius * kBoxShadowWorkRegionMultiplier);
 
-    float sigma = blur_radius / 2.0f;
-    if (sigma < 0.5f) sigma = 0.5f;
+    const float limited_left = std::max(shadow_rect.x, element_rect.x - safe_expand);
+    const float limited_top = std::max(shadow_rect.y, element_rect.y - safe_expand);
+    const float limited_right = std::min(shadow_rect.x + shadow_rect.width,
+                                         element_rect.x + element_rect.width + safe_expand);
+    const float limited_bottom = std::min(shadow_rect.y + shadow_rect.height,
+                                          element_rect.y + element_rect.height + safe_expand);
+
+    int x0 = std::max(0, static_cast<int>(std::floor(limited_left)));
+    int y0 = std::max(0, static_cast<int>(std::floor(limited_top)));
+    int x1 = std::min(pixels_width(), static_cast<int>(std::ceil(limited_right)));
+    int y1 = std::min(pixels_height(), static_cast<int>(std::ceil(limited_bottom)));
+    if (!clip_stack_.empty()) {
+        int clip_x0 = 0;
+        int clip_y0 = 0;
+        int clip_x1 = 0;
+        int clip_y1 = 0;
+        if (!rect_to_pixel_bounds(clip_stack_.top(), pixels_width(), pixels_height(),
+                                  clip_x0, clip_y0, clip_x1, clip_y1)) {
+            return;
+        }
+        x0 = std::max(x0, clip_x0);
+        y0 = std::max(y0, clip_y0);
+        x1 = std::min(x1, clip_x1);
+        y1 = std::min(y1, clip_y1);
+    }
+    if (x0 >= x1 || y0 >= y1) return;
+
+    float sigma = safe_blur_radius / 2.0f;
+    if (sigma < kMinSoftwareShadowSigma) sigma = kMinSoftwareShadowSigma;
 
     // Precompute 1 / (sigma * sqrt(2)) for the Gaussian CDF (erf approximation)
     float inv_sigma_sqrt2 = 1.0f / (sigma * 1.41421356f);
@@ -1173,6 +1377,22 @@ void SoftwareRenderer::draw_inset_shadow(const Rect& element_rect, const Color& 
     int clip_y0 = std::max(0, static_cast<int>(std::floor(element_rect.y)));
     int clip_x1 = std::min(pixels_width(),  static_cast<int>(std::ceil(element_rect.x + element_rect.width)));
     int clip_y1 = std::min(pixels_height(), static_cast<int>(std::ceil(element_rect.y + element_rect.height)));
+    if (!clip_stack_.empty()) {
+        int active_clip_x0 = 0;
+        int active_clip_y0 = 0;
+        int active_clip_x1 = 0;
+        int active_clip_y1 = 0;
+        if (!rect_to_pixel_bounds(clip_stack_.top(), pixels_width(), pixels_height(),
+                                  active_clip_x0, active_clip_y0,
+                                  active_clip_x1, active_clip_y1)) {
+            return;
+        }
+        clip_x0 = std::max(clip_x0, active_clip_x0);
+        clip_y0 = std::max(clip_y0, active_clip_y0);
+        clip_x1 = std::min(clip_x1, active_clip_x1);
+        clip_y1 = std::min(clip_y1, active_clip_y1);
+    }
+    if (clip_x0 >= clip_x1 || clip_y0 >= clip_y1) return;
 
     float sigma = blur_radius / 2.0f;
     if (sigma < 0.5f) sigma = 0.5f;
@@ -1641,12 +1861,23 @@ void SoftwareRenderer::draw_conic_gradient_rect(const Rect& rect, float from_ang
 }
 
 void SoftwareRenderer::draw_image(const Rect& dest, const ImageData& image, int image_rendering) {
-    if (image.pixels.empty() || image.width <= 0 || image.height <= 0) return;
+    if (image.pixels.empty() || image.width <= 0 || image.height <= 0 ||
+        dest.width <= 0.0f || dest.height <= 0.0f) {
+        return;
+    }
 
     int dx0 = std::max(0, static_cast<int>(std::floor(dest.x)));
     int dy0 = std::max(0, static_cast<int>(std::floor(dest.y)));
     int dx1 = std::min(pixels_width(), static_cast<int>(std::ceil(dest.x + dest.width)));
     int dy1 = std::min(pixels_height(), static_cast<int>(std::ceil(dest.y + dest.height)));
+    if (!clip_stack_.empty()) {
+        const Rect& clip = clip_stack_.top();
+        dx0 = std::max(dx0, static_cast<int>(std::floor(clip.x)));
+        dy0 = std::max(dy0, static_cast<int>(std::floor(clip.y)));
+        dx1 = std::min(dx1, static_cast<int>(std::ceil(clip.x + clip.width)));
+        dy1 = std::min(dy1, static_cast<int>(std::ceil(clip.y + clip.height)));
+    }
+    if (dx0 >= dx1 || dy0 >= dy1) return;
 
     float scale_x = static_cast<float>(image.width) / dest.width;
     float scale_y = static_cast<float>(image.height) / dest.height;
@@ -1732,6 +1963,27 @@ void SoftwareRenderer::draw_text_simple(const std::string& text, float x, float 
         text_clip_w = clip.width;
         text_clip_h = clip.height;
     }
+    uint8_t* text_target_pixels = pixels_.data();
+    int text_target_width = pixels_width();
+    int text_target_height = pixels_height();
+    float text_target_origin_x = 0.0f;
+    float text_target_origin_y = 0.0f;
+    if (active_pixel_target_ != nullptr) {
+        text_target_pixels = active_pixel_target_->data();
+        text_target_width = active_pixel_target_width_;
+        text_target_height = active_pixel_target_height_;
+        text_target_origin_x = static_cast<float>(active_pixel_target_origin_x_);
+        text_target_origin_y = static_cast<float>(active_pixel_target_origin_y_);
+        if (text_clip_x >= 0.0f) {
+            text_clip_x -= text_target_origin_x;
+            text_clip_y -= text_target_origin_y;
+        } else {
+            text_clip_x = 0.0f;
+            text_clip_y = 0.0f;
+            text_clip_w = static_cast<float>(text_target_width);
+            text_clip_h = static_cast<float>(text_target_height);
+        }
+    }
 
     if (!current_transform_.is_identity()) {
         // Check if it's a simple translation
@@ -1741,8 +1993,9 @@ void SoftwareRenderer::draw_text_simple(const std::string& text, float x, float 
             // Apply translation offset and use CoreText
             float tx = x + current_transform_.tx;
             float ty = y + current_transform_.ty;
-            text_renderer_->render_text(text, tx, ty, font_size, color,
-                                         pixels_.data(), pixels_width(), pixels_height(), font_family,
+            text_renderer_->render_text(text, tx - text_target_origin_x, ty - text_target_origin_y,
+                                         font_size, color, text_target_pixels,
+                                         text_target_width, text_target_height, font_family,
                                          font_weight, font_italic, letter_spacing,
                                          font_feature_settings, font_variation_settings,
                                          text_rendering, font_kerning, font_optical_sizing, 0,
@@ -1782,8 +2035,9 @@ void SoftwareRenderer::draw_text_simple(const std::string& text, float x, float 
 
     // Use CoreText-based text renderer for proper glyph rendering
     if (use_coretext) {
-        text_renderer_->render_text(text, x, y, font_size, color,
-                                     pixels_.data(), pixels_width(), pixels_height(), font_family,
+        text_renderer_->render_text(text, x - text_target_origin_x, y - text_target_origin_y,
+                                     font_size, color, text_target_pixels,
+                                     text_target_width, text_target_height, font_family,
                                      font_weight, font_italic, letter_spacing,
                                      font_feature_settings, font_variation_settings,
                                      text_rendering, font_kerning, font_optical_sizing, 0,
@@ -1830,10 +2084,45 @@ void SoftwareRenderer::draw_char_bitmap(char /*c*/, int x, int y,
 }
 
 void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_type, float value) {
-    int x0 = std::max(0, static_cast<int>(bounds.x));
-    int y0 = std::max(0, static_cast<int>(bounds.y));
-    int x1 = std::min(pixels_width(), static_cast<int>(bounds.x + bounds.width));
-    int y1 = std::min(pixels_height(), static_cast<int>(bounds.y + bounds.height));
+    filter_blur_scratch_last_requested_width_ = 0;
+    filter_blur_scratch_last_requested_height_ = 0;
+    filter_last_write_x_ = 0;
+    filter_last_write_y_ = 0;
+    filter_last_write_width_ = 0;
+    filter_last_write_height_ = 0;
+
+    int x0 = 0;
+    int y0 = 0;
+    int x1 = 0;
+    int y1 = 0;
+    if (!rect_to_pixel_bounds(bounds, pixels_width(), pixels_height(), x0, y0, x1, y1)) {
+        return;
+    }
+
+    Rect write_bounds = bounds;
+    if (!clip_stack_.empty()) {
+        write_bounds = intersect_rects(write_bounds, clip_stack_.top());
+    }
+
+    int ox0 = 0;
+    int oy0 = 0;
+    int ox1 = 0;
+    int oy1 = 0;
+    if (!rect_to_pixel_bounds(write_bounds, pixels_width(), pixels_height(), ox0, oy0, ox1, oy1)) {
+        return;
+    }
+
+    ox0 = std::max(ox0, x0);
+    oy0 = std::max(oy0, y0);
+    ox1 = std::min(ox1, x1);
+    oy1 = std::min(oy1, y1);
+    if (ox0 >= ox1 || oy0 >= oy1) {
+        return;
+    }
+    filter_last_write_x_ = ox0;
+    filter_last_write_y_ = oy0;
+    filter_last_write_width_ = ox1 - ox0;
+    filter_last_write_height_ = oy1 - oy0;
 
     // Blur (type 9) — Gaussian 2-pass separable convolution
     if (filter_type == 9) {
@@ -1849,12 +2138,22 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
         std::vector<float> kernel = make_gaussian_kernel(radius, kernel_radius);
         if (kernel.empty()) return;
 
-        // Temporary buffer for intermediate results (same size as region, RGBA, float precision)
-        std::vector<float> temp(rw * rh * 4, 0.0f);
+        int temp_y0 = std::max(y0, oy0 - kernel_radius);
+        int temp_y1 = std::min(y1, oy1 + kernel_radius);
+        int temp_width = ox1 - ox0;
+        int temp_height = temp_y1 - temp_y0;
+        if (temp_width <= 0 || temp_height <= 0) return;
+
+        filter_blur_scratch_last_requested_width_ = temp_width;
+        filter_blur_scratch_last_requested_height_ = temp_height;
+        ensure_scratch_buffer(filter_blur_scratch_, filter_blur_scratch_width_,
+                              filter_blur_scratch_height_, filter_blur_scratch_allocations_,
+                              temp_width, temp_height, 4);
+        std::vector<float>& temp = filter_blur_scratch_;
 
         // --- Horizontal pass: read from pixels_, write to temp ---
-        for (int py = y0; py < y1; py++) {
-            for (int px = x0; px < x1; px++) {
+        for (int py = temp_y0; py < temp_y1; py++) {
+            for (int px = ox0; px < ox1; px++) {
                 float sum_r = 0.0f, sum_g = 0.0f, sum_b = 0.0f, sum_a = 0.0f;
                 for (int kx = -kernel_radius; kx <= kernel_radius; kx++) {
                     int sx = x0 + reflect_coordinate((px - x0) + kx, rw);
@@ -1865,7 +2164,7 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
                     sum_b += pixels_[src_idx + 2] * w;
                     sum_a += pixels_[src_idx + 3] * w;
                 }
-                int dst_idx = ((py - y0) * rw + (px - x0)) * 4;
+                int dst_idx = ((py - temp_y0) * temp_width + (px - ox0)) * 4;
                 temp[dst_idx]     = sum_r;
                 temp[dst_idx + 1] = sum_g;
                 temp[dst_idx + 2] = sum_b;
@@ -1874,13 +2173,13 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
         }
 
         // --- Vertical pass: read from temp, write back to pixels_ ---
-        for (int py = y0; py < y1; py++) {
-            for (int px = x0; px < x1; px++) {
+        for (int py = oy0; py < oy1; py++) {
+            for (int px = ox0; px < ox1; px++) {
                 float sum_r = 0.0f, sum_g = 0.0f, sum_b = 0.0f, sum_a = 0.0f;
                 for (int ky = -kernel_radius; ky <= kernel_radius; ky++) {
                     int sy = y0 + reflect_coordinate((py - y0) + ky, rh);
                     float w = kernel[ky + kernel_radius];
-                    int src_idx = ((sy - y0) * rw + (px - x0)) * 4;
+                    int src_idx = ((sy - temp_y0) * temp_width + (px - ox0)) * 4;
                     sum_r += temp[src_idx] * w;
                     sum_g += temp[src_idx + 1] * w;
                     sum_b += temp[src_idx + 2] * w;
@@ -1897,8 +2196,8 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
         return; // blur done
     }
 
-    for (int py = y0; py < y1; py++) {
-        for (int px = x0; px < x1; px++) {
+    for (int py = oy0; py < oy1; py++) {
+        for (int px = ox0; px < ox1; px++) {
             int idx = (py * pixels_width() + px) * 4;
             float r = pixels_[idx] / 255.0f;
             float g = pixels_[idx + 1] / 255.0f;
@@ -1991,20 +2290,57 @@ void SoftwareRenderer::apply_filter_to_region(const Rect& bounds, int filter_typ
 void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blur_radius,
                                                      float offset_x, float offset_y,
                                                      uint32_t shadow_color) {
+    drop_shadow_alpha_scratch_last_requested_width_ = 0;
+    drop_shadow_alpha_scratch_last_requested_height_ = 0;
+    drop_shadow_blur_scratch_last_requested_width_ = 0;
+    drop_shadow_blur_scratch_last_requested_height_ = 0;
+
     float radius = blur_radius;
     if (radius < 0.0f) radius = 0.0f;
     if (radius > 50.0f) radius = 50.0f;
 
-    // Expanded region to include shadow offset + blur
-    int margin = static_cast<int>(std::ceil(radius))
-                 + static_cast<int>(std::max(std::abs(offset_x), std::abs(offset_y))) + 2;
-    int ex0 = std::max(0, static_cast<int>(std::floor(bounds.x)) - margin);
-    int ey0 = std::max(0, static_cast<int>(std::floor(bounds.y)) - margin);
-    int ex1 = std::min(pixels_width(), static_cast<int>(std::ceil(bounds.x + bounds.width)) + margin);
-    int ey1 = std::min(pixels_height(), static_cast<int>(std::ceil(bounds.y + bounds.height)) + margin);
+    Rect full_shadow_bounds = expand_rect({
+        bounds.x + offset_x,
+        bounds.y + offset_y,
+        bounds.width,
+        bounds.height
+    }, std::ceil(radius) + 2.0f);
+    if (!rect_has_area(full_shadow_bounds)) return;
+
+    Rect write_bounds = full_shadow_bounds;
+    if (!clip_stack_.empty()) {
+        write_bounds = intersect_rects(write_bounds, clip_stack_.top());
+    }
+    if (!rect_has_area(write_bounds)) return;
+
+    Rect work_bounds = intersect_rects(full_shadow_bounds, expand_rect(write_bounds, std::ceil(radius)));
+    if (!rect_has_area(work_bounds)) return;
+
+    int ex0 = 0;
+    int ey0 = 0;
+    int ex1 = 0;
+    int ey1 = 0;
+    if (!rect_to_pixel_bounds(work_bounds, pixels_width(), pixels_height(), ex0, ey0, ex1, ey1)) {
+        return;
+    }
     int ew = ex1 - ex0;
     int eh = ey1 - ey0;
     if (ew <= 0 || eh <= 0) return;
+
+    int ox0 = 0;
+    int oy0 = 0;
+    int ox1 = 0;
+    int oy1 = 0;
+    if (!rect_to_pixel_bounds(write_bounds, pixels_width(), pixels_height(), ox0, oy0, ox1, oy1)) {
+        return;
+    }
+    ox0 = std::max(ox0, ex0);
+    oy0 = std::max(oy0, ey0);
+    ox1 = std::min(ox1, ex1);
+    oy1 = std::min(oy1, ey1);
+    if (ox0 >= ox1 || oy0 >= oy1) {
+        return;
+    }
 
     // Extract shadow color components
     uint8_t sc_a = static_cast<uint8_t>((shadow_color >> 24) & 0xFF);
@@ -2013,14 +2349,28 @@ void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blu
     uint8_t sc_b = static_cast<uint8_t>(shadow_color & 0xFF);
 
     // Step 1: Create alpha silhouette of the element, offset by (offset_x, offset_y)
-    std::vector<uint8_t> shadow_alpha(ew * eh, 0);
+    drop_shadow_alpha_scratch_last_requested_width_ = ew;
+    drop_shadow_alpha_scratch_last_requested_height_ = eh;
+    ensure_scratch_buffer(drop_shadow_alpha_scratch_, drop_shadow_alpha_scratch_width_,
+                          drop_shadow_alpha_scratch_height_, drop_shadow_alpha_scratch_allocations_,
+                          ew, eh, 1);
+    std::vector<uint8_t>& shadow_alpha = drop_shadow_alpha_scratch_;
     int ox = static_cast<int>(offset_x);
     int oy = static_cast<int>(offset_y);
 
-    int bx0 = std::max(0, static_cast<int>(std::floor(bounds.x)));
-    int by0 = std::max(0, static_cast<int>(std::floor(bounds.y)));
-    int bx1 = std::min(pixels_width(), static_cast<int>(std::ceil(bounds.x + bounds.width)));
-    int by1 = std::min(pixels_height(), static_cast<int>(std::ceil(bounds.y + bounds.height)));
+    Rect source_bounds = intersect_rects(bounds, {
+        static_cast<float>(ex0) - offset_x,
+        static_cast<float>(ey0) - offset_y,
+        static_cast<float>(ew),
+        static_cast<float>(eh)
+    });
+    int bx0 = 0;
+    int by0 = 0;
+    int bx1 = 0;
+    int by1 = 0;
+    if (!rect_to_pixel_bounds(source_bounds, pixels_width(), pixels_height(), bx0, by0, bx1, by1)) {
+        return;
+    }
 
     for (int py = by0; py < by1; py++) {
         for (int px = bx0; px < bx1; px++) {
@@ -2047,31 +2397,48 @@ void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blu
             int y1 = y0 + eh;
             int rw = x1 - x0;
             int rh = y1 - y0;
-            std::vector<float> temp(ew * eh, 0.0f);
+            const int shadow_write_x0 = ox0 - ex0;
+            const int shadow_write_y0 = oy0 - ey0;
+            const int shadow_write_x1 = ox1 - ex0;
+            const int shadow_write_y1 = oy1 - ey0;
+            const int blur_temp_width = shadow_write_x1 - shadow_write_x0;
+            const int blur_temp_height = eh;
+            if (blur_temp_width <= 0 || blur_temp_height <= 0) {
+                return;
+            }
+            drop_shadow_blur_scratch_last_requested_width_ = blur_temp_width;
+            drop_shadow_blur_scratch_last_requested_height_ = blur_temp_height;
+            ensure_scratch_buffer(drop_shadow_blur_scratch_, drop_shadow_blur_scratch_width_,
+                                  drop_shadow_blur_scratch_height_, drop_shadow_blur_scratch_allocations_,
+                                  blur_temp_width, blur_temp_height, 1);
+            std::vector<float>& temp = drop_shadow_blur_scratch_;
 
-            // Horizontal pass
+            // Horizontal pass for the clipped output columns only.
             for (int py = y0; py < y1; py++) {
-                for (int px = x0; px < x1; px++) {
+                const int temp_row = (py - y0) * blur_temp_width;
+                const int alpha_row = (py - y0) * rw;
+                for (int px = shadow_write_x0; px < shadow_write_x1; px++) {
                     float sum = 0.0f;
                     for (int kx = -kernel_radius; kx <= kernel_radius; kx++) {
                         int sx = x0 + reflect_coordinate((px - x0) + kx, rw);
                         float w = kernel[kx + kernel_radius];
-                        sum += static_cast<float>(shadow_alpha[(py - y0) * rw + (sx - x0)]) * w;
+                        sum += static_cast<float>(shadow_alpha[alpha_row + (sx - x0)]) * w;
                     }
-                    temp[(py - y0) * rw + (px - x0)] = sum;
+                    temp[temp_row + (px - shadow_write_x0)] = sum;
                 }
             }
 
-            // Vertical pass
-            for (int py = y0; py < y1; py++) {
-                for (int px = x0; px < x1; px++) {
+            // Vertical pass for the clipped output rows and columns only.
+            for (int py = shadow_write_y0; py < shadow_write_y1; py++) {
+                const int alpha_row = (py - y0) * ew;
+                for (int px = shadow_write_x0; px < shadow_write_x1; px++) {
                     float sum = 0.0f;
                     for (int ky = -kernel_radius; ky <= kernel_radius; ky++) {
                         int sy = y0 + reflect_coordinate((py - y0) + ky, rh);
                         float w = kernel[ky + kernel_radius];
-                        sum += temp[(sy - y0) * rw + (px - x0)] * w;
+                        sum += temp[(sy - y0) * blur_temp_width + (px - shadow_write_x0)] * w;
                     }
-                    shadow_alpha[(py - y0) * ew + (px - x0)] =
+                    shadow_alpha[alpha_row + (px - x0)] =
                         static_cast<uint8_t>(std::lround(std::clamp(sum, 0.0f, 255.0f)));
                 }
             }
@@ -2079,8 +2446,8 @@ void SoftwareRenderer::apply_drop_shadow_to_region(const Rect& bounds, float blu
     }
 
     // Step 3: Composite shadow behind existing pixels (source-over with shadow under)
-    for (int py = ey0; py < ey1; py++) {
-        for (int px = ex0; px < ex1; px++) {
+    for (int py = oy0; py < oy1; py++) {
+        for (int px = ox0; px < ox1; px++) {
             int sa_idx = (py - ey0) * ew + (px - ex0);
             uint8_t sa = shadow_alpha[sa_idx];
             if (sa == 0) continue;
@@ -2253,10 +2620,27 @@ void SoftwareRenderer::draw_line_segment(float x1, float y1, float x2, float y2,
 
 void SoftwareRenderer::apply_clip_path_mask(const Rect& bounds, int clip_type,
                                              const std::vector<float>& values) {
-    int x0 = std::max(0, static_cast<int>(std::floor(bounds.x)));
-    int y0 = std::max(0, static_cast<int>(std::floor(bounds.y)));
-    int x1 = std::min(pixels_width(), static_cast<int>(std::ceil(bounds.x + bounds.width)));
-    int y1 = std::min(pixels_height(), static_cast<int>(std::ceil(bounds.y + bounds.height)));
+    clip_path_last_mask_x_ = 0;
+    clip_path_last_mask_y_ = 0;
+    clip_path_last_mask_width_ = 0;
+    clip_path_last_mask_height_ = 0;
+
+    Rect mask_bounds = bounds;
+    if (!clip_stack_.empty()) {
+        mask_bounds = intersect_rects(mask_bounds, clip_stack_.top());
+    }
+
+    int x0 = 0;
+    int y0 = 0;
+    int x1 = 0;
+    int y1 = 0;
+    if (!rect_to_pixel_bounds(mask_bounds, pixels_width(), pixels_height(), x0, y0, x1, y1)) {
+        return;
+    }
+    clip_path_last_mask_x_ = x0;
+    clip_path_last_mask_y_ = y0;
+    clip_path_last_mask_width_ = x1 - x0;
+    clip_path_last_mask_height_ = y1 - y0;
 
     // Center of the element's bounding box (used as default center for circle/ellipse)
     float cx = bounds.x + bounds.width / 2.0f;
@@ -2422,15 +2806,27 @@ void SoftwareRenderer::apply_blend_mode_to_region(const Rect& bounds, int blend_
     auto snap = std::move(backdrop_stack_.top());
     backdrop_stack_.pop();
 
-    int x0 = std::max(0, static_cast<int>(std::floor(bounds.x)));
-    int y0 = std::max(0, static_cast<int>(std::floor(bounds.y)));
-    int x1 = std::min(pixels_width(), static_cast<int>(std::ceil(bounds.x + bounds.width)));
-    int y1 = std::min(pixels_height(), static_cast<int>(std::ceil(bounds.y + bounds.height)));
+    Rect blend_bounds = bounds;
+    if (!clip_stack_.empty()) {
+        blend_bounds = intersect_rects(blend_bounds, clip_stack_.top());
+    }
+
+    int x0 = 0;
+    int y0 = 0;
+    int x1 = 0;
+    int y1 = 0;
+    if (!rect_to_pixel_bounds(blend_bounds, pixels_width(), pixels_height(), x0, y0, x1, y1)) {
+        return;
+    }
 
     // Backdrop region bounds (from the snapshot)
-    int bx0 = std::max(0, static_cast<int>(std::floor(snap.bounds.x)));
-    int by0 = std::max(0, static_cast<int>(std::floor(snap.bounds.y)));
-    int bx1 = std::min(pixels_width(), static_cast<int>(std::ceil(snap.bounds.x + snap.bounds.width)));
+    int bx0 = 0;
+    int by0 = 0;
+    int bx1 = 0;
+    int by1 = 0;
+    if (!rect_to_pixel_bounds(snap.bounds, pixels_width(), pixels_height(), bx0, by0, bx1, by1)) {
+        return;
+    }
     int bw = bx1 - bx0;
 
     if (bw <= 0 || snap.pixels.empty()) return;

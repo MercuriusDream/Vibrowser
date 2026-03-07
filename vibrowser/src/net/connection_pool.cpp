@@ -38,6 +38,7 @@ int ConnectionPool::acquire(const std::string& host, uint16_t port) {
             continue;
         }
 
+        ++reused_socket_count_;
         if (it->second.empty()) {
             pools_.erase(it);
         }
@@ -67,6 +68,7 @@ void ConnectionPool::release(const std::string& host, uint16_t port, int fd) {
     if (pool.size() >= max_per_host_) {
         int old_fd = pool.front().fd;
         pool.pop_front();
+        ++per_host_capacity_evictions_count_;
         // Close the evicted connection's fd.
         // Note: In tests we use fake fds, so close may fail -- that is fine.
         ::close(old_fd);
@@ -94,6 +96,7 @@ void ConnectionPool::release(const std::string& host, uint16_t port, int fd) {
 
         int old_fd = oldest_pool_it->second.front().fd;
         oldest_pool_it->second.pop_front();
+        ++total_capacity_evictions_count_;
         ::close(old_fd);
         if (oldest_pool_it->second.empty()) {
             pools_.erase(oldest_pool_it);
@@ -121,6 +124,20 @@ size_t ConnectionPool::count(const std::string& host, uint16_t port) const {
     return it->second.size();
 }
 
+size_t ConnectionPool::reused_socket_count() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return reused_socket_count_;
+}
+
+ConnectionPool::EvictionStats ConnectionPool::eviction_stats() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    EvictionStats stats;
+    stats.idle_evictions = idle_evictions_count_;
+    stats.per_host_capacity_evictions = per_host_capacity_evictions_count_;
+    stats.total_capacity_evictions = total_capacity_evictions_count_;
+    return stats;
+}
+
 void ConnectionPool::evict_idle_locked() {
     const auto now = std::chrono::steady_clock::now();
     for (auto it = pools_.begin(); it != pools_.end();) {
@@ -132,6 +149,7 @@ void ConnectionPool::evict_idle_locked() {
                 break;
             }
             ::close(conn.fd);
+            ++idle_evictions_count_;
             pool.pop_front();
         }
 

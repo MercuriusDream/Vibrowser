@@ -7,13 +7,123 @@ namespace clever::css {
 
 namespace {
 
-const SelectorList* cached_function_selector_list(const SimpleSelector& selector) {
-    if (selector.parsed_selector_list) {
-        return selector.parsed_selector_list.get();
-    }
-    return nullptr;
+std::string ascii_lower(std::string value) {
+    std::transform(
+        value.begin(),
+        value.end(),
+        value.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
 }
 
+bool attribute_value_equals(std::string_view lhs, std::string_view rhs, bool case_insensitive) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    if (!case_insensitive) {
+        return lhs == rhs;
+    }
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        const unsigned char left = static_cast<unsigned char>(lhs[i]);
+        const unsigned char right = static_cast<unsigned char>(rhs[i]);
+        if (std::tolower(left) != std::tolower(right)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool attribute_value_starts_with(std::string_view value,
+                                 std::string_view prefix,
+                                 bool case_insensitive) {
+    if (value.size() < prefix.size()) {
+        return false;
+    }
+    return attribute_value_equals(value.substr(0, prefix.size()), prefix, case_insensitive);
+}
+
+bool attribute_value_ends_with(std::string_view value,
+                               std::string_view suffix,
+                               bool case_insensitive) {
+    if (value.size() < suffix.size()) {
+        return false;
+    }
+    return attribute_value_equals(
+        value.substr(value.size() - suffix.size()),
+        suffix,
+        case_insensitive);
+}
+
+bool attribute_value_contains(std::string_view haystack,
+                              std::string_view needle,
+                              bool case_insensitive) {
+    if (needle.empty() || haystack.size() < needle.size()) {
+        return false;
+    }
+    if (!case_insensitive) {
+        return haystack.find(needle) != std::string::npos;
+    }
+    const std::string folded_haystack = ascii_lower(std::string(haystack));
+    const std::string folded_needle = ascii_lower(std::string(needle));
+    return folded_haystack.find(folded_needle) != std::string::npos;
+}
+
+bool name_matches_ascii_case_insensitive(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < lhs.size(); ++i) {
+        if (std::tolower(static_cast<unsigned char>(lhs[i])) !=
+            std::tolower(static_cast<unsigned char>(rhs[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool matches_rightmost_selector_key(const ElementView& element, const RightmostSelectorKey& key) {
+    switch (key.type) {
+        case RightmostSelectorKeyType::None:
+            return true;
+        case RightmostSelectorKeyType::Type:
+            return element.tag_name == key.value;
+        case RightmostSelectorKeyType::Class:
+            return std::find(element.classes.begin(), element.classes.end(), key.value) !=
+                   element.classes.end();
+        case RightmostSelectorKeyType::Id:
+            return element.id == key.value;
+        case RightmostSelectorKeyType::Attribute:
+            if (key.value.empty()) {
+                return true;
+            }
+            for (const auto& [name, _] : element.attributes) {
+                if (name_matches_ascii_case_insensitive(name, key.value)) {
+                    return true;
+                }
+            }
+            return false;
+    }
+
+    return true;
+}
+
+}
+
+const SelectorList& SelectorMatcher::selector_list_for_function(const SimpleSelector& selector) const {
+    static const SelectorList empty_list;
+    if (const SelectorList* cached = function_selector_list_program(selector)) {
+        if (selector.parsed_selector_list) {
+            return *selector.parsed_selector_list;
+        }
+
+        auto& mutable_selector = const_cast<SimpleSelector&>(selector);
+        if (auto attached = attach_compiled_function_selector_list(mutable_selector)) {
+            return *attached;
+        }
+        return *cached;
+    }
+
+    return empty_list;
 }
 
 // Parse an+b expression from :nth-child() argument
@@ -143,6 +253,9 @@ static bool compute_same_type_position(const ElementView& element, int& position
 
 bool SelectorMatcher::matches(const ElementView& element, const ComplexSelector& selector) const {
     if (selector.parts.empty()) {
+        return false;
+    }
+    if (!matches_rightmost_selector_key(element, selector.rightmost_match_key)) {
         return false;
     }
 
@@ -405,11 +518,12 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             if (!attr_value) return false;
 
             const std::string& val = *attr_value;
+            const bool case_insensitive = simple.argument == "i";
             switch (simple.attr_match) {
                 case AttributeMatch::Exists:
                     return true;
                 case AttributeMatch::Exact:
-                    return val == simple.attr_value;
+                    return attribute_value_equals(val, simple.attr_value, case_insensitive);
                 case AttributeMatch::Includes: {
                     // Whitespace-separated token list contains the value.
                     if (simple.attr_value.empty()) return false;
@@ -426,7 +540,10 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                         }
                         const size_t len = i - start;
                         if (len == simple.attr_value.size() &&
-                            val.compare(start, len, simple.attr_value) == 0) {
+                            attribute_value_equals(
+                                std::string_view(val).substr(start, len),
+                                simple.attr_value,
+                                case_insensitive)) {
                             return true;
                         }
                     }
@@ -434,31 +551,35 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 }
                 case AttributeMatch::DashMatch:
                     if (simple.attr_value.empty()) return false;
-                    return val == simple.attr_value ||
+                    return attribute_value_equals(val, simple.attr_value, case_insensitive) ||
                            (val.length() > simple.attr_value.length() &&
-                            val.compare(0, simple.attr_value.length(), simple.attr_value) == 0 &&
+                            attribute_value_starts_with(
+                                val,
+                                simple.attr_value,
+                                case_insensitive) &&
                             val[simple.attr_value.length()] == '-');
                 case AttributeMatch::Prefix:
-                    if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
-                        return false;
-                    }
-                    return val.compare(0, simple.attr_value.length(), simple.attr_value) == 0;
+                    return !simple.attr_value.empty() &&
+                           attribute_value_starts_with(
+                               val,
+                               simple.attr_value,
+                               case_insensitive);
                 case AttributeMatch::Suffix:
-                    if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
-                        return false;
-                    }
-                    return val.compare(
-                               val.length() - simple.attr_value.length(),
-                               simple.attr_value.length(),
-                               simple.attr_value) == 0;
+                    return !simple.attr_value.empty() &&
+                           attribute_value_ends_with(
+                               val,
+                               simple.attr_value,
+                               case_insensitive);
                 case AttributeMatch::Substring:
-                    if (simple.attr_value.empty()) return false;
-                    return val.find(simple.attr_value) != std::string::npos;
+                    return attribute_value_contains(
+                        val,
+                        simple.attr_value,
+                        case_insensitive);
             }
         }
 
         case SimpleSelectorType::PseudoClass: {
-            const auto& name = simple.value;
+            const std::string name = ascii_lower(simple.value);
             if (name == "first-child") {
                 if (element.sibling_count > 0 && element.child_index < element.sibling_count) {
                     return element.child_index == 0;
@@ -576,13 +697,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "not") {
                 // :not() receives a comma-separated selector list. It matches only
                 // when every selector in that list does NOT match this element.
-                SelectorList parsed_list;
-                const SelectorList* inner_list = cached_function_selector_list(simple);
-                if (!inner_list) {
-                    parsed_list = parse_selector_list(simple.argument);
-                    inner_list = &parsed_list;
-                }
-                for (const auto& sel : inner_list->selectors) {
+                const SelectorList& inner_list = selector_list_for_function(simple);
+                for (const auto& sel : inner_list.selectors) {
                     if (matches(element, sel)) return false;
                 }
                 return true;
@@ -590,13 +706,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 // :is() / :where() / :matches() / -webkit-any() accept a comma-separated
                 // selector list and match when any listed selector matches.
                 // :where() is identical here; specificity is handled elsewhere.
-                SelectorList parsed_list;
-                const SelectorList* inner_list = cached_function_selector_list(simple);
-                if (!inner_list) {
-                    parsed_list = parse_selector_list(simple.argument);
-                    inner_list = &parsed_list;
-                }
-                for (const auto& sel : inner_list->selectors) {
+                const SelectorList& inner_list = selector_list_for_function(simple);
+                for (const auto& sel : inner_list.selectors) {
                     if (matches(element, sel)) return true;
                 }
                 return false;
@@ -635,13 +746,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "has") {
                 // :has() takes a comma-separated selector list. It matches when any
                 // selector in that list matches via the relative matching path.
-                SelectorList parsed_list;
-                const SelectorList* inner_list = cached_function_selector_list(simple);
-                if (!inner_list) {
-                    parsed_list = parse_selector_list(simple.argument);
-                    inner_list = &parsed_list;
-                }
-                for (const auto& sel : inner_list->selectors) {
+                const SelectorList& inner_list = selector_list_for_function(simple);
+                for (const auto& sel : inner_list.selectors) {
                     if (has_selector_matches(element, sel)) return true;
                 }
                 return false;
@@ -767,7 +873,10 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 }
                 return false;
             } else if (name == "active") {
-                // Active pseudo-class not yet tracked.
+                // Check for active-state attributes set by the UI layer.
+                for (const auto& [n, v] : element.attributes) {
+                    if (n == "data-vibrowser-active" || n == "data-clever-active") return true;
+                }
                 return false;
             } else if (name == "visited") {
                 // Privacy-preserving fallback: without browser history state,

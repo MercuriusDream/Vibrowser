@@ -61,12 +61,14 @@ SimpleSelector make_id_sel(const std::string& id) {
 }
 
 SimpleSelector make_attr_sel(const std::string& attr_name, const std::string& attr_val,
-                             AttributeMatch match = AttributeMatch::Exact) {
+                             AttributeMatch match = AttributeMatch::Exact,
+                             std::string flag = {}) {
     SimpleSelector s;
     s.type = SimpleSelectorType::Attribute;
     s.attr_name = attr_name;
     s.attr_match = match;
     s.attr_value = attr_val;
+    s.argument = flag;
     return s;
 }
 
@@ -99,6 +101,67 @@ ComplexSelector make_complex_chain(
         cs.parts.push_back(part);
     }
     return cs;
+}
+
+StyleRule make_rule_with_declarations(const std::string& selector,
+                                      std::initializer_list<Declaration> declarations) {
+    StyleRule rule;
+    rule.selector_text = selector;
+    rule.selectors = parse_selector_list(selector);
+    rule.declarations.assign(declarations.begin(), declarations.end());
+    return rule;
+}
+
+void clear_rightmost_selector_keys(std::vector<StyleRule>& rules) {
+    for (auto& rule : rules) {
+        for (auto& selector : rule.selectors.selectors) {
+            selector.rightmost_match_key = {};
+        }
+    }
+}
+
+void clear_all_rightmost_selector_keys(StyleSheet& sheet) {
+    clear_rightmost_selector_keys(sheet.rules);
+    for (auto& media_query : sheet.media_queries) {
+        clear_rightmost_selector_keys(media_query.rules);
+    }
+    for (auto& supports_rule : sheet.supports_rules) {
+        clear_rightmost_selector_keys(supports_rule.rules);
+    }
+    for (auto& layer_rule : sheet.layer_rules) {
+        clear_rightmost_selector_keys(layer_rule.rules);
+    }
+    for (auto& scope_rule : sheet.scope_rules) {
+        clear_rightmost_selector_keys(scope_rule.rules);
+    }
+}
+
+void clear_top_level_function_selector_lists(std::vector<StyleRule>& rules) {
+    for (auto& rule : rules) {
+        for (auto& selector : rule.selectors.selectors) {
+            for (auto& part : selector.parts) {
+                for (auto& simple : part.compound.simple_selectors) {
+                    simple.parsed_selector_list.reset();
+                }
+            }
+        }
+    }
+}
+
+void clear_all_function_selector_lists(StyleSheet& sheet) {
+    clear_top_level_function_selector_lists(sheet.rules);
+    for (auto& media_query : sheet.media_queries) {
+        clear_top_level_function_selector_lists(media_query.rules);
+    }
+    for (auto& supports_rule : sheet.supports_rules) {
+        clear_top_level_function_selector_lists(supports_rule.rules);
+    }
+    for (auto& layer_rule : sheet.layer_rules) {
+        clear_top_level_function_selector_lists(layer_rule.rules);
+    }
+    for (auto& scope_rule : sheet.scope_rules) {
+        clear_top_level_function_selector_lists(scope_rule.rules);
+    }
 }
 
 } // anonymous namespace
@@ -557,6 +620,226 @@ TEST(SelectorMatcherTest, AttributeSelectorParsesUnquotedNumericValue) {
     EXPECT_EQ(attr_sel.attr_value, "2");
 }
 
+TEST(SelectorMatcherTest, AttributeSelectorExactKeepsRightmostBucketKeyWithCaseFlagV2093) {
+    auto list = parse_selector_list("[data-case='alpha' i]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts[0].compound.simple_selectors.size(), 1u);
+
+    const auto& selector = list.selectors[0];
+    const auto& attr_sel = selector.parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(attr_sel.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(attr_sel.attr_name, "data-case");
+    EXPECT_EQ(attr_sel.attr_match, AttributeMatch::Exact);
+    EXPECT_EQ(attr_sel.attr_value, "alpha");
+    EXPECT_EQ(attr_sel.argument, "i");
+    EXPECT_EQ(selector.rightmost_match_key.type, RightmostSelectorKeyType::Attribute);
+    EXPECT_EQ(selector.rightmost_match_key.value, "data-case");
+}
+
+TEST(SelectorMatcherTest, AttributeDashMatchSelectorComputesRightmostBucketKeyV2087) {
+    auto list = parse_selector_list("[lang|=en]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts[0].compound.simple_selectors.size(), 1u);
+
+    const auto& selector = list.selectors[0];
+    const auto& attr_sel = selector.parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(attr_sel.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(attr_sel.attr_name, "lang");
+    EXPECT_EQ(attr_sel.attr_match, AttributeMatch::DashMatch);
+    EXPECT_EQ(attr_sel.attr_value, "en");
+    EXPECT_EQ(selector.rightmost_match_key.type, RightmostSelectorKeyType::Attribute);
+    EXPECT_EQ(selector.rightmost_match_key.value, "lang");
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorIncludesComputesRightmostBucketKeyV2092) {
+    auto list = parse_selector_list("[data-tags~=hero]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts[0].compound.simple_selectors.size(), 1u);
+
+    const auto& selector = list.selectors[0];
+    const auto& attr_sel = selector.parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(attr_sel.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(attr_sel.attr_name, "data-tags");
+    EXPECT_EQ(attr_sel.attr_match, AttributeMatch::Includes);
+    EXPECT_EQ(attr_sel.attr_value, "hero");
+    EXPECT_EQ(selector.rightmost_match_key.type, RightmostSelectorKeyType::Attribute);
+    EXPECT_EQ(selector.rightmost_match_key.value, "data-tags");
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorPrefixComputesRightmostBucketKeyV2092) {
+    auto list = parse_selector_list("[data-prefix^='pre']");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts[0].compound.simple_selectors.size(), 1u);
+
+    const auto& selector = list.selectors[0];
+    const auto& attr_sel = selector.parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(attr_sel.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(attr_sel.attr_name, "data-prefix");
+    EXPECT_EQ(attr_sel.attr_match, AttributeMatch::Prefix);
+    EXPECT_EQ(attr_sel.attr_value, "pre");
+    EXPECT_EQ(selector.rightmost_match_key.type, RightmostSelectorKeyType::Attribute);
+    EXPECT_EQ(selector.rightmost_match_key.value, "data-prefix");
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorSuffixComputesRightmostBucketKeyV2092) {
+    auto list = parse_selector_list("[data-suffix$='tail']");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts[0].compound.simple_selectors.size(), 1u);
+
+    const auto& selector = list.selectors[0];
+    const auto& attr_sel = selector.parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(attr_sel.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(attr_sel.attr_name, "data-suffix");
+    EXPECT_EQ(attr_sel.attr_match, AttributeMatch::Suffix);
+    EXPECT_EQ(attr_sel.attr_value, "tail");
+    EXPECT_EQ(selector.rightmost_match_key.type, RightmostSelectorKeyType::Attribute);
+    EXPECT_EQ(selector.rightmost_match_key.value, "data-suffix");
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorSubstringComputesRightmostBucketKeyV2092) {
+    auto list = parse_selector_list("[data-substring*=beta]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts[0].compound.simple_selectors.size(), 1u);
+
+    const auto& selector = list.selectors[0];
+    const auto& attr_sel = selector.parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(attr_sel.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(attr_sel.attr_name, "data-substring");
+    EXPECT_EQ(attr_sel.attr_match, AttributeMatch::Substring);
+    EXPECT_EQ(attr_sel.attr_value, "beta");
+    EXPECT_EQ(selector.rightmost_match_key.type, RightmostSelectorKeyType::Attribute);
+    EXPECT_EQ(selector.rightmost_match_key.value, "data-substring");
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorFlagsKeepNormalizedRightmostBucketKeysV2094) {
+    struct FlaggedAttributeSelectorCase {
+        const char* selector_text;
+        AttributeMatch attr_match;
+        const char* attr_name;
+        const char* attr_value;
+        const char* attr_flag;
+        const char* bucket_key;
+    };
+
+    const FlaggedAttributeSelectorCase cases[] = {
+        {"[DATA-state='Alpha' s]", AttributeMatch::Exact, "DATA-state", "Alpha", "s", "data-state"},
+        {"[data-STATE='alpha' i]", AttributeMatch::Exact, "data-STATE", "alpha", "i", "data-state"},
+        {"[LANG|='EN' s]", AttributeMatch::DashMatch, "LANG", "EN", "s", "lang"},
+        {"[data-TAGS~='hero' i]", AttributeMatch::Includes, "data-TAGS", "hero", "i", "data-tags"},
+        {"[DATA-prefix^='Pre' s]", AttributeMatch::Prefix, "DATA-prefix", "Pre", "s", "data-prefix"},
+        {"[data-SUFFIX$='tail' i]", AttributeMatch::Suffix, "data-SUFFIX", "tail", "i", "data-suffix"},
+        {"[DATA-substring*='phaB' s]",
+         AttributeMatch::Substring,
+         "DATA-substring",
+         "phaB",
+         "s",
+         "data-substring"},
+    };
+
+    for (const auto& test_case : cases) {
+        auto list = parse_selector_list(test_case.selector_text);
+        ASSERT_EQ(list.selectors.size(), 1u) << test_case.selector_text;
+        ASSERT_EQ(list.selectors[0].parts.size(), 1u) << test_case.selector_text;
+        ASSERT_EQ(list.selectors[0].parts[0].compound.simple_selectors.size(), 1u)
+            << test_case.selector_text;
+
+        const auto& selector = list.selectors[0];
+        const auto& attr_sel = selector.parts[0].compound.simple_selectors[0];
+        EXPECT_EQ(attr_sel.type, SimpleSelectorType::Attribute) << test_case.selector_text;
+        EXPECT_EQ(attr_sel.attr_name, test_case.attr_name) << test_case.selector_text;
+        EXPECT_EQ(attr_sel.attr_match, test_case.attr_match) << test_case.selector_text;
+        EXPECT_EQ(attr_sel.attr_value, test_case.attr_value) << test_case.selector_text;
+        EXPECT_EQ(attr_sel.argument, test_case.attr_flag) << test_case.selector_text;
+        EXPECT_EQ(selector.rightmost_match_key.type, RightmostSelectorKeyType::Attribute)
+            << test_case.selector_text;
+        EXPECT_EQ(selector.rightmost_match_key.value, test_case.bucket_key)
+            << test_case.selector_text;
+    }
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorExpandedFamiliesRespectCaseFlagsV2092) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.attributes = {{"data-prefix", "PrefixValue"},
+                       {"data-suffix", "MixedTail"},
+                       {"data-substring", "AlphaBeta"},
+                       {"data-tags", "Hero primary"}};
+
+    CompoundSelector prefix_compound;
+    prefix_compound.simple_selectors.push_back(
+        make_attr_sel("data-prefix", "Pre", AttributeMatch::Prefix));
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(prefix_compound)));
+    prefix_compound.simple_selectors[0].attr_value = "pre";
+    prefix_compound.simple_selectors[0].argument = "i";
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(prefix_compound)));
+    prefix_compound.simple_selectors[0].argument = "s";
+    EXPECT_FALSE(matcher.matches(elem, make_simple_complex(prefix_compound)));
+
+    CompoundSelector suffix_compound;
+    suffix_compound.simple_selectors.push_back(
+        make_attr_sel("data-suffix", "Tail", AttributeMatch::Suffix));
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(suffix_compound)));
+    suffix_compound.simple_selectors[0].attr_value = "tail";
+    suffix_compound.simple_selectors[0].argument = "i";
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(suffix_compound)));
+    suffix_compound.simple_selectors[0].argument = "s";
+    EXPECT_FALSE(matcher.matches(elem, make_simple_complex(suffix_compound)));
+
+    CompoundSelector substring_compound;
+    substring_compound.simple_selectors.push_back(
+        make_attr_sel("data-substring", "phaB", AttributeMatch::Substring));
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(substring_compound)));
+    substring_compound.simple_selectors[0].attr_value = "phab";
+    substring_compound.simple_selectors[0].argument = "i";
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(substring_compound)));
+    substring_compound.simple_selectors[0].argument = "s";
+    EXPECT_FALSE(matcher.matches(elem, make_simple_complex(substring_compound)));
+
+    CompoundSelector includes_compound;
+    includes_compound.simple_selectors.push_back(
+        make_attr_sel("data-tags", "Hero", AttributeMatch::Includes));
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(includes_compound)));
+    includes_compound.simple_selectors[0].attr_value = "hero";
+    includes_compound.simple_selectors[0].argument = "i";
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(includes_compound)));
+    includes_compound.simple_selectors[0].argument = "s";
+    EXPECT_FALSE(matcher.matches(elem, make_simple_complex(includes_compound)));
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorCaseInsensitiveFlagMatches) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "input";
+    elem.attributes = {{"type", "button"}};
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_attr_sel("type", "BUTTON", AttributeMatch::Exact, "i"));
+
+    EXPECT_TRUE(matcher.matches(elem, make_simple_complex(compound)));
+}
+
+TEST(SelectorMatcherTest, AttributeSelectorCaseSensitiveFlagDoesNotFold) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.attributes = {{"data-id", "abc"}};
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_attr_sel("data-id", "AbC", AttributeMatch::Exact, "s"));
+
+    EXPECT_FALSE(matcher.matches(elem, make_simple_complex(compound)));
+}
+
 // ===========================================================================
 // Test 24: PropertyCascade: single rule applied
 // ===========================================================================
@@ -757,6 +1040,46 @@ TEST(StyleResolverTest, ResolveWithSingleStylesheet) {
     EXPECT_EQ(result.color.b, 0);
 }
 
+TEST(StyleResolverTest, PaintFunctionImageValueParsesV2068) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ".box { "
+        "background-image: paint(accent-chip, 12px, rgba(255, 0, 0, 0.5)); "
+        "background-repeat: no-repeat; "
+        "}");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("box");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_repeat, 3);
+    EXPECT_TRUE(style.bg_image_url.empty());
+    EXPECT_EQ(style.gradient_type, 0);
+    EXPECT_TRUE(style.gradient_stops.empty());
+}
+
+TEST(StyleResolverTest, PaintFunctionBackgroundFallsBackSafelyV2068) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ".box { background: paint(accent-chip, 12px, rgba(0, 0, 0, 0.25)) rgb(12, 34, 56); }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("box");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_color, (Color{12, 34, 56, 255}));
+    EXPECT_TRUE(style.bg_image_url.empty());
+    EXPECT_EQ(style.gradient_type, 0);
+}
+
 TEST(StyleResolverTest, SelectorListUsesHighestMatchingSpecificityForCascadeRanking) {
     const std::string css =
         "div, #hero { color: rgb(255, 0, 0); }"
@@ -775,6 +1098,797 @@ TEST(StyleResolverTest, SelectorListUsesHighestMatchingSpecificityForCascadeRank
     auto style = resolver.resolve(elem, parent);
 
     EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, UsesPrecomputedSelectorSpecificity) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "div { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }");
+
+    ASSERT_EQ(sheet.rules.size(), 2u);
+    ASSERT_EQ(sheet.rules[0].selectors.selectors.size(), 1u);
+    ASSERT_EQ(sheet.rules[1].selectors.selectors.size(), 1u);
+
+    sheet.rules[0].selectors.selectors[0].precomputed_specificity = Specificity{2, 0, 0};
+    sheet.rules[1].selectors.selectors[0].precomputed_specificity = Specificity{0, 1, 0};
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorPrefilterKeepsCascadeResultsV2062) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ":where(.card) { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }"
+        "* { display: block; }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(style.display, Display::Block);
+}
+
+TEST(StyleResolverTest, RightmostSelectorPrefilterSkipsImpossibleClassRulesV2062) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+
+    StyleRule impossible_rule;
+    CompoundSelector impossible_compound;
+    impossible_compound.simple_selectors.push_back(make_type_sel("div"));
+    auto impossible_selector = make_simple_complex(impossible_compound);
+    impossible_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "missing"};
+    impossible_rule.selectors.selectors.push_back(impossible_selector);
+    impossible_rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    sheet.rules.push_back(impossible_rule);
+
+    StyleRule matching_rule;
+    CompoundSelector matching_compound;
+    matching_compound.simple_selectors.push_back(make_class_sel("card"));
+    auto matching_selector = make_simple_complex(matching_compound);
+    matching_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "card"};
+    matching_rule.selectors.selectors.push_back(matching_selector);
+    matching_rule.declarations.push_back(make_decl("display", "flex"));
+    sheet.rules.push_back(matching_rule);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, Color::black());
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsPreserveCascadeV2067) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "* { display: block; }"
+        "div { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }"
+        "#hero { color: rgb(0, 128, 0); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Block);
+    EXPECT_EQ(style.color, (Color{0, 128, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsSkipImpossibleRulesV2067) {
+    StyleResolver resolver;
+
+    StyleSheet sheet;
+
+    StyleRule impossible_type_rule;
+    CompoundSelector impossible_type_compound;
+    impossible_type_compound.simple_selectors.push_back(make_type_sel("div"));
+    auto impossible_type_selector = make_simple_complex(impossible_type_compound);
+    impossible_type_selector.rightmost_match_key = {RightmostSelectorKeyType::Type, "span"};
+    impossible_type_rule.selectors.selectors.push_back(impossible_type_selector);
+    impossible_type_rule.declarations.push_back(make_decl("display", "grid"));
+    sheet.rules.push_back(impossible_type_rule);
+
+    StyleRule impossible_id_rule;
+    CompoundSelector impossible_id_compound;
+    impossible_id_compound.simple_selectors.push_back(make_id_sel("hero"));
+    auto impossible_id_selector = make_simple_complex(impossible_id_compound);
+    impossible_id_selector.rightmost_match_key = {RightmostSelectorKeyType::Id, "other"};
+    impossible_id_rule.selectors.selectors.push_back(impossible_id_selector);
+    impossible_id_rule.declarations.push_back(make_decl("color", "rgb(255, 0, 0)"));
+    sheet.rules.push_back(impossible_id_rule);
+
+    StyleRule matching_class_rule;
+    CompoundSelector matching_class_compound;
+    matching_class_compound.simple_selectors.push_back(make_class_sel("card"));
+    auto matching_class_selector = make_simple_complex(matching_class_compound);
+    matching_class_selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "card"};
+    matching_class_rule.selectors.selectors.push_back(matching_class_selector);
+    matching_class_rule.declarations.push_back(make_decl("display", "flex"));
+    matching_class_rule.declarations.push_back(make_decl("color", "rgb(0, 0, 255)"));
+    sheet.rules.push_back(matching_class_rule);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsIdMatchV2082) {
+    StyleResolver resolver;
+
+    auto sheet = parse_stylesheet(
+        "#hero { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 255, 0); }"
+        "div { color: rgb(0, 0, 255); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsClassMatchV2082) {
+    StyleResolver resolver;
+
+    auto sheet = parse_stylesheet(
+        "div { color: rgb(0, 0, 255); }"
+        "#hero { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 255, 0); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 255, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsTypeMatchV2082) {
+    StyleResolver resolver;
+
+    auto sheet = parse_stylesheet(
+        ".other { color: rgb(0, 255, 0); }"
+        "span { color: rgb(0, 0, 255); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsUniversalFallbackV2082) {
+    StyleResolver resolver;
+
+    auto sheet = parse_stylesheet("[data-case='bucket-test'] { color: rgb(128, 0, 255); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.attributes.push_back({"data-case", "bucket-test"});
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{128, 0, 255, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsAttributeExistsV2083) {
+    StyleResolver resolver;
+
+    auto sheet = parse_stylesheet(
+        "[data-bucket] { color: rgb(0, 255, 0); }"
+        "[DATA-BUCKET] { color: rgb(255, 0, 0); }"
+        "* { color: rgb(0, 0, 255); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.attributes.push_back({"data-bucket", "present"});
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsAttributeValueMatchV2083) {
+    StyleResolver resolver;
+
+    auto sheet = parse_stylesheet(
+        "[data-state='off'] { color: rgb(0, 0, 255); }"
+        "[data-state='on'] { color: rgb(0, 255, 0); }"
+        "* { color: rgb(255, 0, 0); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.attributes.push_back({"data-state", "on"});
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 255, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsAttributeDashMatchV2087) {
+    StyleResolver resolver;
+
+    auto sheet = parse_stylesheet(
+        "[lang|='fr'] { color: rgb(0, 0, 255); }"
+        "[LANG|='en'] { color: rgb(0, 255, 0); }"
+        "* { color: rgb(255, 0, 0); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.attributes.push_back({"lang", "en-US"});
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 255, 0, 255}));
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsAttributeExpandedFamiliesPreserveCaseFlagParityV2092) {
+    StyleResolver resolver;
+
+    auto sheet = parse_stylesheet(
+        "[data-prefix^='Pre'] { color: rgb(10, 20, 30); }"
+        "[data-prefix^='pre' i] { background-color: rgb(40, 50, 60); }"
+        "[data-prefix^='pre' s] { color: rgb(200, 0, 0); }"
+        "[data-suffix$='Tail'] { opacity: 0.25; }"
+        "[data-suffix$='tail' i] { position: relative; }"
+        "[data-suffix$='tail' s] { position: absolute; }"
+        "[data-substring*='phaB'] { display: flex; }"
+        "[data-substring*='phab' i] { cursor: pointer; }"
+        "[data-substring*='phab' s] { cursor: move; }"
+        "[data-tags~='Hero'] { font-weight: 700; }"
+        "[data-tags~='hero' i] { font-style: italic; }"
+        "[data-tags~='hero' s] { font-style: normal; }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.attributes = {{"data-prefix", "PrefixValue"},
+                       {"data-suffix", "MixedTail"},
+                       {"data-substring", "AlphaBeta"},
+                       {"data-tags", "Hero primary"}};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{10, 20, 30, 255}));
+    EXPECT_EQ(style.background_color, (Color{40, 50, 60, 255}));
+    EXPECT_FLOAT_EQ(style.opacity, 0.25f);
+    EXPECT_EQ(style.position, Position::Relative);
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_EQ(style.font_weight, 700);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsExactAttributeMatchParityV2093) {
+    auto bucketed_sheet = parse_stylesheet(
+        "[data-state='Alpha' s] { color: rgb(10, 20, 30); }"
+        "[data-state='alpha' i] { background-color: rgb(40, 50, 60); }"
+        "[data-state='alpha' s] { opacity: 0.25; }"
+        "[data-state='beta' i] { position: absolute; }");
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_rightmost_selector_keys(unbucketed_sheet.rules);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.attributes.push_back({"data-state", "Alpha"});
+
+    ComputedStyle parent;
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+    auto bucketed_style = bucketed_resolver.resolve(elem, parent);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+    auto unbucketed_style = unbucketed_resolver.resolve(elem, parent);
+
+    EXPECT_EQ(bucketed_style.color, unbucketed_style.color);
+    EXPECT_EQ(bucketed_style.background_color, unbucketed_style.background_color);
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, unbucketed_style.opacity);
+    EXPECT_EQ(bucketed_style.position, unbucketed_style.position);
+    EXPECT_EQ(bucketed_style.color, (Color{10, 20, 30, 255}));
+    EXPECT_EQ(bucketed_style.background_color, (Color{40, 50, 60, 255}));
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, 1.0f);
+    EXPECT_EQ(bucketed_style.position, Position::Static);
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsDashMatchAttributeParityV2093) {
+    auto bucketed_sheet = parse_stylesheet(
+        "[lang|='EN' s] { color: rgb(70, 80, 90); }"
+        "[lang|='en' i] { font-style: italic; }"
+        "[lang|='en' s] { opacity: 0.25; }"
+        "[lang|='fr' i] { display: flex; }");
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_rightmost_selector_keys(unbucketed_sheet.rules);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.attributes.push_back({"lang", "EN-US"});
+
+    ComputedStyle parent;
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+    auto bucketed_style = bucketed_resolver.resolve(elem, parent);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+    auto unbucketed_style = unbucketed_resolver.resolve(elem, parent);
+
+    EXPECT_EQ(bucketed_style.color, unbucketed_style.color);
+    EXPECT_EQ(bucketed_style.font_style, unbucketed_style.font_style);
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, unbucketed_style.opacity);
+    EXPECT_EQ(bucketed_style.display, unbucketed_style.display);
+    EXPECT_EQ(bucketed_style.color, (Color{70, 80, 90, 255}));
+    EXPECT_EQ(bucketed_style.font_style, FontStyle::Italic);
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, 1.0f);
+    EXPECT_EQ(bucketed_style.display, Display::Block);
+}
+
+TEST(StyleResolverTest,
+     RightmostSelectorBucketsFlaggedAttributeFamiliesMatchUnbucketedWithMixedNameCaseV2094) {
+    auto bucketed_sheet = parse_stylesheet(
+        "[DATA-state='Alpha' s] { color: rgb(10, 20, 30); }"
+        "[data-STATE='alpha' i] { background-color: rgb(40, 50, 60); }"
+        "[data-state='alpha' s] { float: right; }"
+        "[LANG|='EN' s] { position: relative; }"
+        "[lang|='en' i] { display: flex; }"
+        "[lang|='en' s] { clear: left; }"
+        "[DATA-tags~='Hero'] { font-weight: 700; }"
+        "[data-TAGS~='hero' i] { font-style: italic; }"
+        "[data-tags~='hero' s] { visibility: hidden; }"
+        "[DATA-prefix^='Pre'] { cursor: pointer; }"
+        "[data-PREFIX^='pre' i] { opacity: 0.5; }"
+        "[data-prefix^='pre' s] { box-sizing: border-box; }"
+        "[DATA-suffix$='Tail'] { color: rgb(70, 80, 90); }"
+        "[data-SUFFIX$='tail' i] { background-color: rgb(100, 110, 120); }"
+        "[data-suffix$='tail' s] { overflow-x: hidden; }"
+        "[DATA-substring*='phaB'] { font-weight: 900; }"
+        "[data-SUBSTRING*='phab' i] { cursor: move; }"
+        "[data-substring*='phab' s] { overflow-y: scroll; }");
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_rightmost_selector_keys(unbucketed_sheet.rules);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.attributes = {{"DATA-STATE", "Alpha"},
+                       {"lang", "EN-US"},
+                       {"Data-Tags", "Hero primary"},
+                       {"data-prefix", "PrefixValue"},
+                       {"DATA-SUFFIX", "MixedTail"},
+                       {"Data-Substring", "AlphaBeta"}};
+
+    ComputedStyle parent;
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+    auto bucketed_style = bucketed_resolver.resolve(elem, parent);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+    auto unbucketed_style = unbucketed_resolver.resolve(elem, parent);
+
+    EXPECT_EQ(bucketed_style.color, unbucketed_style.color);
+    EXPECT_EQ(bucketed_style.background_color, unbucketed_style.background_color);
+    EXPECT_EQ(bucketed_style.position, unbucketed_style.position);
+    EXPECT_EQ(bucketed_style.display, unbucketed_style.display);
+    EXPECT_EQ(bucketed_style.font_weight, unbucketed_style.font_weight);
+    EXPECT_EQ(bucketed_style.font_style, unbucketed_style.font_style);
+    EXPECT_EQ(bucketed_style.cursor, unbucketed_style.cursor);
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, unbucketed_style.opacity);
+    EXPECT_EQ(bucketed_style.float_val, unbucketed_style.float_val);
+    EXPECT_EQ(bucketed_style.clear, unbucketed_style.clear);
+    EXPECT_EQ(bucketed_style.visibility, unbucketed_style.visibility);
+    EXPECT_EQ(bucketed_style.box_sizing, unbucketed_style.box_sizing);
+    EXPECT_EQ(bucketed_style.overflow_x, unbucketed_style.overflow_x);
+    EXPECT_EQ(bucketed_style.overflow_y, unbucketed_style.overflow_y);
+
+    EXPECT_EQ(bucketed_style.color, (Color{70, 80, 90, 255}));
+    EXPECT_EQ(bucketed_style.background_color, (Color{100, 110, 120, 255}));
+    EXPECT_EQ(bucketed_style.position, Position::Relative);
+    EXPECT_EQ(bucketed_style.display, Display::Flex);
+    EXPECT_EQ(bucketed_style.font_weight, 900);
+    EXPECT_EQ(bucketed_style.font_style, FontStyle::Italic);
+    EXPECT_EQ(bucketed_style.cursor, Cursor::Move);
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, 0.5f);
+
+    EXPECT_EQ(bucketed_style.float_val, Float::None);
+    EXPECT_EQ(bucketed_style.clear, Clear::None);
+    EXPECT_EQ(bucketed_style.visibility, Visibility::Visible);
+    EXPECT_EQ(bucketed_style.box_sizing, BoxSizing::ContentBox);
+    EXPECT_EQ(bucketed_style.overflow_x, Overflow::Visible);
+    EXPECT_EQ(bucketed_style.overflow_y, Overflow::Visible);
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsSharedIsPseudoBranchesMatchUnbucketedV2097) {
+    auto bucketed_sheet = parse_stylesheet(
+        ":is(article > .card, section .card) { color: rgb(10, 20, 30); }"
+        ".card { background-color: rgb(40, 50, 60); }"
+        ".panel { opacity: 0.5; }");
+    ASSERT_EQ(bucketed_sheet.rules.size(), 3u);
+    ASSERT_EQ(bucketed_sheet.rules[0].selectors.selectors.size(), 1u);
+    EXPECT_EQ(
+        bucketed_sheet.rules[0].selectors.selectors[0].rightmost_match_key.type,
+        RightmostSelectorKeyType::Class);
+    EXPECT_EQ(bucketed_sheet.rules[0].selectors.selectors[0].rightmost_match_key.value, "card");
+
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_rightmost_selector_keys(unbucketed_sheet.rules);
+
+    ElementView parent_elem;
+    parent_elem.tag_name = "article";
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"card"};
+    elem.parent = &parent_elem;
+    parent_elem.children = {&elem};
+
+    ComputedStyle parent;
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+    auto bucketed_style = bucketed_resolver.resolve(elem, parent);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+    auto unbucketed_style = unbucketed_resolver.resolve(elem, parent);
+
+    EXPECT_EQ(bucketed_style.color, unbucketed_style.color);
+    EXPECT_EQ(bucketed_style.background_color, unbucketed_style.background_color);
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, unbucketed_style.opacity);
+    EXPECT_EQ(bucketed_style.color, (Color{10, 20, 30, 255}));
+    EXPECT_EQ(bucketed_style.background_color, (Color{40, 50, 60, 255}));
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, 1.0f);
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsSharedWhereBranchesMatchUnbucketedV2097) {
+    auto bucketed_sheet = parse_stylesheet(
+        ":where(article > [DATA-card], section [data-card])"
+        " { background-color: rgb(40, 50, 60); }"
+        "[data-card] { color: rgb(10, 20, 30); }"
+        "[data-other] { opacity: 0.5; }");
+    ASSERT_EQ(bucketed_sheet.rules.size(), 3u);
+    ASSERT_EQ(bucketed_sheet.rules[0].selectors.selectors.size(), 1u);
+    EXPECT_EQ(
+        bucketed_sheet.rules[0].selectors.selectors[0].rightmost_match_key.type,
+        RightmostSelectorKeyType::Attribute);
+    EXPECT_EQ(
+        bucketed_sheet.rules[0].selectors.selectors[0].rightmost_match_key.value,
+        "data-card");
+
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_rightmost_selector_keys(unbucketed_sheet.rules);
+
+    ElementView parent_elem;
+    parent_elem.tag_name = "article";
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.attributes = {{"data-card", "present"}};
+    elem.parent = &parent_elem;
+    parent_elem.children = {&elem};
+
+    ComputedStyle parent;
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+    auto bucketed_style = bucketed_resolver.resolve(elem, parent);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+    auto unbucketed_style = unbucketed_resolver.resolve(elem, parent);
+
+    EXPECT_EQ(bucketed_style.color, unbucketed_style.color);
+    EXPECT_EQ(bucketed_style.background_color, unbucketed_style.background_color);
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, unbucketed_style.opacity);
+    EXPECT_EQ(bucketed_style.color, (Color{10, 20, 30, 255}));
+    EXPECT_EQ(bucketed_style.background_color, (Color{40, 50, 60, 255}));
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, 1.0f);
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsSharedClassProofPseudoBranchesMatchUnbucketedV2107) {
+    auto bucketed_sheet = parse_stylesheet(
+        ":is(.card#hero, article > .card) { color: rgb(10, 20, 30); }"
+        ".card { background-color: rgb(40, 50, 60); }"
+        "#hero { opacity: 0.5; }");
+    ASSERT_EQ(bucketed_sheet.rules.size(), 3u);
+    ASSERT_EQ(bucketed_sheet.rules[0].selectors.selectors.size(), 1u);
+    EXPECT_EQ(
+        bucketed_sheet.rules[0].selectors.selectors[0].rightmost_match_key.type,
+        RightmostSelectorKeyType::Class);
+    EXPECT_EQ(bucketed_sheet.rules[0].selectors.selectors[0].rightmost_match_key.value, "card");
+
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_rightmost_selector_keys(unbucketed_sheet.rules);
+
+    ElementView parent_elem;
+    parent_elem.tag_name = "article";
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"card"};
+    elem.parent = &parent_elem;
+    parent_elem.children = {&elem};
+
+    ComputedStyle parent;
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+    auto bucketed_style = bucketed_resolver.resolve(elem, parent);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+    auto unbucketed_style = unbucketed_resolver.resolve(elem, parent);
+
+    EXPECT_EQ(bucketed_style.color, unbucketed_style.color);
+    EXPECT_EQ(bucketed_style.background_color, unbucketed_style.background_color);
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, unbucketed_style.opacity);
+    EXPECT_EQ(bucketed_style.color, (Color{10, 20, 30, 255}));
+    EXPECT_EQ(bucketed_style.background_color, (Color{40, 50, 60, 255}));
+    EXPECT_FLOAT_EQ(bucketed_style.opacity, 1.0f);
+}
+
+TEST(StyleResolverTest, MixedFunctionalPseudoBranchesStayUniversalAndKeepParityV2097) {
+    auto bucketed_sheet = parse_stylesheet(
+        ":is(.card, #hero) { color: rgb(10, 20, 30); }"
+        ".card { color: rgb(40, 50, 60); }"
+        "#hero { background-color: rgb(70, 80, 90); }");
+    ASSERT_EQ(bucketed_sheet.rules.size(), 3u);
+    ASSERT_EQ(bucketed_sheet.rules[0].selectors.selectors.size(), 1u);
+    EXPECT_EQ(
+        bucketed_sheet.rules[0].selectors.selectors[0].rightmost_match_key.type,
+        RightmostSelectorKeyType::None);
+
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_rightmost_selector_keys(unbucketed_sheet.rules);
+
+    ComputedStyle parent;
+
+    ElementView class_match;
+    class_match.tag_name = "div";
+    class_match.classes = {"card"};
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+    auto bucketed_class_style = bucketed_resolver.resolve(class_match, parent);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+    auto unbucketed_class_style = unbucketed_resolver.resolve(class_match, parent);
+
+    EXPECT_EQ(bucketed_class_style.color, unbucketed_class_style.color);
+    EXPECT_EQ(bucketed_class_style.background_color, unbucketed_class_style.background_color);
+    EXPECT_EQ(bucketed_class_style.color, (Color{10, 20, 30, 255}));
+    EXPECT_EQ(bucketed_class_style.background_color, Color::transparent());
+
+    ElementView id_match;
+    id_match.tag_name = "div";
+    id_match.id = "hero";
+
+    auto bucketed_id_style = bucketed_resolver.resolve(id_match, parent);
+    auto unbucketed_id_style = unbucketed_resolver.resolve(id_match, parent);
+
+    EXPECT_EQ(bucketed_id_style.color, unbucketed_id_style.color);
+    EXPECT_EQ(bucketed_id_style.background_color, unbucketed_id_style.background_color);
+    EXPECT_EQ(bucketed_id_style.color, (Color{10, 20, 30, 255}));
+    EXPECT_EQ(bucketed_id_style.background_color, (Color{70, 80, 90, 255}));
+
+    ElementView miss;
+    miss.tag_name = "div";
+    miss.classes = {"panel"};
+
+    auto bucketed_miss_style = bucketed_resolver.resolve(miss, parent);
+    auto unbucketed_miss_style = unbucketed_resolver.resolve(miss, parent);
+
+    EXPECT_EQ(bucketed_miss_style.color, unbucketed_miss_style.color);
+    EXPECT_EQ(bucketed_miss_style.background_color, unbucketed_miss_style.background_color);
+    EXPECT_EQ(bucketed_miss_style.color, Color::black());
+    EXPECT_EQ(bucketed_miss_style.background_color, Color::transparent());
+}
+
+TEST(StyleResolverTest, NestedFunctionalPseudoSelectorsStayBucketParityWithUncachedMatchingV2096) {
+    const std::string css =
+        "article:has(> section:is(.card, :not(.hidden))) {"
+        "  color: rgb(10, 20, 30);"
+        "}"
+        "article:has(> section:is(.hidden, :not(.card))) {"
+        "  background-color: rgb(40, 50, 60);"
+        "}"
+        "section:has(> section:is(.card, :not(.hidden))) {"
+        "  opacity: 0.5;"
+        "}";
+
+    auto cached_bucketed_sheet = parse_stylesheet(css);
+    auto uncached_bucketed_sheet = cached_bucketed_sheet;
+    clear_top_level_function_selector_lists(uncached_bucketed_sheet.rules);
+    auto uncached_unbucketed_sheet = uncached_bucketed_sheet;
+    clear_rightmost_selector_keys(uncached_unbucketed_sheet.rules);
+
+    ElementView child_section;
+    child_section.tag_name = "section";
+    child_section.classes = {"card"};
+
+    ElementView elem;
+    elem.tag_name = "article";
+    elem.classes = {"post"};
+    elem.children = {&child_section};
+    child_section.parent = &elem;
+
+    ComputedStyle parent;
+
+    StyleResolver cached_bucketed_resolver;
+    cached_bucketed_resolver.add_stylesheet(cached_bucketed_sheet);
+    auto cached_bucketed_style = cached_bucketed_resolver.resolve(elem, parent);
+
+    StyleResolver uncached_bucketed_resolver;
+    uncached_bucketed_resolver.add_stylesheet(uncached_bucketed_sheet);
+    auto uncached_bucketed_style = uncached_bucketed_resolver.resolve(elem, parent);
+
+    StyleResolver uncached_unbucketed_resolver;
+    uncached_unbucketed_resolver.add_stylesheet(uncached_unbucketed_sheet);
+    auto uncached_unbucketed_style = uncached_unbucketed_resolver.resolve(elem, parent);
+
+    EXPECT_EQ(cached_bucketed_style.color, uncached_bucketed_style.color);
+    EXPECT_EQ(cached_bucketed_style.color, uncached_unbucketed_style.color);
+    EXPECT_EQ(cached_bucketed_style.background_color, uncached_bucketed_style.background_color);
+    EXPECT_EQ(cached_bucketed_style.background_color, uncached_unbucketed_style.background_color);
+    EXPECT_FLOAT_EQ(cached_bucketed_style.opacity, uncached_bucketed_style.opacity);
+    EXPECT_FLOAT_EQ(cached_bucketed_style.opacity, uncached_unbucketed_style.opacity);
+
+    EXPECT_EQ(cached_bucketed_style.color, (Color{10, 20, 30, 255}));
+    EXPECT_EQ(cached_bucketed_style.background_color, Color::transparent());
+    EXPECT_FLOAT_EQ(cached_bucketed_style.opacity, 1.0f);
+}
+
+TEST(StyleResolverTest, ConditionalFunctionalPseudoSelectorsStayBucketParityWithFallbackCachingV2100) {
+    const std::string css =
+        ":is(article > .card, section .card) {"
+        "  color: rgb(10, 20, 30);"
+        "}"
+        "@media not print {"
+        "  :is(article > .card, section .card) {"
+        "    background-color: rgb(40, 50, 60);"
+        "  }"
+        "}"
+        "@supports (display: grid) {"
+        "  :is(article > .card, section .card) {"
+        "    opacity: 0.5;"
+        "  }"
+        "}";
+
+    auto cached_bucketed_sheet = parse_stylesheet(css);
+    auto uncached_bucketed_sheet = cached_bucketed_sheet;
+    clear_all_function_selector_lists(uncached_bucketed_sheet);
+    auto uncached_unbucketed_sheet = uncached_bucketed_sheet;
+    clear_all_rightmost_selector_keys(uncached_unbucketed_sheet);
+
+    ElementView parent_elem;
+    parent_elem.tag_name = "article";
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"card"};
+    elem.parent = &parent_elem;
+    parent_elem.children = {&elem};
+
+    ComputedStyle parent;
+
+    StyleResolver cached_bucketed_resolver;
+    cached_bucketed_resolver.add_stylesheet(cached_bucketed_sheet);
+
+    StyleResolver uncached_bucketed_resolver;
+    uncached_bucketed_resolver.add_stylesheet(uncached_bucketed_sheet);
+
+    StyleResolver uncached_unbucketed_resolver;
+    uncached_unbucketed_resolver.add_stylesheet(uncached_unbucketed_sheet);
+
+    for (int i = 0; i < 3; ++i) {
+        auto cached_bucketed_style = cached_bucketed_resolver.resolve(elem, parent);
+        auto uncached_bucketed_style = uncached_bucketed_resolver.resolve(elem, parent);
+        auto uncached_unbucketed_style = uncached_unbucketed_resolver.resolve(elem, parent);
+
+        EXPECT_EQ(cached_bucketed_style.color, uncached_bucketed_style.color) << "iteration=" << i;
+        EXPECT_EQ(cached_bucketed_style.color, uncached_unbucketed_style.color) << "iteration=" << i;
+        EXPECT_EQ(cached_bucketed_style.background_color, uncached_bucketed_style.background_color)
+            << "iteration=" << i;
+        EXPECT_EQ(
+            cached_bucketed_style.background_color,
+            uncached_unbucketed_style.background_color) << "iteration=" << i;
+        EXPECT_FLOAT_EQ(cached_bucketed_style.opacity, uncached_bucketed_style.opacity)
+            << "iteration=" << i;
+        EXPECT_FLOAT_EQ(cached_bucketed_style.opacity, uncached_unbucketed_style.opacity)
+            << "iteration=" << i;
+
+        EXPECT_EQ(cached_bucketed_style.color, (Color{10, 20, 30, 255})) << "iteration=" << i;
+        EXPECT_EQ(cached_bucketed_style.background_color, (Color{40, 50, 60, 255}))
+            << "iteration=" << i;
+        EXPECT_FLOAT_EQ(cached_bucketed_style.opacity, 0.5f) << "iteration=" << i;
+    }
+}
+
+TEST(StyleResolverTest, WhereSelectorKeepsZeroSpecificity) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        ":where(.card) { color: rgb(255, 0, 0); }"
+        ".card { color: rgb(0, 0, 255); }");
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("card");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
 }
 
 TEST(StyleResolverTest, AppliesSupportsRulesWhenConditionMatches) {
@@ -1056,6 +2170,858 @@ TEST(StyleResolverTest, CachedSupportsQueriesStayCorrectAcrossMultipleElements) 
     span.tag_name = "span";
     auto span_style = resolver.resolve(span, parent);
     EXPECT_EQ(span_style.color, (Color{0, 0, 255, 255}));
+}
+
+TEST(StyleResolverTest, ConditionalRuleCacheReuseAcrossNormalAndPseudoCollectionsV2081) {
+    StyleResolver resolver;
+    resolver.set_viewport(1024.0f, 768.0f);
+
+    resolver.add_stylesheet(parse_stylesheet(
+        "@media (min-width: 600px) {"
+        "  .card { color: rgb(255, 0, 0); }"
+        "  .card::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "}"
+        "@supports (display: grid) {"
+        "  .card { background-color: rgb(0, 255, 0); }"
+        "  .card::before { background-color: rgb(0, 255, 255); }"
+        "}"));
+
+    ElementView card;
+    card.tag_name = "div";
+    card.classes = {"card"};
+
+    ComputedStyle parent;
+    auto first_style = resolver.resolve(card, parent);
+    auto first_pseudo = resolver.resolve_pseudo(card, "before", first_style);
+
+    ASSERT_TRUE(first_pseudo.has_value());
+    EXPECT_EQ(first_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(first_style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(first_pseudo->color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(first_pseudo->background_color, (Color{0, 255, 255, 255}));
+
+    const auto compute_count_after_first_collect = resolver.conditional_rule_compute_count_for_testing();
+    const auto cache_size_after_first_collect = resolver.conditional_rule_cache_size_for_testing();
+    EXPECT_EQ(compute_count_after_first_collect, 0u);
+    EXPECT_EQ(cache_size_after_first_collect, 4u);
+
+    auto second_style = resolver.resolve(card, parent);
+    auto second_pseudo = resolver.resolve_pseudo(card, "before", second_style);
+
+    EXPECT_EQ(second_style.color, first_style.color);
+    EXPECT_EQ(second_style.background_color, first_style.background_color);
+    EXPECT_EQ(second_pseudo->color, first_pseudo->color);
+    EXPECT_EQ(second_pseudo->background_color, first_pseudo->background_color);
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), compute_count_after_first_collect);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), cache_size_after_first_collect);
+}
+
+TEST(StyleResolverTest, ConditionalRuleCacheCoalescesSharedContextsWithinOneResolvePassV2088) {
+    StyleResolver resolver;
+    resolver.set_viewport(1024.0f, 768.0f);
+
+    resolver.add_stylesheet(parse_stylesheet(
+        "@media (min-width: 600px) {"
+        "  .card { color: rgb(255, 0, 0); }"
+        "  .card { background-color: rgb(0, 255, 0); }"
+        "}"
+        "@supports (display: grid) {"
+        "  .card { opacity: 0.5; }"
+        "}"));
+
+    ElementView card;
+    card.tag_name = "div";
+    card.classes = {"card"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(card, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_FLOAT_EQ(style.opacity, 0.5f);
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 0u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 3u);
+}
+
+TEST(StyleResolverTest, InlineStyleCacheReusesParsedDeclarationBlockV2069) {
+    StyleResolver resolver;
+
+    ElementView first;
+    first.tag_name = "div";
+    first.attributes.push_back({"style", "color: rgb(255, 0, 0); display: block;"});
+
+    ElementView second;
+    second.tag_name = "div";
+    second.attributes.push_back({"style", "color: rgb(255, 0, 0); display: block;"});
+
+    ComputedStyle parent;
+    auto first_style = resolver.resolve(first, parent);
+    auto second_style = resolver.resolve(second, parent);
+
+    EXPECT_EQ(first_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(second_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(first_style.display, Display::Block);
+    EXPECT_EQ(second_style.display, Display::Block);
+    EXPECT_EQ(resolver.inline_style_cache_size_for_testing(), 1u);
+    EXPECT_EQ(resolver.inline_style_parse_count_for_testing(), 1u);
+}
+
+TEST(StyleResolverTest, InlineStyleCacheSeparatesDistinctAttributeStringsV2069) {
+    StyleResolver resolver;
+
+    ElementView first;
+    first.tag_name = "div";
+    first.attributes.push_back({"style", "color: rgb(255, 0, 0); display: block;"});
+
+    ElementView second;
+    second.tag_name = "div";
+    second.attributes.push_back({"style", "color: rgb(0, 0, 255); display: inline;"});
+
+    ComputedStyle parent;
+    auto first_style = resolver.resolve(first, parent);
+    auto second_style = resolver.resolve(second, parent);
+
+    EXPECT_EQ(first_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(second_style.color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(first_style.display, Display::Block);
+    EXPECT_EQ(second_style.display, Display::Inline);
+    EXPECT_EQ(resolver.inline_style_cache_size_for_testing(), 2u);
+    EXPECT_EQ(resolver.inline_style_parse_count_for_testing(), 2u);
+}
+
+TEST(StyleResolverTest, ScopeBoundaryCacheReusesParsedSelectorsAcrossRepeatedMatchesV2071) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "@scope (.card) to (.stop) {"
+        "  .title { color: rgb(255, 0, 0); }"
+        "  .title::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "}"
+        "@scope (.card) to (.stop) {"
+        "  .title { background-color: rgb(0, 255, 0); }"
+        "}");
+    resolver.add_stylesheet(sheet);
+
+    ElementView card;
+    card.tag_name = "section";
+    card.classes = {"card"};
+
+    ElementView title;
+    title.tag_name = "h2";
+    title.classes = {"title"};
+    title.parent = &card;
+
+    ComputedStyle parent;
+    auto first_style = resolver.resolve(title, parent);
+    auto pseudo_style = resolver.resolve_pseudo(title, "before", first_style);
+    auto matched_again = resolver.collect_matching_rules(title);
+
+    ASSERT_TRUE(pseudo_style.has_value());
+    EXPECT_EQ(first_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(first_style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(pseudo_style->color, (Color{0, 0, 255, 255}));
+    EXPECT_FALSE(matched_again.empty());
+    EXPECT_EQ(resolver.scope_boundary_selector_cache_size_for_testing(), 2u);
+    EXPECT_EQ(resolver.scope_boundary_parse_count_for_testing(), 2u);
+
+    auto second_style = resolver.resolve(title, parent);
+    auto pseudo_style_again = resolver.resolve_pseudo(title, "before", second_style);
+
+    ASSERT_TRUE(pseudo_style_again.has_value());
+    EXPECT_EQ(second_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(pseudo_style_again->color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(resolver.scope_boundary_selector_cache_size_for_testing(), 2u);
+    EXPECT_EQ(resolver.scope_boundary_parse_count_for_testing(), 2u);
+}
+
+TEST(StyleResolverTest, ScopeBoundaryCacheKeepsScopeEndBehaviorV2071) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(
+        "@scope (.card) to (.stop) {"
+        "  .title { color: rgb(255, 0, 0); }"
+        "}");
+    resolver.add_stylesheet(sheet);
+
+    ElementView card;
+    card.tag_name = "section";
+    card.classes = {"card"};
+
+    ElementView stop;
+    stop.tag_name = "div";
+    stop.classes = {"stop"};
+    stop.parent = &card;
+
+    ElementView in_scope_title;
+    in_scope_title.tag_name = "h2";
+    in_scope_title.classes = {"title"};
+    in_scope_title.parent = &card;
+
+    ElementView blocked_title;
+    blocked_title.tag_name = "h2";
+    blocked_title.classes = {"title"};
+    blocked_title.parent = &stop;
+
+    auto in_scope_matches = resolver.collect_matching_rules(in_scope_title);
+    auto blocked_matches = resolver.collect_matching_rules(blocked_title);
+
+    ASSERT_EQ(in_scope_matches.size(), 1u);
+    EXPECT_TRUE(blocked_matches.empty());
+    EXPECT_EQ(resolver.scope_boundary_selector_cache_size_for_testing(), 2u);
+    EXPECT_EQ(resolver.scope_boundary_parse_count_for_testing(), 2u);
+}
+
+TEST(StyleResolverTest, NestedConditionalRulesRequireAllStoredConditionsV2071) {
+    StyleResolver resolver;
+    resolver.set_viewport(720.0f, 700.0f);
+    resolver.add_stylesheet(parse_stylesheet(
+        "@media screen {"
+        "  @supports (display: grid) {"
+        "    @media (min-width: 768px) {"
+        "      .grid { color: rgb(255, 0, 0); }"
+        "      .grid::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "    }"
+        "  }"
+        "}"));
+
+    ElementView grid;
+    grid.tag_name = "div";
+    grid.classes = {"grid"};
+    ComputedStyle parent;
+
+    auto narrow_style = resolver.resolve(grid, parent);
+    EXPECT_EQ(narrow_style.color, parent.color);
+    EXPECT_FALSE(resolver.resolve_pseudo(grid, "before", narrow_style).has_value());
+
+    resolver.set_viewport(960.0f, 700.0f);
+
+    auto wide_style = resolver.resolve(grid, parent);
+    auto pseudo_style = resolver.resolve_pseudo(grid, "before", wide_style);
+    EXPECT_EQ(wide_style.color, (Color{255, 0, 0, 255}));
+    ASSERT_TRUE(pseudo_style.has_value());
+    EXPECT_EQ(pseudo_style->color, (Color{0, 0, 255, 255}));
+}
+
+TEST(StyleResolverTest, TopLevelConditionalGroupsReuseCachedDecisionsAcrossViewportChangesV2098) {
+    StyleResolver resolver;
+    resolver.set_viewport(720.0f, 700.0f);
+    resolver.add_stylesheet(parse_stylesheet(
+        "@media print {"
+        "  .card { color: rgb(255, 0, 0); }"
+        "}"
+        "@media not print {"
+        "  .card { background-color: rgb(0, 255, 0); }"
+        "}"
+        "@media (min-width: 900px) {"
+        "  .card { color: rgb(0, 0, 255); }"
+        "}"));
+
+    ElementView card;
+    card.tag_name = "div";
+    card.classes = {"card"};
+    ComputedStyle parent;
+
+    auto narrow_style = resolver.resolve(card, parent);
+    EXPECT_EQ(narrow_style.color, parent.color);
+    EXPECT_EQ(narrow_style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 0u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 1u);
+
+    resolver.set_viewport(960.0f, 700.0f);
+
+    auto wide_style = resolver.resolve(card, parent);
+    EXPECT_EQ(wide_style.color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(wide_style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 0u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 2u);
+}
+
+TEST(StyleResolverTest, NestedConditionalSuffixesStayCorrectWithTopLevelGroupCachingV2098) {
+    StyleResolver resolver;
+    resolver.set_viewport(720.0f, 700.0f);
+    resolver.add_stylesheet(parse_stylesheet(
+        "@supports (display: grid) {"
+        "  @media (min-width: 900px) {"
+        "    .card { color: rgb(255, 0, 0); }"
+        "    .card::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "  }"
+        "}"
+        "@supports (display: grid) {"
+        "  @media not print {"
+        "    .card { background-color: rgb(0, 255, 0); }"
+        "  }"
+        "}"));
+
+    ElementView card;
+    card.tag_name = "div";
+    card.classes = {"card"};
+    ComputedStyle parent;
+
+    auto narrow_style = resolver.resolve(card, parent);
+    EXPECT_EQ(narrow_style.color, parent.color);
+    EXPECT_EQ(narrow_style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_FALSE(resolver.resolve_pseudo(card, "before", narrow_style).has_value());
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 2u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 3u);
+
+    resolver.set_viewport(960.0f, 700.0f);
+
+    auto wide_style = resolver.resolve(card, parent);
+    auto pseudo_style = resolver.resolve_pseudo(card, "before", wide_style);
+    EXPECT_EQ(wide_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(wide_style.background_color, (Color{0, 255, 0, 255}));
+    ASSERT_TRUE(pseudo_style.has_value());
+    EXPECT_EQ(pseudo_style->color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 4u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 3u);
+}
+
+TEST(StyleResolverTest, NestedSupportsSuffixCacheStaysBoundedAcrossViewportChangesV2099) {
+    StyleResolver resolver;
+    resolver.set_viewport(960.0f, 700.0f);
+    resolver.add_stylesheet(parse_stylesheet(
+        "@media (min-width: 900px) {"
+        "  @supports (display: grid) {"
+        "    .card { color: rgb(255, 0, 0); }"
+        "    .card { background-color: rgb(0, 255, 0); }"
+        "    .card::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "  }"
+        "}"));
+
+    ElementView card;
+    card.tag_name = "div";
+    card.classes = {"card"};
+    ComputedStyle parent;
+
+    auto wide_style = resolver.resolve(card, parent);
+    auto wide_pseudo = resolver.resolve_pseudo(card, "before", wide_style);
+    EXPECT_EQ(wide_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(wide_style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_TRUE(wide_pseudo.has_value());
+    if (wide_pseudo.has_value()) {
+        EXPECT_EQ(wide_pseudo->color, (Color{0, 0, 255, 255}));
+    }
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 3u);
+
+    resolver.set_viewport(720.0f, 700.0f);
+
+    auto narrow_style = resolver.resolve(card, parent);
+    EXPECT_EQ(narrow_style.color, parent.color);
+    EXPECT_EQ(narrow_style.background_color, parent.background_color);
+    EXPECT_FALSE(resolver.resolve_pseudo(card, "before", narrow_style).has_value());
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 3u);
+
+    resolver.set_viewport(960.0f, 700.0f);
+
+    auto wide_again_style = resolver.resolve(card, parent);
+    auto wide_again_pseudo = resolver.resolve_pseudo(card, "before", wide_again_style);
+    EXPECT_EQ(wide_again_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(wide_again_style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_TRUE(wide_again_pseudo.has_value());
+    if (wide_again_pseudo.has_value()) {
+        EXPECT_EQ(wide_again_pseudo->color, (Color{0, 0, 255, 255}));
+    }
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 3u);
+}
+
+TEST(StyleResolverTest, NestedMediaSuffixCacheFlipsCorrectlyWhenDarkModeChangesV2099) {
+    set_dark_mode_override(0);
+
+    StyleResolver resolver;
+    resolver.set_viewport(960.0f, 700.0f);
+    resolver.add_stylesheet(parse_stylesheet(
+        "@supports (display: grid) {"
+        "  @media (prefers-color-scheme: dark) {"
+        "    .card { color: rgb(255, 0, 0); }"
+        "    .card::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "  }"
+        "}"));
+
+    ElementView card;
+    card.tag_name = "div";
+    card.classes = {"card"};
+    ComputedStyle parent;
+
+    auto light_style = resolver.resolve(card, parent);
+    EXPECT_EQ(light_style.color, parent.color);
+    EXPECT_FALSE(resolver.resolve_pseudo(card, "before", light_style).has_value());
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 2u);
+
+    set_dark_mode_override(1);
+
+    auto dark_style = resolver.resolve(card, parent);
+    auto dark_pseudo = resolver.resolve_pseudo(card, "before", dark_style);
+    EXPECT_EQ(dark_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_TRUE(dark_pseudo.has_value());
+    if (dark_pseudo.has_value()) {
+        EXPECT_EQ(dark_pseudo->color, (Color{0, 0, 255, 255}));
+    }
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 2u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 2u);
+
+    set_dark_mode_override(0);
+
+    auto light_again_style = resolver.resolve(card, parent);
+    EXPECT_EQ(light_again_style.color, parent.color);
+    EXPECT_FALSE(resolver.resolve_pseudo(card, "before", light_again_style).has_value());
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 3u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 2u);
+
+    set_dark_mode_override(-1);
+}
+
+TEST(StyleResolverTest, NestedConditionalPassCachingKeepsBucketedParityAcrossViewportChangesV2105) {
+    auto bucketed_sheet = parse_stylesheet(
+        "@supports (display: grid) {"
+        "  @media (min-width: 900px) {"
+        "    .card { color: rgb(255, 0, 0); }"
+        "    #hero { background-color: rgb(0, 255, 0); }"
+        "    [data-bucket]::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "  }"
+        "  @media not print {"
+        "    .card { display: flex; }"
+        "  }"
+        "}");
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_all_rightmost_selector_keys(unbucketed_sheet);
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.set_viewport(720.0f, 700.0f);
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.set_viewport(720.0f, 700.0f);
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes = {"card"};
+    elem.attributes.push_back({"data-bucket", "present"});
+
+    ComputedStyle parent;
+
+    auto narrow_bucketed = bucketed_resolver.resolve(elem, parent);
+    auto narrow_unbucketed = unbucketed_resolver.resolve(elem, parent);
+    EXPECT_EQ(narrow_bucketed.display, narrow_unbucketed.display);
+    EXPECT_EQ(narrow_bucketed.color, narrow_unbucketed.color);
+    EXPECT_EQ(narrow_bucketed.background_color, narrow_unbucketed.background_color);
+    EXPECT_EQ(narrow_bucketed.display, Display::Flex);
+    EXPECT_EQ(narrow_bucketed.color, parent.color);
+    EXPECT_EQ(narrow_bucketed.background_color, parent.background_color);
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 2u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 2u);
+
+    bucketed_resolver.set_viewport(960.0f, 700.0f);
+    unbucketed_resolver.set_viewport(960.0f, 700.0f);
+
+    auto wide_bucketed = bucketed_resolver.resolve(elem, parent);
+    auto wide_unbucketed = unbucketed_resolver.resolve(elem, parent);
+    auto wide_bucketed_pseudo = bucketed_resolver.resolve_pseudo(elem, "before", wide_bucketed);
+    auto wide_unbucketed_pseudo = unbucketed_resolver.resolve_pseudo(elem, "before", wide_unbucketed);
+
+    ASSERT_TRUE(wide_bucketed_pseudo.has_value());
+    ASSERT_TRUE(wide_unbucketed_pseudo.has_value());
+    EXPECT_EQ(wide_bucketed.display, wide_unbucketed.display);
+    EXPECT_EQ(wide_bucketed.color, wide_unbucketed.color);
+    EXPECT_EQ(wide_bucketed.background_color, wide_unbucketed.background_color);
+    EXPECT_EQ(wide_bucketed_pseudo->color, wide_unbucketed_pseudo->color);
+    EXPECT_EQ(wide_bucketed.display, Display::Flex);
+    EXPECT_EQ(wide_bucketed.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(wide_bucketed.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(wide_bucketed_pseudo->color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 4u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 4u);
+}
+
+TEST(StyleResolverTest,
+     ConditionalNestedSupportsSuffixCacheKeepsBucketedParityAcrossViewportGenerationsV2106) {
+    auto bucketed_sheet = parse_stylesheet(
+        "@media (min-width: 900px) {"
+        "  @supports (display: grid) {"
+        "    .card { color: rgb(255, 0, 0); }"
+        "    .card { background-color: rgb(0, 255, 0); }"
+        "    [data-bucket]::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "  }"
+        "}");
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_all_rightmost_selector_keys(unbucketed_sheet);
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.set_viewport(960.0f, 700.0f);
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.set_viewport(960.0f, 700.0f);
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"card"};
+    elem.attributes.push_back({"data-bucket", "present"});
+
+    ComputedStyle parent;
+
+    auto wide_bucketed = bucketed_resolver.resolve(elem, parent);
+    auto wide_bucketed_pseudo = bucketed_resolver.resolve_pseudo(elem, "before", wide_bucketed);
+    auto wide_unbucketed = unbucketed_resolver.resolve(elem, parent);
+    auto wide_unbucketed_pseudo = unbucketed_resolver.resolve_pseudo(elem, "before", wide_unbucketed);
+
+    ASSERT_TRUE(wide_bucketed_pseudo.has_value());
+    ASSERT_TRUE(wide_unbucketed_pseudo.has_value());
+    EXPECT_EQ(wide_bucketed.color, wide_unbucketed.color);
+    EXPECT_EQ(wide_bucketed.background_color, wide_unbucketed.background_color);
+    EXPECT_EQ(wide_bucketed_pseudo->color, wide_unbucketed_pseudo->color);
+    EXPECT_EQ(wide_bucketed.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(wide_bucketed.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(wide_bucketed_pseudo->color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+
+    auto wide_bucketed_again = bucketed_resolver.resolve(elem, parent);
+    auto wide_bucketed_again_pseudo =
+        bucketed_resolver.resolve_pseudo(elem, "before", wide_bucketed_again);
+    auto wide_unbucketed_again = unbucketed_resolver.resolve(elem, parent);
+    auto wide_unbucketed_again_pseudo =
+        unbucketed_resolver.resolve_pseudo(elem, "before", wide_unbucketed_again);
+
+    ASSERT_TRUE(wide_bucketed_again_pseudo.has_value());
+    ASSERT_TRUE(wide_unbucketed_again_pseudo.has_value());
+    EXPECT_EQ(wide_bucketed_again.color, wide_unbucketed_again.color);
+    EXPECT_EQ(wide_bucketed_again.background_color, wide_unbucketed_again.background_color);
+    EXPECT_EQ(wide_bucketed_again_pseudo->color, wide_unbucketed_again_pseudo->color);
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+
+    bucketed_resolver.set_viewport(720.0f, 700.0f);
+    unbucketed_resolver.set_viewport(720.0f, 700.0f);
+
+    auto narrow_bucketed = bucketed_resolver.resolve(elem, parent);
+    auto narrow_unbucketed = unbucketed_resolver.resolve(elem, parent);
+    EXPECT_EQ(narrow_bucketed.color, narrow_unbucketed.color);
+    EXPECT_EQ(narrow_bucketed.background_color, narrow_unbucketed.background_color);
+    EXPECT_FALSE(bucketed_resolver.resolve_pseudo(elem, "before", narrow_bucketed).has_value());
+    EXPECT_FALSE(unbucketed_resolver.resolve_pseudo(elem, "before", narrow_unbucketed).has_value());
+    EXPECT_EQ(narrow_bucketed.color, parent.color);
+    EXPECT_EQ(narrow_bucketed.background_color, parent.background_color);
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+
+    bucketed_resolver.set_viewport(960.0f, 700.0f);
+    unbucketed_resolver.set_viewport(960.0f, 700.0f);
+
+    auto wide_bucketed_after_resize = bucketed_resolver.resolve(elem, parent);
+    auto wide_bucketed_after_resize_pseudo =
+        bucketed_resolver.resolve_pseudo(elem, "before", wide_bucketed_after_resize);
+    auto wide_unbucketed_after_resize = unbucketed_resolver.resolve(elem, parent);
+    auto wide_unbucketed_after_resize_pseudo =
+        unbucketed_resolver.resolve_pseudo(elem, "before", wide_unbucketed_after_resize);
+
+    ASSERT_TRUE(wide_bucketed_after_resize_pseudo.has_value());
+    ASSERT_TRUE(wide_unbucketed_after_resize_pseudo.has_value());
+    EXPECT_EQ(wide_bucketed_after_resize.color, wide_unbucketed_after_resize.color);
+    EXPECT_EQ(wide_bucketed_after_resize.background_color,
+              wide_unbucketed_after_resize.background_color);
+    EXPECT_EQ(wide_bucketed_after_resize_pseudo->color,
+              wide_unbucketed_after_resize_pseudo->color);
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+}
+
+TEST(StyleResolverTest,
+     ConditionalRuleCacheGenerationsKeepBucketedParityAcrossDarkModeAndStylesheetMutationV2106) {
+    set_dark_mode_override(0);
+
+    auto bucketed_sheet = parse_stylesheet(
+        "@supports (display: grid) {"
+        "  @media (prefers-color-scheme: dark) {"
+        "    .card { color: rgb(255, 0, 0); }"
+        "    [data-bucket]::before { color: rgb(0, 0, 255); content: 'x'; }"
+        "  }"
+        "}");
+    auto unbucketed_sheet = bucketed_sheet;
+    clear_all_rightmost_selector_keys(unbucketed_sheet);
+
+    StyleResolver bucketed_resolver;
+    bucketed_resolver.set_viewport(960.0f, 700.0f);
+    bucketed_resolver.add_stylesheet(bucketed_sheet);
+
+    StyleResolver unbucketed_resolver;
+    unbucketed_resolver.set_viewport(960.0f, 700.0f);
+    unbucketed_resolver.add_stylesheet(unbucketed_sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes = {"card"};
+    elem.attributes.push_back({"data-bucket", "present"});
+
+    ComputedStyle parent;
+
+    auto light_bucketed = bucketed_resolver.resolve(elem, parent);
+    auto light_unbucketed = unbucketed_resolver.resolve(elem, parent);
+    EXPECT_EQ(light_bucketed.color, light_unbucketed.color);
+    EXPECT_EQ(light_bucketed.background_color, light_unbucketed.background_color);
+    EXPECT_FALSE(bucketed_resolver.resolve_pseudo(elem, "before", light_bucketed).has_value());
+    EXPECT_FALSE(unbucketed_resolver.resolve_pseudo(elem, "before", light_unbucketed).has_value());
+    EXPECT_EQ(light_bucketed.color, parent.color);
+    EXPECT_EQ(light_bucketed.background_color, parent.background_color);
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+
+    auto light_bucketed_again = bucketed_resolver.resolve(elem, parent);
+    auto light_unbucketed_again = unbucketed_resolver.resolve(elem, parent);
+    EXPECT_EQ(light_bucketed_again.color, light_unbucketed_again.color);
+    EXPECT_EQ(light_bucketed_again.background_color, light_unbucketed_again.background_color);
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 1u);
+
+    set_dark_mode_override(1);
+
+    auto dark_bucketed = bucketed_resolver.resolve(elem, parent);
+    auto dark_bucketed_pseudo = bucketed_resolver.resolve_pseudo(elem, "before", dark_bucketed);
+    auto dark_unbucketed = unbucketed_resolver.resolve(elem, parent);
+    auto dark_unbucketed_pseudo = unbucketed_resolver.resolve_pseudo(elem, "before", dark_unbucketed);
+
+    ASSERT_TRUE(dark_bucketed_pseudo.has_value());
+    ASSERT_TRUE(dark_unbucketed_pseudo.has_value());
+    EXPECT_EQ(dark_bucketed.color, dark_unbucketed.color);
+    EXPECT_EQ(dark_bucketed.background_color, dark_unbucketed.background_color);
+    EXPECT_EQ(dark_bucketed_pseudo->color, dark_unbucketed_pseudo->color);
+    EXPECT_EQ(dark_bucketed.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(dark_bucketed.background_color, parent.background_color);
+    EXPECT_EQ(dark_bucketed_pseudo->color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 2u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 2u);
+
+    auto dark_bucketed_again = bucketed_resolver.resolve(elem, parent);
+    auto dark_bucketed_again_pseudo =
+        bucketed_resolver.resolve_pseudo(elem, "before", dark_bucketed_again);
+    auto dark_unbucketed_again = unbucketed_resolver.resolve(elem, parent);
+    auto dark_unbucketed_again_pseudo =
+        unbucketed_resolver.resolve_pseudo(elem, "before", dark_unbucketed_again);
+
+    ASSERT_TRUE(dark_bucketed_again_pseudo.has_value());
+    ASSERT_TRUE(dark_unbucketed_again_pseudo.has_value());
+    EXPECT_EQ(dark_bucketed_again.color, dark_unbucketed_again.color);
+    EXPECT_EQ(dark_bucketed_again.background_color, dark_unbucketed_again.background_color);
+    EXPECT_EQ(dark_bucketed_again_pseudo->color, dark_unbucketed_again_pseudo->color);
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 2u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 2u);
+
+    auto bucketed_mutation_sheet = parse_stylesheet(
+        "@supports (display: grid) {"
+        "  @media (prefers-color-scheme: dark) {"
+        "    #hero { background-color: rgb(0, 255, 0); }"
+        "  }"
+        "}");
+    auto unbucketed_mutation_sheet = bucketed_mutation_sheet;
+    clear_all_rightmost_selector_keys(unbucketed_mutation_sheet);
+
+    bucketed_resolver.add_stylesheet(bucketed_mutation_sheet);
+    unbucketed_resolver.add_stylesheet(unbucketed_mutation_sheet);
+
+    auto mutated_bucketed = bucketed_resolver.resolve(elem, parent);
+    auto mutated_bucketed_pseudo =
+        bucketed_resolver.resolve_pseudo(elem, "before", mutated_bucketed);
+    auto mutated_unbucketed = unbucketed_resolver.resolve(elem, parent);
+    auto mutated_unbucketed_pseudo =
+        unbucketed_resolver.resolve_pseudo(elem, "before", mutated_unbucketed);
+
+    ASSERT_TRUE(mutated_bucketed_pseudo.has_value());
+    ASSERT_TRUE(mutated_unbucketed_pseudo.has_value());
+    EXPECT_EQ(mutated_bucketed.color, mutated_unbucketed.color);
+    EXPECT_EQ(mutated_bucketed.background_color, mutated_unbucketed.background_color);
+    EXPECT_EQ(mutated_bucketed_pseudo->color, mutated_unbucketed_pseudo->color);
+    EXPECT_EQ(mutated_bucketed.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(mutated_bucketed.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(mutated_bucketed_pseudo->color, (Color{0, 0, 255, 255}));
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 3u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 3u);
+
+    auto mutated_bucketed_again = bucketed_resolver.resolve(elem, parent);
+    auto mutated_bucketed_again_pseudo =
+        bucketed_resolver.resolve_pseudo(elem, "before", mutated_bucketed_again);
+    auto mutated_unbucketed_again = unbucketed_resolver.resolve(elem, parent);
+    auto mutated_unbucketed_again_pseudo =
+        unbucketed_resolver.resolve_pseudo(elem, "before", mutated_unbucketed_again);
+
+    ASSERT_TRUE(mutated_bucketed_again_pseudo.has_value());
+    ASSERT_TRUE(mutated_unbucketed_again_pseudo.has_value());
+    EXPECT_EQ(mutated_bucketed_again.color, mutated_unbucketed_again.color);
+    EXPECT_EQ(mutated_bucketed_again.background_color, mutated_unbucketed_again.background_color);
+    EXPECT_EQ(mutated_bucketed_again_pseudo->color, mutated_unbucketed_again_pseudo->color);
+    EXPECT_EQ(bucketed_resolver.conditional_rule_compute_count_for_testing(), 3u);
+    EXPECT_EQ(unbucketed_resolver.conditional_rule_compute_count_for_testing(), 3u);
+
+    set_dark_mode_override(-1);
+}
+
+TEST(StyleResolverTest, ConditionalRuleCachesInvalidateAfterStylesheetMutationV2105) {
+    StyleResolver resolver;
+    resolver.set_viewport(960.0f, 700.0f);
+    resolver.add_stylesheet(parse_stylesheet(
+        "@supports (display: grid) {"
+        "  @media (min-width: 900px) {"
+        "    .card { color: rgb(255, 0, 0); }"
+        "  }"
+        "}"));
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"card"};
+
+    ComputedStyle parent;
+    auto first_style = resolver.resolve(elem, parent);
+    EXPECT_EQ(first_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 1u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 1u);
+
+    resolver.add_stylesheet(parse_stylesheet(
+        "@supports (display: grid) {"
+        "  @media (min-width: 900px) {"
+        "    .card { background-color: rgb(0, 255, 0); }"
+        "  }"
+        "}"));
+
+    auto second_style = resolver.resolve(elem, parent);
+    EXPECT_EQ(second_style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(second_style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(resolver.conditional_rule_compute_count_for_testing(), 2u);
+    EXPECT_EQ(resolver.conditional_rule_cache_size_for_testing(), 2u);
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsCollectConditionalGroupRulesV2084) {
+    StyleResolver resolver;
+    resolver.set_viewport(1024.0f, 768.0f);
+
+    StyleSheet sheet;
+    sheet.rules.push_back(make_rule_with_declarations(
+        "*",
+        {make_decl("display", "block")}));
+
+    LayerRule layer;
+    layer.name = "theme";
+    layer.order = 0;
+    auto layered_rule = make_rule_with_declarations(
+        "#hero",
+        {make_decl("color", "rgb(255, 0, 0)")});
+    layered_rule.in_layer = true;
+    layered_rule.layer_order = layer.order;
+    layered_rule.layer_name = layer.name;
+    layer.rules.push_back(layered_rule);
+    sheet.layer_rules.push_back(layer);
+
+    MediaQuery media;
+    media.condition = "(min-width: 800px)";
+    media.rules.push_back(make_rule_with_declarations(
+        ".card",
+        {make_decl("background-color", "rgb(0, 255, 0)")}));
+    sheet.media_queries.push_back(media);
+
+    SupportsRule supports;
+    supports.condition = "(display: grid)";
+    supports.rules.push_back(make_rule_with_declarations(
+        "[data-bucket]",
+        {make_decl("opacity", "0.5")}));
+    sheet.supports_rules.push_back(supports);
+
+    ScopeRule scope;
+    scope.scope_start = ".scope-root";
+    scope.rules.push_back(make_rule_with_declarations(
+        "div",
+        {make_decl("position", "relative")}));
+    sheet.scope_rules.push_back(scope);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView scope_root;
+    scope_root.tag_name = "section";
+    scope_root.classes = {"scope-root"};
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes = {"card"};
+    elem.attributes.push_back({"data-bucket", "present"});
+    elem.parent = &scope_root;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Block);
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(style.background_color, (Color{0, 255, 0, 255}));
+    EXPECT_FLOAT_EQ(style.opacity, 0.5f);
+    EXPECT_EQ(style.position, Position::Relative);
+}
+
+TEST(StyleResolverTest, RightmostSelectorBucketsCollectConditionalGroupPseudoRulesV2084) {
+    StyleResolver resolver;
+    resolver.set_viewport(1024.0f, 768.0f);
+
+    StyleSheet sheet;
+    sheet.rules.push_back(make_rule_with_declarations(
+        ".card",
+        {make_decl("color", "rgb(12, 34, 56)")}));
+
+    LayerRule layer;
+    layer.name = "theme";
+    layer.order = 0;
+    auto layered_rule = make_rule_with_declarations(
+        "#hero::before",
+        {make_decl("color", "rgb(255, 0, 0)")});
+    layered_rule.in_layer = true;
+    layered_rule.layer_order = layer.order;
+    layered_rule.layer_name = layer.name;
+    layer.rules.push_back(layered_rule);
+    sheet.layer_rules.push_back(layer);
+
+    MediaQuery media;
+    media.condition = "(min-width: 800px)";
+    media.rules.push_back(make_rule_with_declarations(
+        ".card::before",
+        {make_decl("background-color", "rgb(0, 255, 0)")}));
+    sheet.media_queries.push_back(media);
+
+    SupportsRule supports;
+    supports.condition = "(display: grid)";
+    supports.rules.push_back(make_rule_with_declarations(
+        "[data-bucket]::before",
+        {make_decl("display", "flex")}));
+    sheet.supports_rules.push_back(supports);
+
+    ScopeRule scope;
+    scope.scope_start = ".scope-root";
+    scope.rules.push_back(make_rule_with_declarations(
+        "div::before",
+        {make_decl("position", "absolute")}));
+    sheet.scope_rules.push_back(scope);
+
+    resolver.add_stylesheet(sheet);
+
+    ElementView scope_root;
+    scope_root.tag_name = "section";
+    scope_root.classes = {"scope-root"};
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+    elem.classes = {"card"};
+    elem.attributes.push_back({"data-bucket", "present"});
+    elem.parent = &scope_root;
+
+    ComputedStyle parent;
+    auto element_style = resolver.resolve(elem, parent);
+    auto pseudo_style = resolver.resolve_pseudo(elem, "before", element_style);
+
+    ASSERT_TRUE(pseudo_style.has_value());
+    EXPECT_EQ(pseudo_style->color, (Color{255, 0, 0, 255}));
+    EXPECT_EQ(pseudo_style->background_color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(pseudo_style->display, Display::Flex);
+    EXPECT_EQ(pseudo_style->position, Position::Absolute);
 }
 
 // ===========================================================================
@@ -1592,6 +3558,47 @@ TEST(SpecificityTest, HasPseudoUsesArgumentSpecificity) {
     EXPECT_EQ(spec.c, 1);
 }
 
+TEST(SpecificityTest, NestedFunctionalPseudoSpecificityStaysStable) {
+    auto list = parse_selector_list(
+        "section:is(.card, :not(#hero)):has(> :is(span, .badge))");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_TRUE(list.selectors[0].precomputed_specificity.has_value());
+
+    const auto stored = *list.selectors[0].precomputed_specificity;
+    EXPECT_EQ(stored.a, 1);
+    EXPECT_EQ(stored.b, 1);
+    EXPECT_EQ(stored.c, 1);
+
+    ComplexSelector recomputed = list.selectors[0];
+    recomputed.precomputed_specificity.reset();
+    recomputed.parts[0].compound.simple_selectors[1].parsed_selector_list.reset();
+    auto spec = compute_specificity(recomputed);
+    EXPECT_EQ(spec.a, stored.a);
+    EXPECT_EQ(spec.b, stored.b);
+    EXPECT_EQ(spec.c, stored.c);
+}
+
+TEST(SpecificityTest, FunctionalPseudoClassPrefilterInferenceKeepsSpecificityStableV2107) {
+    auto list = parse_selector_list(":is(.card#hero, article > .card)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_TRUE(list.selectors[0].precomputed_specificity.has_value());
+    EXPECT_EQ(list.selectors[0].rightmost_match_key.type, RightmostSelectorKeyType::Class);
+    EXPECT_EQ(list.selectors[0].rightmost_match_key.value, "card");
+
+    const auto stored = *list.selectors[0].precomputed_specificity;
+    EXPECT_EQ(stored.a, 1);
+    EXPECT_EQ(stored.b, 1);
+    EXPECT_EQ(stored.c, 0);
+
+    ComplexSelector recomputed = list.selectors[0];
+    recomputed.precomputed_specificity.reset();
+    recomputed.parts[0].compound.simple_selectors[0].parsed_selector_list.reset();
+    auto spec = compute_specificity(recomputed);
+    EXPECT_EQ(spec.a, stored.a);
+    EXPECT_EQ(spec.b, stored.b);
+    EXPECT_EQ(spec.c, stored.c);
+}
+
 // ============================================================================
 // border-radius parsing in cascade
 // ============================================================================
@@ -1889,6 +3896,23 @@ TEST(SelectorMatcherTest, NotPseudoClassWithType) {
     EXPECT_FALSE(matcher.matches(div_elem, complex));
 }
 
+TEST(SelectorMatcherTest, NotPseudoReusesParsedSelectorListV2064) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":not(.hidden)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    auto& simple_sels = list.selectors[0].parts[0].compound.simple_selectors;
+    ASSERT_EQ(simple_sels.size(), 1u);
+    ASSERT_TRUE(simple_sels[0].parsed_selector_list);
+
+    simple_sels[0].argument = "span";
+
+    ElementView span_elem;
+    span_elem.tag_name = "span";
+    EXPECT_TRUE(matcher.matches(span_elem, list.selectors[0]));
+}
+
 // ===========================================================================
 // :first-of-type pseudo-class
 // ===========================================================================
@@ -1957,6 +3981,161 @@ TEST(SelectorParserTest, NotParsed) {
     EXPECT_EQ(simple_sels[0].value, "not");
     // Argument should contain ".hidden" (parsed from CSS tokens)
     EXPECT_FALSE(simple_sels[0].argument.empty());
+}
+
+TEST(SelectorParserTest, FunctionalPseudoSelectorListsReuseCompiledSelectors) {
+    auto first = parse_selector_list(":is(h1, :not(.hidden))");
+    auto second = parse_selector_list(":is(h1, :not(.hidden))");
+
+    ASSERT_EQ(first.selectors.size(), 1u);
+    ASSERT_EQ(second.selectors.size(), 1u);
+
+    auto& first_simple = first.selectors[0].parts[0].compound.simple_selectors[0];
+    auto& second_simple = second.selectors[0].parts[0].compound.simple_selectors[0];
+    ASSERT_TRUE(first_simple.parsed_selector_list);
+    ASSERT_TRUE(second_simple.parsed_selector_list);
+    EXPECT_FALSE(first_simple.compiled_selector_list_cache_key.empty());
+    EXPECT_EQ(first_simple.compiled_selector_list_cache_key,
+              second_simple.compiled_selector_list_cache_key);
+    EXPECT_EQ(first_simple.parsed_selector_list.get(), second_simple.parsed_selector_list.get());
+}
+
+TEST(SelectorParserTest, FunctionalPseudoSharedTerminalKeysComputeRightmostBucketKeyV2097) {
+    auto class_list = parse_selector_list(":is(article > .card, section .card)");
+    ASSERT_EQ(class_list.selectors.size(), 1u);
+    EXPECT_EQ(class_list.selectors[0].rightmost_match_key.type, RightmostSelectorKeyType::Class);
+    EXPECT_EQ(class_list.selectors[0].rightmost_match_key.value, "card");
+
+    auto attribute_list =
+        parse_selector_list(":where(article > [DATA-card], section [data-card])");
+    ASSERT_EQ(attribute_list.selectors.size(), 1u);
+    EXPECT_EQ(
+        attribute_list.selectors[0].rightmost_match_key.type,
+        RightmostSelectorKeyType::Attribute);
+    EXPECT_EQ(attribute_list.selectors[0].rightmost_match_key.value, "data-card");
+}
+
+TEST(SelectorParserTest, FunctionalPseudoSharedKeyInferenceRejectsMixedOrUnsafeBranchesV2097) {
+    const char* selectors[] = {
+        ":is(.card, #hero)",
+        ":where(.card, .panel)",
+        ":is(.card, :not(.hidden))",
+    };
+
+    for (const char* selector_text : selectors) {
+        auto list = parse_selector_list(selector_text);
+        ASSERT_EQ(list.selectors.size(), 1u) << selector_text;
+        EXPECT_EQ(list.selectors[0].rightmost_match_key.type, RightmostSelectorKeyType::None)
+            << selector_text;
+        EXPECT_TRUE(list.selectors[0].rightmost_match_key.value.empty()) << selector_text;
+    }
+}
+
+TEST(SelectorParserTest, NestedFunctionalPseudoSelectorsAreCompiled) {
+    auto list = parse_selector_list(":is(:not(.hidden), button.primary)");
+
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+
+    auto& outer_simple = list.selectors[0].parts[0].compound.simple_selectors[0];
+    ASSERT_TRUE(outer_simple.parsed_selector_list);
+    ASSERT_EQ(outer_simple.parsed_selector_list->selectors.size(), 2u);
+
+    auto& nested_simple =
+        outer_simple.parsed_selector_list->selectors[0].parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(nested_simple.value, "not");
+    ASSERT_TRUE(nested_simple.parsed_selector_list);
+    ASSERT_EQ(nested_simple.parsed_selector_list->selectors.size(), 1u);
+}
+
+TEST(SelectorParserTest, HasNestedFunctionalPseudoSelectorsAreCompiled) {
+    auto list = parse_selector_list("section:has(> :is(.card, :not(.hidden)))");
+
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+
+    const auto& simple_selectors = list.selectors[0].parts[0].compound.simple_selectors;
+    ASSERT_EQ(simple_selectors.size(), 2u);
+
+    const SimpleSelector* has_simple = nullptr;
+    for (const auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::PseudoClass && simple.value == "has") {
+            has_simple = &simple;
+            break;
+        }
+    }
+    ASSERT_NE(has_simple, nullptr);
+    ASSERT_TRUE(has_simple->parsed_selector_list);
+    ASSERT_EQ(has_simple->parsed_selector_list->selectors.size(), 1u);
+
+    const auto& relative_selector = has_simple->parsed_selector_list->selectors[0];
+    ASSERT_EQ(relative_selector.parts.size(), 1u);
+    ASSERT_TRUE(relative_selector.parts[0].combinator.has_value());
+    EXPECT_EQ(*relative_selector.parts[0].combinator, Combinator::Child);
+
+    const auto& nested_simple =
+        relative_selector.parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(nested_simple.type, SimpleSelectorType::PseudoClass);
+    EXPECT_EQ(nested_simple.value, "is");
+    ASSERT_TRUE(nested_simple.parsed_selector_list);
+    ASSERT_EQ(nested_simple.parsed_selector_list->selectors.size(), 2u);
+
+    const auto& nested_not =
+        nested_simple.parsed_selector_list->selectors[1].parts[0].compound.simple_selectors[0];
+    EXPECT_EQ(nested_not.type, SimpleSelectorType::PseudoClass);
+    EXPECT_EQ(nested_not.value, "not");
+    ASSERT_TRUE(nested_not.parsed_selector_list);
+    ASSERT_EQ(nested_not.parsed_selector_list->selectors.size(), 1u);
+}
+
+TEST(SelectorParserTest, MixedCaseNestedFunctionalPseudoSelectorsReuseCompiledSelectors) {
+    auto lowercase = parse_selector_list(
+        "section:has(> :is(.card, :where(.badge, :not(.hidden))))");
+    auto mixed_case = parse_selector_list(
+        "section:HaS(> :IS(.card, :WhErE(.badge, :NoT(.hidden))))");
+
+    ASSERT_EQ(lowercase.selectors.size(), 1u);
+    ASSERT_EQ(mixed_case.selectors.size(), 1u);
+
+    const auto& lowercase_simple =
+        lowercase.selectors[0].parts[0].compound.simple_selectors;
+    const auto& mixed_case_simple =
+        mixed_case.selectors[0].parts[0].compound.simple_selectors;
+    ASSERT_EQ(lowercase_simple.size(), 2u);
+    ASSERT_EQ(mixed_case_simple.size(), 2u);
+
+    const auto& lowercase_has = lowercase_simple[1];
+    const auto& mixed_case_has = mixed_case_simple[1];
+    ASSERT_TRUE(lowercase_has.parsed_selector_list);
+    ASSERT_TRUE(mixed_case_has.parsed_selector_list);
+    EXPECT_EQ(lowercase_has.compiled_selector_list_cache_key,
+              mixed_case_has.compiled_selector_list_cache_key);
+    EXPECT_EQ(lowercase_has.parsed_selector_list.get(), mixed_case_has.parsed_selector_list.get());
+
+    const auto& lowercase_is =
+        lowercase_has.parsed_selector_list->selectors[0].parts[0].compound.simple_selectors[0];
+    const auto& mixed_case_is =
+        mixed_case_has.parsed_selector_list->selectors[0].parts[0].compound.simple_selectors[0];
+    ASSERT_TRUE(lowercase_is.parsed_selector_list);
+    ASSERT_TRUE(mixed_case_is.parsed_selector_list);
+    EXPECT_EQ(lowercase_is.parsed_selector_list.get(), mixed_case_is.parsed_selector_list.get());
+
+    const auto& lowercase_where =
+        lowercase_is.parsed_selector_list->selectors[1].parts[0].compound.simple_selectors[0];
+    const auto& mixed_case_where =
+        mixed_case_is.parsed_selector_list->selectors[1].parts[0].compound.simple_selectors[0];
+    ASSERT_TRUE(lowercase_where.parsed_selector_list);
+    ASSERT_TRUE(mixed_case_where.parsed_selector_list);
+    EXPECT_EQ(lowercase_where.parsed_selector_list.get(),
+              mixed_case_where.parsed_selector_list.get());
+
+    const auto& lowercase_not =
+        lowercase_where.parsed_selector_list->selectors[1].parts[0].compound.simple_selectors[0];
+    const auto& mixed_case_not =
+        mixed_case_where.parsed_selector_list->selectors[1].parts[0].compound.simple_selectors[0];
+    ASSERT_TRUE(lowercase_not.parsed_selector_list);
+    ASSERT_TRUE(mixed_case_not.parsed_selector_list);
+    EXPECT_EQ(lowercase_not.parsed_selector_list.get(), mixed_case_not.parsed_selector_list.get());
 }
 
 // ===========================================================================
@@ -5100,6 +7279,48 @@ TEST(SelectorMatcherTest, FocusVisiblePseudoClass) {
 }
 
 // ============================================================================
+// Cycle 2066: :active matches elements with UI-injected active-state attributes
+// ============================================================================
+TEST(SelectorMatcherTest, ActivePseudoClassMatchesBrowserStateAttributesV2066) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "active";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView vibrowser_elem;
+    vibrowser_elem.tag_name = "button";
+    vibrowser_elem.attributes.push_back({"data-vibrowser-active", ""});
+    EXPECT_TRUE(matcher.matches(vibrowser_elem, complex));
+
+    ElementView clever_elem;
+    clever_elem.tag_name = "button";
+    clever_elem.attributes.push_back({"data-clever-active", ""});
+    EXPECT_TRUE(matcher.matches(clever_elem, complex));
+}
+
+TEST(SelectorMatcherTest, ActivePseudoClassDoesNotMatchWithoutStateV2066) {
+    SelectorMatcher matcher;
+
+    ElementView elem;
+    elem.tag_name = "button";
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "active";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    EXPECT_FALSE(matcher.matches(elem, complex));
+}
+
+// ============================================================================
 // Cycle 422: :first-child / :last-child / :only-child structural pseudo-classes
 // ============================================================================
 TEST(SelectorMatcherTest, FirstChildPseudoClass) {
@@ -5561,6 +7782,204 @@ TEST(SelectorMatcherTest, IsPseudoClass) {
     EXPECT_FALSE(matcher.matches(h4, complex));
 }
 
+TEST(SelectorMatcherTest, IsPseudoReusesParsedSelectorListV2064) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":is(h1, h2, h3)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].parts.size(), 1u);
+    auto& simple_sels = list.selectors[0].parts[0].compound.simple_selectors;
+    ASSERT_EQ(simple_sels.size(), 1u);
+    ASSERT_TRUE(simple_sels[0].parsed_selector_list);
+
+    simple_sels[0].argument = "article";
+
+    ElementView h2;
+    h2.tag_name = "h2";
+    EXPECT_TRUE(matcher.matches(h2, list.selectors[0]));
+}
+
+TEST(SelectorMatcherTest, ClassPrefilterSkipsImpossibleRightmostKeysV2107) {
+    SelectorMatcher matcher;
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(make_id_sel("hero"));
+    auto selector = make_simple_complex(compound);
+    selector.rightmost_match_key = {RightmostSelectorKeyType::Class, "card"};
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "hero";
+
+    EXPECT_FALSE(matcher.matches(elem, selector));
+}
+
+TEST(SelectorMatcherTest, NestedIsAndNotPseudoClassesStayCorrect) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":is(:not(.hidden), button.primary)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+
+    ElementView visible_div;
+    visible_div.tag_name = "div";
+    EXPECT_TRUE(matcher.matches(visible_div, list.selectors[0]));
+
+    ElementView hidden_div;
+    hidden_div.tag_name = "div";
+    hidden_div.classes = {"hidden"};
+    EXPECT_FALSE(matcher.matches(hidden_div, list.selectors[0]));
+
+    ElementView primary_button;
+    primary_button.tag_name = "button";
+    primary_button.classes = {"primary"};
+    EXPECT_TRUE(matcher.matches(primary_button, list.selectors[0]));
+}
+
+TEST(SelectorMatcherTest, IsPseudoClassInfersSharedClassPrefilterAcrossIdAndCombinatorBranchesV2107) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":is(.card#hero, article > .card)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_EQ(list.selectors[0].rightmost_match_key.type, RightmostSelectorKeyType::Class);
+    EXPECT_EQ(list.selectors[0].rightmost_match_key.value, "card");
+
+    ElementView hero_card;
+    hero_card.tag_name = "div";
+    hero_card.id = "hero";
+    hero_card.classes = {"card"};
+    EXPECT_TRUE(matcher.matches(hero_card, list.selectors[0]));
+
+    ElementView article;
+    article.tag_name = "article";
+
+    ElementView descendant_card;
+    descendant_card.tag_name = "div";
+    descendant_card.classes = {"card"};
+    descendant_card.parent = &article;
+    article.children = {&descendant_card};
+    EXPECT_TRUE(matcher.matches(descendant_card, list.selectors[0]));
+
+    ElementView id_only;
+    id_only.tag_name = "div";
+    id_only.id = "hero";
+    EXPECT_FALSE(matcher.matches(id_only, list.selectors[0]));
+}
+
+TEST(SelectorMatcherTest, WherePseudoClassSharedClassPrefilterRejectsAmbiguousBranchKeysV2107) {
+    SelectorMatcher matcher;
+
+    auto list = parse_selector_list(":where(.card.primary, article > .card#hero)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_EQ(list.selectors[0].rightmost_match_key.type, RightmostSelectorKeyType::None);
+    EXPECT_TRUE(list.selectors[0].rightmost_match_key.value.empty());
+
+    ElementView article;
+    article.tag_name = "article";
+
+    ElementView descendant_card;
+    descendant_card.tag_name = "div";
+    descendant_card.classes = {"card", "primary"};
+    descendant_card.id = "hero";
+    descendant_card.parent = &article;
+    article.children = {&descendant_card};
+    EXPECT_TRUE(matcher.matches(descendant_card, list.selectors[0]));
+}
+
+TEST(SelectorMatcherTest, FunctionalPseudoProgramsReattachAcrossSelectorCopiesV2104) {
+    SelectorMatcher matcher;
+
+    ElementView visible_div;
+    visible_div.tag_name = "div";
+
+    std::vector<SelectorList> selectors;
+    selectors.reserve(4);
+
+    const SelectorList* expected_program = nullptr;
+    for (int i = 0; i < 4; ++i) {
+        selectors.push_back(parse_selector_list(":is(:not(.hidden), button.primary)"));
+        auto& simple =
+            selectors.back().selectors[0].parts[0].compound.simple_selectors[0];
+        ASSERT_TRUE(simple.parsed_selector_list);
+        if (!expected_program) {
+            expected_program = simple.parsed_selector_list.get();
+        }
+        simple.parsed_selector_list.reset();
+        ASSERT_FALSE(simple.parsed_selector_list);
+        EXPECT_TRUE(matcher.matches(visible_div, selectors.back().selectors[0])) << "iteration=" << i;
+        ASSERT_TRUE(simple.parsed_selector_list) << "iteration=" << i;
+        EXPECT_EQ(simple.parsed_selector_list.get(), expected_program) << "iteration=" << i;
+    }
+}
+
+TEST(SelectorMatcherTest, FunctionalPseudoProgramsCanonicalizeMixedCaseNestedSelectorsV2104) {
+    SelectorMatcher matcher;
+
+    ElementView matching_child;
+    matching_child.tag_name = "section";
+    matching_child.classes = {"card"};
+
+    ElementView matching_article;
+    matching_article.tag_name = "article";
+    matching_article.children = {&matching_child};
+    matching_child.parent = &matching_article;
+
+    ElementView hidden_child;
+    hidden_child.tag_name = "section";
+    hidden_child.classes = {"hidden"};
+
+    ElementView hidden_article;
+    hidden_article.tag_name = "article";
+    hidden_article.children = {&hidden_child};
+    hidden_child.parent = &hidden_article;
+
+    auto lowercase = parse_selector_list("article:has(> section:is(.card, :not(.hidden)))");
+    auto mixed_case = parse_selector_list("article:HaS(> section:IS(.card, :NoT(.hidden)))");
+    ASSERT_EQ(lowercase.selectors.size(), 1u);
+    ASSERT_EQ(mixed_case.selectors.size(), 1u);
+
+    auto& lowercase_simple = lowercase.selectors[0].parts[0].compound.simple_selectors;
+    auto& mixed_case_simple = mixed_case.selectors[0].parts[0].compound.simple_selectors;
+
+    SimpleSelector* lowercase_has = nullptr;
+    SimpleSelector* mixed_case_has = nullptr;
+    for (auto& simple : lowercase_simple) {
+        if (simple.type == SimpleSelectorType::PseudoClass && simple.value == "has") {
+            lowercase_has = &simple;
+            break;
+        }
+    }
+    for (auto& simple : mixed_case_simple) {
+        if (simple.type == SimpleSelectorType::PseudoClass &&
+            simple.value == "HaS") {
+            mixed_case_has = &simple;
+            break;
+        }
+    }
+
+    ASSERT_NE(lowercase_has, nullptr);
+    ASSERT_NE(mixed_case_has, nullptr);
+    const SelectorList* expected_lowercase_program = lowercase_has->parsed_selector_list.get();
+    const SelectorList* expected_mixed_program = mixed_case_has->parsed_selector_list.get();
+    lowercase_has->parsed_selector_list.reset();
+    mixed_case_has->parsed_selector_list.reset();
+    ASSERT_FALSE(lowercase_has->parsed_selector_list);
+    ASSERT_FALSE(mixed_case_has->parsed_selector_list);
+
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_TRUE(matcher.matches(matching_article, lowercase.selectors[0])) << "lower iteration=" << i;
+        EXPECT_TRUE(matcher.matches(matching_article, mixed_case.selectors[0])) << "mixed iteration=" << i;
+        EXPECT_FALSE(matcher.matches(hidden_article, lowercase.selectors[0])) << "hidden lower iteration=" << i;
+        EXPECT_FALSE(matcher.matches(hidden_article, mixed_case.selectors[0])) << "hidden mixed iteration=" << i;
+        ASSERT_TRUE(lowercase_has->parsed_selector_list) << "lower iteration=" << i;
+        ASSERT_TRUE(mixed_case_has->parsed_selector_list) << "mixed iteration=" << i;
+        EXPECT_EQ(lowercase_has->parsed_selector_list.get(), expected_lowercase_program)
+            << "lower iteration=" << i;
+        EXPECT_EQ(mixed_case_has->parsed_selector_list.get(), expected_mixed_program)
+            << "mixed iteration=" << i;
+    }
+    EXPECT_EQ(expected_lowercase_program, expected_mixed_program);
+}
+
 // ============================================================================
 // Cycle 424: :default pseudo-class (submit button, checked/selected option)
 // ============================================================================
@@ -5842,6 +8261,154 @@ TEST(SelectorMatcherTest, HasWithNegationInside) {
     excluded_child.parent = &container2;
 
     EXPECT_FALSE(matcher.matches(container2, selector));
+}
+
+TEST(SelectorMatcherTest, HasDescendantNestedFunctionalPseudoReusesCompiledSelectorsAcrossRepeatedMatches) {
+    SelectorMatcher matcher;
+
+    ElementView matching_leaf;
+    matching_leaf.tag_name = "span";
+    matching_leaf.classes = {"keep"};
+
+    ElementView branch;
+    branch.tag_name = "section";
+    branch.classes = {"branch"};
+    branch.children = {&matching_leaf};
+    matching_leaf.parent = &branch;
+
+    ElementView container;
+    container.tag_name = "div";
+    container.children = {&branch};
+    branch.parent = &container;
+
+    auto list = parse_selector_list("div:has(.branch :is(.keep, :not(.excluded)))");
+    ASSERT_EQ(list.selectors.size(), 1u);
+
+    auto& simple_selectors = list.selectors[0].parts[0].compound.simple_selectors;
+    SimpleSelector* has_simple = nullptr;
+    for (auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::PseudoClass && simple.value == "has") {
+            has_simple = &simple;
+            break;
+        }
+    }
+    ASSERT_NE(has_simple, nullptr);
+    const SelectorList* expected_program = has_simple->parsed_selector_list.get();
+    has_simple->parsed_selector_list.reset();
+    ASSERT_FALSE(has_simple->parsed_selector_list);
+
+    EXPECT_TRUE(matcher.matches(container, list.selectors[0]));
+    ASSERT_TRUE(has_simple->parsed_selector_list);
+    EXPECT_EQ(has_simple->parsed_selector_list.get(), expected_program);
+    ASSERT_EQ(has_simple->parsed_selector_list->selectors.size(), 1u);
+    ASSERT_EQ(has_simple->parsed_selector_list->selectors[0].parts.size(), 2u);
+    ASSERT_TRUE(
+        has_simple->parsed_selector_list->selectors[0].parts[1]
+            .compound.simple_selectors[0]
+            .parsed_selector_list);
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_TRUE(matcher.matches(container, list.selectors[0])) << "iteration=" << i;
+    }
+}
+
+TEST(SelectorMatcherTest, HasSiblingNestedFunctionalPseudoReusesCompiledSelectorsAcrossRepeatedMatches) {
+    SelectorMatcher matcher;
+
+    ElementView sibling;
+    sibling.tag_name = "span";
+    sibling.classes = {"sibling"};
+
+    ElementView subject;
+    subject.tag_name = "div";
+
+    ElementView parent;
+    parent.tag_name = "body";
+    parent.children = {&subject, &sibling};
+    subject.parent = &parent;
+    sibling.parent = &parent;
+    sibling.prev_sibling = &subject;
+
+    auto list = parse_selector_list("div:has(+ :is(.sibling, :not(.excluded)))");
+    ASSERT_EQ(list.selectors.size(), 1u);
+
+    auto& simple_selectors = list.selectors[0].parts[0].compound.simple_selectors;
+    SimpleSelector* has_simple = nullptr;
+    for (auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::PseudoClass && simple.value == "has") {
+            has_simple = &simple;
+            break;
+        }
+    }
+    ASSERT_NE(has_simple, nullptr);
+    const SelectorList* expected_program = has_simple->parsed_selector_list.get();
+    has_simple->parsed_selector_list.reset();
+    ASSERT_FALSE(has_simple->parsed_selector_list);
+
+    EXPECT_TRUE(matcher.matches(subject, list.selectors[0]));
+    ASSERT_TRUE(has_simple->parsed_selector_list);
+    EXPECT_EQ(has_simple->parsed_selector_list.get(), expected_program);
+    ASSERT_EQ(has_simple->parsed_selector_list->selectors.size(), 1u);
+    ASSERT_EQ(has_simple->parsed_selector_list->selectors[0].parts.size(), 1u);
+    ASSERT_TRUE(
+        has_simple->parsed_selector_list->selectors[0].parts[0]
+            .compound.simple_selectors[0]
+            .parsed_selector_list);
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_TRUE(matcher.matches(subject, list.selectors[0])) << "iteration=" << i;
+    }
+}
+
+TEST(SelectorMatcherTest, NestedHasIsAndNotReuseKeepsMatchParityAcrossRepeatedMatches) {
+    SelectorMatcher matcher;
+
+    ElementView matching_section;
+    matching_section.tag_name = "section";
+    matching_section.classes = {"card"};
+
+    ElementView matching_article;
+    matching_article.tag_name = "article";
+    matching_article.children = {&matching_section};
+    matching_section.parent = &matching_article;
+
+    ElementView hidden_section;
+    hidden_section.tag_name = "section";
+    hidden_section.classes = {"hidden"};
+
+    ElementView hidden_article;
+    hidden_article.tag_name = "article";
+    hidden_article.children = {&hidden_section};
+    hidden_section.parent = &hidden_article;
+
+    auto list = parse_selector_list("article:has(> section:is(.card, :not(.hidden)))");
+    ASSERT_EQ(list.selectors.size(), 1u);
+
+    auto& simple_selectors = list.selectors[0].parts[0].compound.simple_selectors;
+    SimpleSelector* has_simple = nullptr;
+    for (auto& simple : simple_selectors) {
+        if (simple.type == SimpleSelectorType::PseudoClass && simple.value == "has") {
+            has_simple = &simple;
+            break;
+        }
+    }
+    ASSERT_NE(has_simple, nullptr);
+    const SelectorList* expected_program = has_simple->parsed_selector_list.get();
+    has_simple->parsed_selector_list.reset();
+    ASSERT_FALSE(has_simple->parsed_selector_list);
+
+    EXPECT_TRUE(matcher.matches(matching_article, list.selectors[0]));
+    EXPECT_FALSE(matcher.matches(hidden_article, list.selectors[0]));
+    ASSERT_TRUE(has_simple->parsed_selector_list);
+    EXPECT_EQ(has_simple->parsed_selector_list.get(), expected_program);
+    ASSERT_EQ(has_simple->parsed_selector_list->selectors.size(), 1u);
+    ASSERT_TRUE(
+        has_simple->parsed_selector_list->selectors[0].parts[0]
+            .compound.simple_selectors[1]
+            .parsed_selector_list);
+
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_TRUE(matcher.matches(matching_article, list.selectors[0])) << "iteration=" << i;
+        EXPECT_FALSE(matcher.matches(hidden_article, list.selectors[0])) << "iteration=" << i;
+    }
 }
 
 // ============================================================================

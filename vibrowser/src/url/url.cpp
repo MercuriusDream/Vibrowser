@@ -14,9 +14,10 @@ std::string URL::serialize() const {
     std::string result;
     result += scheme;
     result += ':';
+    const bool has_authority = !host.empty() || scheme == "file";
 
     // If we have a host (or it's a special scheme), we include the authority
-    if (!host.empty() || scheme == "file") {
+    if (has_authority) {
         result += "//";
 
         if (!username.empty() || !password.empty()) {
@@ -39,7 +40,11 @@ std::string URL::serialize() const {
         result += "//";
     }
 
-    result += path;
+    if (path.empty() && has_authority && is_special()) {
+        result += '/';
+    } else {
+        result += path;
+    }
 
     if (!query.empty()) {
         result += '?';

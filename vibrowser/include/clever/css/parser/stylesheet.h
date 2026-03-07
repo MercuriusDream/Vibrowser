@@ -22,10 +22,29 @@ struct Declaration {
     bool important = false;
 };
 
+struct ConditionalRuleContext {
+    enum class Type {
+        Media,
+        Supports,
+    };
+
+    Type type;
+    std::string condition;
+};
+
+struct ScopeContext {
+    std::string scope_start;
+    std::string scope_end;
+};
+
 struct StyleRule {
     SelectorList selectors;
     std::vector<Declaration> declarations;
     std::string selector_text;  // original selector text
+    std::vector<std::string> media_conditions;
+    std::vector<std::string> supports_conditions;
+    std::vector<ConditionalRuleContext> conditional_rule_contexts;
+    std::vector<ScopeContext> scope_contexts;
     // CSS @layer metadata used by cascade ordering.
     bool in_layer = false;
     size_t layer_order = 0;
@@ -86,6 +105,7 @@ struct ContainerRule {
 struct ScopeRule {
     std::string scope_start;  // e.g., ".card" — root of scope
     std::string scope_end;    // e.g., ".content" — lower boundary (optional)
+    std::vector<ScopeContext> scope_contexts;
     std::vector<StyleRule> rules;
 };
 

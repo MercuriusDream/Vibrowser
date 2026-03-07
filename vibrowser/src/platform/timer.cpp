@@ -3,11 +3,29 @@
 
 #include <algorithm>
 #include <atomic>
+#include <mutex>
 #include <memory>
 #include <utility>
 #include <vector>
 
 namespace clever::platform {
+namespace {
+
+template <typename TimePoint, typename Interval>
+TimePoint next_repeating_deadline_after(TimePoint scheduled_run_at, Interval interval, TimePoint now) {
+    if (interval <= Interval::zero()) {
+        return now;
+    }
+    if (scheduled_run_at > now) {
+        return scheduled_run_at;
+    }
+
+    const auto overdue = now - scheduled_run_at;
+    const auto skipped_intervals = overdue / interval;
+    return scheduled_run_at + interval * (skipped_intervals + 1);
+}
+
+} // namespace
 
 struct TimerScheduler::ScheduledTask {
     int id = 0;
@@ -84,6 +102,17 @@ size_t TimerScheduler::run_ready(Duration advance) {
             continue;
         }
 
+        // One-shot timers become inactive before their callback starts so a
+        // late cancel racing with the committed fire cannot revive or observe
+        // the task as still active.
+        if (!task->repeating) {
+            auto it = tasks_.find(task->id);
+            if (it == tasks_.end() || it->second.get() != task.get()) {
+                continue;
+            }
+            tasks_.erase(it);
+        }
+
         task->callback();
         fired++;
 
@@ -93,13 +122,7 @@ size_t TimerScheduler::run_ready(Duration advance) {
             continue;
         }
 
-        if (task->interval <= Duration::zero()) {
-            task->due_time = now_;
-        } else {
-            do {
-                task->due_time += task->interval;
-            } while (task->due_time <= now_);
-        }
+        task->due_time = next_repeating_deadline_after(task->due_time, task->interval, now_);
         task->sequence = next_sequence_++;
         queue_.push(QueueEntry { task->due_time, task->sequence, task->id });
     }
@@ -127,71 +150,110 @@ int TimerScheduler::schedule(Duration delay, Duration interval, bool repeating, 
 }
 
 struct Timer::Impl {
+    struct OneShotState {
+        Callback callback;
+        mutable std::mutex mutex;
+        std::atomic<bool> active { true };
+
+        explicit OneShotState(Callback callback_)
+            : callback(std::move(callback_)) {}
+    };
+
+    struct RepeatingState {
+        EventLoop& loop;
+        std::chrono::milliseconds interval;
+        Callback callback;
+        std::mutex mutex;
+        bool cancelled = false;
+        std::chrono::steady_clock::time_point next_run_at {};
+        uint64_t generation = 0;
+
+        RepeatingState(EventLoop& loop_, std::chrono::milliseconds interval_, Callback callback_)
+            : loop(loop_)
+            , interval(interval_)
+            , callback(std::move(callback_)) {}
+    };
+
     EventLoop& loop;
     std::chrono::milliseconds interval;
     Callback callback;
-    std::shared_ptr<std::atomic<bool>> cancelled;
+    std::shared_ptr<OneShotState> one_shot_state;
+    std::shared_ptr<RepeatingState> repeating_state;
     bool repeating;
 
     Impl(EventLoop& loop_, std::chrono::milliseconds interval_, Callback callback_, bool repeating_)
         : loop(loop_)
         , interval(interval_)
         , callback(std::move(callback_))
-        , cancelled(std::make_shared<std::atomic<bool>>(false))
+        , one_shot_state(repeating_ ? nullptr : std::make_shared<OneShotState>(callback))
+        , repeating_state(repeating_ ? std::make_shared<RepeatingState>(loop_, interval_, callback) : nullptr)
         , repeating(repeating_) {}
 
     void schedule_one_shot() {
-        auto cb = callback;
-        auto cancelled_flag = cancelled;
+        auto state = one_shot_state;
 
         loop.post_delayed_task(
-            [cb, cancelled_flag]() {
-                if (!cancelled_flag->load()) {
-                    cb();
+            [state]() {
+                if (!state->active.exchange(false)) {
+                    return;
                 }
+
+                Callback callback;
+                {
+                    std::lock_guard lock(state->mutex);
+                    callback = std::move(state->callback);
+                }
+
+                if (!callback) {
+                    return;
+                }
+                callback();
             },
             interval);
     }
 
-    static void schedule_repeating(EventLoop& loop, std::chrono::milliseconds interval,
-        std::chrono::steady_clock::time_point expected_run_at, Callback callback,
-        std::shared_ptr<std::atomic<bool>> cancelled) {
-        auto initial_delay = std::chrono::duration_cast<std::chrono::milliseconds>(
-            expected_run_at - std::chrono::steady_clock::now());
-        if (initial_delay < std::chrono::milliseconds::zero()) {
-            initial_delay = std::chrono::milliseconds::zero();
+    static void schedule_repeating(const std::shared_ptr<RepeatingState>& state,
+        std::chrono::steady_clock::time_point expected_run_at) {
+        uint64_t generation;
+        {
+            std::lock_guard lock(state->mutex);
+            if (state->cancelled) {
+                return;
+            }
+            generation = ++state->generation;
+            state->next_run_at = expected_run_at;
         }
 
-        loop.post_delayed_task(
-            [&loop, interval, expected_run_at, callback = std::move(callback),
-                cancelled = std::move(cancelled)]() mutable {
-                if (cancelled->load()) {
-                    return;
+        const auto remaining = expected_run_at - std::chrono::steady_clock::now();
+        auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(remaining);
+        if (delay < std::chrono::milliseconds::zero()) {
+            delay = std::chrono::milliseconds::zero();
+        } else if (delay < remaining) {
+            // Round positive fractional delays up so recovered intervals do not fire early.
+            delay += std::chrono::milliseconds(1);
+        }
+
+        state->loop.post_delayed_task(
+            [state, expected_run_at, generation]() {
+                Callback callback;
+                std::chrono::milliseconds interval;
+                {
+                    std::lock_guard lock(state->mutex);
+                    if (state->cancelled || state->next_run_at != expected_run_at || state->generation != generation) {
+                        return;
+                    }
+                    callback = state->callback;
+                    interval = state->interval;
                 }
 
                 callback();
-                if (cancelled->load()) {
-                    return;
-                }
 
-                auto next_run_at = expected_run_at;
-                if (interval <= std::chrono::milliseconds::zero()) {
-                    next_run_at = std::chrono::steady_clock::now();
-                } else {
-                    do {
-                        next_run_at += interval;
-                    } while (next_run_at <= std::chrono::steady_clock::now());
-                }
+                auto now = std::chrono::steady_clock::now();
+                auto next_run_at = next_repeating_deadline_after(expected_run_at, interval, now);
 
-                auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    next_run_at - std::chrono::steady_clock::now());
-                if (delay < std::chrono::milliseconds::zero()) {
-                    delay = std::chrono::milliseconds::zero();
-                }
-
-                schedule_repeating(loop, interval, next_run_at, std::move(callback), std::move(cancelled));
+                schedule_repeating(state, next_run_at);
             },
-            initial_delay);
+            delay);
     }
 };
 
@@ -214,9 +276,8 @@ std::unique_ptr<Timer> Timer::repeating(
     auto timer = std::unique_ptr<Timer>(new Timer());
     timer->impl_ = std::make_unique<Impl>(loop, interval, std::move(callback), true);
 
-    auto cancelled = timer->impl_->cancelled;
     auto first_run_at = std::chrono::steady_clock::now() + interval;
-    Impl::schedule_repeating(loop, interval, first_run_at, timer->impl_->callback, cancelled);
+    Impl::schedule_repeating(timer->impl_->repeating_state, first_run_at);
     return timer;
 }
 
@@ -225,13 +286,31 @@ Timer::~Timer() {
 }
 
 void Timer::cancel() {
-    if (impl_ && impl_->cancelled) {
-        impl_->cancelled->store(true);
+    if (!impl_) {
+        return;
+    }
+
+    if (impl_->repeating_state) {
+        std::lock_guard lock(impl_->repeating_state->mutex);
+        impl_->repeating_state->cancelled = true;
+        ++impl_->repeating_state->generation;
+    }
+
+    if (impl_->one_shot_state && impl_->one_shot_state->active.exchange(false)) {
+        std::lock_guard lock(impl_->one_shot_state->mutex);
+        impl_->one_shot_state->callback = {};
     }
 }
 
 bool Timer::is_active() const {
-    return impl_ && impl_->cancelled && !impl_->cancelled->load();
+    if (!impl_) {
+        return false;
+    }
+    if (impl_->repeating_state) {
+        std::lock_guard lock(impl_->repeating_state->mutex);
+        return !impl_->repeating_state->cancelled;
+    }
+    return impl_->one_shot_state && impl_->one_shot_state->active.load();
 }
 
 } // namespace clever::platform
