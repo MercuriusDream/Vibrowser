@@ -19972,21 +19972,107 @@ globalThis.structuredClone = function(obj, options) {
         ServiceWorkerContainer.prototype.removeEventListener = function() {};
     }
 
-    // Add `ready` promise to existing serviceWorker container
-    // (ready resolves to a ServiceWorkerRegistration with an active ServiceWorker)
-    if (navigator.serviceWorker && !navigator.serviceWorker.ready) {
-        var activeWorker = new ServiceWorker();
-        activeWorker.state = 'activated';
-        activeWorker.scriptURL = '';
-        var readyReg = new ServiceWorkerRegistration();
-        readyReg.active = activeWorker;
+    // Service Worker registration lifecycle model (stubbed but coherent):
+    // register() persists by scope, getRegistrations()/getRegistration() reflect it,
+    // unregister() removes it, and ready resolves to an active registration.
+    var swState = navigator.__vibrowserServiceWorkerState;
+    if (!swState || typeof swState !== 'object') {
+        swState = { registrations: [] };
+        navigator.__vibrowserServiceWorkerState = swState;
+    }
+    var container = navigator.serviceWorker;
+    if (container) {
+        if (typeof container.controller === 'undefined') container.controller = null;
+        if (typeof container.oncontrollerchange === 'undefined') container.oncontrollerchange = null;
+        if (typeof container.onmessage === 'undefined') container.onmessage = null;
+
+        var normalizeScope = function(scope) {
+            if (scope == null || scope === '') return '/';
+            var s = String(scope);
+            if (s.charAt(0) !== '/') s = '/' + s;
+            if (s.charAt(s.length - 1) !== '/') s += '/';
+            return s;
+        };
+
+        var makeRegistration = function(scriptURL, scope) {
+            var reg = new ServiceWorkerRegistration();
+            reg.scope = normalizeScope(scope);
+            reg.updateViaCache = 'imports';
+            reg.installing = null;
+            reg.waiting = null;
+            reg.navigationPreload = {};
+            reg.onupdatefound = null;
+
+            var worker = new ServiceWorker();
+            worker.state = 'activated';
+            worker.scriptURL = String(scriptURL || '');
+            reg.active = worker;
+
+            reg.update = function() { return Promise.resolve(); };
+            reg.unregister = function() {
+                var regs = swState.registrations || [];
+                for (var i = regs.length - 1; i >= 0; i--) {
+                    if (regs[i] === reg) regs.splice(i, 1);
+                }
+                if (container.controller === worker) {
+                    container.controller = null;
+                }
+                return Promise.resolve(true);
+            };
+            reg.addEventListener = function() {};
+            reg.removeEventListener = function() {};
+            return reg;
+        };
+
+        container.register = function(scriptURL, options) {
+            var scope = options && options.scope != null ? options.scope : '/';
+            var normalizedScope = normalizeScope(scope);
+            var regs = swState.registrations || (swState.registrations = []);
+            var reg = makeRegistration(scriptURL, normalizedScope);
+            var replaced = false;
+            for (var i = 0; i < regs.length; i++) {
+                if (regs[i] && regs[i].scope === normalizedScope) {
+                    regs[i] = reg;
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) regs.push(reg);
+            container.controller = reg.active;
+            if (typeof container.oncontrollerchange === 'function') {
+                try { container.oncontrollerchange({ type: 'controllerchange', target: container }); } catch (e) {}
+            }
+            return Promise.resolve(reg);
+        };
+
+        container.getRegistrations = function() {
+            var regs = swState.registrations || [];
+            return Promise.resolve(regs.slice());
+        };
+
+        container.getRegistration = function(clientURL) {
+            var regs = swState.registrations || [];
+            if (clientURL == null) return Promise.resolve(regs[0]);
+            var wanted = normalizeScope(clientURL);
+            for (var i = 0; i < regs.length; i++) {
+                if (regs[i] && regs[i].scope === wanted) return Promise.resolve(regs[i]);
+            }
+            return Promise.resolve(undefined);
+        };
+
         try {
-            Object.defineProperty(navigator.serviceWorker, 'ready', {
-                get: function() { return Promise.resolve(readyReg); },
+            Object.defineProperty(container, 'ready', {
+                get: function() {
+                    var regs = swState.registrations || [];
+                    if (regs.length > 0) return Promise.resolve(regs[0]);
+                    var defaultReg = makeRegistration('', '/');
+                    swState.registrations = [defaultReg];
+                    return Promise.resolve(defaultReg);
+                },
                 configurable: true
             });
-        } catch(e) {
-            navigator.serviceWorker.ready = Promise.resolve(readyReg);
+        } catch (e) {
+            container.ready = Promise.resolve((swState.registrations && swState.registrations[0]) || makeRegistration('', '/'));
         }
     }
 

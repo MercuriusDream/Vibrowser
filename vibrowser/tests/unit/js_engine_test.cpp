@@ -9405,6 +9405,73 @@ TEST(JSDom, ServiceWorkerGetRegistrations) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, ServiceWorkerRegistrationLifecycle) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    engine.evaluate(R"(
+        var swLifecycle = "init";
+        navigator.serviceWorker.register('/sw.js', { scope: '/app/' })
+            .then(function(reg) {
+                return navigator.serviceWorker.getRegistrations().then(function(regs) {
+                    return { reg: reg, regs: regs };
+                });
+            })
+            .then(function(ctx) {
+                return navigator.serviceWorker.getRegistration('/app/').then(function(found) {
+                    return { reg: ctx.reg, regs: ctx.regs, found: found };
+                });
+            })
+            .then(function(ctx) {
+                return ctx.reg.unregister().then(function(unregistered) {
+                    return { regs: ctx.regs, found: ctx.found, unregistered: unregistered };
+                });
+            })
+            .then(function(ctx) {
+                return navigator.serviceWorker.getRegistrations().then(function(afterRegs) {
+                    swLifecycle =
+                        String(ctx.regs.length) + "," +
+                        String(!!ctx.found) + "," +
+                        String(ctx.found && ctx.found.scope) + "," +
+                        String(ctx.unregistered) + "," +
+                        String(afterRegs.length);
+                });
+            });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("String(swLifecycle)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,true,/app/,true,0");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, ServiceWorkerReadyTracksRegisteredActiveWorker) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    engine.evaluate(R"(
+        var swReadyInfo = "init";
+        navigator.serviceWorker.register('/worker.js', { scope: '/site/' })
+            .then(function() { return navigator.serviceWorker.ready; })
+            .then(function(reg) {
+                var active = reg && reg.active;
+                swReadyInfo = String(!!active) + "," +
+                              String(active && active.scriptURL) + "," +
+                              String(reg && reg.scope) + "," +
+                              String(!!navigator.serviceWorker.controller);
+            });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("String(swReadyInfo)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,/worker.js,/site/,true");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // ============================================================================
 // Web API — BroadcastChannel stub
 // ============================================================================
