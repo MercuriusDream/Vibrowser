@@ -287,8 +287,16 @@ bool Http2Connection::stream_can_send_data(StreamState state) const {
 }
 
 bool Http2Connection::handle_settings(const Frame& frame) {
+    if (frame.stream_id != 0) {
+        return false;
+    }
+
     if (frame.flags & FLAG_ACK) {
-        return true;
+        return frame.payload.empty();
+    }
+
+    if ((frame.payload.size() % 6) != 0) {
+        return false;
     }
 
     for (size_t i = 0; i + 6 <= frame.payload.size(); i += 6) {
@@ -306,11 +314,15 @@ bool Http2Connection::handle_settings(const Frame& frame) {
         }
     }
 
-    return send_settings({});
+    Frame ack;
+    ack.type = FRAME_TYPE_SETTINGS;
+    ack.flags = FLAG_ACK;
+    ack.stream_id = 0;
+    return send_frame(ack);
 }
 
 bool Http2Connection::handle_window_update(const Frame& frame) {
-    if (frame.payload.size() < 4) {
+    if (frame.payload.size() != 4) {
         return false;
     }
 
@@ -319,6 +331,9 @@ bool Http2Connection::handle_window_update(const Frame& frame) {
                          (static_cast<uint32_t>(frame.payload[2]) << 8) |
                          static_cast<uint32_t>(frame.payload[3]);
     increment &= 0x7FFFFFFF;
+    if (increment == 0) {
+        return false;
+    }
 
     if (frame.stream_id == 0) {
         connection_send_window_ += increment;

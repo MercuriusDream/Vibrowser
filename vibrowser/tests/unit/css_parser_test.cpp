@@ -771,6 +771,26 @@ TEST(CSSParserTest, SupportsRuleNotCondition) {
     EXPECT_TRUE(sheet.supports_rules[0].condition.find("not") != std::string::npos);
 }
 
+TEST(CSSParserTest, MediaRuleParsesNestedSupports) {
+    auto sheet = parse_stylesheet(
+        "@media screen { @supports (display: grid) { .grid { display: grid; } } }");
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 1u);
+    EXPECT_EQ(sheet.media_queries[0].rules[0].selector_text, ".grid");
+    ASSERT_EQ(sheet.media_queries[0].rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.media_queries[0].rules[0].declarations[0].property, "display");
+}
+
+TEST(CSSParserTest, SupportsRuleParsesNestedMedia) {
+    auto sheet = parse_stylesheet(
+        "@supports (display: grid) { @media screen { .grid { display: grid; } } }");
+    ASSERT_EQ(sheet.supports_rules.size(), 1u);
+    ASSERT_EQ(sheet.supports_rules[0].rules.size(), 1u);
+    EXPECT_EQ(sheet.supports_rules[0].rules[0].selector_text, ".grid");
+    ASSERT_EQ(sheet.supports_rules[0].rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.supports_rules[0].rules[0].declarations[0].property, "display");
+}
+
 // =============================================================================
 // @layer parsing
 // =============================================================================

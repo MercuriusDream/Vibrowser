@@ -3334,6 +3334,86 @@ TEST(LayoutEngineTest, HeightMaxContentResolvesToSingleLineHeight) {
         << "height: max-content for single-line text should be approximately one line height";
 }
 
+TEST(LayoutEngineTest, IntrinsicHeightIgnoresAbsoluteChild) {
+    auto root = make_block("div");
+    root->specified_height = -3;
+
+    auto in_flow = make_text("visible", 16.0f);
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    abs_child->append_child(make_text("This absolute child should not count", 32.0f));
+
+    root->append_child(std::move(in_flow));
+    root->append_child(std::move(abs_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_NEAR(root->geometry.height, 16.0f * 1.2f, 0.1f);
+}
+
+TEST(LayoutEngineTest, IntrinsicHeightIgnoresFixedChild) {
+    auto root = make_block("div");
+    root->specified_height = -2;
+
+    auto in_flow = make_block("div");
+    in_flow->append_child(make_text("visible", 18.0f));
+
+    auto fixed_child = make_block("div");
+    fixed_child->position_type = 3; // fixed
+    fixed_child->append_child(make_text("This fixed child should not count", 30.0f));
+
+    root->append_child(std::move(in_flow));
+    root->append_child(std::move(fixed_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_NEAR(root->geometry.height, 18.0f * 1.2f, 0.1f);
+}
+
+TEST(LayoutEngineTest, IntrinsicHeightIgnoresFloatChild) {
+    auto root = make_block("div");
+    root->specified_height = -2;
+
+    auto in_flow = make_block("div");
+    in_flow->append_child(make_text("visible", 14.0f));
+
+    auto float_child = make_block("div");
+    float_child->float_type = 1; // left float
+    float_child->append_child(make_text("This float child should not count", 28.0f));
+
+    root->append_child(std::move(in_flow));
+    root->append_child(std::move(float_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_NEAR(root->geometry.height, 14.0f * 1.2f, 0.1f);
+}
+
+TEST(LayoutEngineTest, IntrinsicHeightIgnoresDisplayNoneChild) {
+    auto root = make_block("div");
+    root->specified_height = -2;
+
+    auto in_flow = make_block("div");
+    in_flow->append_child(make_text("visible", 20.0f));
+
+    auto hidden_child = make_block("div");
+    hidden_child->display = DisplayType::None;
+    hidden_child->mode = LayoutMode::None;
+    hidden_child->append_child(make_text("This hidden child should not count", 36.0f));
+
+    root->append_child(std::move(in_flow));
+    root->append_child(std::move(hidden_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_NEAR(root->geometry.height, 20.0f * 1.2f, 0.1f);
+}
+
 // Test: min-content width with multiple words selects longest word
 TEST(LayoutEngineTest, MinContentWidthSelectsLongestWord) {
     auto root = make_block("div");

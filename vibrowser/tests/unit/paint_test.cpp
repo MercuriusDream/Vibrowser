@@ -9,6 +9,7 @@
 #include <clever/layout/layout_engine.h>
 #include <gtest/gtest.h>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <set>
@@ -16,6 +17,13 @@
 
 using namespace clever::paint;
 using namespace clever::layout;
+
+namespace clever::paint {
+void reset_text_width_cache_stats_for_testing();
+size_t text_width_cache_size_for_testing();
+uint64_t text_width_cache_hit_count_for_testing();
+uint64_t text_width_cache_miss_count_for_testing();
+}
 
 // ============================================================================
 // 1. DisplayList: fill_rect adds command
@@ -39613,6 +39621,45 @@ TEST(WebFontRegistration, ClearRegisteredFonts) {
     // Clearing again should be safe (idempotent)
     TextRenderer::clear_registered_fonts();
     EXPECT_FALSE(TextRenderer::has_registered_font("AnyFont"));
+}
+
+TEST_F(PaintTest, TextWidthCacheReusesRepeatedMeasurements) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+
+    TextRenderer renderer;
+    float first = renderer.measure_text_width("Cache me", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    float second = renderer.measure_text_width("Cache me", 18.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+
+    EXPECT_GT(first, 0.0f);
+    EXPECT_FLOAT_EQ(first, second);
+    EXPECT_EQ(text_width_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 1u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+}
+
+TEST_F(PaintTest, TextWidthCacheClearsOnRegisteredFontReset) {
+    TextRenderer::clear_registered_fonts();
+    reset_text_width_cache_stats_for_testing();
+
+    TextRenderer renderer;
+    float first = renderer.measure_text_width("Reset me", 16.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    ASSERT_GT(first, 0.0f);
+    ASSERT_EQ(text_width_cache_size_for_testing(), 1u);
+    ASSERT_EQ(text_width_cache_miss_count_for_testing(), 1u);
+
+    TextRenderer::clear_registered_fonts();
+    EXPECT_EQ(text_width_cache_size_for_testing(), 0u);
+
+    float second = renderer.measure_text_width("Reset me", 16.0f, "Helvetica", 400, false, 0.0f, 0.0f);
+    EXPECT_FLOAT_EQ(first, second);
+    EXPECT_EQ(text_width_cache_size_for_testing(), 1u);
+    EXPECT_EQ(text_width_cache_miss_count_for_testing(), 2u);
+    EXPECT_EQ(text_width_cache_hit_count_for_testing(), 0u);
+
+    TextRenderer::clear_registered_fonts();
 }
 
 TEST(WebFontRegistration, FontDisplayPropertyCollected) {

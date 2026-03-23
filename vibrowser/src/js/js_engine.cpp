@@ -1,4 +1,5 @@
 #include <clever/js/js_engine.h>
+#include <clever/js/js_workers.h>
 
 extern "C" {
 #include <quickjs.h>
@@ -29,6 +30,17 @@ static std::map<std::string, int>& console_counters() {
 // Retrieve the owning JSEngine* stashed in the context opaque pointer.
 static JSEngine* get_engine(JSContext* ctx) {
     return static_cast<JSEngine*>(JS_GetContextOpaque(ctx));
+}
+
+static void run_js_checkpoint(JSRuntime* rt, JSContext* ctx) {
+    JSContext* ctx_job = nullptr;
+    while (JS_ExecutePendingJob(rt, &ctx_job) > 0) {
+        // drain
+    }
+    process_worker_messages(ctx);
+    while (JS_ExecutePendingJob(rt, &ctx_job) > 0) {
+        // drain
+    }
 }
 
 // Console.log / warn / error / info implementation.
@@ -395,6 +407,7 @@ std::string JSEngine::evaluate(const std::string& code, const std::string& filen
         }
         JS_FreeValue(ctx_, stack);
         JS_FreeValue(ctx_, exception);
+        run_js_checkpoint(rt_, ctx_);
         return "";
     }
 
@@ -412,12 +425,7 @@ std::string JSEngine::evaluate(const std::string& code, const std::string& filen
 
     // Drain any microtasks enqueued during script evaluation
     // (e.g. queueMicrotask callbacks, Promise .then handlers)
-    {
-        JSContext* ctx_job = nullptr;
-        while (JS_ExecutePendingJob(rt_, &ctx_job) > 0) {
-            // drain
-        }
-    }
+    run_js_checkpoint(rt_, ctx_);
 
     return result_str;
 }
@@ -463,6 +471,7 @@ std::string JSEngine::evaluate_module(const std::string& code,
         }
         JS_FreeValue(ctx_, stack);
         JS_FreeValue(ctx_, exception);
+        run_js_checkpoint(rt_, ctx_);
         return "";
     }
 
@@ -492,6 +501,7 @@ std::string JSEngine::evaluate_module(const std::string& code,
         }
         JS_FreeValue(ctx_, stack);
         JS_FreeValue(ctx_, exception);
+        run_js_checkpoint(rt_, ctx_);
         return "";
     }
 
@@ -507,12 +517,7 @@ std::string JSEngine::evaluate_module(const std::string& code,
     JS_FreeValue(ctx_, eval_result);
 
     // Drain any microtasks enqueued during module evaluation
-    {
-        JSContext* ctx_job = nullptr;
-        while (JS_ExecutePendingJob(rt_, &ctx_job) > 0) {
-            // drain
-        }
-    }
+    run_js_checkpoint(rt_, ctx_);
 
     return result_str;
 }

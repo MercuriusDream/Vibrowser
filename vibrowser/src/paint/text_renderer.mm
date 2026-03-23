@@ -3,6 +3,7 @@
 #include <cctype>
 #include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <cstdlib>
 #include <mutex>
@@ -32,6 +33,62 @@ std::unordered_map<std::string, std::vector<RegisteredWebFont>>& registered_font
 std::mutex& font_registry_mutex() {
     static std::mutex mtx;
     return mtx;
+}
+
+struct TextWidthCacheKey {
+    std::string text;
+    float font_size = 0.0f;
+    std::string font_family;
+    int font_weight = 400;
+    bool font_italic = false;
+    float letter_spacing = 0.0f;
+    float word_spacing = 0.0f;
+
+    bool operator==(const TextWidthCacheKey& other) const {
+        return text == other.text &&
+               font_size == other.font_size &&
+               font_family == other.font_family &&
+               font_weight == other.font_weight &&
+               font_italic == other.font_italic &&
+               letter_spacing == other.letter_spacing &&
+               word_spacing == other.word_spacing;
+    }
+};
+
+struct TextWidthCacheKeyHash {
+    size_t operator()(const TextWidthCacheKey& key) const {
+        size_t seed = std::hash<std::string>{}(key.text);
+        auto mix = [&seed](size_t value) {
+            seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        };
+        mix(std::hash<float>{}(key.font_size));
+        mix(std::hash<std::string>{}(key.font_family));
+        mix(std::hash<int>{}(key.font_weight));
+        mix(std::hash<bool>{}(key.font_italic));
+        mix(std::hash<float>{}(key.letter_spacing));
+        mix(std::hash<float>{}(key.word_spacing));
+        return seed;
+    }
+};
+
+struct TextWidthCacheState {
+    std::unordered_map<TextWidthCacheKey, float, TextWidthCacheKeyHash> entries;
+    uint64_t hits = 0;
+    uint64_t misses = 0;
+};
+
+TextWidthCacheState& text_width_cache_state() {
+    static TextWidthCacheState state;
+    return state;
+}
+
+std::mutex& text_width_cache_mutex() {
+    static std::mutex mtx;
+    return mtx;
+}
+
+void invalidate_text_width_cache_locked() {
+    text_width_cache_state().entries.clear();
 }
 
 // Normalize family name for lookup (lowercase, strip quotes)
@@ -119,6 +176,10 @@ bool TextRenderer::register_font(const std::string& family_name,
         }
     }
     variants.push_back({graphics_font, weight, italic});
+    {
+        std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
+        invalidate_text_width_cache_locked();
+    }
     return true;
 }
 
@@ -144,6 +205,10 @@ void TextRenderer::clear_registered_fonts() {
         }
     }
     registered_fonts().clear();
+    {
+        std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
+        invalidate_text_width_cache_locked();
+    }
 }
 
 // Helper: map a CSS-style font weight (100-900) to a CoreText weight value.
@@ -559,7 +624,7 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
 
     // Apply bold and italic traits (only for system fonts — web fonts already have the right variant)
     CTFontRef font = base_font;
-    bool is_web_font = has_registered_font(font_family);
+    bool is_web_font = TextRenderer::has_registered_font(font_family);
     if (!is_web_font) {
         CTFontSymbolicTraits traits = 0;
         if (font_weight >= 600) traits |= kCTFontBoldTrait;
@@ -663,78 +728,12 @@ void TextRenderer::render_text(const std::string& text, float x, float y,
     CFRelease(font);
 }
 
-float TextRenderer::measure_text_width(const std::string& text, float font_size,
-                                       const std::string& font_family) {
-    if (text.empty()) return 0.0f;
-    if (font_size < 1.0f) font_size = 1.0f;
-
-    // Try registered web fonts first
-    CTFontRef font = create_web_font(font_family, static_cast<CGFloat>(font_size));
-    if (!font) {
-        CFStringRef ct_font_name = font_name_for_family(font_family);
-        font = CTFontCreateWithName(ct_font_name, static_cast<CGFloat>(font_size), nullptr);
-    }
-    if (!font) return 0.0f;
-
-    CFStringRef cf_text = CFStringCreateWithBytes(
-        kCFAllocatorDefault,
-        reinterpret_cast<const UInt8*>(text.data()),
-        static_cast<CFIndex>(text.size()),
-        kCFStringEncodingUTF8,
-        false
-    );
-    if (!cf_text) {
-        CFRelease(font);
-        return 0.0f;
-    }
-
-    const void* keys[] = {kCTFontAttributeName};
-    const void* vals[] = {font};
-    CFDictionaryRef attrs = CFDictionaryCreate(
-        kCFAllocatorDefault, keys, vals, 1,
-        &kCFTypeDictionaryKeyCallBacks,
-        &kCFTypeDictionaryValueCallBacks
-    );
-
-    CFAttributedStringRef attr_str = CFAttributedStringCreate(kCFAllocatorDefault, cf_text, attrs);
-    if (!attr_str) {
-        CFRelease(attrs);
-        CFRelease(cf_text);
-        CFRelease(font);
-        return 0.0f;
-    }
-
-    CTLineRef line = CTLineCreateWithAttributedString(attr_str);
-    if (!line) {
-        CFRelease(attr_str);
-        CFRelease(attrs);
-        CFRelease(cf_text);
-        CFRelease(font);
-        return 0.0f;
-    }
-
-    CGFloat ascent, descent, leading;
-    double width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
-
-    CFRelease(line);
-    CFRelease(attr_str);
-    CFRelease(attrs);
-    CFRelease(cf_text);
-    CFRelease(font);
-
-    return static_cast<float>(width);
-}
-
-float TextRenderer::measure_text_width(const std::string& text, float font_size,
-                                        const std::string& font_family,
-                                        int font_weight, bool font_italic,
-                                        float letter_spacing, float word_spacing) {
-    if (text.empty()) return 0.0f;
-    if (font_size < 1.0f) font_size = 1.0f;
-
-    // Try registered web fonts first
+float measure_text_width_uncached(const std::string& text, float font_size,
+                                  const std::string& font_family,
+                                  int font_weight, bool font_italic,
+                                  float letter_spacing, float word_spacing) {
     CTFontRef base_font = create_web_font(font_family, static_cast<CGFloat>(font_size),
-                                            font_weight, font_italic);
+                                          font_weight, font_italic);
     if (!base_font) {
         CFStringRef ct_font_name = font_name_for_family(font_family);
         base_font = CTFontCreateWithName(ct_font_name, static_cast<CGFloat>(font_size), nullptr);
@@ -744,9 +743,8 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
     }
     if (!base_font) return 0.0f;
 
-    // Apply bold and italic traits (only for system fonts)
     CTFontRef font = base_font;
-    bool is_web_font = has_registered_font(font_family);
+    bool is_web_font = TextRenderer::has_registered_font(font_family);
     if (!is_web_font) {
         CTFontSymbolicTraits traits = 0;
         if (font_weight >= 600) traits |= kCTFontBoldTrait;
@@ -761,7 +759,6 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
         }
     }
 
-    // Create attributed string
     CFStringRef cf_text = CFStringCreateWithBytes(
         kCFAllocatorDefault,
         reinterpret_cast<const UInt8*>(text.data()),
@@ -774,7 +771,6 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
         return 0.0f;
     }
 
-    // Build attributes with optional kern (letter_spacing)
     CFDictionaryRef attrs;
     CFNumberRef kern_value = nullptr;
     if (letter_spacing != 0) {
@@ -824,7 +820,6 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
     CFRelease(font);
     if (kern_value) CFRelease(kern_value);
 
-    // Account for word_spacing: count spaces and add extra width
     if (word_spacing != 0) {
         int space_count = 0;
         for (char c : text) {
@@ -834,6 +829,61 @@ float TextRenderer::measure_text_width(const std::string& text, float font_size,
     }
 
     return static_cast<float>(width);
+}
+
+float TextRenderer::measure_text_width(const std::string& text, float font_size,
+                                       const std::string& font_family) {
+    return measure_text_width(text, font_size, font_family, 400, false, 0.0f, 0.0f);
+}
+
+float TextRenderer::measure_text_width(const std::string& text, float font_size,
+                                        const std::string& font_family,
+                                        int font_weight, bool font_italic,
+                                        float letter_spacing, float word_spacing) {
+    if (text.empty()) return 0.0f;
+    if (font_size < 1.0f) font_size = 1.0f;
+    TextWidthCacheKey key{text, font_size, normalize_family(font_family),
+                          font_weight, font_italic, letter_spacing, word_spacing};
+    {
+        std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
+        auto& cache = text_width_cache_state();
+        auto it = cache.entries.find(key);
+        if (it != cache.entries.end()) {
+            ++cache.hits;
+            return it->second;
+        }
+        ++cache.misses;
+    }
+
+    float width = measure_text_width_uncached(text, font_size, font_family,
+                                              font_weight, font_italic,
+                                              letter_spacing, word_spacing);
+
+    std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
+    text_width_cache_state().entries.emplace(std::move(key), width);
+    return width;
+}
+
+void reset_text_width_cache_stats_for_testing() {
+    std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
+    auto& cache = text_width_cache_state();
+    cache.hits = 0;
+    cache.misses = 0;
+}
+
+size_t text_width_cache_size_for_testing() {
+    std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
+    return text_width_cache_state().entries.size();
+}
+
+uint64_t text_width_cache_hit_count_for_testing() {
+    std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
+    return text_width_cache_state().hits;
+}
+
+uint64_t text_width_cache_miss_count_for_testing() {
+    std::lock_guard<std::mutex> cache_lock(text_width_cache_mutex());
+    return text_width_cache_state().misses;
 }
 
 } // namespace clever::paint
