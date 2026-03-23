@@ -6,10 +6,10 @@
 ## Current Status
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
-**Last Active**: 2026-03-06
-**Current Focus**: Cycle 2054 — 
-**Momentum**: C2007 complete — render views now prefer renderer DPR over transient window scale, with successful vibrowser app build and targeted DPR/JS regressions passing. From C1995 to C2007: 12 implementation cycles advanced.
-**Cycle**: 2054
+**Last Active**: 2026-03-24
+**Current Focus**: Cycle 2055 — HTMLDialogElement close-event semantics and :modal state parity hardening.
+**Momentum**: C2055 complete — dialog modal state + close-event behavior now aligns with expected open/close semantics with dedicated regressions. From C1995 to C2055: 60 implementation cycles advanced.
+**Cycle**: 2055
 
 **SCREENSHOT KEY**: vibrowser window is at position x=-1396, y=108, size 1280x800 on second display (to left).
 Use: screencapture -x -R"-1396,108,1280,800" /tmp/screenshot.png
@@ -1607,6 +1607,27 @@ Generated: 2026-03-01
 
 ## Session Log
 
+### Cycle 2055 (Dialog Close Semantics Hardening) - 2026-03-24
+
+- **Theme**: execute next high-value DOM/API parity target by hardening `HTMLDialogElement` close semantics and modal-state behavior.
+- **Files Changed**:
+  - `vibrowser/src/js/js_dom_bindings.cpp`
+  - `vibrowser/tests/unit/js_engine_test.cpp`
+- **Fixes Implemented**:
+  - `showModal()` now explicitly marks modal state via `data-dialog-modal`.
+  - `show()` now clears modal-only state to preserve non-modal dialog semantics.
+  - `close()` now clears modal state and dispatches `close` only when transitioning from open -> closed (idempotent close no longer emits duplicate close events).
+  - Added regression tests:
+    - `JSDom.DialogCloseEventOnlyWhenOpenAndModalStateClears`
+    - `JSDom.DialogShowIsNonModalAfterModalClose`
+- **Validation**:
+  - Attempted: `cmake -S vibrowser -B vibrowser/build && cmake --build vibrowser/build --target vibrowser_js_tests -j4`
+  - Blocked in this runtime by network-restricted `FetchContent` for googletest (`Could not resolve host: github.com`).
+  - Static verification completed on touched bindings/tests.
+- **Current implementation vs full browser**:
+  - Current implementation: single-process engine with broad DOM/CSS/JS coverage and improved dialog behavioral parity for modal/non-modal transitions.
+  - Full browser target: still requires multi-process isolation/sandboxing, full Service Worker lifecycle/interception, complete media playback pipeline, and production-grade HTTP/2+/QUIC networking stack.
+
 ### Cycle 2006 (matchMedia Listener Lifecycle Hardening) - 2026-03-06
 
 - **Theme**: complete pending matchMedia live-listener reliability by enforcing callback removal semantics and teardown cleanup.
@@ -2283,6 +2304,8 @@ Generated: 2026-03-01
 - High-value next targets: visibilitychange event on page load parity, CSS interpolate-size:allow-keywords transition behavior, HTMLDialogElement close event semantics, more fetch() improvements, CSS `paint()` Houdini stubs
 
 ### Tell The Next Codex
+
+- Cycle 2055 completed dialog close semantics hardening (`showModal` modal-state tagging, `show` modal-state clearing, and close-event dispatch only on open->closed transitions); keep the two new JS regressions green when touching dialog or event dispatch paths.
 
 - Cycle 2007 completed render-view DPR source-of-truth stabilization in both `vibrowser` and `clever` shell paths; next continuation should focus on Retina-space hit-testing/sticky-overlay/anchor-scroll parity checks across display-scale transitions.
 

@@ -8270,6 +8270,47 @@ TEST(JSDom, MatchMediaMaxWidth) {
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
+TEST(JSDom, DialogCloseEventOnlyWhenOpenAndModalStateClears) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var d = document.createElement('dialog');
+        document.body.appendChild(d);
+        var closeCount = 0;
+        d.addEventListener('close', function() { closeCount++; });
+        d.showModal();
+        var wasOpen = d.open;
+        var wasModal = d.matches(':modal');
+        d.close('ok');
+        var nowOpen = d.open;
+        var nowModal = d.matches(':modal');
+        var rv = d.returnValue;
+        d.close('ignored');
+        closeCount + '|' + wasOpen + '|' + wasModal + '|' + nowOpen + '|' + nowModal + '|' + rv;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|true|true|false|false|ok");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
+TEST(JSDom, DialogShowIsNonModalAfterModalClose) {
+    auto doc = clever::html::parse("<html><body></body></html>");
+    clever::js::JSEngine engine;
+    clever::js::install_dom_bindings(engine.context(), doc.get());
+    auto result = engine.evaluate(R"(
+        var d = document.createElement('dialog');
+        document.body.appendChild(d);
+        d.showModal();
+        d.close();
+        d.show();
+        d.open + '|' + d.matches(':modal');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false");
+    clever::js::cleanup_dom_bindings(engine.context());
+}
+
 // ============================================================================
 // btoa/atob tests
 // ============================================================================

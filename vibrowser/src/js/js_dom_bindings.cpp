@@ -17604,6 +17604,7 @@ void install_dom_bindings(JSContext* ctx,
         var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
         if (tag !== 'dialog') return;
         this.setAttribute('open', '');
+        this.setAttribute('data-dialog-modal', '');
         if (this.__dialogReturnValue === undefined) this.__dialogReturnValue = '';
         return undefined;
     };
@@ -17612,14 +17613,18 @@ void install_dom_bindings(JSContext* ctx,
         var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
         if (tag !== 'dialog') return;
         this.setAttribute('open', '');
+        this.removeAttribute('data-dialog-modal');
         return undefined;
     };
 
     proto.close = function(returnValue) {
         var tag = (this.__getTagName ? this.__getTagName() : '').toLowerCase();
         if (tag !== 'dialog') return;
+        var wasOpen = this.hasAttribute('open');
         if (arguments.length) this.__dialogReturnValue = (returnValue === undefined || returnValue === null) ? '' : String(returnValue);
         this.removeAttribute('open');
+        this.removeAttribute('data-dialog-modal');
+        if (!wasOpen) return undefined;
         // Dispatch 'close' event (non-bubbling, non-cancelable)
         try {
             var closeEvt = document.createEvent('Event');
